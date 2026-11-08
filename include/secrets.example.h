@@ -7,3 +7,6 @@
 
 // Optional. When set, sensors must add &token=<value> to their requests.
 #define SENSOR_TOKEN ""
+
+// Optional password for the file manager page (user name "admin").
+#define WEB_PASSWORD ""

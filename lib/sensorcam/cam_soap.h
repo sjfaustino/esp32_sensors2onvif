@@ -3,6 +3,8 @@
 #include <time.h>
 #include <string>
 
+std::string iso(time_t t);  // UTC, e.g. 2026-11-08T17:00:00Z
+
 // ---- request parsing ----
 std::string soapAction(const std::string& body);       // local name of the first element in Body
 std::string soapConsumerAddress(const std::string& body);  // Subscribe's ConsumerReference address

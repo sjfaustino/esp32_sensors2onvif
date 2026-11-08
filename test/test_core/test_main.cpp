@@ -1,9 +1,11 @@
 #include <unity.h>
+#include <string.h>
 #include <string>
 #include "cam_frames.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
 #include "cam_soap.h"
+#include "cam_storage.h"
 #include "cam_subs.h"
 
 void setUp() {}
@@ -42,41 +44,133 @@ static void unknown_sensors_rejected() {
 
 static void frame_cycles_between_active_sensors() {
   SensorBoard b(4, 100000);
-  TEST_ASSERT_EQUAL(0, b.frameIndex(0));
+  int id = 0;
+  uint8_t direction = 0;
+  bool delayed = false;
+  TEST_ASSERT_FALSE(b.shown(0, id, direction, delayed));
   b.trigger(1, 0);
   b.trigger(3, 0);
-  TEST_ASSERT_EQUAL(1, b.frameIndex(0));
-  TEST_ASSERT_EQUAL(3, b.frameIndex(2000));
-  TEST_ASSERT_EQUAL(1, b.frameIndex(4000));
-}
-
-static void parses_valid_sensor_packets() {
-  const uint8_t alert[] = {'S', 'C', 1, 3, 1};
-  const uint8_t clear[] = {'S', 'C', 1, 7, 0};
-  int id = 0;
-  bool active = false;
-  TEST_ASSERT_TRUE(parseSensorPacket(alert, sizeof(alert), id, active));
+  TEST_ASSERT_TRUE(b.shown(0, id, direction, delayed));
+  TEST_ASSERT_EQUAL(1, id);
+  TEST_ASSERT_TRUE(b.shown(2000, id, direction, delayed));
   TEST_ASSERT_EQUAL(3, id);
-  TEST_ASSERT_TRUE(active);
-  TEST_ASSERT_TRUE(parseSensorPacket(clear, sizeof(clear), id, active));
-  TEST_ASSERT_EQUAL(7, id);
-  TEST_ASSERT_FALSE(active);
+  TEST_ASSERT_TRUE(b.shown(4000, id, direction, delayed));
+  TEST_ASSERT_EQUAL(1, id);
 }
 
-static void rejects_foreign_sensor_packets() {
-  const uint8_t wrongMagic[] = {'X', 'C', 1, 3, 1};
-  const uint8_t wrongVersion[] = {'S', 'C', 2, 3, 1};
-  const uint8_t wrongState[] = {'S', 'C', 1, 3, 2};
-  const uint8_t tooLong[] = {'S', 'C', 1, 3, 1, 0};
+static void shown_sensor_carries_direction_and_delay() {
+  SensorBoard b(2, 100000);
+  b.trigger(2, 0, 3, true);
   int id = 0;
-  bool active = false;
-  TEST_ASSERT_FALSE(parseSensorPacket(wrongMagic, sizeof(wrongMagic), id, active));
-  TEST_ASSERT_FALSE(parseSensorPacket(wrongVersion, sizeof(wrongVersion), id, active));
-  TEST_ASSERT_FALSE(parseSensorPacket(wrongState, sizeof(wrongState), id, active));
-  TEST_ASSERT_FALSE(parseSensorPacket(tooLong, sizeof(tooLong), id, active));
-  TEST_ASSERT_FALSE(parseSensorPacket(tooLong, 4, id, active));
+  uint8_t direction = 0;
+  bool delayed = false;
+  TEST_ASSERT_TRUE(b.shown(0, id, direction, delayed));
+  TEST_ASSERT_EQUAL(2, id);
+  TEST_ASSERT_EQUAL(3, direction);
+  TEST_ASSERT_TRUE(delayed);
 }
 
+static void classifies_storage_paths() {
+  const char* mac = "AA-BB-CC-DD-EE-01";
+  TEST_ASSERT_EQUAL(CAM_PATH_CLEAR, camClassifyPath("clear.h264"));
+  TEST_ASSERT_EQUAL(CAM_PATH_SLAVE, camClassifyPath(mac));
+  TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath(std::string(mac) + "/1"));
+  TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath(std::string(mac) + "/255"));
+  TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/active.h264"));
+  TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/rtl-delayed.h264"));
+  const char* bad[] = {"", "/", "..", "../x", "clear.h264/x", "aa-bb-cc-dd-ee-01", "AA:BB:CC:DD:EE:01", "AA-BB-CC-DD-EE-01/",
+                       "AA-BB-CC-DD-EE-01/0", "AA-BB-CC-DD-EE-01/256", "AA-BB-CC-DD-EE-01/01", "AA-BB-CC-DD-EE-01/..",
+                       "AA-BB-CC-DD-EE-01/1/..", "AA-BB-CC-DD-EE-01/1/evil.h264", "AA-BB-CC-DD-EE-01/1/active.h264.tmp",
+                       "AA-BB-CC-DD-EE-01/1/active.h264/x", "../AA-BB-CC-DD-EE-01/1/active.h264"};
+  for (const char* p : bad) TEST_ASSERT_EQUAL_MESSAGE(CAM_PATH_INVALID, camClassifyPath(p), p);
+}
+
+static void parses_and_prints_macs() {
+  uint8_t mac[6];
+  TEST_ASSERT_TRUE(camParseMac("84-F7-03-DF-03-62", mac));
+  TEST_ASSERT_EQUAL_HEX8(0x84, mac[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x62, mac[5]);
+  TEST_ASSERT_EQUAL_STRING("84-F7-03-DF-03-62", camMacText(mac).c_str());
+  TEST_ASSERT_FALSE(camParseMac("84-F7-03-DF-03", mac));
+  TEST_ASSERT_FALSE(camParseMac("84:F7:03:DF:03:62", mac));
+}
+
+static void names_state_files() {
+  TEST_ASSERT_EQUAL_STRING("active.h264", camStateFile(0, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("approaching-delayed.h264", camStateFile(1, true).c_str());
+  TEST_ASSERT_EQUAL_STRING("rtl.h264", camStateFile(4, false).c_str());
+}
+
+static void splits_picture_files() {
+  const uint8_t ok[] = {0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 0, 1, 0x06, 9, 0, 0, 1, 0x65, 4, 5, 6};
+  CamNal n[3];
+  TEST_ASSERT_TRUE(camParseFrame(ok, sizeof(ok), n));
+  TEST_ASSERT_EQUAL(3, n[0].len);
+  TEST_ASSERT_EQUAL_HEX8(0x67, n[0].data[0]);
+  TEST_ASSERT_EQUAL(2, n[1].len);  // the zero of the following 4-byte start code is not part of it
+  TEST_ASSERT_EQUAL_HEX8(0x68, n[1].data[0]);
+  TEST_ASSERT_EQUAL(4, n[2].len);
+  TEST_ASSERT_EQUAL_HEX8(0x65, n[2].data[0]);
+
+  const uint8_t noIdr[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2};
+  const uint8_t twoIdr[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x65, 4};
+  const uint8_t garbage[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  TEST_ASSERT_FALSE(camParseFrame(noIdr, sizeof(noIdr), n));
+  TEST_ASSERT_FALSE(camParseFrame(twoIdr, sizeof(twoIdr), n));
+  TEST_ASSERT_FALSE(camParseFrame(garbage, sizeof(garbage), n));
+}
+
+static void builtin_pictures_are_valid() {
+  for (int f = 0; f < 2; f++) {
+    TEST_ASSERT_EQUAL(3, CAM_FRAMES[f].count);
+    TEST_ASSERT_EQUAL(7, CAM_FRAMES[f].nals[0].data[0] & 31);
+    TEST_ASSERT_EQUAL(8, CAM_FRAMES[f].nals[1].data[0] & 31);
+    TEST_ASSERT_EQUAL(5, CAM_FRAMES[f].nals[2].data[0] & 31);
+  }
+  TEST_ASSERT_TRUE(camSameNal(CAM_FRAMES[0].nals[0], CAM_FRAMES[1].nals[0]));
+}
+
+static void parses_report_with_no_targets() {
+  // version, input, active, battery, counter 0x01020304, age 300, no targets
+  const uint8_t p[] = {1, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0};
+  SensorReport r;
+  TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
+  TEST_ASSERT_EQUAL(2, r.input);
+  TEST_ASSERT_TRUE(r.active);
+  TEST_ASSERT_EQUAL(80, r.battery);
+  TEST_ASSERT_EQUAL_UINT32(0x01020304, r.counter);
+  TEST_ASSERT_EQUAL_UINT32(300, r.age);
+  TEST_ASSERT_EQUAL(0, r.targetCount);
+}
+
+static void parses_three_targets_and_picks_nearest() {
+  const uint8_t p[] = {1, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 3,
+                       0x90, 0x01, 1,    // 400 cm, approaching
+                       0x96, 0x00, 2,    // 150 cm, moving away
+                       0xFF, 0xFF, 3};   // unknown distance
+  SensorReport r;
+  TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
+  TEST_ASSERT_EQUAL(3, r.targetCount);
+  TEST_ASSERT_EQUAL_UINT16(400, r.targets[0].distanceCm);
+  TEST_ASSERT_EQUAL_UINT16(150, r.targets[1].distanceCm);
+  TEST_ASSERT_EQUAL_UINT16(CAM_DISTANCE_UNKNOWN, r.targets[2].distanceCm);
+  TEST_ASSERT_EQUAL(2, reportDirection(r));
+}
+
+static void rejects_malformed_reports() {
+  const uint8_t good[] = {1, 1, 1, 80, 1, 0, 0, 0, 0, 0, 0, 0, 1, 10, 0, 1};
+  SensorReport r;
+  TEST_ASSERT_TRUE(parseSensorPacket(good, sizeof(good), r));
+  uint8_t bad[sizeof(good)];
+  struct { int index; uint8_t value; } changes[] = {{0, 2}, {1, 0}, {2, 2}, {12, 4}, {12, 2}, {15, 5}};
+  for (auto& c : changes) {
+    memcpy(bad, good, sizeof(good));
+    bad[c.index] = c.value;
+    TEST_ASSERT_FALSE(parseSensorPacket(bad, sizeof(bad), r));
+  }
+  TEST_ASSERT_FALSE(parseSensorPacket(good, sizeof(good) - 1, r));
+  TEST_ASSERT_FALSE(parseSensorPacket(good, 5, r));
+}
 static void motion_repeats_true_faster_than_nvr_latch() {
   MotionSignal s(1000);
   TEST_ASSERT_TRUE(s.update(false, 0));   // first state always goes out
@@ -237,8 +331,15 @@ int main() {
   RUN_TEST(hold_survives_millis_wrap);
   RUN_TEST(unknown_sensors_rejected);
   RUN_TEST(frame_cycles_between_active_sensors);
-  RUN_TEST(parses_valid_sensor_packets);
-  RUN_TEST(rejects_foreign_sensor_packets);
+  RUN_TEST(shown_sensor_carries_direction_and_delay);
+  RUN_TEST(classifies_storage_paths);
+  RUN_TEST(parses_and_prints_macs);
+  RUN_TEST(names_state_files);
+  RUN_TEST(splits_picture_files);
+  RUN_TEST(builtin_pictures_are_valid);
+  RUN_TEST(parses_report_with_no_targets);
+  RUN_TEST(parses_three_targets_and_picks_nearest);
+  RUN_TEST(rejects_malformed_reports);
   RUN_TEST(motion_repeats_true_faster_than_nvr_latch);
   RUN_TEST(same_consumer_is_one_subscription);
   RUN_TEST(subscription_lives_while_peer_talks);

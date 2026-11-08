@@ -14,9 +14,11 @@ struct CamFrame {
   int count;
 };
 
-extern const CamFrame CAM_FRAMES[];  // [0] is "all clear"; [n] is sensor n active
-extern const int CAM_FRAME_COUNT;
-extern const int CAM_SENSOR_COUNT;
+const int CAM_DIRECTIONS = 5;
+
+// Built-in pictures: [0] "all clear" and [1] a generic alert. They are used when LittleFS has no
+// file to show, and [0]'s SPS is the format every stored picture must match.
+extern const CamFrame CAM_FRAMES[];
 extern const int CAM_WIDTH;
 extern const int CAM_HEIGHT;
 extern const int CAM_FPS;

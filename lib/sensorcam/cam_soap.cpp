@@ -141,7 +141,7 @@ std::string queryParam(const std::string& target, const char* name) {
 
 // ---- replies ----
 
-static std::string iso(time_t t) {
+std::string iso(time_t t) {
   struct tm* u = gmtime(&t);
   char b[32];
   strftime(b, sizeof(b), "%Y-%m-%dT%H:%M:%SZ", u);

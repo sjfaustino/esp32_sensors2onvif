@@ -1,29 +1,57 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
+#include "cam_frames.h"
 
-// ESP-NOW sensor message, 5 bytes: 'S', 'C', version (1), sensor id, state (1 = alert, 0 = clear).
-bool parseSensorPacket(const uint8_t* data, int len, int& id, bool& active);
+const int CAM_MAX_TARGETS = 3;
+const uint32_t CAM_AGE_UNKNOWN = 0xFFFFFFFFu;
+const uint16_t CAM_DISTANCE_UNKNOWN = 0xFFFF;
+const uint8_t CAM_BATTERY_UNKNOWN = 0xFF;
 
-// Sensor state. Ids are 1-based and match sensors.json.
+struct SensorTarget {
+  uint16_t distanceCm = CAM_DISTANCE_UNKNOWN;
+  uint8_t direction = 0;
+};
+
+// One report from a device. On the air, little-endian, 13 + 3 * targetCount bytes:
+// version (1), input (1-255), active (0/1), battery %, counter (u32), age seconds (u32),
+// target count (0-3), then for each target distance cm (u16) and direction (0-4).
+struct SensorReport {
+  uint8_t input = 1;
+  bool active = false;
+  uint8_t battery = CAM_BATTERY_UNKNOWN;
+  uint32_t counter = 0;
+  uint32_t age = 0;
+  uint8_t targetCount = 0;
+  SensorTarget targets[CAM_MAX_TARGETS];
+};
+
+bool parseSensorPacket(const uint8_t* data, int len, SensorReport& out);
+
+// Direction of the nearest target, which is the one shown in the picture.
+uint8_t reportDirection(const SensorReport& r);
+
+// Sensor state. Ids are 1-based slots in the hub's sensor table.
 class SensorBoard {
  public:
   SensorBoard(int count, uint32_t holdMs) : holdMs_(holdMs), sensors_(count) {}
 
   // Starts or extends the hold. Returns false for an unknown id.
-  bool trigger(int id, uint32_t now);
+  bool trigger(int id, uint32_t now, uint8_t direction = 0, bool delayed = false);
   bool clear(int id);
   void tick(uint32_t now);  // ends holds that have run out
   bool active(int id) const;
   bool anyActive() const;
   int count() const { return (int)sensors_.size(); }
 
-  // Frame to show: 0 when clear, otherwise an active sensor's id, cycling when several are active.
-  int frameIndex(uint32_t now) const;
+  // The active sensor to show, cycling when several are active. False when none is.
+  bool shown(uint32_t now, int& id, uint8_t& direction, bool& delayed) const;
 
  private:
   struct Entry {
     bool on = false;
+    bool delayed = false;
+    uint8_t direction = 0;
     uint32_t until = 0;
   };
   uint32_t holdMs_;

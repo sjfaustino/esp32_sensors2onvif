@@ -6,6 +6,11 @@
 #include "secrets.example.h"
 #endif
 
+// Optional password for the file manager page (user name "admin"). Empty leaves it open on the network.
+#ifndef WEB_PASSWORD
+#define WEB_PASSWORD ""
+#endif
+
 #define ONVIF_PORT 8899
 #define RTSP_PORT 8554
 
