@@ -1,0 +1,12 @@
+{
+  "sensors": [
+    { "id": 1, "label": "SENSOR 1" },
+    { "id": 2, "label": "SENSOR 2" },
+    { "id": 3, "label": "SENSOR 3" },
+    { "id": 4, "label": "SENSOR 4" },
+    { "id": 5, "label": "SENSOR 5" },
+    { "id": 6, "label": "SENSOR 6" },
+    { "id": 7, "label": "SENSOR 7" },
+    { "id": 8, "label": "SENSOR 8" }
+  ]
+}

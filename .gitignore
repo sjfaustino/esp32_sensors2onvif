@@ -1,0 +1,16 @@
+# NVR details and credentials - must never be committed
+reference/
+
+# PlatformIO / build output
+.pio/
+build/
+sdkconfig.old
+
+# Local secrets
+secrets.h
+*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
