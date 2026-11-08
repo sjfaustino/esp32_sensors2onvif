@@ -2,6 +2,13 @@
 
 static const uint32_t CYCLE_MS = 2000;
 
+bool parseSensorPacket(const uint8_t* data, int len, int& id, bool& active) {
+  if (len != 5 || data[0] != 'S' || data[1] != 'C' || data[2] != 1 || data[4] > 1) return false;
+  id = data[3];
+  active = data[4] == 1;
+  return true;
+}
+
 bool SensorBoard::trigger(int id, uint32_t now) {
   if (id < 1 || id > count()) return false;
   sensors_[id - 1].on = true;

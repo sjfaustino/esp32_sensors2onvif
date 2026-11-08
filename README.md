@@ -12,9 +12,20 @@ the picture names the sensor that fired. The firmware knows nothing about NVR ch
 
 The serial console prints the address once Wi-Fi is up.
 
-## Sensor input
+## Sensor input over ESP-NOW
 
-Sensors make a plain HTTP request to port 8899:
+Each sensor sends a 5-byte message: `'S'`, `'C'`, `1` (version), the sensor id, and the state (`1` alert, `0` clear).
+Send it unicast to the MAC address the serial console prints at boot.
+
+ESP-NOW has to use the same radio channel as the Wi-Fi network, so the channel is set by your router.
+Sensors should try channels 1 to 13 until a send reports delivery, keep that channel, and search again if
+sends start failing, because a router on automatic channel selection can move.
+
+ESP-NOW messages are not authenticated, so anything within radio range could send a false alert.
+
+## Sensor input over HTTP
+
+Anything on the network can also make a plain HTTP request to port 8899:
 
 | Request | Effect |
 |---|---|

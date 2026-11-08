@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <vector>
 
+// ESP-NOW sensor message, 5 bytes: 'S', 'C', version (1), sensor id, state (1 = alert, 0 = clear).
+bool parseSensorPacket(const uint8_t* data, int len, int& id, bool& active);
+
 // Sensor state. Ids are 1-based and match sensors.json.
 class SensorBoard {
  public:

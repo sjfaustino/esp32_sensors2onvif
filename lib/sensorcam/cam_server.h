@@ -23,6 +23,7 @@ class SensorCamServer {
   bool begin();
   void poll(int maxWaitMs);  // call continuously
   void networkUp();          // call after each Wi-Fi (re)connect
+  bool sensorInput(int id, bool active);  // call from the same task as poll()
 
  private:
   static const int MAX_HTTP = 6;
@@ -65,10 +66,10 @@ class SensorCamServer {
   void closeRtsp(RtspConn& c);
   bool handleHttp(HttpConn& c, uint32_t now);
   std::string handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status);
-  std::string handleSensor(const std::string& target, uint32_t now, int& status);
+  std::string handleSensor(const std::string& target, int& status);
   std::string statusJson(uint32_t now);
   void handleRtspRequest(RtspConn& c, const std::string& text, uint32_t now);
-  void flushRtsp(RtspConn& c);
+  void flushRtsp(RtspConn& c, uint32_t now);
   void startNotify(int i, uint32_t now);
   void serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now);
   void endNotify(NotifyIo& n);

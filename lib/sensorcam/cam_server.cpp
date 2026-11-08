@@ -184,14 +184,18 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   return soapEnvelope(reply);
 }
 
-std::string SensorCamServer::handleSensor(const std::string& target, uint32_t now, int& status) {
+bool SensorCamServer::sensorInput(int id, bool active) {
+  return active ? sensors_.trigger(id, millis_()) : sensors_.clear(id);
+}
+
+std::string SensorCamServer::handleSensor(const std::string& target, int& status) {
   if (!cfg_.sensorToken.empty() && queryParam(target, "token") != cfg_.sensorToken) {
     status = 403;
     return "{\"ok\":false,\"error\":\"bad token\"}\n";
   }
   int id = atoi(queryParam(target, "id").c_str());
   std::string state = queryParam(target, "state");
-  bool ok = (state == "clear" || state == "off") ? sensors_.clear(id) : sensors_.trigger(id, now);
+  bool ok = sensorInput(id, !(state == "clear" || state == "off"));
   status = ok ? 200 : 404;
   return ok ? "{\"ok\":true}\n" : "{\"ok\":false,\"error\":\"unknown sensor\"}\n";
 }
@@ -226,7 +230,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
 
   int status = 200;
   if (isGet && target.compare(0, 7, "/sensor") == 0) {
-    std::string body = handleSensor(target, now, status);
+    std::string body = handleSensor(target, status);
     c.out = httpResponse(status, "application/json", body);
   } else if (isGet && target.compare(0, 7, "/status") == 0) {
     c.out = httpResponse(200, "application/json", statusJson(now));
@@ -275,7 +279,7 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
 
 // ---- RTSP ----
 
-void SensorCamServer::flushRtsp(RtspConn& c) {
+void SensorCamServer::flushRtsp(RtspConn& c, uint32_t now) {
   if (c.outPos >= c.out.size()) return;
   int n = (int)send(c.fd, c.out.data() + c.outPos, (int)(c.out.size() - c.outPos), 0);
   if (n < 0) {
@@ -283,7 +287,7 @@ void SensorCamServer::flushRtsp(RtspConn& c) {
     return;
   }
   c.outPos += n;
-  if (n > 0) c.activityAt = millis_();
+  if (n > 0) c.activityAt = now;
   if (c.outPos >= c.out.size()) {
     c.out.clear();
     c.outPos = 0;
@@ -359,7 +363,7 @@ void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uin
       }
     }
   }
-  if (c.fd >= 0 && (writable || !c.out.empty())) flushRtsp(c);
+  if (c.fd >= 0 && (writable || !c.out.empty())) flushRtsp(c, now);
   if (c.fd >= 0 && (now - c.activityAt > (c.playing ? RTSP_STALL_MS : RTSP_IDLE_MS))) closeRtsp(c);
 }
 
@@ -371,7 +375,7 @@ void SensorCamServer::pushFrames(uint32_t now) {
     // Every frame is independently decodable, so a slow client just skips one.
     if (c.fd < 0 || !c.playing || !c.out.empty()) continue;
     rtpAppendFrame(frame, c.rtp, c.channel, CAM_FPS, c.out);
-    flushRtsp(c);
+    flushRtsp(c, now);
   }
 }
 

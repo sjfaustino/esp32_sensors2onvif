@@ -108,7 +108,8 @@ def main():
         check('initial push is marked Initialized', 'PropertyOperation="Initialized"' in nvr.events[0][1])
         check('each Subscribe gets its initial state', len(nvr.events) == 2, len(nvr.events))
 
-        check('picture is green when clear', grab_colour() == 'green')
+        colour = grab_colour()
+        check('picture is green when clear', colour == 'green', colour)
 
         # A sensor alert makes a motion event, and the picture shows it.
         status, _ = get('/sensor?id=99')
@@ -135,7 +136,8 @@ def main():
         gaps = [b - a for a, b in zip(trues, trues[1:])]
         check('repeat gap stays under the 2 s latch', bool(gaps) and max(gaps) < 1.9, gaps)
         check('false is sent when the hold ends', states[-1] == 'false', states)
-        check('picture is green again', grab_colour() == 'green')
+        colour = grab_colour()
+        check('picture is green again', colour == 'green', colour)
 
         # Clearing early.
         before = len(nvr.events)

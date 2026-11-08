@@ -50,6 +50,33 @@ static void frame_cycles_between_active_sensors() {
   TEST_ASSERT_EQUAL(1, b.frameIndex(4000));
 }
 
+static void parses_valid_sensor_packets() {
+  const uint8_t alert[] = {'S', 'C', 1, 3, 1};
+  const uint8_t clear[] = {'S', 'C', 1, 7, 0};
+  int id = 0;
+  bool active = false;
+  TEST_ASSERT_TRUE(parseSensorPacket(alert, sizeof(alert), id, active));
+  TEST_ASSERT_EQUAL(3, id);
+  TEST_ASSERT_TRUE(active);
+  TEST_ASSERT_TRUE(parseSensorPacket(clear, sizeof(clear), id, active));
+  TEST_ASSERT_EQUAL(7, id);
+  TEST_ASSERT_FALSE(active);
+}
+
+static void rejects_foreign_sensor_packets() {
+  const uint8_t wrongMagic[] = {'X', 'C', 1, 3, 1};
+  const uint8_t wrongVersion[] = {'S', 'C', 2, 3, 1};
+  const uint8_t wrongState[] = {'S', 'C', 1, 3, 2};
+  const uint8_t tooLong[] = {'S', 'C', 1, 3, 1, 0};
+  int id = 0;
+  bool active = false;
+  TEST_ASSERT_FALSE(parseSensorPacket(wrongMagic, sizeof(wrongMagic), id, active));
+  TEST_ASSERT_FALSE(parseSensorPacket(wrongVersion, sizeof(wrongVersion), id, active));
+  TEST_ASSERT_FALSE(parseSensorPacket(wrongState, sizeof(wrongState), id, active));
+  TEST_ASSERT_FALSE(parseSensorPacket(tooLong, sizeof(tooLong), id, active));
+  TEST_ASSERT_FALSE(parseSensorPacket(tooLong, 4, id, active));
+}
+
 static void motion_repeats_true_faster_than_nvr_latch() {
   MotionSignal s(1000);
   TEST_ASSERT_TRUE(s.update(false, 0));   // first state always goes out
@@ -210,6 +237,8 @@ int main() {
   RUN_TEST(hold_survives_millis_wrap);
   RUN_TEST(unknown_sensors_rejected);
   RUN_TEST(frame_cycles_between_active_sensors);
+  RUN_TEST(parses_valid_sensor_packets);
+  RUN_TEST(rejects_foreign_sensor_packets);
   RUN_TEST(motion_repeats_true_faster_than_nvr_latch);
   RUN_TEST(same_consumer_is_one_subscription);
   RUN_TEST(subscription_lives_while_peer_talks);
