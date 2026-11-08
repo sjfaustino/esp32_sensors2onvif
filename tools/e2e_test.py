@@ -147,6 +147,11 @@ def file_manager_tests(files):
     wrong = bytearray(good)
     wrong[8] ^= 0xFF  # inside the SPS, so the format no longer matches
     check('wrong video format is refused', api('PUT', f'/api/file?path={path}', bytes(wrong))[0] == 422)
+    # The header a real browser's ffmpeg.wasm produced: same format, different optional details.
+    browser_sps = bytes.fromhex('6742c01ed900a02ff961000003000100000300020f162e48')
+    from_browser = good.replace(make_frames.nals(good)[0], browser_sps, 1)
+    check('browser encoder header is accepted', from_browser != good and api('PUT', f'/api/file?path={path}', from_browser)[0] == 200)
+    check('stored picture carries the hub header', api('GET', f'/api/file?path={path}')[1] == good)
     # The hub answers without reading an oversize body, so the client may see the connection close instead.
     uptime = status()['uptime_s']
     for size in (8193, 20000, 33792, 60000):
@@ -168,6 +173,18 @@ def file_manager_tests(files):
     sensors_b = {s['input']: s for s in by_mac[B]['sensors']}
     check('tree shows slaves and sensors', set(by_mac) >= {A, B} and sorted(s['input'] for s in by_mac[A]['sensors']) == [1, 2, 3], tree)
     check('tree shows the file and its size', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good)}], sensors_b[1])
+
+    words = json.dumps({'label': 'FRONT DOOR', 'active': 'SOMEONE THERE'}).encode()
+    text = f'{name(4)}/text.json'
+    check('sensor text can be saved', api('PUT', f'/api/file?path={text}', words)[0] == 200)
+    check('sensor text reads back', api('GET', f'/api/file?path={text}') == (200, words))
+    check('oversize text is refused', api('PUT', f'/api/file?path={text}', b'x' * 1025)[0] == 413)
+    check('text file is not listed as a picture', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good)}])
+    check('hub text can be saved', api('PUT', '/api/file?path=text.json', b'{"clear":"QUIET"}')[0] == 200)
+    check('hub text can be deleted', api('DELETE', '/api/file?path=text.json')[0] == 200)
+    check('text path cannot be a folder', api('POST', f'/api/mkdir?path={text}')[0] == 400)
+    full = api('GET', '/')
+    check('whole page arrives', full[1].rstrip().endswith(b'</html>') and b'Make and save 10 pictures' in full[1], len(full[1]))
 
     check('picture can be deleted', api('DELETE', f'/api/file?path={path}')[0] == 200)
     check('deleted picture is gone', api('GET', f'/api/file?path={path}')[0] == 404)

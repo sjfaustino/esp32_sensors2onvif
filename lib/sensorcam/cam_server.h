@@ -75,6 +75,8 @@ class SensorCamServer {
     std::string in, out;
     size_t outPos = 0;
     bool answered = false;
+    const char* staticBody = nullptr;  // sent after out, straight from flash, so a large page never sits in RAM
+    size_t staticLen = 0;
   };
   struct RtspConn {
     int fd = -1;

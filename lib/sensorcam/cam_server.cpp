@@ -466,7 +466,9 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   const char* json = "application/json";
   std::string route = target.substr(0, target.find('?'));
   if (method == "GET" && (route == "/" || route == "/files")) {
-    c.out = httpResponse(200, "text/html; charset=utf-8", CAM_WEB_PAGE);
+    c.staticBody = CAM_WEB_PAGE;
+    c.staticLen = sizeof(CAM_WEB_PAGE) - 1;
+    c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
     return;
   }
   if (method == "GET" && route == "/api/tree") {
@@ -481,28 +483,43 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   std::string path = queryParam(target, "path");
   CamPathKind kind = camClassifyPath(path);
   bool isFile = kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR;
+  bool isText = kind == CAM_PATH_TEXT;
   if (kind == CAM_PATH_INVALID) {
     c.out = httpResponse(400, json, jsonError("invalid path"));
     return;
   }
-  if (mkdirRoute && method == "POST" && !isFile) {
+  if (mkdirRoute && method == "POST" && !isFile && !isText) {
     bool ok = storage_.makeDirs(path);
     rescan();
     c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not create the folder"));
-  } else if (fileRoute && method == "GET" && isFile) {
+  } else if (fileRoute && method == "GET" && (isFile || isText)) {
     std::string data;
-    c.out = storage_.readFile(path, data, CAM_MAX_FRAME) ? httpResponse(200, "video/h264", data) : httpResponse(404, json, jsonError("no such file"));
+    c.out = storage_.readFile(path, data, CAM_MAX_FRAME) ? httpResponse(200, isText ? json : "video/h264", data) : httpResponse(404, json, jsonError("no such file"));
+  } else if (fileRoute && method == "PUT" && isText) {
+    if (bodyLen > 1024) c.out = httpResponse(413, json, jsonError("text is too long"));
+    else c.out = storage_.writeFile(path, body, bodyLen) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the text; storage may be full"));
   } else if (fileRoute && method == "PUT" && isFile) {
     CamNal nals[3];
     if (!camParseFrame((const uint8_t*)body, bodyLen, nals)) {
       c.out = httpResponse(422, json, jsonError("not a single H.264 picture with SPS, PPS and IDR"));
-    } else if (!camSameNal(nals[0], CAM_FRAMES[0].nals[0])) {
+    } else if (!camCompatibleSps(nals[0], CAM_FRAMES[0].nals[0])) {
       c.out = httpResponse(422, json, jsonError("wrong video format: make it with tools/make_frames.py"));
-    } else if (!storage_.writeFile(path, body, bodyLen)) {
-      c.out = httpResponse(507, json, jsonError("could not save the file; storage may be full"));
     } else {
-      rescan();
-      c.out = httpResponse(200, json, JSON_OK);
+      // Stored with the hub's own SPS, so the NVR sees one unchanging format whichever encoder made the picture.
+      const CamNal parts[3] = {CAM_FRAMES[0].nals[0], nals[1], nals[2]};
+      static const char START[4] = {0, 0, 0, 1};
+      std::string clean;
+      clean.reserve(parts[0].len + parts[1].len + parts[2].len + 12);
+      for (const CamNal& n : parts) {
+        clean.append(START, 4);
+        clean.append((const char*)n.data, n.len);
+      }
+      if (storage_.writeFile(path, clean.data(), clean.size())) {
+        rescan();
+        c.out = httpResponse(200, json, JSON_OK);
+      } else {
+        c.out = httpResponse(507, json, jsonError("could not save the file; storage may be full"));
+      }
     }
   } else if (fileRoute && method == "DELETE") {
     bool ok = storage_.exists(path) && storage_.removeTree(path);
@@ -588,13 +605,16 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
     }
   }
   if (c.answered && (writable || c.outPos == 0)) {
-    int n = (int)send(c.fd, c.out.data() + c.outPos, (int)(c.out.size() - c.outPos), 0);
+    bool inHeader = c.outPos < c.out.size();
+    const char* data = inHeader ? c.out.data() + c.outPos : c.staticBody + (c.outPos - c.out.size());
+    size_t left = inHeader ? c.out.size() - c.outPos : c.staticLen - (c.outPos - c.out.size());
+    int n = left ? (int)send(c.fd, data, (int)left, 0) : 0;
     if (n < 0 && !netWouldBlock()) {
       closeHttp(c);
       return;
     }
     if (n > 0) c.outPos += n;
-    if (c.outPos >= c.out.size()) {
+    if (c.outPos >= c.out.size() + c.staticLen) {
       closeHttp(c);
       return;
     }

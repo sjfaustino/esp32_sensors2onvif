@@ -65,10 +65,12 @@ CamPathKind camClassifyPath(const std::string& path) {
   }
   uint8_t mac[6];
   if (parts.size() == 1 && parts[0] == "clear.h264") return CAM_PATH_CLEAR;
+  if (parts.size() == 1 && parts[0] == "text.json") return CAM_PATH_TEXT;
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_SLAVE;
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
+  if (parts[2] == "text.json") return CAM_PATH_TEXT;
   return validStateFile(parts[2]) ? CAM_PATH_FILE : CAM_PATH_INVALID;
 }
 
@@ -100,6 +102,74 @@ bool camParseFrame(const uint8_t* d, size_t len, CamNal out[3]) {
 }
 
 bool camSameNal(const CamNal& a, const CamNal& b) { return a.len == b.len && memcmp(a.data, b.data, a.len) == 0; }
+
+namespace {
+const size_t SPS_MAX = 64;
+
+struct BitReader {
+  const uint8_t* d;
+  size_t bytes;
+  size_t pos;
+  bool ok;
+  int bit() {
+    if (pos / 8 >= bytes) {
+      ok = false;
+      return 0;
+    }
+    int b = (d[pos / 8] >> (7 - pos % 8)) & 1;
+    pos++;
+    return b;
+  }
+  uint32_t ue() {
+    int zeros = 0;
+    while (ok && !bit())
+      if (++zeros > 31) ok = false;
+    uint32_t v = 0;
+    for (int i = 0; i < zeros && ok; i++) v = (v << 1) | (uint32_t)bit();
+    return ok ? ((uint32_t)1 << zeros) - 1 + v : 0;
+  }
+};
+
+size_t unescape(const CamNal& n, uint8_t* out) {
+  size_t used = 0;
+  for (size_t i = 0; i < n.len; i++) {
+    if (i >= 2 && n.data[i] == 3 && n.data[i - 1] == 0 && n.data[i - 2] == 0) continue;
+    out[used++] = n.data[i];
+  }
+  return used;
+}
+
+// Bits before vui_parameters_present_flag, or 0 if this is not an SPS we can read.
+size_t spsCoreBits(const uint8_t* d, size_t bytes) {
+  if (bytes < 4 || d[1] != 66) return 0;  // baseline only, which has no chroma fields to skip
+  BitReader r{d, bytes, 32, true};
+  r.ue();  // seq_parameter_set_id
+  r.ue();  // log2_max_frame_num
+  uint32_t poc = r.ue();
+  if (poc == 0) r.ue();
+  else if (poc != 2) return 0;
+  r.ue();   // max_num_ref_frames
+  r.bit();  // gaps_in_frame_num_allowed
+  r.ue();   // width
+  r.ue();   // height
+  if (!r.bit()) r.bit();  // frame_mbs_only, mb_adaptive
+  r.bit();                // direct_8x8
+  if (r.bit())
+    for (int i = 0; i < 4; i++) r.ue();  // cropping
+  return r.ok ? r.pos : 0;
+}
+}  // namespace
+
+bool camCompatibleSps(const CamNal& a, const CamNal& b) {
+  if (a.len == 0 || b.len == 0 || a.len > SPS_MAX || b.len > SPS_MAX) return false;
+  uint8_t ra[SPS_MAX], rb[SPS_MAX];
+  size_t la = unescape(a, ra), lb = unescape(b, rb);
+  size_t bits = spsCoreBits(ra, la);
+  if (bits == 0 || bits != spsCoreBits(rb, lb)) return false;
+  for (size_t i = 0; i < bits; i++)
+    if (((ra[i / 8] >> (7 - i % 8)) & 1) != ((rb[i / 8] >> (7 - i % 8)) & 1)) return false;
+  return true;
+}
 
 std::string CamStorage::full(const std::string& path) const { return path.empty() ? root_ : root_ + "/" + path; }
 

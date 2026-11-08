@@ -12,7 +12,8 @@
 
 const size_t CAM_MAX_FRAME = 8 * 1024;  // generated pictures are about 5 KB, and boards without PSRAM are short of RAM
 
-enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_SLAVE, CAM_PATH_SENSOR, CAM_PATH_FILE };
+// CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set.
+enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_SLAVE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT };
 
 // Only exact, canonical names pass, which is also what keeps requests inside the storage root.
 CamPathKind camClassifyPath(const std::string& path);
@@ -24,6 +25,10 @@ std::string camStateFile(int direction, bool delayed);  // e.g. "approaching-del
 // Splits an Annex-B file into out[0..2] = SPS, PPS, IDR, pointing into data.
 bool camParseFrame(const uint8_t* data, size_t len, CamNal out[3]);
 bool camSameNal(const CamNal& a, const CamNal& b);
+
+// True when two baseline SPS units match in everything that affects decoding. Encoder builds can
+// differ in the optional VUI section at the end, which pictures do not depend on.
+bool camCompatibleSps(const CamNal& a, const CamNal& b);
 
 struct CamFsEntry {
   std::string name;

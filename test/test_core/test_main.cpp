@@ -78,6 +78,9 @@ static void classifies_storage_paths() {
   TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath(std::string(mac) + "/255"));
   TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/active.h264"));
   TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/rtl-delayed.h264"));
+  TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath("text.json"));
+  TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/1/text.json"));
+  TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/text.json"));
   const char* bad[] = {"", "/", "..", "../x", "clear.h264/x", "aa-bb-cc-dd-ee-01", "AA:BB:CC:DD:EE:01", "AA-BB-CC-DD-EE-01/",
                        "AA-BB-CC-DD-EE-01/0", "AA-BB-CC-DD-EE-01/256", "AA-BB-CC-DD-EE-01/01", "AA-BB-CC-DD-EE-01/..",
                        "AA-BB-CC-DD-EE-01/1/..", "AA-BB-CC-DD-EE-01/1/evil.h264", "AA-BB-CC-DD-EE-01/1/active.h264.tmp",
@@ -118,6 +121,26 @@ static void splits_picture_files() {
   TEST_ASSERT_FALSE(camParseFrame(noIdr, sizeof(noIdr), n));
   TEST_ASSERT_FALSE(camParseFrame(twoIdr, sizeof(twoIdr), n));
   TEST_ASSERT_FALSE(camParseFrame(garbage, sizeof(garbage), n));
+}
+
+static void accepts_sps_differing_only_in_vui() {
+  uint8_t hub[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x70, 0x11, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
+  // The header ffmpeg.wasm produced in a real browser.
+  uint8_t browser[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x61, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
+  CamNal a{hub, sizeof(hub)}, b{browser, sizeof(browser)};
+  TEST_ASSERT_FALSE(camSameNal(a, b));
+  TEST_ASSERT_TRUE(camCompatibleSps(a, b));
+  TEST_ASSERT_TRUE(camCompatibleSps(a, CAM_FRAMES[0].nals[0]));
+
+  uint8_t changed[sizeof(browser)];
+  CamNal c{changed, sizeof(changed)};
+  for (int index : {1, 2, 3, 4, 5, 6, 7}) {  // profile, constraints, level, and the fields up to the picture size
+    memcpy(changed, browser, sizeof(browser));
+    changed[index] ^= 0x10;
+    TEST_ASSERT_FALSE_MESSAGE(camCompatibleSps(a, c), std::to_string(index).c_str());
+  }
+  CamNal empty{browser, 0};
+  TEST_ASSERT_FALSE(camCompatibleSps(a, empty));
 }
 
 static void builtin_pictures_are_valid() {
@@ -336,6 +359,7 @@ int main() {
   RUN_TEST(parses_and_prints_macs);
   RUN_TEST(names_state_files);
   RUN_TEST(splits_picture_files);
+  RUN_TEST(accepts_sps_differing_only_in_vui);
   RUN_TEST(builtin_pictures_are_valid);
   RUN_TEST(parses_report_with_no_targets);
   RUN_TEST(parses_three_targets_and_picks_nearest);

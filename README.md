@@ -29,10 +29,14 @@ The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with 
 generic alert, so a sensor with no pictures still makes motion records.
 
 The page can add and delete slaves and sensors, and upload, download and delete pictures. Changes apply at once,
-without a reboot. Files must be a single H.264 picture of at most 8 KB in the hub's exact video format. Others are
+without a reboot. Files must be a single H.264 picture of at most 8 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 
-To make pictures, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
+To change the words, open **Change the text** under a sensor, or beside `clear.h264`, and save. Your browser makes the
+pictures and uploads them, so it needs internet access: it downloads the ffmpeg.wasm encoder from jsDelivr, about 30 MB
+the first time. The hub remembers the words in a `text.json` file in the same folder.
+
+Without internet, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
 appear in `data/`, ready to upload one by one, or all together with `pio run -t uploadfs`, which replaces everything
 on LittleFS.
 
