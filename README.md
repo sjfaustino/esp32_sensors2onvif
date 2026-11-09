@@ -6,12 +6,28 @@ names the sensor that fired. The firmware knows nothing about NVR channels.
 
 ## Setup
 
-1. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the Wi-Fi settings. Set `WEB_PASSWORD`
-   to protect the file manager; left empty, anyone on the network can change the pictures.
+1. Copy `include/secrets.example.h` to `include/secrets.h`. Set `SETUP_AP_PASSWORD` (at least 8 characters) to enable
+   the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to protect the file
+   manager; left empty, anyone on the network can change the pictures.
 2. Flash with `pio run -t upload`, which targets the Adafruit Feather ESP32-S2. Add `-e esp32dev` or `-e esp32s3` for
    those boards. Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
 
-The serial console prints the address once Wi-Fi is up. Open `http://<address>:8899/` for the file manager.
+Open `http://esp-alarmhub.local` for the file manager, from a device on the same network as the hub. The name does not
+work through a VPN, and some devices cannot resolve `.local` names. In those cases use the address printed on the serial
+console once Wi-Fi is up, as `http://<address>/`. Add the hub to the NVR by address, not by name.
+
+### Changing the Wi-Fi network
+
+The hub keeps a main and a backup network. It tries the main network for 30 seconds, then the backup for 30 seconds. If
+the backup joins, it becomes the main network and the old main becomes the backup.
+
+If neither works, or none is saved, the hub opens its own network, `esp-alarmhub-setup`, protected by `SETUP_AP_PASSWORD`.
+Join it from a phone or laptop and the setup page opens by itself, or browse to `http://192.168.4.1`. Choose a network, and
+whether it is the main or the backup. A new main network moves the previous main to the backup. Saved settings replace the
+one in `secrets.h` and survive reflashing.
+
+The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
+to the setup network. Networks can also be changed at any time from **Wi-Fi settings** in the file manager.
 
 ## Pictures and the file manager
 
@@ -85,7 +101,7 @@ false alert.
 
 ## Sensor input over HTTP
 
-Port 8899 also takes plain HTTP requests, which are useful for testing without a sensor:
+Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor:
 
 | Request | Effect |
 |---|---|

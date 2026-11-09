@@ -72,6 +72,7 @@ void SensorCamServer::openDiscovery() {
 bool SensorCamServer::begin() {
   netInit();
   httpListen_ = listenOn(cfg_.onvifPort);
+  webListen_ = listenOn(cfg_.webPort);
   rtspListen_ = listenOn(cfg_.rtspPort);
   openDiscovery();
   nextFrameAt_ = millis_();
@@ -79,7 +80,7 @@ bool SensorCamServer::begin() {
   frameData_.reserve(CAM_MAX_FRAME);
   spareOut_.reserve(STREAM_BUFFER);
   rescan();
-  return httpListen_ >= 0 && rtspListen_ >= 0;
+  return httpListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
 
 std::string SensorCamServer::debugLine() {
@@ -120,10 +121,10 @@ void SensorCamServer::closeRtsp(RtspConn& c) {
   c = RtspConn();
 }
 
-void SensorCamServer::acceptHttp(uint32_t now) {
+void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   sockaddr_in a{};
   socklen_t len = sizeof(a);
-  int fd = (int)accept(httpListen_, (sockaddr*)&a, &len);
+  int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
   if (cfg_.canAllocate && !cfg_.canAllocate(0)) {  // short of RAM: let existing traffic drain first
     refused_++;
@@ -135,6 +136,7 @@ void SensorCamServer::acceptHttp(uint32_t now) {
     if (c.fd >= 0) continue;
     netNonblock(fd);
     c.fd = fd;
+    c.web = listenFd == webListen_;
     c.peer = a.sin_addr.s_addr;
     c.openedAt = now;
     return;
@@ -494,13 +496,50 @@ std::string SensorCamServer::treeJson() {
   return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"slaves\":[" + slaves + "]}\n";
 }
 
+// A Wi-Fi name or password can hold any character, so form values arrive percent-encoded.
+static std::string percentDecode(const std::string& s) {
+  std::string out;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (s[i] == '%' && i + 2 < s.size() && isxdigit((unsigned char)s[i + 1]) && isxdigit((unsigned char)s[i + 2])) {
+      out += (char)strtol(s.substr(i + 1, 2).c_str(), nullptr, 16);
+      i += 2;
+    } else {
+      out += s[i];
+    }
+  }
+  return out;
+}
+
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
-  if (!authorized(headers)) {
+  std::string route = target.substr(0, target.find('?'));
+  // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
+  bool inSetup = cfg_.setupActive && cfg_.setupActive();
+  bool setupRoute = route == "/setup" || route == "/api/wifi" || route == "/api/wifi/scan" || (inSetup && route == "/");
+  if (!(inSetup && setupRoute) && !authorized(headers)) {
     c.out = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     return;
   }
   const char* json = "application/json";
-  std::string route = target.substr(0, target.find('?'));
+  if (setupRoute) {
+    if (method == "GET" && (route == "/" || route == "/setup")) {
+      c.staticBody = CAM_SETUP_PAGE;
+      c.staticLen = sizeof(CAM_SETUP_PAGE) - 1;
+      c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+    } else if (method == "GET" && route == "/api/wifi/scan") {
+      c.out = httpResponse(200, json, cfg_.wifiNetworks ? cfg_.wifiNetworks() : std::string("{\"scanning\":false,\"networks\":[]}\n"));
+    } else if (method == "POST" && route == "/api/wifi") {
+      std::string form = "?" + std::string(body, bodyLen);
+      std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
+      if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63))) {
+        c.out = httpResponse(400, json, jsonError("the name must be 1 to 32 characters and the password empty or 8 to 63"));
+      } else {
+        c.out = cfg_.wifiSave && cfg_.wifiSave(ssid, password, queryParam(form, "role") == "backup") ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the Wi-Fi settings"));
+      }
+    } else {
+      c.out = httpResponse(404, json, jsonError("not found"));
+    }
+    return;
+  }
   if (method == "GET" && (route == "/" || route == "/files")) {
     c.staticBody = CAM_WEB_PAGE;
     c.staticLen = sizeof(CAM_WEB_PAGE) - 1;
@@ -583,7 +622,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   std::string method = target.substr(0, sp);
   target = target.substr(sp + 1, sp2 - sp - 1);
   bool isGet = method == "GET";
-  bool isApi = target.compare(0, 5, "/api/") == 0 || target == "/" || target == "/files";
+  bool isApi = target.compare(0, 5, "/api/") == 0 || target == "/" || target == "/files" || target == "/setup";
 
   size_t contentLength = (size_t)strtoul(headerValue(headers, "content-length").c_str(), nullptr, 10);
   // A browser reports a connection closed mid-upload as a bare network error, so read the rest of the body before replying.
@@ -594,6 +633,14 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
     return true;
   };
+  bool isOnvif = !isApi && !isGet;
+  if (isOnvif == c.web) return refuse(404, "not available on this port");
+  // Phones and laptops probe a known site on joining a network; sending them here is what opens the setup page by itself.
+  if (c.web && isGet && cfg_.setupActive && cfg_.setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
+    c.out = "HTTP/1.1 302 Found\r\nLocation: http://" + cfg_.setupAddress + "/setup\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    c.answered = true;
+    return true;
+  }
   if (contentLength > (isApi ? CAM_MAX_FRAME : MAX_REQUEST)) {
     if (!isApi) {
       closeHttp(c);
@@ -927,6 +974,7 @@ void SensorCamServer::poll(int maxWaitMs) {
   };
 
   if (httpListen_ >= 0) add(httpListen_, rd);
+  if (webListen_ >= 0) add(webListen_, rd);
   if (rtspListen_ >= 0) add(rtspListen_, rd);
   if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {
@@ -956,7 +1004,8 @@ void SensorCamServer::poll(int maxWaitMs) {
   now = millis_();
   lastGoodWait_ = now;
 
-  if (httpListen_ >= 0 && FD_ISSET(httpListen_, &rd)) acceptHttp(now);
+  if (httpListen_ >= 0 && FD_ISSET(httpListen_, &rd)) acceptHttp(httpListen_, now);
+  if (webListen_ >= 0 && FD_ISSET(webListen_, &rd)) acceptHttp(webListen_, now);
   if (rtspListen_ >= 0 && FD_ISSET(rtspListen_, &rd)) acceptRtsp(now);
   if (udp_ >= 0 && FD_ISSET(udp_, &rd)) serviceDiscovery();
   for (HttpConn& c : http_)

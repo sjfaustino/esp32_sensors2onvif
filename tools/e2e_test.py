@@ -20,6 +20,7 @@ DEVICE = os.environ.get('E2E_DEVICE')
 HOST = DEVICE or '127.0.0.1'
 LOCAL = os.environ.get('E2E_LOCAL_IP', '127.0.0.1')
 ONVIF, RTSP, DISCOVERY = (8899, 8554, 3702) if DEVICE else (18899, 18554, 13702)
+WEB = 80 if DEVICE else 18080
 HOLD_MS = 10000 if DEVICE else 8000
 PASSWORD = os.environ.get('E2E_WEB_PASSWORD', '') if DEVICE else 'test-pass'
 A, B = '02-00-00-00-00-01', '02-00-00-00-00-02'
@@ -53,7 +54,7 @@ def soap(action, path='/onvif/media', inner=''):
 
 
 def get(path):
-    c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+    c = http.client.HTTPConnection(HOST, WEB, timeout=5)
     c.request('GET', path)
     r = c.getresponse()
     data = r.read().decode()
@@ -66,7 +67,7 @@ def api(method, path, body=None, auth=True):
     headers = {}
     if auth and PASSWORD:
         headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
-    c = http.client.HTTPConnection(HOST, ONVIF, timeout=15)
+    c = http.client.HTTPConnection(HOST, WEB, timeout=15)
     c.request(method, path, body, headers)
     r = c.getresponse()
     data = r.read()
@@ -131,6 +132,43 @@ def file_manager_tests(files, hub_files_free):
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
+    c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+    c.request('GET', '/')
+    r = c.getresponse()
+    r.read()
+    c.close()
+    check('ONVIF port does not serve the web page', r.status == 404, r.status)
+    c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+    c.request('POST', '/onvif/device_service', '<x/>', {'Content-Type': 'application/soap+xml'})
+    r = c.getresponse()
+    r.read()
+    c.close()
+    check('web port does not answer ONVIF', r.status == 404, r.status)
+
+    if not DEVICE:  # saving Wi-Fi on a real board would move it to another network
+        code, page = api('GET', '/setup', auth=False)
+        check('setup page needs the web password on the home network', code == 401, code)
+        code, page = api('GET', '/setup')
+        check('setup page is served', code == 200 and b'Hub Wi-Fi setup' in page, code)
+        check('network list is served', b'test-net' in api('GET', '/api/wifi/scan')[1])
+        check('short Wi-Fi password is refused', api('POST', '/api/wifi', 'ssid=x&password=short')[0] == 400)
+        check('empty Wi-Fi name is refused', api('POST', '/api/wifi', 'ssid=&password=longenough')[0] == 400)
+        secret = 'password=p%25ss%20w%2Brd%26ok'
+        check('backup network is saved as the backup', api('POST', '/api/wifi', f'ssid=want-backup&role=backup&{secret}')[0] == 200)
+        check('main network is not saved as the backup', api('POST', '/api/wifi', f'ssid=want-backup&role=main&{secret}')[0] == 507)
+        check('Wi-Fi password is decoded exactly', api('POST', '/api/wifi', f'ssid=setup-on&{secret}')[0] == 200)
+        code, page = api('GET', '/', auth=False)
+        check('setup network opens the setup page without a login', code == 200 and b'Hub Wi-Fi setup' in page, code)
+        check('setup network does not expose the files', api('GET', '/api/tree', auth=False)[0] == 401)
+        c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+        c.request('GET', '/generate_204', headers={'Host': 'connectivitycheck.gstatic.com'})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        check('phone connectivity check is sent to the setup page', r.status == 302 and r.getheader('Location') == f'http://{HOST}:{WEB}/setup', r.status)
+        check('ONVIF still answers in setup mode', soap('GetDeviceInformation', '/onvif/device_service')[0] == 200)
+        check('leaving setup mode works', api('POST', '/api/wifi', f'ssid=setup-off&{secret}')[0] == 200)
+        check('file manager is back after setup', b'SensorCam files' in api('GET', '/')[1])
 
     check('slave folder can be added', api('POST', f'/api/mkdir?path={A}')[0] == 200)
     check('slave alone is not a sensor', status()['sensors'] == baseline)

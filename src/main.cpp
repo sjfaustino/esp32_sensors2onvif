@@ -1,5 +1,8 @@
 #include <Arduino.h>
+#include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <esp_now.h>
 #include <freertos/queue.h>
@@ -17,9 +20,129 @@ static std::string macSerial() {
   return b;
 }
 
+// ---- Wi-Fi settings and the setup network ----
+static const uint32_t WIFI_TRY_MS = 30000;  // how long each saved network gets before moving on
+static String wifiSsid[2], wifiPassword[2];  // [0] is the main network, [1] the backup
+static int wifiTrying = 0;
+static uint32_t wifiTryAt = 0;
+static DNSServer dnsServer;
+static bool setupOpen = false;
+static bool wifiSaved = false;
+static uint32_t wifiSavedAt = 0;
+
+// Networks saved on the setup page win over the one compiled in from secrets.h.
+static void loadWifi() {
+  Preferences p;
+  wifiSsid[0] = WIFI_SSID;
+  wifiPassword[0] = WIFI_PASSWORD;
+  if (p.begin("wifi", false)) {
+    wifiSsid[0] = p.getString("ssid", wifiSsid[0]);
+    wifiPassword[0] = p.getString("password", wifiPassword[0]);
+    wifiSsid[1] = p.getString("ssid2", "");
+    wifiPassword[1] = p.getString("password2", "");
+    p.end();
+  }
+}
+
+static bool storeWifi() {
+  Preferences p;
+  if (!p.begin("wifi", false)) return false;
+  bool ok = p.putString("ssid", wifiSsid[0]) == wifiSsid[0].length() && p.putString("password", wifiPassword[0]) == wifiPassword[0].length() &&
+            p.putString("ssid2", wifiSsid[1]) == wifiSsid[1].length() && p.putString("password2", wifiPassword[1]) == wifiPassword[1].length();
+  p.end();
+  return ok;
+}
+
+static bool saveWifi(const std::string& ssid, const std::string& password, bool backup) {
+  String name = ssid.c_str(), pass = password.c_str();
+  if (backup) {
+    wifiSsid[1] = name;
+    wifiPassword[1] = pass;
+  } else {
+    if (name != wifiSsid[0]) {  // the network it replaces is kept as the backup
+      wifiSsid[1] = wifiSsid[0];
+      wifiPassword[1] = wifiPassword[0];
+    }
+    wifiSsid[0] = name;
+    wifiPassword[0] = pass;
+  }
+  if (!storeWifi()) return false;
+  if (!backup || WiFi.status() != WL_CONNECTED) {  // a new backup needs no restart while the main network is working
+    wifiSavedAt = millis();
+    wifiSaved = true;  // the restart waits for the reply to reach the browser
+  }
+  return true;
+}
+
+static void tryNetwork(int i) {
+  wifiTrying = i;
+  wifiTryAt = millis();
+  WiFi.disconnect(false);
+  WiFi.begin(wifiSsid[i].c_str(), wifiPassword[i].c_str());
+}
+
+// The backup worked, so it becomes the main network and the old main becomes the backup.
+static void promoteBackup() {
+  std::swap(wifiSsid[0], wifiSsid[1]);
+  std::swap(wifiPassword[0], wifiPassword[1]);
+  wifiTrying = 0;
+  bool ok = storeWifi();
+  Serial.printf("Joined the backup network; it is now the main network%s.\n", ok ? "" : " until the next restart (could not save)");
+}
+
+static void openSetup() {
+  if (setupOpen || strlen(SETUP_AP_PASSWORD) < 8) return;
+  WiFi.disconnect(false);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(SETUP_AP_NAME, SETUP_AP_PASSWORD);
+  dnsServer.start(53, "*", WiFi.softAPIP());
+  setupOpen = true;
+  Serial.printf("Setup network %s is open at %s\n", SETUP_AP_NAME, WiFi.softAPIP().toString().c_str());
+}
+
+static void closeSetup() {
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  setupOpen = false;
+  Serial.println("Joined Wi-Fi; setup network closed.");
+}
+
+static std::string jsonText(const String& s) {
+  std::string out;
+  for (size_t i = 0; i < s.length(); i++) {
+    char ch = s[i];
+    if (ch == '"' || ch == '\\') out += '\\';
+    if ((unsigned char)ch >= 0x20) out += ch;
+  }
+  return out;
+}
+
+// The scan runs in the background so the video and ONVIF keep being served; the page asks again until it is done.
+static std::string networksJson() {
+  std::string head = std::string("{\"name\":\"") + MDNS_NAME + ".local\",\"current\":\"" + jsonText(wifiSsid[0]) + "\",\"backup\":\"" + jsonText(wifiSsid[1]) + "\",";
+  int16_t n = WiFi.scanComplete();
+  if (n == WIFI_SCAN_RUNNING) return head + "\"scanning\":true,\"networks\":[]}\n";
+  if (n < 0) {
+    WiFi.scanNetworks(true);
+    return head + "\"scanning\":true,\"networks\":[]}\n";
+  }
+  std::string list;
+  for (int i = 0; i < n && i < 20; i++) {
+    if (i) list += ",";
+    list += "{\"ssid\":\"" + jsonText(WiFi.SSID(i)) + "\",\"rssi\":" + std::to_string(WiFi.RSSI(i)) + ",\"open\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "true" : "false") + "}";
+  }
+  WiFi.scanDelete();
+  return head + "\"scanning\":false,\"networks\":[" + list + "]}\n";
+}
+
 static CamConfig makeConfig() {
   CamConfig c;
   c.onvifPort = ONVIF_PORT;
+  c.webPort = WEB_PORT;
+  c.setupActive = [] { return setupOpen; };
+  c.wifiNetworks = networksJson;
+  c.wifiSave = saveWifi;
   c.rtspPort = RTSP_PORT;
   c.holdMs = SENSOR_HOLD_MS;
   c.sensorToken = SENSOR_TOKEN;
@@ -47,7 +170,7 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent.
+// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(uint32_t cause) {
@@ -97,21 +220,17 @@ void setup() {
   lastRestartCause = esp_reset_reason() == ESP_RST_SW ? restartCause : 0;
   restartCause = 0;
   Serial.begin(115200);
-  if (strlen(WIFI_SSID) == 0) {
-    // Repeats because native USB serial misses anything printed before the PC reattaches.
-    while (true) {
-      Serial.println("No Wi-Fi settings: copy include/secrets.example.h to include/secrets.h and rebuild.");
-      delay(2000);
-    }
-  }
+  loadWifi();
+  WiFi.persistent(false);  // the settings are kept in one place only, by loadWifi and saveWifi
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // power save loses multicast and adds latency
-  WiFi.setAutoReconnect(true);
+  WiFi.setAutoReconnect(false);  // loop() chooses between the main and backup networks itself
+  WiFi.setHostname(MDNS_NAME);
   WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
     wifiDrops = wifiDrops + 1;
     wifiDropReason = info.wifi_sta_disconnected.reason;
   }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (wifiSsid[0].length()) tryNetwork(0);
   configTime(0, 0, NTP_SERVER);
 
   // Formats on first use. Without storage the hub still runs, using its built-in pictures.
@@ -133,24 +252,49 @@ void setup() {
 
 void loop() {
   bool connected = WiFi.status() == WL_CONNECTED;
+  bool justLost = !connected && wasConnected;
   if (connected && !wasConnected) {
     server->networkUp();
     if (!pingSession) startGatewayPing();
+    static bool nameAnnounced = false;
+    if (!nameAnnounced && MDNS.begin(MDNS_NAME)) {
+      MDNS.addService("http", "tcp", WEB_PORT);
+      nameAnnounced = true;
+    }
   }
   wasConnected = connected;
 
   // An unattended hub must not stay off the network: keep asking, then start clean.
-  static uint32_t lostAt = 0, retryAt = 0;
+  static uint32_t lostAt = 0;
+  static bool hadGuest = false;
   if (connected) {
     lostAt = 0;
+    hadGuest = false;
+    if (wifiTrying == 1) promoteBackup();
+    if (setupOpen) closeSetup();
   } else {
     if (lostAt == 0) lostAt = timerStart();
-    if (millis() - retryAt > 30000) {
-      retryAt = millis();
-      WiFi.reconnect();
+    bool haveNetwork = wifiSsid[0].length() > 0;
+    if (!haveNetwork) openSetup();
+    if (justLost && haveNetwork) tryNetwork(0);
+    // Connection attempts move the radio, which would drop whoever is on the setup network and block its scan.
+    bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
+    if (guest && !hadGuest) WiFi.disconnect(false);
+    hadGuest = guest;
+    if (guest) {
+      lostAt = timerStart();  // someone is using the setup page; a restart would throw them off
+    } else if (haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
+      if (wifiTrying == 0 && wifiSsid[1].length() > 0) {
+        tryNetwork(1);
+      } else {  // neither network worked: open the setup network and keep trying behind it
+        openSetup();
+        tryNetwork(0);
+      }
     }
-    if (millis() - lostAt > WIFI_RESTART_MS) restartFor(1);
+    if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(1);
   }
+  if (setupOpen) dnsServer.processNextRequest();
+  if (wifiSaved && millis() - wifiSavedAt > 1500) restartFor(5);
 
   // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
   static uint32_t lowSince = 0;
@@ -169,9 +313,9 @@ void loop() {
   static uint32_t printedAt = 0;
   if (millis() - printedAt > 10000) {
     printedAt = millis();
-    Serial.printf("ONVIF on %s:%u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, %s\n",
+    Serial.printf("ONVIF on %s:%u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
                   WiFi.localIP().toString().c_str(), ONVIF_PORT, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
-                  (unsigned)wifiDropReason, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, server->debugLine().c_str());
+                  (unsigned)wifiDropReason, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
   }
 
   SensorMessage m;

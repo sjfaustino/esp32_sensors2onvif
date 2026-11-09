@@ -1,5 +1,38 @@
-// The file manager page served at / on the ONVIF port.
+// The pages served on the web port: Wi-Fi setup at /setup and the file manager at /.
 #pragma once
+
+static const char CAM_SETUP_PAGE[] = R"HTML(<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hub Wi-Fi setup</title>
+<style>
+body{font:16px/1.4 system-ui,sans-serif;margin:0 auto;max-width:26rem;padding:16px;color:#1b1f24;background:#f6f7f9}
+h1{font-size:22px;margin:0 0 8px}label{display:block;margin-top:12px;font-size:14px}
+input,select,button{font:inherit;width:100%;padding:10px;margin-top:4px;box-sizing:border-box;border:1px solid #b9c0c8;border-radius:6px;background:#fff;color:inherit}
+button{margin-top:16px;cursor:pointer}#msg{min-height:24px;margin-top:12px;white-space:pre-wrap}#msg.err{color:#b3261e}
+</style></head><body>
+<h1>Hub Wi-Fi setup</h1>
+<div id="state">Looking for networks...</div>
+<label>Network<select id="list"></select></label>
+<label>Or type its name<input id="name" maxlength="32" autocomplete="off" autocapitalize="none"></label>
+<label>Password<input id="pass" type="password" maxlength="63" autocomplete="off"></label>
+<label>Use as<select id="role"><option value="main">Main network</option><option value="backup">Backup network</option></select></label>
+<button id="save">Save</button>
+<div id="msg"></div>
+<script>
+const $=i=>document.getElementById(i);let hub="";
+async function scan(){try{const r=await fetch("/api/wifi/scan");const j=await r.json();hub=j.name||"";
+if(j.scanning){setTimeout(scan,1500);return}
+const seen=new Set();$("list").replaceChildren(...j.networks.filter(n=>n.ssid&&!seen.has(n.ssid)&&seen.add(n.ssid)).map(n=>{const o=document.createElement("option");o.value=n.ssid;o.textContent=n.ssid+(n.open?" (open)":"")+"  "+n.rssi+" dBm";return o}));
+$("state").textContent=j.current?"Main network: "+j.current+". Backup: "+(j.backup||"none")+".":"No network saved yet.";
+if(j.current)$("list").value=j.current}catch(e){setTimeout(scan,3000)}}
+$("save").onclick=async()=>{const ssid=$("name").value||$("list").value;const m=$("msg");m.className="";
+if(!ssid){m.className="err";m.textContent="Choose or type a network.";return}
+try{const r=await fetch("/api/wifi",{method:"POST",body:"ssid="+encodeURIComponent(ssid)+"&password="+encodeURIComponent($("pass").value)+"&role="+$("role").value});const j=await r.json();
+if(!r.ok){m.className="err";m.textContent=j.error;return}
+m.textContent=$("role").value=="backup"?"Saved as the backup network.":"Saved. The hub is restarting to join "+ssid+". Reconnect this device to that network"+(hub?", then open http://"+hub:"")+". If neither saved network works, the setup network comes back in about a minute."}
+catch(e){m.className="err";m.textContent="The hub did not answer. Try again."}};
+scan();
+</script></body></html>)HTML";
 
 static const char CAM_WEB_PAGE[] = R"HTML(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -21,6 +54,7 @@ details{margin-top:8px}summary{cursor:pointer;font-size:14px}
 .bar{height:8px;background:#e6e9ed;border-radius:4px;overflow:hidden;margin-top:6px}.bar div{height:100%;background:#3b6fd4}
 </style></head><body>
 <h1>SensorCam files</h1>
+<a href="/setup">Wi-Fi settings</a>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
 <div id="msg"></div>
 <div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add slave</button></span>

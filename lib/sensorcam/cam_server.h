@@ -17,7 +17,13 @@ struct CamConfig {
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
   std::function<void(uint32_t& used, uint32_t& total)> fsUsage;
   std::function<bool(size_t)> canAllocate;  // lets large requests be refused before they exhaust RAM
-  uint16_t onvifPort = 8899;
+  // Wi-Fi setup page. The board supplies these; the setup network is the hub's own access point.
+  std::function<bool()> setupActive;           // the setup network is open
+  std::string setupAddress = "192.168.4.1";    // where visitors to the setup network are sent
+  std::function<std::string()> wifiNetworks;   // JSON for the setup page
+  std::function<bool(const std::string& ssid, const std::string& password, bool backup)> wifiSave;
+  uint16_t onvifPort = 8899;  // ONVIF requests only
+  uint16_t webPort = 80;      // the file manager, sensor input, status and events
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
@@ -73,6 +79,7 @@ class SensorCamServer {
 
   struct HttpConn {
     int fd = -1;
+    bool web = false;  // arrived on the web port rather than the ONVIF port
     uint32_t peer = 0;
     uint32_t openedAt = 0;
     std::string in, out;
@@ -106,7 +113,7 @@ class SensorCamServer {
 
   int listenOn(uint16_t port);
   void openDiscovery();
-  void acceptHttp(uint32_t now);
+  void acceptHttp(int listenFd, uint32_t now);
   void acceptRtsp(uint32_t now);
   void serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now);
   void serviceRtsp(RtspConn& c, bool readable, bool writable, uint32_t now);
@@ -142,7 +149,7 @@ class SensorCamServer {
   SensorBoard sensors_;
   MotionSignal signal_;
   SubTable subs_;
-  int httpListen_ = -1, rtspListen_ = -1, udp_ = -1;
+  int httpListen_ = -1, webListen_ = -1, rtspListen_ = -1, udp_ = -1;
   HttpConn http_[MAX_HTTP];
   RtspConn rtsp_[MAX_RTSP];
   NotifyIo notify_[SubTable::SIZE];
