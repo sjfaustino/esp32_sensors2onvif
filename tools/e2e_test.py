@@ -132,7 +132,8 @@ def file_manager_tests(files, hub_files_free):
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
-    check('page has the menu', all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"']))
+    check('page offers a picture preview', b'title:"Preview"' in page)
+    check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -190,7 +191,22 @@ def file_manager_tests(files, hub_files_free):
             c.close()
         check('setup port answers nothing outside setup mode', closed)
 
-        check('settings need the web password', api('POST', '/api/settings', 'web=8080', auth=False)[0] == 401)
+        code, net = api('GET', '/api/network')
+        check('network details are served', code == 200 and b'"mac"' in net and b'"gateway"' in net, code)
+        check('network settings need the web password', api('POST', '/api/network', 'mode=dhcp', auth=False)[0] == 401)
+        fixed = 'mode=static&ip=192.168.1.50&mask=255.255.255.0&gateway=192.168.1.1&dns=8.8.8.8'
+        for good in ('mode=dhcp', fixed, 'mode=static&ip=10.1.2.3&mask=255.0.0.0&gateway=10.0.0.1&dns='):
+            check(f'address is accepted: {good[:40]}', api('POST', '/api/network', good)[0] == 200)
+        for bad in ('mode=static', 'mode=static&ip=999.1.1.1&mask=255.255.255.0&gateway=192.168.1.1',
+                    'mode=static&ip=192.168.1.50&mask=255.0.255.0&gateway=192.168.1.1',
+                    'mode=static&ip=192.168.1.50&mask=255.255.255.0&gateway=192.168.2.1',
+                    'mode=static&ip=192.168.1.0&mask=255.255.255.0&gateway=192.168.1.1',
+                    'mode=static&ip=192.168.1.255&mask=255.255.255.0&gateway=192.168.1.1',
+                    'mode=static&ip=192.168.1.1&mask=255.255.255.0&gateway=192.168.1.1',
+                    'mode=static&ip=192.168.1.50&mask=255.255.255.0&gateway=192.168.1.1&dns=nope',
+                    'mode=static&ip=1.2.3&mask=255.255.255.0&gateway=1.2.3.1'):
+            check(f'address is refused: {bad[12:50]}', api('POST', '/api/network', bad)[0] == 400)
+        check('settings need the web password',api('POST', '/api/settings', 'web=8080', auth=False)[0] == 401)
         for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2', 'protect=on&password=', 'protect=on&password=new%20pass', 'protect=off'):
             check(f'setting is accepted: {good}', api('POST', '/api/settings', good)[0] == 200)
         too_long = 'x' * 64

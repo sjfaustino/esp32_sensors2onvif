@@ -64,17 +64,28 @@ main{flex:1;min-width:0;padding:16px}.view{max-width:860px}.view>h1{margin-botto
 .info td:first-child{font-family:inherit;color:#5a636d;width:40%}.info td{word-break:break-all}
 #netFrame{width:100%;height:620px;border:0}
 input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px;width:8em}
+.netRow{display:flex;gap:8px;align-items:center;margin:6px 0}.netRow span{width:9em;color:#5a636d}.netRow input,.netRow select{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px;width:14em;box-sizing:border-box;background:#fff;color:inherit}.netRow input:disabled{background:#f0f2f4;color:#5a636d}
 .portForm{margin-bottom:6px}.portMsg{min-height:20px;font-size:14px;margin-bottom:8px}.portMsg.err{color:#b3261e}
 @media(max-width:640px){body{display:block}#menu{width:auto}}
 </style></head><body>
 <nav id="menu">
 <div class="first">Network Manager</div>
-<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
+<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
 <div class="first">Sensors Manager</div>
 <div class="subs"><div class="item" data-view="sensors">Sensors</div></div>
 </nav>
 <main>
-<div class="view" id="view-network" hidden><h1>Network</h1><table class="info" id="networkInfo"></table><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
+<div class="view" id="view-network" hidden><h1>Network</h1>
+<label class="netRow"><span>Connection</span><input id="netType" disabled></label>
+<label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
+<label class="netRow"><span>IP address</span><input id="netIp" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>Subnet mask</span><input id="netMask" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>Gateway</span><input id="netGw" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>DNS server</span><input id="netDns" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>MAC address</span><input id="netMac" disabled></label>
+<div class="portForm"><button id="saveNet">Save</button></div>
+<div class="portMsg" id="netMsg"></div></div>
+<div class="view" id="view-wifi" hidden><h1>WiFi</h1><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
 <div class="view" id="view-onvif" hidden><h1>ONVIF</h1><div class="portForm"><label>Port <input id="onvifPort" type="number" min="1" max="65535"></label> <button id="saveOnvif">Save</button></div><div class="portMsg" id="onvifMsg"></div><table class="info" id="onvifInfo"></table></div>
 <div class="view" id="view-http" hidden><h1>HTTP</h1>
 <div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
@@ -111,10 +122,22 @@ function pick(path){
     act(()=>call("PUT","/api/file?path="+path,f),"Saved "+path)};
   i.click()}
 function del(path,what){if(confirm("Delete "+what+"?"))act(()=>call("DELETE","/api/file?path="+path),"Deleted "+what)}
+function previewButton(path,name){return el("button",{textContent:"\u{1F441}",title:"Preview",ariaLabel:"Preview "+name,onclick:()=>showPicture(path,name)})}
+// The hub stores H.264 only, so the browser decodes the picture with the same ffmpeg.wasm that makes them.
+async function showPicture(path,name){
+  const img=el("img",{alt:name,style:"display:none;width:100%;max-width:640px"}),status=el("p",{textContent:"Loading the picture..."});
+  const dlg=el("dialog",null,el("h2",{textContent:name}),status,img,el("p",null,el("button",{textContent:"Close",onclick:()=>dlg.close()})));
+  dlg.onclose=()=>{if(img.src)URL.revokeObjectURL(img.src);dlg.remove()};
+  document.body.append(dlg);dlg.showModal();
+  try{const r=await fetch("/api/file?path="+path);if(!r.ok)throw new Error("The hub could not send this picture.");
+    const pic=new Uint8Array(await r.arrayBuffer());
+    status.textContent="Getting the decoder ready. The first time, this downloads about 30 MB.";
+    img.src=await decoded(pic);img.style.display="block";status.remove()}
+  catch(e){status.textContent="Could not show this picture. The preview needs internet access the first time. "+(e.message||"")}}
 function fileRow(path,name,size){
   const acts=el("td",{className:"acts"});
   acts.append(el("button",{textContent:size==null?"Upload":"Replace",onclick:()=>pick(path)})," ",el("button",{textContent:"Use an image",onclick:()=>imageDialog(path)}));
-  if(size!=null){acts.append(" ",el("a",{className:"btn",href:"/api/file?path="+path,download:name,textContent:"Download"}),
+  if(size!=null){acts.prepend(previewButton(path,name)," ");acts.append(" ",el("a",{className:"btn",href:"/api/file?path="+path,download:name,textContent:"Download"}),
     " ",el("button",{className:"del",textContent:"Delete",onclick:()=>del(path,path)}))}
   return el("tr",null,el("td",{textContent:name}),
     el("td",{className:size==null?"missing":"",textContent:size==null?"uses a fallback":(size/1024).toFixed(1)+" KB"}),acts)}
@@ -276,7 +299,7 @@ function render(t){
   const c=$("clear");c.textContent="";
   c.append("clear.h264 "+(t.clear==null?"(built-in) ":((t.clear/1024).toFixed(1)+" KB ")),
     el("button",{textContent:t.clear==null?"Upload":"Replace",onclick:()=>pick("clear.h264")})," ",el("button",{textContent:"Use an image",onclick:()=>imageDialog("clear.h264")}));
-  if(t.clear!=null)c.append(" ",el("button",{className:"del",textContent:"Delete",onclick:()=>del("clear.h264","clear.h264")}));
+  if(t.clear!=null)c.append(" ",previewButton("clear.h264","clear.h264")," ",el("button",{className:"del",textContent:"Delete",onclick:()=>del("clear.h264","clear.h264")}));
   c.append(clearPanel());
   const tree=$("tree");tree.textContent="";
   if(!t.slaves.length)tree.append(el("p",{className:"missing",textContent:"No slaves yet. Add one by its MAC address."}));
@@ -305,15 +328,28 @@ load();
 const firsts=[...document.querySelectorAll(".first")],items=[...document.querySelectorAll(".item")];
 function fill(id,rows){const t=document.getElementById(id);t.replaceChildren(...rows.map(([k,v])=>{const r=t.insertRow(),a=r.insertCell(),b=r.insertCell();a.textContent=k;b.textContent=v;return r}))}
 async function info(view){try{const r=await fetch("/api/info");const i=await r.json();
-if(view=="network")fill("networkInfo",[["IP address",i.ip],["Name on the network",i.name]]);
 const at=i.webPort==80?"":":"+i.webPort;
 document.getElementById("onvifPort").value=i.onvifPort;document.getElementById("webPort").value=i.webPort;
 document.getElementById("rtspPort").value=i.rtspPort;
 if(view=="rtsp")fill("rtspInfo",[["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Video streams open",i.streams]]);
 document.getElementById("hubName").value=i.name.replace(/\.local$/,"");document.getElementById("protect").checked=i.password;
 document.getElementById("pwRow").hidden=!i.password;document.getElementById("webPw").placeholder=i.password?"Leave empty to keep it":"";
-if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Event subscribers",i.subscribers],["Video streams open",i.streams],["Serial number",i.serial]]);
+if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial]]);
 if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"]])}catch(e){}}
+const netField=i=>document.getElementById(i);
+function netState(){const off=netField("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>netField(i).disabled=off)}
+async function loadNet(){try{const n=await(await fetch("/api/network")).json();
+netField("netType").value=n.type;netField("netMode").value=n.dhcp?"dhcp":"static";netField("netIp").value=n.ip;netField("netMask").value=n.mask;netField("netGw").value=n.gateway;netField("netDns").value=n.dns;netField("netMac").value=n.mac;netState();
+netField("netMsg").className="portMsg";netField("netMsg").textContent=n.dhcp?"":"This fixed address is used only on "+n.staticFor+". Other WiFi networks use DHCP."}catch(e){}}
+netField("netMode").onchange=netState;
+netField("saveNet").onclick=async()=>{const m=netField("netMsg"),mode=netField("netMode").value,ip=netField("netIp").value;
+if(!confirm("The hub will restart to apply this. A fixed address is used only on the WiFi network it is connected to now. Continue?"))return;m.className="portMsg";
+try{const r=await fetch("/api/network",{method:"POST",body:"mode="+mode+"&ip="+encodeURIComponent(ip)+"&mask="+encodeURIComponent(netField("netMask").value)+"&gateway="+encodeURIComponent(netField("netGw").value)+"&dns="+encodeURIComponent(netField("netDns").value)});const j=await r.json();
+if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+const named=location.hostname.endsWith(".local");
+m.textContent=mode=="static"||named?"Saved. The hub is restarting.":"Saved. The hub is restarting and will get its address from the router. Open it by name, or find the new address in the router.";
+if(mode=="static"||named)setTimeout(()=>{location.href=location.protocol+"//"+(named?location.hostname:ip)+(location.port?":"+location.port:"")+"/"+location.hash},12000)}
+catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
 async function savePort(field,input,msg,warning){const v=document.getElementById(input).value,m=document.getElementById(msg);
 if(!confirm(warning))return;m.className="portMsg";
 try{const r=await fetch("/api/settings",{method:"POST",body:field+"="+encodeURIComponent(v)});const j=await r.json();
@@ -336,7 +372,8 @@ function expand(f,on){f.classList.toggle("open",on);f.nextElementSibling.classLi
 function show(view){if(!document.getElementById("view-"+view))view="sensors";
 document.querySelectorAll(".view").forEach(v=>v.hidden=v.id!="view-"+view);
 items.forEach(i=>{const on=i.dataset.view==view;i.classList.toggle("active",on);if(on){firsts.forEach(f=>expand(f,false));expand(i.parentElement.previousElementSibling,true)}});
-if(view=="network"){const n=document.getElementById("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
+if(view=="wifi"){const n=document.getElementById("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
+if(view=="network")loadNet();
 if(view!="sensors")info(view)}
 firsts.forEach(f=>f.onclick=()=>{const on=!f.classList.contains("open");firsts.forEach(o=>expand(o,false));expand(f,on)});
 items.forEach(i=>i.onclick=()=>{location.hash=i.dataset.view});

@@ -520,6 +520,33 @@ static std::string percentDecode(const std::string& s) {
   return out;
 }
 
+static bool parseIpv4(const std::string& s, uint32_t& out) {
+  out = 0;
+  size_t i = 0;
+  for (int part = 0; part < 4; part++) {
+    if (part && (i >= s.size() || s[i++] != '.')) return false;
+    int value = 0, digits = 0;
+    while (i < s.size() && isdigit((unsigned char)s[i])) {
+      value = value * 10 + (s[i++] - '0');
+      if (++digits > 3 || value > 255) return false;
+    }
+    if (!digits) return false;
+    out = (out << 8) | (uint32_t)value;
+  }
+  return i == s.size();
+}
+
+// Refuses anything that could never work, because a bad fixed address takes the hub off the network.
+static bool validAddress(const CamAddress& a) {
+  uint32_t ip, mask, gateway, dns;
+  if (!parseIpv4(a.ip, ip) || !parseIpv4(a.mask, mask) || !parseIpv4(a.gateway, gateway)) return false;
+  if (!a.dns.empty() && !parseIpv4(a.dns, dns)) return false;
+  uint32_t hosts = ~mask;
+  if (mask == 0 || (hosts & (hosts + 1)) != 0 || hosts < 3) return false;  // the mask must be contiguous, with room for hosts
+  if ((ip & hosts) == 0 || (ip & hosts) == hosts) return false;            // not the network or broadcast address
+  return (gateway & mask) == (ip & mask) && gateway != ip;
+}
+
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
@@ -558,6 +585,25 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   if (method == "GET" && route == "/api/tree") {
     c.out = httpResponse(200, json, treeJson());
+    return;
+  }
+  if (method == "GET" && route == "/api/network") {
+    c.out = httpResponse(200, json, cfg_.addressJson ? cfg_.addressJson() : std::string("{}\n"));
+    return;
+  }
+  if (method == "POST" && route == "/api/network") {
+    std::string form = "?" + std::string(body, bodyLen);
+    CamAddress a;
+    a.dhcp = queryParam(form, "mode") != "static";
+    a.ip = queryParam(form, "ip");
+    a.mask = queryParam(form, "mask");
+    a.gateway = queryParam(form, "gateway");
+    a.dns = queryParam(form, "dns");
+    if (!a.dhcp && !validAddress(a)) {
+      c.out = httpResponse(400, json, jsonError("check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address"));
+    } else {
+      c.out = cfg_.addressSave && cfg_.addressSave(a) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the address"));
+    }
     return;
   }
   if (method == "POST" && route == "/api/settings") {

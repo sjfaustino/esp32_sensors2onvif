@@ -16,6 +16,12 @@ Open `http://esp-alarmhub.local` for the file manager, from a device on the same
 work through a VPN, and some devices cannot resolve `.local` names. In those cases use the address printed on the serial
 console once Wi-Fi is up, as `http://<address>/`. Add the hub to the NVR by address, not by name.
 
+### IP address
+
+**Network Manager > Network** switches between DHCP and a fixed address. A fixed address is used only on the WiFi network the
+hub was connected to when it was saved, and other networks use DHCP. If the router never answers from a fixed address, the
+hub forgets it about two minutes after joining and goes back to DHCP.
+
 ### Changing the Wi-Fi network
 
 The hub keeps a main and a backup network. It tries the main network for 30 seconds, then the backup for 30 seconds. If
@@ -27,7 +33,7 @@ whether it is the main or the backup. A new main network moves the previous main
 one in `secrets.h` and survive reflashing.
 
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
-to the setup network. Networks can also be changed at any time from **Network Manager > Network** on the web page.
+to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
 
 ## Pictures and the file manager
 

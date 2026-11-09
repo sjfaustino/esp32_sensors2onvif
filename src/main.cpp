@@ -32,6 +32,11 @@ static uint32_t wifiSavedAt = 0;
 static uint32_t savedCause = 5;
 static uint16_t onvifPort = ONVIF_PORT, webPort = WEB_PORT, rtspPort = RTSP_PORT;
 static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD;
+// A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
+static String staticFor, staticIp, staticMask, staticGateway, staticDns;
+static bool usingStatic = false;
+static uint32_t connectedAt = 0;
+static const uint32_t STATIC_CHECK_MS = 120000;
 
 // Settings saved on the web page win over the defaults compiled in from config.h and secrets.h.
 static void loadSettings() {
@@ -42,6 +47,11 @@ static void loadSettings() {
   rtspPort = p.getUShort("rtsp", RTSP_PORT);
   hubName = p.getString("name", MDNS_NAME);
   webPassword = p.getString("webpw", WEB_PASSWORD);
+  staticFor = p.getString("ipfor", "");
+  staticIp = p.getString("ip", "");
+  staticMask = p.getString("mask", "");
+  staticGateway = p.getString("gw", "");
+  staticDns = p.getString("dns", "");
   p.end();
 }
 
@@ -120,6 +130,10 @@ static void tryNetwork(int i) {
   wifiTrying = i;
   wifiTryAt = millis();
   WiFi.disconnect(false);
+  IPAddress ip, mask, gateway, dns;
+  usingStatic = staticFor.length() && staticFor == wifiSsid[i] && ip.fromString(staticIp) && mask.fromString(staticMask) && gateway.fromString(staticGateway);
+  if (usingStatic) WiFi.config(ip, gateway, mask, dns.fromString(staticDns) ? dns : gateway);
+  else WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.begin(wifiSsid[i].c_str(), wifiPassword[i].c_str());
 }
 
@@ -178,11 +192,48 @@ static std::string networksJson() {
   return head + "\"scanning\":false,\"networks\":[" + list + "]}\n";
 }
 
+static void forgetStatic() {
+  Preferences p;
+  if (p.begin("net", false)) {
+    p.remove("ipfor");
+    p.end();
+  }
+}
+
+static std::string addressJson() {
+  return std::string("{\"type\":\"WiFi\",\"dhcp\":") + (usingStatic ? "false" : "true") + ",\"staticFor\":\"" + jsonText(staticFor) + "\",\"ip\":\"" + WiFi.localIP().toString().c_str() +
+         "\",\"mask\":\"" + WiFi.subnetMask().toString().c_str() + "\",\"gateway\":\"" + WiFi.gatewayIP().toString().c_str() + "\",\"dns\":\"" + WiFi.dnsIP().toString().c_str() +
+         "\",\"mac\":\"" + WiFi.macAddress().c_str() + "\"}\n";
+}
+
+static bool saveAddress(const CamAddress& a) {
+  String network = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : wifiSsid[0];
+  if (!a.dhcp && network.isEmpty()) return false;
+  Preferences p;
+  if (!p.begin("net", false)) return false;
+  bool ok = true;
+  if (a.dhcp) {
+    p.remove("ipfor");
+  } else {
+    ok = p.putString("ipfor", network) == network.length() && p.putString("ip", a.ip.c_str()) == a.ip.size() && p.putString("mask", a.mask.c_str()) == a.mask.size() &&
+         p.putString("gw", a.gateway.c_str()) == a.gateway.size() && p.putString("dns", a.dns.c_str()) == a.dns.size();
+  }
+  p.end();
+  if (ok) {
+    savedCause = 6;
+    wifiSavedAt = millis();
+    wifiSaved = true;
+  }
+  return ok;
+}
+
 static CamConfig makeConfig() {
   CamConfig c;
   c.onvifPort = onvifPort;
   c.webPort = webPort;
   c.settingsSave = saveSettings;
+  c.addressJson = addressJson;
+  c.addressSave = saveAddress;
   if (webPort != 80) c.setupAddress += ":" + std::to_string(webPort);
   c.hostName = std::string(hubName.c_str()) + ".local";
   c.setupActive = [] { return setupOpen; };
@@ -215,7 +266,7 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web or ONVIF settings.
+// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(uint32_t cause) {
@@ -302,6 +353,7 @@ void loop() {
   bool justLost = !connected && wasConnected;
   if (connected && !wasConnected) {
     server->networkUp();
+    connectedAt = timerStart();
     if (!pingSession) startGatewayPing();
     static bool nameAnnounced = false;
     if (!nameAnnounced && MDNS.begin(hubName.c_str())) {
@@ -354,6 +406,11 @@ void loop() {
   if (server->stalledMs(millis()) > 30000) restartFor(3);  // the loop runs but the server has stopped serving
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
+  // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
+  if (connected && usingStatic && pingReplies == 0 && pingLost > 0 && millis() - connectedAt > STATIC_CHECK_MS) {
+    forgetStatic();
+    restartFor(7);
+  }
   uint32_t lastReply = lastPingReply;
   if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(4);
 

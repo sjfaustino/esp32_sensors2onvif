@@ -21,6 +21,11 @@ struct CamSettings {
   std::string password;  // empty keeps the current password while protection stays on
 };
 
+struct CamAddress {
+  bool dhcp = true;
+  std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
+};
+
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
@@ -36,6 +41,8 @@ struct CamConfig {
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
   uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
   std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
+  std::function<std::string()> addressJson;              // JSON for the Network page
+  std::function<bool(const CamAddress&)> addressSave;    // stores DHCP or a fixed address; applies after a restart
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine

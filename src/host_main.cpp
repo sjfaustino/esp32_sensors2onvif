@@ -23,6 +23,8 @@ int main(int argc, char** argv) {
   static bool setupOn = false;
   cfg.captivePort = 18081;
   cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
+  cfg.addressJson = [] { return std::string("{\"type\":\"WiFi\",\"dhcp\":true,\"staticFor\":\"\",\"ip\":\"127.0.0.1\",\"mask\":\"255.0.0.0\",\"gateway\":\"127.0.0.1\",\"dns\":\"127.0.0.1\",\"mac\":\"02:00:00:00:00:01\"}\n"); };
+  cfg.addressSave = [](const CamAddress&) { return true; };
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   cfg.setupActive = [] { return setupOn; };
