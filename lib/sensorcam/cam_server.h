@@ -32,11 +32,14 @@ class SensorCamServer {
   bool begin();
   void poll(int maxWaitMs);  // call continuously
   void networkUp();          // call after each Wi-Fi (re)connect
+  // Milliseconds since the socket wait last worked. A large value means the server has stopped serving.
+  uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
+  std::string debugLine();   // counters for the serial heartbeat
   void espNowInput(const uint8_t mac[6], const SensorReport& report);  // call from the same task as poll()
 
  private:
   static const int MAX_HTTP = 6;
-  static const int MAX_RTSP = 3;
+  static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
   static const int EVENT_LOG_SIZE = 64;
   static const int DELAYED_QUEUE_SIZE = 16;
 
@@ -75,8 +78,12 @@ class SensorCamServer {
     std::string in, out;
     size_t outPos = 0;
     bool answered = false;
-    const char* staticBody = nullptr;  // sent after out, straight from flash, so a large page never sits in RAM
+    const char* staticBody = nullptr;  // sent after out without being copied into it: the page in flash, or ownBody
     size_t staticLen = 0;
+    std::string ownBody;
+    bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
+    size_t bodyWanted = 0;
+    size_t discardLeft = 0;  // body still to read and drop, so a refusal arrives as a reply rather than a reset
   };
   struct RtspConn {
     int fd = -1;
@@ -141,11 +148,18 @@ class SensorCamServer {
   NotifyIo notify_[SubTable::SIZE];
   uint32_t nextFrameAt_ = 0;
   uint32_t messageNo_ = 1;
+  uint32_t lastGoodWait_ = 0;
+  uint32_t waitErrors_ = 0;
+  int lastWaitErrno_ = 0;
+  uint32_t accepted_ = 0;
+  uint32_t refused_ = 0;
   CamStorage storage_;
   std::vector<Slot> slots_;
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
   const CamFrame* frame_ = nullptr;
   std::string frameData_;
+  std::string spareOut_;  // a stream buffer reserved at boot, so the first viewer (the NVR) is never refused for lack of RAM
+  HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
   CamNal frameNals_[3];
   CamFrame loadedFrame_{frameNals_, 3};
   std::vector<Health> health_;

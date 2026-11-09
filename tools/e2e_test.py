@@ -5,8 +5,9 @@ loopback. Needs ffmpeg.
 
 To test a flashed board instead, restart it first, then set E2E_DEVICE to its address and
 E2E_LOCAL_IP to this PC's address on the same network. If the board has a web password, set
-E2E_WEB_PASSWORD too. Only the 02-00-00-00-00-0x test folders are created and deleted.
-Never point E2E_DEVICE at an NVR.
+E2E_WEB_PASSWORD too. It creates and deletes only the 02-00-00-00-00-0x test folders. If the board
+has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
+if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
 import base64, datetime, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time
 
@@ -120,7 +121,7 @@ def grab_colour():
     return 'amber' if g > 0.3 * r else 'red'
 
 
-def file_manager_tests(files):
+def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
         check('file operations need the password', api('DELETE', f'/api/file?path={A}', auth=False)[0] == 401)
@@ -152,14 +153,14 @@ def file_manager_tests(files):
     from_browser = good.replace(make_frames.nals(good)[0], browser_sps, 1)
     check('browser encoder header is accepted', from_browser != good and api('PUT', f'/api/file?path={path}', from_browser)[0] == 200)
     check('stored picture carries the hub header', api('GET', f'/api/file?path={path}')[1] == good)
-    # The hub answers without reading an oversize body, so the client may see the connection close instead.
+    # A browser shows a broken connection as a bare "failed to fetch", so a refusal has to arrive as a reply.
     uptime = status()['uptime_s']
     for size in (8193, 20000, 33792, 60000):
-        try:
-            code = api('PUT', f'/api/file?path={path}', b'\x55' * size)[0]
-        except OSError:
-            code = 'connection closed'
-        check(f'oversize upload ({size} bytes) is refused', code in (413, 'connection closed'), code)
+        check(f'oversize upload ({size} bytes) gets a clear refusal', api('PUT', f'/api/file?path={path}', b'\x55' * size)[0] == 413)
+    largest = good + b'\x00' * (8192 - len(good))
+    check('picture at the 8 KB limit is accepted', api('PUT', f'/api/file?path={path}', largest)[0] == 200)
+    check('picture at the limit reads back', api('GET', f'/api/file?path={path}')[1] == largest)
+    check('smaller picture replaces it', api('PUT', f'/api/file?path={path}', good)[0] == 200)
     check('hub did not restart after very large uploads', status()['uptime_s'] >= uptime, status())
     check('refused uploads leave the file intact', api('GET', f'/api/file?path={path}')[1] == good)
 
@@ -180,11 +181,12 @@ def file_manager_tests(files):
     check('sensor text reads back', api('GET', f'/api/file?path={text}') == (200, words))
     check('oversize text is refused', api('PUT', f'/api/file?path={text}', b'x' * 1025)[0] == 413)
     check('text file is not listed as a picture', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good)}])
-    check('hub text can be saved', api('PUT', '/api/file?path=text.json', b'{"clear":"QUIET"}')[0] == 200)
-    check('hub text can be deleted', api('DELETE', '/api/file?path=text.json')[0] == 200)
+    if hub_files_free:
+        check('hub text can be saved', api('PUT', '/api/file?path=text.json', b'{"clear":"QUIET"}')[0] == 200)
+        check('hub text can be deleted', api('DELETE', '/api/file?path=text.json')[0] == 200)
     check('text path cannot be a folder', api('POST', f'/api/mkdir?path={text}')[0] == 400)
     full = api('GET', '/')
-    check('whole page arrives', full[1].rstrip().endswith(b'</html>') and b'Make and save 10 pictures' in full[1], len(full[1]))
+    check('whole page arrives', full[1].rstrip().endswith(b'</html>') and b'Make and save 10 pictures' in full[1] and b'Use an image' in full[1], len(full[1]))
 
     check('picture can be deleted', api('DELETE', f'/api/file?path={path}')[0] == 200)
     check('deleted picture is gone', api('GET', f'/api/file?path={path}')[0] == 404)
@@ -201,7 +203,13 @@ def main():
         try:
             if proc:
                 check('server starts', proc.stdout.readline().strip() == 'ready')
-            file_manager_tests(files)
+            codes = [api('GET', f'/api/file?path={p}')[0] for p in ('clear.h264', 'text.json')]
+            if any(c not in (200, 404) for c in codes):
+                sys.exit(f'stopping: cannot tell whether the board has its own files (HTTP {codes})')
+            hub_files_free = codes == [404, 404]
+            if not hub_files_free:
+                print('SKIP the board has its own clear.h264 or text.json, so checks that replace them are skipped', flush=True)
+            file_manager_tests(files, hub_files_free)
 
             # The order the NVR used when first connecting.
             device, media = '/onvif/device_service', '/onvif/media'
@@ -226,16 +234,17 @@ def main():
             check('initial push is marked Initialized', 'PropertyOperation="Initialized"' in nvr.events[0][1])
             check('each Subscribe gets its initial state', len(nvr.events) == 2, len(nvr.events))
 
-            colour = grab_colour()
-            check('picture is green when clear', colour == 'green', colour)
+            if hub_files_free:
+                colour = grab_colour()
+                check('picture is green when clear', colour == 'green', colour)
 
-            # A replacement "all clear" takes effect at once, and deleting it restores the built-in one.
-            check('clear.h264 can be uploaded', api('PUT', '/api/file?path=clear.h264', files['active.h264'])[0] == 200)
-            colour = grab_colour()
-            check('uploaded clear picture is streamed', colour == 'red', colour)
-            check('clear.h264 can be deleted', api('DELETE', '/api/file?path=clear.h264')[0] == 200)
-            colour = grab_colour()
-            check('built-in clear picture returns', colour == 'green', colour)
+                # A replacement "all clear" takes effect at once, and deleting it restores the built-in one.
+                check('clear.h264 can be uploaded', api('PUT', '/api/file?path=clear.h264', files['active.h264'])[0] == 200)
+                colour = grab_colour()
+                check('uploaded clear picture is streamed', colour == 'red', colour)
+                check('clear.h264 can be deleted', api('DELETE', '/api/file?path=clear.h264')[0] == 200)
+                colour = grab_colour()
+                check('built-in clear picture returns', colour == 'green', colour)
 
             # A sensor alert makes a motion event, and the picture shows it. Sensor 3 has no files.
             check('unknown sensor is rejected', get('/sensor?mac=02-00-00-00-00-09')[0] == 404)
@@ -260,8 +269,9 @@ def main():
             gaps = [b - a for a, b in zip(trues, trues[1:])]
             check('repeat gap stays under the 2 s latch', bool(gaps) and max(gaps) < 1.9, gaps)
             check('false is sent when the hold ends', states[-1] == 'false', states)
-            colour = grab_colour()
-            check('picture is green again', colour == 'green', colour)
+            if hub_files_free:
+                colour = grab_colour()
+                check('picture is green again', colour == 'green', colour)
 
             # Clearing early.
             before = len(nvr.events)
@@ -307,6 +317,7 @@ def main():
             while status()['active'] != [name(5)] and time.time() - played < 20:
                 time.sleep(0.2)
             check('second cached alert plays after the first', status()['active'] == [name(5)])
+            time.sleep(1)  # the push for the second alert goes out just after it becomes active
             seen = nvr.states()[before:]
             first_false = seen.index('false') if 'false' in seen else -1
             check('NVR sees the first event end before the second starts', first_false >= 0 and 'true' in seen[first_false:], seen)

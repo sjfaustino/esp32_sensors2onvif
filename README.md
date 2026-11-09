@@ -36,6 +36,12 @@ To change the words, open **Change the text** under a sensor, or beside `clear.h
 pictures and uploads them, so it needs internet access: it downloads the ffmpeg.wasm encoder from jsDelivr, about 30 MB
 the first time. The hub remembers the words in a `text.json` file in the same folder.
 
+To use a photo or drawing instead, click **Use an image** on any picture. The browser opens the image, fits it to
+640x360 with black bars if the shape differs, adds any text you type, and encodes it. Detailed images are made softer
+step by step until they fit the 8 KB limit, and a preview shows the result before you save. Only the finished picture
+is stored on the hub, not the original. Saving **Change the text** replaces all 10 of that sensor's pictures,
+including any images.
+
 Without internet, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
 appear in `data/`, ready to upload one by one, or all together with `pio run -t uploadfs`, which replaces everything
 on LittleFS.

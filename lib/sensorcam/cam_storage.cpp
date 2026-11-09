@@ -178,6 +178,11 @@ bool CamStorage::exists(const std::string& path) const {
   return stat(full(path).c_str(), &st) == 0;
 }
 
+size_t CamStorage::fileSize(const std::string& path) const {
+  struct stat st;
+  return stat(full(path).c_str(), &st) == 0 && !S_ISDIR(st.st_mode) ? (size_t)st.st_size : 0;
+}
+
 bool CamStorage::list(const std::string& path, std::vector<CamFsEntry>& out) const {
   std::string base = full(path);
   DIR* dir = opendir(base.c_str());
@@ -199,21 +204,21 @@ bool CamStorage::list(const std::string& path, std::vector<CamFsEntry>& out) con
 bool CamStorage::readFile(const std::string& path, std::string& out, size_t maxBytes) const {
   FILE* f = fopen(full(path).c_str(), "rb");
   if (!f) return false;
-  std::string data;
+  out.clear();  // keeps any capacity the caller reserved, so a fixed buffer is never reallocated
   struct stat st;
-  if (stat(full(path).c_str(), &st) == 0 && (size_t)st.st_size <= maxBytes) data.reserve(st.st_size);  // one exact allocation
+  if (stat(full(path).c_str(), &st) == 0 && (size_t)st.st_size <= maxBytes) out.reserve(st.st_size);
   char buf[1024];
   size_t n;
   bool ok = true;
   while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-    if (data.size() + n > maxBytes) {
+    if (out.size() + n > maxBytes) {
       ok = false;
       break;
     }
-    data.append(buf, n);
+    out.append(buf, n);
   }
   fclose(f);
-  if (ok) out.swap(data);
+  if (!ok) out.clear();
   return ok;
 }
 
@@ -229,13 +234,26 @@ bool CamStorage::makeDirs(const std::string& path) const {
 }
 
 bool CamStorage::writeFile(const std::string& path, const char* data, size_t len) const {
+  return writeWith(path, [&](FILE* f) { return fwrite(data, 1, len, f) == len; });
+}
+
+bool CamStorage::writeNals(const std::string& path, const CamNal* parts, int count) const {
+  return writeWith(path, [&](FILE* f) {
+    static const uint8_t START[4] = {0, 0, 0, 1};
+    for (int i = 0; i < count; i++)
+      if (fwrite(START, 1, 4, f) != 4 || fwrite(parts[i].data, 1, parts[i].len, f) != parts[i].len) return false;
+    return true;
+  });
+}
+
+bool CamStorage::writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const {
   size_t slash = path.rfind('/');
   if (slash != std::string::npos && !makeDirs(path.substr(0, slash))) return false;
   // Written beside the target and renamed, so a failed upload leaves the old picture intact.
   std::string target = full(path), temp = target + ".tmp";
   FILE* f = fopen(temp.c_str(), "wb");
   if (!f) return false;
-  bool ok = fwrite(data, 1, len, f) == len;
+  bool ok = write(f);
   ok = fclose(f) == 0 && ok;
   if (ok) {
 #ifdef _WIN32

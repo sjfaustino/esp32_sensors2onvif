@@ -10,6 +10,7 @@
 
 static const size_t MAX_REQUEST = 16 * 1024;
 static const size_t MAX_UPLOAD = CAM_MAX_FRAME + 2048;
+static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 512;
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
 static const uint32_t RTSP_IDLE_MS = 120000;
 static const uint32_t RTSP_STALL_MS = 30000;
@@ -74,8 +75,20 @@ bool SensorCamServer::begin() {
   rtspListen_ = listenOn(cfg_.rtspPort);
   openDiscovery();
   nextFrameAt_ = millis_();
+  lastGoodWait_ = nextFrameAt_;
+  frameData_.reserve(CAM_MAX_FRAME);
+  spareOut_.reserve(STREAM_BUFFER);
   rescan();
   return httpListen_ >= 0 && rtspListen_ >= 0;
+}
+
+std::string SensorCamServer::debugLine() {
+  int web = 0, video = 0, push = 0;
+  for (const HttpConn& c : http_) web += c.fd >= 0;
+  for (const RtspConn& c : rtsp_) video += c.fd >= 0;
+  for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
+  return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
+         ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " + std::to_string(push);
 }
 
 void SensorCamServer::networkUp() {
@@ -90,11 +103,19 @@ void SensorCamServer::networkUp() {
 }
 
 void SensorCamServer::closeHttp(HttpConn& c) {
+  if (uploading_ == &c) {
+    uploading_ = nullptr;
+    frameKey_.clear();
+  }
   if (c.fd >= 0) netClose(c.fd);
   c = HttpConn();
 }
 
 void SensorCamServer::closeRtsp(RtspConn& c) {
+  if (c.out.capacity() >= STREAM_BUFFER && spareOut_.capacity() < STREAM_BUFFER) {  // keep the reserved buffer for the next viewer
+    c.out.clear();
+    spareOut_.swap(c.out);
+  }
   if (c.fd >= 0) netClose(c.fd);
   c = RtspConn();
 }
@@ -104,6 +125,12 @@ void SensorCamServer::acceptHttp(uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(httpListen_, (sockaddr*)&a, &len);
   if (fd < 0) return;
+  if (cfg_.canAllocate && !cfg_.canAllocate(0)) {  // short of RAM: let existing traffic drain first
+    refused_++;
+    netClose(fd);
+    return;
+  }
+  accepted_++;
   for (HttpConn& c : http_) {
     if (c.fd >= 0) continue;
     netNonblock(fd);
@@ -120,6 +147,10 @@ void SensorCamServer::acceptRtsp(uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(rtspListen_, (sockaddr*)&a, &len);
   if (fd < 0) return;
+  if (cfg_.canAllocate && !cfg_.canAllocate(0)) {
+    netClose(fd);
+    return;
+  }
   for (RtspConn& c : rtsp_) {
     if (c.fd >= 0) continue;
     netNonblock(fd);
@@ -314,8 +345,12 @@ std::string SensorCamServer::statusJson(uint32_t now) {
 }
 
 std::string SensorCamServer::eventsJson() {
+  // Trimmed to what RAM allows, because running out is fatal. About 200 bytes each, doubled while building the reply.
+  int count = eventCount_;
+  while (count > 0 && cfg_.canAllocate && !cfg_.canAllocate((size_t)count * 400)) count /= 2;
   std::string out = "[";
-  for (int n = 0; n < eventCount_; n++) {
+  out.reserve((size_t)count * 200 + 8);
+  for (int n = 0; n < count; n++) {
     const CamEvent& e = events_[(eventNext_ - 1 - n + 2 * EVENT_LOG_SIZE) % EVENT_LOG_SIZE];
     bool clockOk = e.received >= CLOCK_VALID_AFTER;
     bool ageKnown = e.age != CAM_AGE_UNKNOWN;
@@ -382,12 +417,9 @@ void SensorCamServer::rescan() {
 }
 
 bool SensorCamServer::loadFrame(const std::string& path) {
-  std::string data;
-  CamNal nals[3];
-  if (!storage_.readFile(path, data, CAM_MAX_FRAME)) return false;
-  if (!camParseFrame((const uint8_t*)data.data(), data.size(), nals) || !camSameNal(nals[0], CAM_FRAMES[0].nals[0])) return false;
-  frameData_.swap(data);
-  return camParseFrame((const uint8_t*)frameData_.data(), frameData_.size(), frameNals_);
+  // frameData_ is one fixed buffer reserved at boot. Allocating per picture is what exhausted RAM.
+  if (!storage_.readFile(path, frameData_, CAM_MAX_FRAME)) return false;
+  return camParseFrame((const uint8_t*)frameData_.data(), frameData_.size(), frameNals_) && camSameNal(frameNals_[0], CAM_FRAMES[0].nals[0]);
 }
 
 // A missing picture falls back to the nearest one that exists, then to the built-in pictures.
@@ -396,6 +428,11 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
   uint8_t direction = 0;
   bool delayed = false;
   bool on = sensors_.shown(now, id, direction, delayed);
+  if (uploading_) {  // an upload is using the picture buffer
+    frameKey_.clear();
+    frame_ = &CAM_FRAMES[on ? 1 : 0];
+    return *frame_;
+  }
   std::string key = on ? slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") : "clear";
   if (key == frameKey_) return *frame_;
   frameKey_ = key;
@@ -414,7 +451,6 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
       break;
     }
   }
-  if (frame_ != &loadedFrame_) std::string().swap(frameData_);  // a built-in picture needs no RAM
   return *frame_;
 }
 
@@ -493,8 +529,18 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     rescan();
     c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not create the folder"));
   } else if (fileRoute && method == "GET" && (isFile || isText)) {
-    std::string data;
-    c.out = storage_.readFile(path, data, CAM_MAX_FRAME) ? httpResponse(200, isText ? json : "video/h264", data) : httpResponse(404, json, jsonError("no such file"));
+    size_t size = storage_.fileSize(path);
+    if (size == 0) {
+      c.out = httpResponse(404, json, jsonError("no such file"));
+    } else if (cfg_.canAllocate && !cfg_.canAllocate(size)) {
+      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
+    } else if (!storage_.readFile(path, c.ownBody, CAM_MAX_FRAME)) {
+      c.out = httpResponse(404, json, jsonError("no such file"));
+    } else {
+      c.staticBody = c.ownBody.data();
+      c.staticLen = c.ownBody.size();
+      c.out = std::string("HTTP/1.1 200 OK\r\nContent-Type: ") + (isText ? json : "video/h264") + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+    }
   } else if (fileRoute && method == "PUT" && isText) {
     if (bodyLen > 1024) c.out = httpResponse(413, json, jsonError("text is too long"));
     else c.out = storage_.writeFile(path, body, bodyLen) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the text; storage may be full"));
@@ -507,14 +553,11 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     } else {
       // Stored with the hub's own SPS, so the NVR sees one unchanging format whichever encoder made the picture.
       const CamNal parts[3] = {CAM_FRAMES[0].nals[0], nals[1], nals[2]};
-      static const char START[4] = {0, 0, 0, 1};
-      std::string clean;
-      clean.reserve(parts[0].len + parts[1].len + parts[2].len + 12);
-      for (const CamNal& n : parts) {
-        clean.append(START, 4);
-        clean.append((const char*)n.data, n.len);
+      if (parts[0].len + parts[1].len + parts[2].len + 12 > CAM_MAX_FRAME) {
+        c.out = httpResponse(413, json, jsonError("file is larger than 8 KB"));
+        return;
       }
-      if (storage_.writeFile(path, clean.data(), clean.size())) {
+      if (storage_.writeNals(path, parts, 3)) {
         rescan();
         c.out = httpResponse(200, json, JSON_OK);
       } else {
@@ -543,32 +586,56 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   bool isApi = target.compare(0, 5, "/api/") == 0 || target == "/" || target == "/files";
 
   size_t contentLength = (size_t)strtoul(headerValue(headers, "content-length").c_str(), nullptr, 10);
+  // A browser reports a connection closed mid-upload as a bare network error, so read the rest of the body before replying.
+  auto refuse = [&](int code, const char* message) {
+    c.out = httpResponse(code, "application/json", jsonError(message));
+    c.answered = true;
+    size_t got = c.in.size() - (headEnd + 4);
+    c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
+    return true;
+  };
   if (contentLength > (isApi ? CAM_MAX_FRAME : MAX_REQUEST)) {
     if (!isApi) {
       closeHttp(c);
       return false;
     }
-    c.out = httpResponse(413, "application/json", jsonError("file is larger than 8 KB"));
-    c.answered = true;
-    return true;
+    return refuse(413, "file is larger than 8 KB");
   }
-  // Room for the body is claimed once at its exact size, because string growth would briefly need about twice that.
-  size_t whole = headEnd + 4 + contentLength;
-  if (c.in.capacity() < whole) {
-    if (cfg_.canAllocate && !cfg_.canAllocate(whole)) {
-      c.out = httpResponse(507, "application/json", jsonError("the hub is short of memory; try again"));
-      c.answered = true;
-      return true;
+
+  // A picture upload borrows the one picture buffer, because this board rarely has a spare 8 KB block.
+  bool filePut = method == "PUT" && target.compare(0, 15, "/api/file?path=") == 0;
+  CamPathKind kind = filePut ? camClassifyPath(target.substr(15)) : CAM_PATH_INVALID;
+  if (filePut && kind == CAM_PATH_INVALID) return refuse(400, "invalid path");
+  if ((kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR) && !c.toFrameBuffer) {
+    if (uploading_) return refuse(507, "the hub is busy with another upload; try again");
+    uploading_ = &c;
+    c.toFrameBuffer = true;
+    c.bodyWanted = contentLength;
+    frameData_.assign(c.in, headEnd + 4, std::string::npos);
+    c.in.resize(headEnd + 4);
+  }
+  if (c.toFrameBuffer) {
+    if (frameData_.size() < contentLength) return false;
+  } else {
+    // Room for the body is claimed once at its exact size, because string growth would briefly need about twice that.
+    size_t whole = headEnd + 4 + contentLength;
+    if (c.in.capacity() < whole) {
+      if (cfg_.canAllocate && !cfg_.canAllocate(whole)) return refuse(507, "the hub is short of memory; try again");
+      c.in.reserve(whole);
     }
-    c.in.reserve(whole);
+    if (c.in.size() < whole) return false;
   }
-  if (c.in.size() < whole) return false;
 
   subs_.heard(c.peer, now);
 
   int status = 200;
   if (isApi) {
-    handleApi(c, method, target, headers, c.in.data() + headEnd + 4, contentLength);
+    handleApi(c, method, target, headers, c.toFrameBuffer ? frameData_.data() : c.in.data() + headEnd + 4, contentLength);
+    if (c.toFrameBuffer) {
+      uploading_ = nullptr;
+      c.toFrameBuffer = false;
+      frameKey_.clear();
+    }
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
     std::string body = handleSensor(target, status);
     c.out = httpResponse(status, "application/json", body);
@@ -587,15 +654,22 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
 }
 
 void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now) {
-  if (readable && !c.answered) {
+  if (readable && (!c.answered || c.discardLeft)) {
     char buf[1024];
     int n = (int)recv(c.fd, buf, sizeof(buf), 0);
     if (n == 0 || (n < 0 && !netWouldBlock())) {
       closeHttp(c);
       return;
     }
-    if (n > 0) {
-      c.in.append(buf, n);
+    if (n > 0 && c.answered) {
+      c.discardLeft -= (size_t)n < c.discardLeft ? (size_t)n : c.discardLeft;
+    } else if (n > 0) {
+      if (c.toFrameBuffer) {
+        size_t room = c.bodyWanted > frameData_.size() ? c.bodyWanted - frameData_.size() : 0;
+        frameData_.append(buf, (size_t)n < room ? (size_t)n : room);
+      } else {
+        c.in.append(buf, n);
+      }
       if (c.in.size() > MAX_UPLOAD + 2048) {
         closeHttp(c);
         return;
@@ -604,7 +678,7 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       if (c.fd < 0) return;
     }
   }
-  if (c.answered && (writable || c.outPos == 0)) {
+  if (c.answered && !c.discardLeft && (writable || c.outPos == 0)) {
     bool inHeader = c.outPos < c.out.size();
     const char* data = inHeader ? c.out.data() + c.outPos : c.staticBody + (c.outPos - c.out.size());
     size_t left = inHeader ? c.out.size() - c.outPos : c.staticLen - (c.outPos - c.out.size());
@@ -667,8 +741,20 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
                "\r\nSession: " + SESSION + ";timeout=60\r\n\r\n";
     }
   } else if (method == "PLAY") {
-    c.out += head + "Session: " + SESSION + "\r\nRange: npt=0.000-\r\n\r\n";
-    c.playing = true;
+    // One buffer for the life of the stream, sized for the largest picture, so frames never allocate.
+    size_t room = STREAM_BUFFER;
+    if (c.out.capacity() < room && spareOut_.capacity() >= room) {  // the first viewer takes the buffer reserved at boot
+      spareOut_.assign(c.out);
+      c.out.swap(spareOut_);
+    }
+    if (c.out.capacity() < room && cfg_.canAllocate && !cfg_.canAllocate(room)) {
+      c.out += "RTSP/1.0 503 Service Unavailable\r\nCSeq: " + cseq + "\r\n\r\n";
+      c.closeAfterSend = true;
+    } else {
+      c.out.reserve(room);
+      c.out += head + "Session: " + SESSION + "\r\nRange: npt=0.000-\r\n\r\n";
+      c.playing = true;
+    }
   } else if (method == "TEARDOWN") {
     c.out += head + "Session: " + SESSION + "\r\n\r\n";
     c.closeAfterSend = true;
@@ -716,6 +802,7 @@ void SensorCamServer::pushFrames(uint32_t now) {
   if ((int32_t)(now - nextFrameAt_) < 0) return;
   nextFrameAt_ = now + 1000 / CAM_FPS;
   const CamFrame& frame = frameToShow(now);
+  if (cfg_.canAllocate && !cfg_.canAllocate(0)) return;  // every frame stands alone, so skipping some lets the network stack drain
   for (RtspConn& c : rtsp_) {
     // Every frame is independently decodable, so a slow client just skips one.
     if (c.fd < 0 || !c.playing || !c.out.empty()) continue;
@@ -845,7 +932,7 @@ void SensorCamServer::poll(int maxWaitMs) {
   for (HttpConn& c : http_) {
     if (c.fd < 0) continue;
     add(c.fd, rd);
-    if (c.answered) add(c.fd, wr);
+    if (c.answered && !c.discardLeft) add(c.fd, wr);
   }
   for (RtspConn& c : rtsp_) {
     if (c.fd < 0) continue;
@@ -861,8 +948,13 @@ void SensorCamServer::poll(int maxWaitMs) {
   int32_t untilFrame = (int32_t)(nextFrameAt_ - now);
   int wait = untilFrame < maxWaitMs ? (untilFrame < 0 ? 0 : untilFrame) : maxWaitMs;
   timeval tv{wait / 1000, (wait % 1000) * 1000};
-  if (maxFd >= 0 && select(maxFd + 1, &rd, &wr, nullptr, &tv) < 0) return;
+  if (maxFd >= 0 && select(maxFd + 1, &rd, &wr, nullptr, &tv) < 0) {
+    waitErrors_++;
+    lastWaitErrno_ = errno;
+    return;
+  }
   now = millis_();
+  lastGoodWait_ = now;
 
   if (httpListen_ >= 0 && FD_ISSET(httpListen_, &rd)) acceptHttp(now);
   if (rtspListen_ >= 0 && FD_ISSET(rtspListen_, &rd)) acceptRtsp(now);

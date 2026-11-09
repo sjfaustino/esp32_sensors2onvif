@@ -12,7 +12,8 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0;font-family:ui-monos
 .sensor{border-top:1px solid #e6e9ed;margin-top:10px;padding-top:10px}
 table{border-collapse:collapse;width:100%;margin-top:6px}td{padding:3px 6px 3px 0;border-top:1px solid #f0f2f4;font-size:14px}
 td:first-child{font-family:ui-monospace,monospace;word-break:break-all}.missing{color:#8a929b}
-td.acts{text-align:right;white-space:nowrap}
+td.acts{text-align:right}
+dialog{border:1px solid #b9c0c8;border-radius:8px;padding:16px;max-width:min(92vw,560px)}textarea{font:inherit;padding:4px 8px;max-width:100%}
 button,.btn{font:inherit;font-size:13px;padding:3px 9px;border:1px solid #b9c0c8;border-radius:5px;background:#fff;color:inherit;cursor:pointer;text-decoration:none;display:inline-block}
 button.del{color:#b3261e;border-color:#e0b4b0}input[type=text]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px}
 details{margin-top:8px}summary{cursor:pointer;font-size:14px}
@@ -46,7 +47,7 @@ function pick(path){
 function del(path,what){if(confirm("Delete "+what+"?"))act(()=>call("DELETE","/api/file?path="+path),"Deleted "+what)}
 function fileRow(path,name,size){
   const acts=el("td",{className:"acts"});
-  acts.append(el("button",{textContent:size==null?"Upload":"Replace",onclick:()=>pick(path)}));
+  acts.append(el("button",{textContent:size==null?"Upload":"Replace",onclick:()=>pick(path)})," ",el("button",{textContent:"Use an image",onclick:()=>imageDialog(path)}));
   if(size!=null){acts.append(" ",el("a",{className:"btn",href:"/api/file?path="+path,download:name,textContent:"Download"}),
     " ",el("button",{className:"del",textContent:"Delete",onclick:()=>del(path,path)}))}
   return el("tr",null,el("td",{textContent:name}),
@@ -60,8 +61,13 @@ self.onmessage=async e=>{const m=e.data;try{
 if(m.load){importScripts(m.load+"ffmpeg-core.js");
 core=await self.createFFmpegCore({mainScriptUrlOrBlob:m.load+"ffmpeg-core.js#"+btoa(JSON.stringify({wasmURL:m.load+"ffmpeg-core.wasm"}))});
 postMessage({id:m.id});return}
+if(m.decode){core.FS.writeFile("in.h264",m.decode);core.setTimeout(-1);
+core.exec("-y","-i","in.h264","-frames:v","1","out.png");
+const done=core.ret;core.reset();
+const shown=core.FS.readFile("out.png");core.FS.unlink("in.h264");core.FS.unlink("out.png");
+postMessage({id:m.id,data:shown,ret:done});return}
 core.FS.writeFile("in.png",m.png);core.setTimeout(-1);
-core.exec("-framerate","1","-i","in.png","-frames:v","1","-c:v","libx264","-profile:v","baseline","-level","3.0","-crf","38",
+core.exec("-y","-framerate","1","-i","in.png","-frames:v","1","-c:v","libx264","-profile:v","baseline","-level","3.0","-crf",String(m.crf),
 "-pix_fmt","yuv420p","-x264-params","scenecut=0:aud=0","-f","h264","out.h264");
 const ret=core.ret;core.reset();
 const data=core.FS.readFile("out.h264");core.FS.unlink("in.png");core.FS.unlink("out.h264");
@@ -78,12 +84,20 @@ function getEncoder(){
     w.onmessage=e=>{const j=jobs.get(e.data.id);jobs.delete(e.data.id);if(e.data.error)j.bad(new Error(e.data.error));else j.ok(e.data)};
     await talk(w,{load:CDN});return w})().catch(e=>{encoder=null;throw new Error("Could not load the encoder from the internet: "+e.message)});
   return encoder}
-function paint(c,colour,lines){
-  const g=c.getContext("2d");g.fillStyle=colour;g.fillRect(0,0,640,360);g.fillStyle="#fff";g.textAlign="center";g.textBaseline="top";
+function drawLines(g,lines,outline){
+  g.fillStyle="#fff";g.textAlign="center";g.textBaseline="top";g.strokeStyle="#000";g.lineWidth=6;g.lineJoin="round";
   const used=lines.filter(l=>l),top=Math.floor((360-70*used.length)/2)+10;
   used.forEach((l,i)=>{let size=48;g.font=size+"px Arial,sans-serif";const w=g.measureText(l).width;
     if(w>600){size=Math.floor(size*600/w);g.font=size+"px Arial,sans-serif"}
+    if(outline)g.strokeText(l,320,top+70*i);
     g.fillText(l,320,top+70*i)})}
+function paint(c,colour,lines){const g=c.getContext("2d");g.fillStyle=colour;g.fillRect(0,0,640,360);drawLines(g,lines,false)}
+// Fits the whole image into 640x360, with black bars if its shape differs.
+function paintImage(c,image,lines){
+  const g=c.getContext("2d");g.fillStyle="#000";g.fillRect(0,0,640,360);
+  const s=Math.min(640/image.width,360/image.height),w=image.width*s,h=image.height*s;
+  g.imageSmoothingQuality="high";g.drawImage(image,(640-w)/2,(360-h)/2,w,h);
+  drawLines(g,lines,true)}
 // Keeps only SPS, PPS and IDR, in that order, as tools/make_frames.py does.
 function keepPicture(d){
   const units={};let starts=[];
@@ -95,14 +109,56 @@ function keepPicture(d){
   const parts=[units[7],units[8],units[5]],out=new Uint8Array(parts.reduce((n,p)=>n+p.length+4,0));
   let at=0;for(const p of parts){out[at+3]=1;out.set(p,at+4);at+=p.length+4}
   return out}
-async function encode(colour,lines){
-  const w=await getEncoder(),c=el("canvas",{width:640,height:360});paint(c,colour,lines);
+// Higher steps are smaller and softer. The first one that fits the hub's limit is used.
+const QUALITY=[38,42,46,48,51];
+async function encodeCanvas(c){
+  const w=await getEncoder();
   const blob=await new Promise(r=>c.toBlob(r,"image/png")),png=new Uint8Array(await blob.arrayBuffer());
-  const r=await talk(w,{png},[png.buffer]);
-  if(r.ret!==0)throw new Error("The encoder failed");
-  const pic=keepPicture(r.data);
-  if(pic.length>MAX)throw new Error("That text makes a picture over 8 KB. Try fewer words.");
-  return pic}
+  for(let step=0;step<QUALITY.length;step++){
+    const copy=png.slice(),r=await talk(w,{png:copy,crf:QUALITY[step]},[copy.buffer]);
+    if(r.ret!==0)throw new Error("The encoder failed");
+    const pic=keepPicture(r.data);
+    if(pic.length<=MAX)return{pic,step}}
+  throw new Error("Even at the lowest quality this picture is over 8 KB. Try a simpler image.")}
+async function encode(colour,lines){const c=el("canvas",{width:640,height:360});paint(c,colour,lines);return(await encodeCanvas(c)).pic}
+// Shows the picture exactly as it will be streamed, by decoding the encoded result.
+async function decoded(pic){
+  const w=await getEncoder(),copy=pic.slice(),r=await talk(w,{decode:copy},[copy.buffer]);
+  if(r.ret!==0)throw new Error("preview failed");
+  return URL.createObjectURL(new Blob([r.data],{type:"image/png"}))}
+function imageDialog(path){
+  const VIEW="width:100%;max-width:480px;display:block;margin:8px 0;border-radius:4px;background:#000";
+  const chooser=el("input",{type:"file",accept:"image/*"});
+  const words=el("textarea",{rows:3,cols:30,placeholder:"Optional text on top, up to 3 lines"});
+  const source=el("canvas",{width:640,height:360,style:VIEW});
+  const result=el("img",{alt:"Encoded picture",style:VIEW+";display:none"});
+  const note=el("p",{textContent:"Choose an image. Any shape or size is fine."});
+  const make=el("button",{textContent:"Encode and preview",disabled:true});
+  const keep=el("button",{textContent:"Save to the hub",disabled:true});
+  const dlg=el("dialog",null,el("strong",{textContent:path}),el("p",null,chooser),el("p",null,words),source,result,note,
+    el("p",null,make," ",keep," ",el("button",{textContent:"Close",onclick:()=>dlg.close()})));
+  let image=null,pic=null;
+  const lines=()=>words.value.split("\n").map(l=>l.trim()).filter(l=>l).slice(0,3);
+  const redraw=()=>{pic=null;keep.disabled=true;result.style.display="none";if(image)paintImage(source,image,lines())};
+  words.oninput=redraw;
+  chooser.onchange=async()=>{const f=chooser.files[0];if(!f)return;
+    try{image=await createImageBitmap(f);make.disabled=false;note.textContent="Add text if you like, then encode.";redraw()}
+    catch(e){image=null;make.disabled=true;note.textContent="This browser cannot open that file."}};
+  make.onclick=async()=>{if(busy)return;busy=true;make.disabled=true;keep.disabled=true;
+    try{
+      note.textContent="Encoding. The first time, this downloads about 30 MB.";
+      const r=await encodeCanvas(source);pic=r.pic;
+      const size=(pic.length/1024).toFixed(1)+" KB";
+      note.textContent=size+(r.step?". Quality was lowered "+r.step+" of "+(QUALITY.length-1)+" steps to fit 8 KB.":" at full quality.");
+      try{if(result.src)URL.revokeObjectURL(result.src);result.src=await decoded(pic);result.style.display="block"}
+      catch(e){note.textContent+=" The preview could not be shown, but the picture can still be saved."}
+      keep.disabled=false
+    }catch(e){note.textContent=e.message}finally{busy=false;make.disabled=!image}};
+  keep.onclick=async()=>{if(!pic||busy)return;busy=true;keep.disabled=true;
+    try{await save(path,pic);dlg.close();say("Saved "+path);busy=false;await load()}
+    catch(e){note.textContent=e.message;keep.disabled=false}finally{busy=false}};
+  dlg.onclose=()=>{if(result.src)URL.revokeObjectURL(result.src);dlg.remove()};
+  document.body.append(dlg);dlg.showModal()}
 function header(p){let h="",n=4;while(n<p.length&&!(p[n]==0&&p[n+1]==0&&p[n+2]==0))h+=p[n++].toString(16).padStart(2,"0");return h}
 async function save(path,pic){
   for(let tries=0;;tries++){
@@ -153,7 +209,7 @@ function render(t){
   $("fill").style.width=t.total?(100*t.used/t.total)+"%":"0";
   const c=$("clear");c.textContent="";
   c.append("clear.h264 "+(t.clear==null?"(built-in) ":((t.clear/1024).toFixed(1)+" KB ")),
-    el("button",{textContent:t.clear==null?"Upload":"Replace",onclick:()=>pick("clear.h264")}));
+    el("button",{textContent:t.clear==null?"Upload":"Replace",onclick:()=>pick("clear.h264")})," ",el("button",{textContent:"Use an image",onclick:()=>imageDialog("clear.h264")}));
   if(t.clear!=null)c.append(" ",el("button",{className:"del",textContent:"Delete",onclick:()=>del("clear.h264","clear.h264")}));
   c.append(clearPanel());
   const tree=$("tree");tree.textContent="";

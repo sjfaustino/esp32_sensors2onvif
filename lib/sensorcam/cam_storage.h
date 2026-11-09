@@ -6,6 +6,8 @@
 // Uses C stdio, which reaches LittleFS through the ESP-IDF VFS and a plain folder on a PC.
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
+#include <functional>
 #include <string>
 #include <vector>
 #include "cam_frames.h"
@@ -41,12 +43,16 @@ class CamStorage {
   explicit CamStorage(const std::string& root) : root_(root) {}
   bool list(const std::string& path, std::vector<CamFsEntry>& out) const;
   bool exists(const std::string& path) const;
+  size_t fileSize(const std::string& path) const;  // 0 if there is no such file
   bool readFile(const std::string& path, std::string& out, size_t maxBytes) const;
   bool writeFile(const std::string& path, const char* data, size_t len) const;  // creates parent folders
+  // Writes NAL units as an Annex-B file without building it in RAM first.
+  bool writeNals(const std::string& path, const CamNal* parts, int count) const;
   bool makeDirs(const std::string& path) const;
   bool removeTree(const std::string& path) const;
 
  private:
+  bool writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const;
   std::string full(const std::string& path) const;
   std::string root_;
 };
