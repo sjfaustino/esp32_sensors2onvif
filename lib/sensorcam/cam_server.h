@@ -7,6 +7,7 @@
 #include <vector>
 #include "cam_rtp.h"
 #include "cam_sensors.h"
+#include "cam_soap.h"
 #include "cam_storage.h"
 #include "cam_subs.h"
 
@@ -19,6 +20,20 @@ struct CamSettings {
   std::string name;      // empty keeps the current name
   bool passwordOn = false;
   std::string password;  // empty keeps the current password while protection stays on
+};
+
+struct CamTime {
+  bool ntp = true;
+  std::string server;      // empty keeps the current NTP server
+  int offsetMinutes = 0;   // east of UTC. Only display and the scheduled restart use it; the NVR always gets UTC.
+  int dst = 0;             // 0 none, 1 Europe, 2 United States
+  long long epoch = 0;     // manual mode: the time to set, or 0 to leave the clock alone
+};
+
+struct CamSchedule {
+  bool on = false;
+  int day = -1;    // -1 every day, otherwise 0 is Sunday
+  int minute = 0;  // minutes after midnight, local time
 };
 
 struct CamAddress {
@@ -41,6 +56,13 @@ struct CamConfig {
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
   uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
   std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
+  std::function<void(SoapContext&)> onvifNetwork;  // fills in the hub's network details for ONVIF clients
+  std::function<std::string()> timeJson;       // JSON for the Time page
+  std::function<bool(const CamTime&)> timeSave;
+  CamSchedule schedule;
+  std::function<bool(const CamSchedule&)> scheduleSave;
+  std::function<std::string()> deviceRows;     // JSON ["label","value"] pairs for the Device Info page
+  std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<std::string()> espNowInfo;  // JSON members for the ESP-NOW page: the hub's mac and channel
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
@@ -68,6 +90,7 @@ class SensorCamServer {
  private:
   static const int MAX_HTTP = 6;
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
+  static const int MAX_UNKNOWN = 8;
   static const int EVENT_LOG_SIZE = 64;
   static const int DELAYED_QUEUE_SIZE = 16;
 
@@ -84,6 +107,14 @@ class SensorCamServer {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
+  };
+  struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
+    bool used = false;
+    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+    uint8_t input = 0;
+    int8_t rssi = 0;
+    uint32_t heardAt = 0;
+    uint32_t messages = 0;
   };
   struct CamEvent {
     time_t received = 0;
@@ -155,6 +186,7 @@ class SensorCamServer {
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed);
+  void noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi);
   void serviceDelayed(uint32_t now);
   std::string statusJson(uint32_t now);
   std::string eventsJson();
@@ -187,6 +219,7 @@ class SensorCamServer {
   std::vector<Slot> slots_;
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
   std::string frameFile_;  // the file behind frame_; empty means a built-in picture
+  std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
   uint32_t liveSeq_ = 0;  // changes whenever the picture being sent changes, so the Live page fetches only new ones
   const CamFrame* frame_ = nullptr;
   std::string frameData_;
@@ -195,6 +228,7 @@ class SensorCamServer {
   CamNal frameNals_[3];
   CamFrame loadedFrame_{frameNals_, 3};
   std::vector<Health> health_;
+  UnknownSender unknown_[MAX_UNKNOWN];
   CamEvent events_[EVENT_LOG_SIZE];
   int eventCount_ = 0;
   int eventNext_ = 0;

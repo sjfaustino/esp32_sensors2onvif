@@ -24,8 +24,13 @@ std::string queryParam(const std::string& target, const char* name);
 struct SoapContext {
   std::string host;  // host[:port] the client used to reach us
   uint16_t rtspPort = 554;
+  uint16_t onvifPort = 80;
   std::string serial;
   time_t now = 0;
+  // The hub's own network details, for clients that display them.
+  std::string ip = "0.0.0.0", mac = "00:00:00:00:00:00", gateway = "0.0.0.0", dns = "0.0.0.0", hostName = "hub", ntpServer;
+  int prefixLength = 24;
+  bool dhcp = true;
 };
 
 // Device and media calls, independent of event state. Empty when the action is unknown.

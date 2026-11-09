@@ -11,6 +11,8 @@
 #define WEB_PASSWORD ""
 #endif
 
+#define FIRMWARE_VERSION "1.0.0"
+
 #define ONVIF_PORT 8899  // ONVIF only. Its usual default is 80, which the web interface uses here.
 #define WEB_PORT 80      // the file manager, sensor input, status and events
 #define RTSP_PORT 8554

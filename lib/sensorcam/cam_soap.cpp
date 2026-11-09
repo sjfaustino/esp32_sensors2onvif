@@ -249,6 +249,31 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
   if (a == "SetVideoEncoderConfiguration") return "<trt:SetVideoEncoderConfigurationResponse/>";
   if (a == "SetSynchronizationPoint") return "<trt:SetSynchronizationPointResponse/>";
   if (a == "SetSystemDateAndTime") return "<tds:SetSystemDateAndTimeResponse/>";
+  if (a == "GetNetworkInterfaces") {
+    std::string address = "<tt:Address>" + c.ip + "</tt:Address><tt:PrefixLength>" + num(c.prefixLength) + "</tt:PrefixLength>";
+    return "<tds:GetNetworkInterfacesResponse><tds:NetworkInterfaces token=\"wlan0\"><tt:Enabled>true</tt:Enabled><tt:Info><tt:Name>wlan0</tt:Name><tt:HwAddress>" + c.mac +
+           "</tt:HwAddress><tt:MTU>1500</tt:MTU></tt:Info><tt:IPv4><tt:Enabled>true</tt:Enabled><tt:Config>" +
+           (c.dhcp ? "<tt:FromDHCP>" + address + "</tt:FromDHCP><tt:DHCP>true</tt:DHCP>" : "<tt:Manual>" + address + "</tt:Manual><tt:DHCP>false</tt:DHCP>") +
+           "</tt:Config></tt:IPv4></tds:NetworkInterfaces></tds:GetNetworkInterfacesResponse>";
+  }
+  if (a == "GetHostname")
+    return "<tds:GetHostnameResponse><tds:HostnameInformation><tt:FromDHCP>false</tt:FromDHCP><tt:Name>" + c.hostName + "</tt:Name></tds:HostnameInformation></tds:GetHostnameResponse>";
+  if (a == "GetDNS") {
+    std::string entry = "<tt:Type>IPv4</tt:Type><tt:IPv4Address>" + c.dns + "</tt:IPv4Address>";
+    return std::string("<tds:GetDNSResponse><tds:DNSInformation><tt:FromDHCP>") + (c.dhcp ? "true" : "false") + "</tt:FromDHCP>" +
+           (c.dhcp ? "<tt:DNSFromDHCP>" + entry + "</tt:DNSFromDHCP>" : "<tt:DNSManual>" + entry + "</tt:DNSManual>") + "</tds:DNSInformation></tds:GetDNSResponse>";
+  }
+  if (a == "GetNTP")
+    return "<tds:GetNTPResponse><tds:NTPInformation><tt:FromDHCP>false</tt:FromDHCP><tt:NTPManual><tt:Type>DNS</tt:Type><tt:DNSname>" + c.ntpServer +
+           "</tt:DNSname></tt:NTPManual></tds:NTPInformation></tds:GetNTPResponse>";
+  if (a == "GetNetworkDefaultGateway")
+    return "<tds:GetNetworkDefaultGatewayResponse><tds:NetworkGateway><tt:IPv4Address>" + c.gateway + "</tt:IPv4Address></tds:NetworkGateway></tds:GetNetworkDefaultGatewayResponse>";
+  if (a == "GetNetworkProtocols")
+    return "<tds:GetNetworkProtocolsResponse><tds:NetworkProtocols><tt:Name>HTTP</tt:Name><tt:Enabled>true</tt:Enabled><tt:Port>" + num(c.onvifPort) +
+           "</tt:Port></tds:NetworkProtocols><tds:NetworkProtocols><tt:Name>RTSP</tt:Name><tt:Enabled>true</tt:Enabled><tt:Port>" + num(c.rtspPort) +
+           "</tt:Port></tds:NetworkProtocols></tds:GetNetworkProtocolsResponse>";
+  if (a == "GetUsers") return "<tds:GetUsersResponse><tds:User><tt:Username>admin</tt:Username><tt:UserLevel>Administrator</tt:UserLevel></tds:User></tds:GetUsersResponse>";
+  if (a == "GetDiscoveryMode") return "<tds:GetDiscoveryModeResponse><tds:DiscoveryMode>Discoverable</tds:DiscoveryMode></tds:GetDiscoveryModeResponse>";
   if (a == "GetAudioSources") return "<trt:GetAudioSourcesResponse/>";
   if (a == "GetAudioEncoderConfigurations") return "<trt:GetAudioEncoderConfigurationsResponse/>";
   if (a == "GetAudioSourceConfigurations") return "<trt:GetAudioSourceConfigurationsResponse/>";

@@ -21,11 +21,17 @@ int main(int argc, char** argv) {
   cfg.webPort = 18080;
   // Stand-ins for the board's Wi-Fi. The test opens and closes setup mode by saving these two names.
   static bool setupOn = false;
+  static SensorCamServer* hub = nullptr;
   cfg.captivePort = 18081;
   cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
   cfg.addressJson = [] { return std::string("{\"type\":\"WiFi\",\"dhcp\":true,\"staticFor\":\"\",\"ip\":\"127.0.0.1\",\"mask\":\"255.0.0.0\",\"gateway\":\"127.0.0.1\",\"dns\":\"127.0.0.1\",\"mac\":\"02:00:00:00:00:01\"}\n"); };
   cfg.addressSave = [](const CamAddress&) { return true; };
   cfg.nvrSave = [](const std::string&) { return true; };
+  cfg.timeJson = [] { return std::string("{\"ntp\":true,\"server\":\"pool.ntp.org\",\"offset\":0,\"dst\":0,\"synced\":true,\"local\":\"2026-01-01 00:00:00\"}\n"); };
+  cfg.timeSave = [](const CamTime&) { return true; };
+  cfg.scheduleSave = [](const CamSchedule&) { return true; };
+  cfg.deviceRows = [] { return std::string("[\"Firmware version\",\"test\"]"); };
+  cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   cfg.setupActive = [] { return setupOn; };
@@ -34,6 +40,16 @@ int main(int argc, char** argv) {
     if (ssid == "setup-on") setupOn = true;
     if (ssid == "setup-off") setupOn = false;
     if (ssid == "want-backup") return backup;
+    if (ssid == "radio-known" || ssid == "radio-unknown") {  // this build has no radio, so the test delivers a report this way
+      bool known = ssid == "radio-known";
+      uint8_t mac[6] = {2, 0, 0, 0, 0, (uint8_t)(known ? 1 : 0x99)};
+      static uint32_t counter = 77;
+      SensorReport report;
+      report.counter = counter++;
+      report.battery = 55;
+      hub->espNowInput(mac, report, -61);
+      return true;
+    }
     return password == "p%ss w+rd&ok";
   };
   cfg.rtspPort = 18554;
@@ -43,6 +59,7 @@ int main(int argc, char** argv) {
   cfg.fsRoot = argv[2];
   if (argc > 3) cfg.webPassword = argv[3];
   SensorCamServer server(cfg, [] { return std::string("127.0.0.1"); }, nowMs);
+  hub = &server;
   if (!server.begin()) {
     fprintf(stderr, "could not bind test ports\n");
     return 1;

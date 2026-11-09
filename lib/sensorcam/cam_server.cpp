@@ -204,6 +204,8 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   if (ctx.host.empty()) ctx.host = localIp_() + ":" + std::to_string(cfg_.onvifPort);
   ctx.rtspPort = cfg_.rtspPort;
   ctx.serial = cfg_.serial;
+  ctx.onvifPort = cfg_.onvifPort;
+  if (cfg_.onvifNetwork) cfg_.onvifNetwork(ctx);
   ctx.now = time(nullptr);
 
   // Dispatch on the SOAP action, never on the URL: the NVR sends Subscribe to device_service.
@@ -234,6 +236,15 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
     reply = soapDeviceReply(action, ctx);
   }
   if (reply.empty()) {
+    bool safe = !action.empty() && action.size() <= 48;
+    for (char ch : action) safe = safe && isalnum((unsigned char)ch);
+    for (std::string& seen : unsupported_) {
+      if (!safe || seen == action) break;
+      if (seen.empty()) {
+        seen = action;
+        break;
+      }
+    }
     status = 400;
     return soapFault("Action not supported");
   }
@@ -261,7 +272,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   h.heard = true;
   h.heardAt = now;
   h.silent = false;
-  h.battery = r.battery;
+  if (r.battery != CAM_BATTERY_UNKNOWN) h.battery = r.battery;  // a report without a reading must not erase the last one
 
   bool late = r.age > DELAYED_AFTER_S;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
@@ -282,9 +293,36 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   return true;
 }
 
+// Keeps the most recent senders, so a new sensor can be seen on the page before it has been added.
+void SensorCamServer::noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi) {
+  uint32_t now = millis_();
+  UnknownSender* entry = nullptr;
+  for (UnknownSender& u : unknown_) {
+    if (u.used && u.input == input && memcmp(u.mac, mac, 6) == 0) {
+      entry = &u;
+      break;
+    }
+    if (!entry || !u.used || (entry->used && now - u.heardAt > now - entry->heardAt)) {
+      if (!entry || entry->used) entry = &u;
+    }
+  }
+  if (!entry->used || entry->input != input || memcmp(entry->mac, mac, 6) != 0) {
+    *entry = UnknownSender();
+    entry->used = true;
+    memcpy(entry->mac, mac, 6);
+    entry->input = input;
+  }
+  entry->rssi = rssi;
+  entry->heardAt = now;
+  entry->messages++;
+}
+
 void SensorCamServer::espNowInput(const uint8_t mac[6], const SensorReport& r, int8_t rssi) {
   int id = findSlot(mac, r.input);
-  if (id == 0) return;
+  if (id == 0) {
+    noteUnknown(mac, r.input, rssi);
+    return;
+  }
   Health& h = health_[id - 1];
   h.rssi = rssi;
   // A resend repeats the counter. Only equality is rejected, so a sensor that restarts its count still works.
@@ -553,6 +591,21 @@ static bool validAddress(const CamAddress& a) {
   return (gateway & mask) == (ip & mask) && gateway != ip;
 }
 
+// A plain whole number and nothing else.
+static bool wholeNumber(const std::string& s, long long& out) {
+  if (s.empty()) return false;
+  char* end = nullptr;
+  out = strtoll(s.c_str(), &end, 10);
+  return *end == 0;
+}
+
+static bool validNtpServer(const std::string& s) {
+  if (s.empty() || s.size() > 63) return false;
+  for (char ch : s)
+    if (!isalnum((unsigned char)ch) && ch != '.' && ch != '-') return false;
+  return true;
+}
+
 static std::string peerText(uint32_t peer) {
   const uint8_t* b = (const uint8_t*)&peer;
   return std::to_string(b[0]) + "." + std::to_string(b[1]) + "." + std::to_string(b[2]) + "." + std::to_string(b[3]);
@@ -621,6 +674,72 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     c.out = "HTTP/1.1 200 OK\r\nContent-Type: video/h264\r\nX-Frame-Seq: " + std::to_string(liveSeq_) + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
     return;
   }
+  if (method == "GET" && route == "/api/device") {
+    std::string rows = cfg_.deviceRows ? cfg_.deviceRows() : std::string();
+    int known = 0, streams = 0;
+    for (const Slot& s : slots_) known += s.used;
+    for (RtspConn& r : rtsp_) streams += r.playing;
+    uint32_t used = 0, total = 0;
+    if (cfg_.fsUsage) cfg_.fsUsage(used, total);
+    c.out = httpResponse(200, json, "{\"rows\":[" + rows + (rows.empty() ? "" : ",") + "[\"Picture storage\",\"" + std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB\"]," +
+                                        "[\"Sensors\",\"" + std::to_string(known) + "\"],[\"Video streams open\",\"" + std::to_string(streams) + "\"],[\"Event subscribers\",\"" + std::to_string(subs_.count()) + "\"]]}\n");
+    return;
+  }
+  if (method == "GET" && route == "/api/time") {
+    c.out = httpResponse(200, json, cfg_.timeJson ? cfg_.timeJson() : std::string("{}\n"));
+    return;
+  }
+  if (method == "POST" && route == "/api/time") {
+    std::string form = "?" + std::string(body, bodyLen), epochText = queryParam(form, "epoch");
+    CamTime t;
+    t.ntp = queryParam(form, "mode") != "manual";
+    t.server = queryParam(form, "server");
+    long long offset = 0, dst = 0, epoch = 0;
+    bool ok = wholeNumber(queryParam(form, "offset"), offset) && offset >= -720 && offset <= 840 && offset % 15 == 0 && wholeNumber(queryParam(form, "dst"), dst) && dst >= 0 && dst <= 2;
+    if (t.ntp) ok = ok && validNtpServer(t.server);
+    else ok = ok && (t.server.empty() || validNtpServer(t.server)) && (epochText.empty() || (wholeNumber(epochText, epoch) && epoch > (long long)CLOCK_VALID_AFTER && epoch < 4102444800LL));
+    if (!ok) {
+      c.out = httpResponse(400, json, jsonError("check the timezone, the NTP server name and the date and time"));
+    } else {
+      t.offsetMinutes = (int)offset;
+      t.dst = (int)dst;
+      t.epoch = epoch;
+      c.out = cfg_.timeSave && cfg_.timeSave(t) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the time settings"));
+    }
+    return;
+  }
+  if (method == "GET" && route == "/api/schedule") {
+    c.out = httpResponse(200, json, std::string("{\"on\":") + (cfg_.schedule.on ? "true" : "false") + ",\"day\":" + std::to_string(cfg_.schedule.day) + ",\"minute\":" + std::to_string(cfg_.schedule.minute) + "}\n");
+    return;
+  }
+  if (method == "POST" && route == "/api/schedule") {
+    std::string form = "?" + std::string(body, bodyLen);
+    long long day = 0, minute = 0;
+    if (!wholeNumber(queryParam(form, "day"), day) || day < -1 || day > 6 || !wholeNumber(queryParam(form, "minute"), minute) || minute < 0 || minute > 1439) {
+      c.out = httpResponse(400, json, jsonError("check the day and the time"));
+    } else {
+      CamSchedule s;
+      s.on = queryParam(form, "on") == "1";
+      s.day = (int)day;
+      s.minute = (int)minute;
+      if (cfg_.scheduleSave && cfg_.scheduleSave(s)) {
+        cfg_.schedule = s;
+        c.out = httpResponse(200, json, JSON_OK);
+      } else {
+        c.out = httpResponse(507, json, jsonError("could not save the schedule"));
+      }
+    }
+    return;
+  }
+  if (method == "POST" && (route == "/api/reboot" || route == "/api/reset")) {
+    bool reset = route == "/api/reset";
+    if (reset && queryParam("?" + std::string(body, bodyLen), "confirm") != "yes") {  // erases Wi-Fi and every setting, so a stray request must not do it
+      c.out = httpResponse(400, json, jsonError("not confirmed"));
+    } else {
+      c.out = cfg_.maintenance && cfg_.maintenance(reset ? "reset" : "reboot") ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not do that"));
+    }
+    return;
+  }
   if (method == "GET" && route == "/api/espnow") {
     if (cfg_.canAllocate && !cfg_.canAllocate((size_t)CAM_MAX_SENSORS * 260)) {
       c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
@@ -640,7 +759,13 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
                ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
                ",\"counter\":" + optional(h.counterSeen, (long)h.counter) + "}";
     }
-    c.out = httpResponse(200, json, "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "]}\n");
+    std::string unknown;
+    for (const UnknownSender& u : unknown_) {
+      if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
+      unknown += (unknown.empty() ? "" : ",") + std::string("{\"mac\":\"") + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
+                 ",\"rssi\":" + optional(u.rssi != 0, u.rssi) + ",\"messages\":" + std::to_string(u.messages) + "}";
+    }
+    c.out = httpResponse(200, json, "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "],\"unknown\":[" + unknown + "]}\n");
     return;
   }
   if (method == "GET" && route == "/api/nvr") {
@@ -723,7 +848,10 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   if (method == "GET" && route == "/api/info") {
     int streams = 0;
     for (RtspConn& r : rtsp_) streams += r.playing;
-    c.out = httpResponse(200, json, "{\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
+    std::string unsupported;
+    for (const std::string& seen : unsupported_)
+      if (!seen.empty()) unsupported += (unsupported.empty() ? "\"" : ",\"") + seen + "\"";
+    c.out = httpResponse(200, json, "{\"unsupported\":[" + unsupported + "],\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
                                         ",\"webPort\":" + std::to_string(cfg_.webPort) + ",\"rtspPort\":" + std::to_string(cfg_.rtspPort) +
                                         ",\"streams\":" + std::to_string(streams) + ",\"subscribers\":" + std::to_string(subs_.count()) +
                                         ",\"serial\":\"" + cfg_.serial + "\",\"password\":" + (cfg_.webPassword.empty() ? "false" : "true") + "}\n");

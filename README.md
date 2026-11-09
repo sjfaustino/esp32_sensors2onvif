@@ -36,11 +36,23 @@ one in `secrets.h` and survive reflashing.
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
 to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
 
+## System Manager
+
+**Maintenance** schedules a restart, restarts the hub now, and resets its settings. A reset erases the saved WiFi networks,
+ports, name, web password, fixed address and time settings, and keeps the pictures and sensor nodes.
+
+**Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
+receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time is lost when
+the hub loses power.
+
+**Device Info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
+
 ## ESP-NOW page
 
 **Network Manager > ESP-NOW** shows the hub's MAC address and WiFi channel, which sensor nodes need, and lists every sensor
 node with its state, last contact, battery, signal strength and last report number. Only nodes added under
-**Sensors Manager > Sensors** are listed, and the page refreshes itself every few seconds.
+**Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Valid reports from anything
+else are ignored, and the eight most recent such senders appear under **Unknown senders** until the hub restarts or they are added.
 
 ## NVR page and live video
 

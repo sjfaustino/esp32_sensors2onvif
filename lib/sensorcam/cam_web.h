@@ -75,6 +75,8 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="subs"><div class="item" data-view="sensors">Sensors</div></div>
 <div class="first">NVR Manager</div>
 <div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
+<div class="first">System Manager</div>
+<div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device Info</div></div>
 </nav>
 <main>
 <div class="view" id="view-network" hidden><h1>Network</h1>
@@ -98,12 +100,35 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
-<h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div></div>
+<h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
+<h2 style="font-family:inherit;margin-top:18px">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>
 <label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
 <div class="portForm"><button id="saveNvr">Save</button></div>
 <div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
 <div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
+<div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
+<h2 style="font-family:inherit;margin-bottom:6px">Scheduled restart</h2>
+<label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" style="width:auto"></label>
+<label class="netRow"><span>Day</span><select id="rbDay"><option value="-1">Every day</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
+<label class="netRow"><span>Time</span><input id="rbTime" type="time"></label>
+<div class="portForm"><button id="saveRb">Save</button></div><div class="portMsg" id="rbMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Restart now</h2>
+<div class="portForm"><button id="rebootNow">Restart the hub</button></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Reset settings</h2>
+<p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address and time settings. Pictures and sensor nodes are kept.</p>
+<div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
+<div class="view" id="view-time" hidden><h1>Time</h1>
+<label class="netRow"><span>Current time</span><input id="tmNow" disabled></label>
+<label class="netRow"><span>Timezone</span><select id="tmZone"></select></label>
+<label class="netRow"><span>Daylight saving</span><select id="tmDst"><option value="0">None</option><option value="1">Europe</option><option value="2">United States</option></select></label>
+<label class="netRow"><span>Set time by</span><select id="tmMode"><option value="ntp">NTP server</option><option value="manual">Manual</option></select></label>
+<label class="netRow"><span>NTP server</span><input id="tmServer" maxlength="63" autocapitalize="none"></label>
+<label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
+<div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
+<div class="portMsg" id="tmMsg"></div>
+<p style="margin:0;font-size:14px;color:#5a636d">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. A manual time is lost if the hub loses power.</p></div>
+<div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
@@ -343,7 +368,7 @@ document.getElementById("rtspPort").value=i.rtspPort;
 if(view=="rtsp")fill("rtspInfo",[["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Video streams open",i.streams]]);
 document.getElementById("hubName").value=i.name.replace(/\.local$/,"");document.getElementById("protect").checked=i.password;
 document.getElementById("pwRow").hidden=!i.password;document.getElementById("webPw").placeholder=i.password?"Leave empty to keep it":"";
-if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial]]);
+if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial],["Requests not supported",i.unsupported.join(", ")||"None"]]);
 if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"]])}catch(e){}}
 const netField=i=>document.getElementById(i);
 // Asks once a second which picture is being sent, and fetches and decodes one only when it changes.
@@ -359,6 +384,39 @@ catch(e){wait=5000;m.className="portMsg err";m.textContent="Could not show the p
 setTimeout(()=>livePoll(run),wait)}
 function setLive(on){liveRun++;if(on){liveSeq=null;livePoll(liveRun)}}
 function netState(){const off=netField("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>netField(i).disabled=off)}
+let sysTimer=0;
+const ZONES=[-720,-660,-600,-540,-480,-420,-360,-300,-270,-240,-210,-180,-120,-60,0,60,120,180,210,240,270,300,330,345,360,390,420,480,540,570,600,660,720,780];
+const two=n=>String(n).padStart(2,"0");
+netField("tmZone").replaceChildren(...ZONES.map(z=>el("option",{value:z,textContent:"UTC"+(z<0?"-":"+")+two(Math.floor(Math.abs(z)/60))+":"+two(Math.abs(z)%60)})));
+function timeState(){const manual=netField("tmMode").value=="manual";netField("tmServer").disabled=manual;netField("tmManual").disabled=!manual}
+netField("tmMode").onchange=timeState;
+async function tickTime(){try{const t=await(await fetch("/api/time")).json();netField("tmNow").value=t.synced?t.local:"Not set yet";return t}catch(e){return null}}
+async function loadTime(){const t=await tickTime();if(!t)return;netField("tmZone").value=t.offset;netField("tmDst").value=t.dst;netField("tmMode").value=t.ntp?"ntp":"manual";netField("tmServer").value=t.server;timeState()}
+netField("tmFromPc").onclick=()=>{const d=new Date();netField("tmMode").value="manual";timeState();
+netField("tmManual").value=d.getFullYear()+"-"+two(d.getMonth()+1)+"-"+two(d.getDate())+"T"+two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds());
+const m=netField("tmMsg");m.className="portMsg";m.textContent="Read from this PC. Press Save to set the hub to this time."};
+netField("saveTime").onclick=async()=>{const m=netField("tmMsg"),manual=netField("tmMode").value=="manual",v=netField("tmManual").value;m.className="portMsg";
+if(manual&&!v){m.className="portMsg err";m.textContent="Enter the date and time, or use Read from this PC.";return}
+let body="mode="+(manual?"manual":"ntp")+"&offset="+netField("tmZone").value+"&dst="+netField("tmDst").value+"&server="+encodeURIComponent(netField("tmServer").value);
+if(manual)body+="&epoch="+Math.floor(new Date(v).getTime()/1000);
+try{const r=await fetch("/api/time",{method:"POST",body});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Saved.";tickTime()}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
+async function loadSchedule(){try{const s=await(await fetch("/api/schedule")).json();netField("rbOn").checked=s.on;netField("rbDay").value=s.day;netField("rbTime").value=two(Math.floor(s.minute/60))+":"+two(s.minute%60)}catch(e){}}
+netField("saveRb").onclick=async()=>{const m=netField("rbMsg"),v=netField("rbTime").value;m.className="portMsg";
+if(!v){m.className="portMsg err";m.textContent="Enter a time.";return}
+const minute=Number(v.slice(0,2))*60+Number(v.slice(3,5));
+try{const r=await fetch("/api/schedule",{method:"POST",body:"on="+(netField("rbOn").checked?1:0)+"&day="+netField("rbDay").value+"&minute="+minute});const j=await r.json();
+if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}m.textContent="Saved."}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
+async function sysAction(url,body,done,after){const m=netField("sysMsg");m.className="portMsg";
+try{const r=await fetch(url,{method:"POST",body});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent=done;if(after)setTimeout(after,12000)}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}}
+netField("rebootNow").onclick=()=>{if(confirm("Restart the hub now? The video stops for a few seconds."))sysAction("/api/reboot","","The hub is restarting.",()=>location.reload())};
+netField("resetAll").onclick=()=>{if(confirm("Erase the saved WiFi networks, ports, name, web password, fixed address and time settings? The hub will restart and may move to another address."))sysAction("/api/reset","confirm=yes","Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network.")};
+async function loadDevice(){try{const j=await(await fetch("/api/device")).json();fill("devInfo",j.rows)}catch(e){}}
+function setSys(view){clearInterval(sysTimer);
+if(view=="maintenance")loadSchedule();
+if(view=="time"){loadTime();sysTimer=setInterval(tickTime,1000)}
+if(view=="device"){loadDevice();sysTimer=setInterval(loadDevice,5000)}}
 let espTimer=0;
 function heardAgo(s){return s==null?"Never":s<60?s+" s ago":s<3600?Math.floor(s/60)+" min ago":s<86400?Math.floor(s/3600)+" h ago":Math.floor(s/86400)+" d ago"}
 async function loadEsp(){try{const j=await(await fetch("/api/espnow")).json();
@@ -366,7 +424,10 @@ fill("espInfo",[["Hub MAC address",j.mac],["WiFi channel",j.channel]]);
 const STATES={active:"Active",idle:"Idle",silent:"Silent (no report for 3 hours)",never:"Not heard yet"};
 netField("espNodes").replaceChildren(...(j.nodes.length?[el("tr",null,...["Node","Sensor","State","Last heard","Battery","Signal","Report no."].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
 ...j.nodes.map(n=>el("tr",null,...[n.node,n.input,STATES[n.state],heardAgo(n.ago),n.battery==null?"-":n.battery+"%",n.rssi==null?"-":n.rssi+" dBm",n.counter==null?"-":n.counter].map(v=>el("td",{textContent:v})))));
-netField("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors."}catch(e){}}
+netField("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors.";
+netField("espUnknown").replaceChildren(...(j.unknown.length?[el("tr",null,...["Node","Sensor","Last heard","Signal","Messages"].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+...j.unknown.map(n=>el("tr",null,...[n.mac,n.input,heardAgo(n.ago),n.rssi==null?"-":n.rssi+" dBm",n.messages].map(v=>el("td",{textContent:v})))));
+netField("espNone").textContent=j.unknown.length?"These are ignored until added under Sensors Manager > Sensors.":"None since the hub last started."}catch(e){}}
 function setEsp(on){clearInterval(espTimer);if(on){loadEsp();espTimer=setInterval(loadEsp,3000)}}
 async function loadNvr(){try{const n=await(await fetch("/api/nvr")).json();netField("nvrIp").value=n.ip;
 const state=on=>!n.ip?"Enter the NVR's IP address":on?"Connected":"Not connected";
@@ -414,6 +475,7 @@ if(view=="network")loadNet();
 if(view=="nvr")loadNvr();
 setLive(view=="live");
 setEsp(view=="espnow");
+setSys(view);
 if(view!="sensors")info(view)}
 firsts.forEach(f=>f.onclick=()=>{const on=!f.classList.contains("open");firsts.forEach(o=>expand(o,false));expand(f,on)});
 items.forEach(i=>i.onclick=()=>{location.hash=i.dataset.view});

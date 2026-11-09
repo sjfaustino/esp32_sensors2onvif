@@ -5,6 +5,9 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_sntp.h>
+#include <nvs.h>
+#include <sys/time.h>
 #include <freertos/queue.h>
 #include <ping/ping_sock.h>
 #include "cam_server.h"
@@ -36,6 +39,10 @@ static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD;
 static String staticFor, staticIp, staticMask, staticGateway, staticDns;
 static bool usingStatic = false;
 static std::string nvrIp;
+static bool timeNtp = true;
+static String ntpServer = NTP_SERVER;
+static int tzOffset = 0, tzDst = 0;
+static CamSchedule schedule;
 static uint32_t connectedAt = 0;
 static const uint32_t STATIC_CHECK_MS = 120000;
 
@@ -49,6 +56,13 @@ static void loadSettings() {
   hubName = p.getString("name", MDNS_NAME);
   webPassword = p.getString("webpw", WEB_PASSWORD);
   nvrIp = p.getString("nvrip", "").c_str();
+  timeNtp = p.getBool("ntp", true);
+  ntpServer = p.getString("ntpsrv", NTP_SERVER);
+  tzOffset = p.getInt("tzoff", 0);
+  tzDst = p.getInt("tzdst", 0);
+  schedule.on = p.getBool("rben", false);
+  schedule.day = p.getInt("rbday", -1);
+  schedule.minute = p.getInt("rbmin", 0);
   staticFor = p.getString("ipfor", "");
   staticIp = p.getString("ip", "");
   staticMask = p.getString("mask", "");
@@ -194,6 +208,100 @@ static std::string networksJson() {
   return head + "\"scanning\":false,\"networks\":[" + list + "]}\n";
 }
 
+static String tzName(int minutes) {
+  char b[12];
+  snprintf(b, sizeof(b), "<%c%02d%02d>", minutes < 0 ? '-' : '+', abs(minutes) / 60, abs(minutes) % 60);
+  return b;
+}
+
+// POSIX timezone text. Its sign is the opposite of the usual one: UTC+1 is written as -1.
+static String posixTz() {
+  char offset[10];
+  snprintf(offset, sizeof(offset), "%c%d:%02d", tzOffset < 0 ? '+' : '-', abs(tzOffset) / 60, abs(tzOffset) % 60);
+  String tz = tzName(tzOffset) + offset;
+  char rule[32];
+  if (tzDst == 1) {  // Europe changes at 01:00 UTC everywhere
+    int hour = tzOffset / 60;
+    snprintf(rule, sizeof(rule), ",M3.5.0/%d,M10.5.0/%d", 1 + hour, 2 + hour);
+    tz += tzName(tzOffset + 60) + rule;
+  } else if (tzDst == 2) {
+    tz += tzName(tzOffset + 60) + ",M3.2.0/2,M11.1.0/2";
+  }
+  return tz;
+}
+
+static void applyTime() {
+  String tz = posixTz();
+  if (timeNtp) {
+    configTzTime(tz.c_str(), ntpServer.c_str());
+  } else {
+    esp_sntp_stop();  // otherwise NTP would overwrite the time that was set by hand
+    setenv("TZ", tz.c_str(), 1);
+    tzset();
+  }
+}
+
+static std::string timeJson() {
+  time_t now = time(nullptr);
+  struct tm local;
+  localtime_r(&now, &local);
+  char shown[24];
+  strftime(shown, sizeof(shown), "%Y-%m-%d %H:%M:%S", &local);
+  return std::string("{\"ntp\":") + (timeNtp ? "true" : "false") + ",\"server\":\"" + jsonText(ntpServer) + "\",\"offset\":" + std::to_string(tzOffset) + ",\"dst\":" + std::to_string(tzDst) +
+         ",\"synced\":" + (now > 1577836800 ? "true" : "false") + ",\"local\":\"" + shown + "\"}\n";
+}
+
+static bool saveTime(const CamTime& t) {
+  Preferences p;
+  if (!p.begin("net", false)) return false;
+  String server = t.server.empty() ? ntpServer : String(t.server.c_str());
+  bool ok = p.putBool("ntp", t.ntp) == 1 && p.putInt("tzoff", t.offsetMinutes) == 4 && p.putInt("tzdst", t.dst) == 4 && p.putString("ntpsrv", server) == server.length();
+  p.end();
+  if (!ok) return false;
+  timeNtp = t.ntp;
+  ntpServer = server;
+  tzOffset = t.offsetMinutes;
+  tzDst = t.dst;
+  applyTime();
+  if (!t.ntp && t.epoch) {
+    timeval now = {(time_t)t.epoch, 0};
+    settimeofday(&now, nullptr);
+  }
+  return true;
+}
+
+static bool saveSchedule(const CamSchedule& s) {
+  Preferences p;
+  if (!p.begin("net", false)) return false;
+  bool ok = p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4;
+  p.end();
+  if (ok) schedule = s;
+  return ok;
+}
+
+static void requestRestart(uint32_t cause) {
+  savedCause = cause;
+  wifiSavedAt = millis();
+  wifiSaved = true;  // the restart waits for the reply to reach the browser
+}
+
+// Pictures live on LittleFS, so they survive this.
+static bool maintenance(const std::string& action) {
+  if (action == "reset") {
+    bool ok = true;
+    for (const char* space : {"wifi", "net"}) {
+      Preferences p;
+      ok = p.begin(space, false) && p.clear() && ok;
+      p.end();
+    }
+    if (!ok) return false;
+    requestRestart(9);
+  } else {
+    requestRestart(10);
+  }
+  return true;
+}
+
 static bool saveNvr(const std::string& ip) {
   Preferences p;
   if (!p.begin("net", false)) return false;
@@ -238,12 +346,30 @@ static bool saveAddress(const CamAddress& a) {
   return ok;
 }
 
+static std::string deviceRows();
+
 static CamConfig makeConfig() {
   CamConfig c;
   c.onvifPort = onvifPort;
   c.webPort = webPort;
   c.settingsSave = saveSettings;
   c.espNowInfo = [] { return std::string("\"mac\":\"") + WiFi.macAddress().c_str() + "\",\"channel\":" + std::to_string(WiFi.channel()); };
+  c.onvifNetwork = [](SoapContext& s) {
+    s.ip = WiFi.localIP().toString().c_str();
+    s.mac = WiFi.macAddress().c_str();
+    s.gateway = WiFi.gatewayIP().toString().c_str();
+    s.dns = WiFi.dnsIP().toString().c_str();
+    s.hostName = hubName.c_str();
+    s.ntpServer = ntpServer.c_str();
+    s.prefixLength = __builtin_popcount((uint32_t)WiFi.subnetMask());
+    s.dhcp = !usingStatic;
+  };
+  c.timeJson = timeJson;
+  c.timeSave = saveTime;
+  c.schedule = schedule;
+  c.scheduleSave = saveSchedule;
+  c.deviceRows = deviceRows;
+  c.maintenance = maintenance;
   c.nvrIp = nvrIp;
   c.nvrSave = saveNvr;
   c.addressJson = addressJson;
@@ -280,7 +406,7 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router.
+// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router, 8 scheduled, 9 settings reset, 10 restart button.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(uint32_t cause) {
@@ -328,6 +454,67 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
   xQueueSend(sensorQueue, &m, 0);
 }
 
+static String uptimeText() {
+  uint64_t s = esp_timer_get_time() / 1000000ULL;
+  char b[32];
+  snprintf(b, sizeof(b), "%lud %02luh %02lum %02lus", (unsigned long)(s / 86400), (unsigned long)(s % 86400 / 3600), (unsigned long)(s % 3600 / 60), (unsigned long)(s % 60));
+  return b;
+}
+
+static const char* lastRestartText() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "Power on or reset button";
+    case ESP_RST_PANIC: return "Crash";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT: return "Watchdog";
+    case ESP_RST_BROWNOUT: return "Low power supply voltage";
+    case ESP_RST_SW: break;
+    default: return "Other";
+  }
+  switch (lastRestartCause) {
+    case 1: return "WiFi lost for 5 minutes";
+    case 2: return "Low memory";
+    case 3: return "Server stalled";
+    case 4: return "Router stopped answering";
+    case 5: return "New WiFi settings";
+    case 6: return "New web, port or address settings";
+    case 7: return "Fixed address could not reach the router";
+    case 8: return "Scheduled restart";
+    case 9: return "Settings reset";
+    case 10: return "Restart button";
+    default: return "Software restart";
+  }
+}
+
+static std::string deviceRows() {
+  std::string out;
+  auto add = [&](const char* label, const String& value) { out += (out.empty() ? "[\"" : ",[\"") + std::string(label) + "\",\"" + jsonText(value) + "\"]"; };
+  add("Device name", hubName);
+  add("Firmware version", FIRMWARE_VERSION);
+  add("Firmware built", __DATE__ " " __TIME__);
+  add("Serial number", macSerial().c_str());
+  add("Chip", String(ESP.getChipModel()) + " revision " + ESP.getChipRevision());
+  add("CPU", String(ESP.getChipCores()) + " cores at " + ESP.getCpuFreqMHz() + " MHz");
+  add("Flash size", String(ESP.getFlashChipSize() / (1024 * 1024)) + " MB");
+  add("PSRAM", ESP.getPsramSize() ? String(ESP.getPsramSize() / (1024 * 1024)) + " MB" : String("None"));
+  add("Program size", String(ESP.getSketchSize() / 1024) + " KB of " + (ESP.getSketchSize() + ESP.getFreeSketchSpace()) / 1024 + " KB");
+  add("Arduino core", ESP_ARDUINO_VERSION_STR);
+  add("ESP-IDF", esp_get_idf_version());
+  add("Uptime", uptimeText());
+  add("Last restart", lastRestartText());
+  add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
+  add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
+  add("Largest free block", String(ESP.getMaxAllocHeap() / 1024) + " KB");
+  nvs_stats_t settings;
+  if (nvs_get_stats(nullptr, &settings) == ESP_OK) add("Settings storage", String(settings.used_entries) + " of " + settings.total_entries + " entries used");
+  add("WiFi network", WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("Not connected"));
+  add("WiFi signal", WiFi.status() == WL_CONNECTED ? String(WiFi.RSSI()) + " dBm" : String("-"));
+  add("IP address", WiFi.localIP().toString());
+  add("MAC address", WiFi.macAddress());
+  return out;
+}
+
 void setup() {
   lastRestartCause = esp_reset_reason() == ESP_RST_SW ? restartCause : 0;
   restartCause = 0;
@@ -344,7 +531,7 @@ void setup() {
     wifiDropReason = info.wifi_sta_disconnected.reason;
   }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   if (wifiSsid[0].length()) tryNetwork(0);
-  configTime(0, 0, NTP_SERVER);
+  applyTime();
 
   // Formats on first use. Without storage the hub still runs, using its built-in pictures.
   if (!LittleFS.begin(true)) Serial.println("LittleFS could not start; using built-in pictures.");
@@ -420,6 +607,16 @@ void loop() {
     if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(2);
   }
   if (server->stalledMs(millis()) > 30000) restartFor(3);  // the loop runs but the server has stopped serving
+
+  // The uptime check stops the hub from restarting again within the same minute.
+  static uint32_t scheduleCheckedAt = 0;
+  if (schedule.on && millis() > 180000 && millis() - scheduleCheckedAt > 20000) {
+    scheduleCheckedAt = millis();
+    time_t now = time(nullptr);
+    struct tm local;
+    localtime_r(&now, &local);
+    if (now > 1577836800 && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(8);
+  }
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
   // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.

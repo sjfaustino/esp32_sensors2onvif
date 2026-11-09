@@ -134,7 +134,7 @@ def file_manager_tests(files, hub_files_free):
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page offers a picture preview', b'title:"Preview"' in page)
     check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
-                                                  b'data-view="espnow"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
+                                                  b'data-view="espnow"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -152,7 +152,40 @@ def file_manager_tests(files, hub_files_free):
     c.close()
     check('web port does not answer ONVIF', r.status == 404, r.status)
 
+    for action, wanted in (('GetNetworkInterfaces', 'HwAddress'), ('GetHostname', 'HostnameInformation'), ('GetDNS', 'DNSInformation'), ('GetNTP', 'NTPInformation'),
+                           ('GetNetworkDefaultGateway', 'NetworkGateway'), ('GetNetworkProtocols', 'NetworkProtocols'), ('GetDiscoveryMode', 'Discoverable'), ('GetUsers', 'UserLevel')):
+        code, data = soap(action, '/onvif/device_service')
+        check(f'ONVIF answers {action}', code == 200 and wanted in data, data[:200])
+    check('an unsupported ONVIF request is refused', soap('NoSuchRequest', '/onvif/device_service')[0] == 400)
+    check('an unsupported ONVIF request is recorded', 'NoSuchRequest' in json.loads(api('GET', '/api/info')[1])['unsupported'])
+
+    code, device = api('GET', '/api/device')
+    rows = dict(json.loads(device)['rows']) if code == 200 else {}
+    check('device info is served', 'Firmware version' in rows and 'Picture storage' in rows and 'Sensors' in rows, rows)
+    check('time settings are served', api('GET', '/api/time')[0] == 200 and 'local' in json.loads(api('GET', '/api/time')[1]))
+    code, sched = api('GET', '/api/schedule')
+    check('restart schedule is served', code == 200 and 'minute' in json.loads(sched), code)
+    check('device info needs the web password', not PASSWORD or api('GET', '/api/device', auth=False)[0] == 401)
+
     if not DEVICE:  # saving Wi-Fi on a real board would move it to another network
+        zone = 'offset=60&dst=1'
+        for good in (f'mode=ntp&server=pool.ntp.org&{zone}', f'mode=manual&epoch=1790000000&{zone}', f'mode=manual&{zone}', 'mode=ntp&server=time.local&offset=345&dst=0', 'mode=ntp&server=a.b&offset=-720&dst=2'):
+            check(f'time is accepted: {good[:34]}', api('POST', '/api/time', good)[0] == 200)
+        for bad in (f'mode=ntp&server=&{zone}', f'mode=ntp&server=bad%20name&{zone}', f'mode=manual&epoch=100&{zone}', f'mode=manual&epoch=abc&{zone}', 'mode=ntp&server=a.b&offset=61&dst=0',
+                    'mode=ntp&server=a.b&offset=900&dst=0', 'mode=ntp&server=a.b&offset=0&dst=3', 'mode=ntp&server=a.b&dst=0'):
+            check(f'time is refused: {bad[:34]}', api('POST', '/api/time', bad)[0] == 400)
+        check('time settings need the web password', api('POST', '/api/time', f'mode=ntp&server=a.b&{zone}', auth=False)[0] == 401)
+        check('restart schedule is accepted', api('POST', '/api/schedule', 'on=1&day=3&minute=240')[0] == 200)
+        saved = json.loads(api('GET', '/api/schedule')[1])
+        check('restart schedule reads back', saved == {'on': True, 'day': 3, 'minute': 240}, saved)
+        for bad in ('on=1&day=7&minute=0', 'on=1&day=-2&minute=0', 'on=1&day=0&minute=1440', 'on=1&day=0&minute=x', 'on=1'):
+            check(f'restart schedule is refused: {bad}', api('POST', '/api/schedule', bad)[0] == 400)
+        check('restart needs the web password', api('POST', '/api/reboot', '', auth=False)[0] == 401)
+        check('restart request is accepted', api('POST', '/api/reboot', '')[0] == 200)
+        check('reset must be confirmed', api('POST', '/api/reset', '')[0] == 400)
+        check('reset needs the web password', api('POST', '/api/reset', 'confirm=yes', auth=False)[0] == 401)
+        check('confirmed reset is accepted', api('POST', '/api/reset', 'confirm=yes')[0] == 200)
+
         code, page = api('GET', '/setup', auth=False)
         check('setup page needs the web password on the home network', code == 401, code)
         code, page = api('GET', '/setup')
@@ -401,6 +434,29 @@ def main():
             check('ESP-NOW page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
             get(f'/sensor?{sid(2)}&state=clear')
             check('ESP-NOW page needs the web password', not PASSWORD or api('GET', '/api/espnow', auth=False)[0] == 401)
+
+            if not DEVICE:  # the PC build stands in for the radio
+                def radio():
+                    return json.loads(api('GET', '/api/espnow')[1])
+
+                def node_entry(d):
+                    return [n for n in d['nodes'] if n['node'] == SENSORS[1][0] and n['input'] == SENSORS[1][1]][0]
+
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                seen = node_entry(radio())
+                check('radio report shows signal, battery and report number', (seen['rssi'], seen['battery'], seen['counter']) == (-61, 55, 77), seen)
+                get(f'/sensor?{sid(1)}&state=clear')
+                check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
+                check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])
+                api('POST', '/api/wifi', 'ssid=radio-unknown')
+                api('POST', '/api/wifi', 'ssid=radio-unknown')
+                stranger = radio()['unknown']
+                check('unknown sender is listed', len(stranger) == 1 and stranger[0]['mac'] == '02-00-00-00-00-99' and stranger[0]['input'] == 1 and stranger[0]['rssi'] == -61, stranger)
+                check('unknown sender messages are counted', stranger and stranger[0]['messages'] == 2, stranger)
+                check('unknown sender is not listed as a node', not [n for n in radio()['nodes'] if n['node'] == '02-00-00-00-00-99'])
+                api('POST', '/api/mkdir?path=02-00-00-00-00-99/1')
+                check('adding the sender removes it from the unknown list', radio()['unknown'] == [], radio()['unknown'])
+                api('DELETE', '/api/file?path=02-00-00-00-00-99')
 
             # Other clients may poll instead.
             code, data = soap('CreatePullPointSubscription', '/onvif/events')
