@@ -35,6 +35,12 @@ static CamConfig makeConfig() {
   return c;
 }
 
+// A start time for timers where 0 means "not running". It must never be later than millis(), or the elapsed time wraps to a huge value.
+static uint32_t timerStart() {
+  uint32_t t = millis();
+  return t == 0 ? 1 : t;
+}
+
 static const uint32_t WIFI_RESTART_MS = 5UL * 60UL * 1000UL;
 static const uint32_t LOW_HEAP_BYTES = 8 * 1024;
 static const uint32_t LOW_HEAP_RESTART_MS = 30000;
@@ -63,8 +69,8 @@ static void startGatewayPing() {
   config.timeout_ms = 3000;
   esp_ping_callbacks_t callbacks = {};
   callbacks.on_ping_success = [](esp_ping_handle_t, void*) {
-    pingReplies = pingReplies + 1;
     lastPingReply = millis();
+    pingReplies = pingReplies + 1;
   };
   callbacks.on_ping_timeout = [](esp_ping_handle_t, void*) { pingLost = pingLost + 1; };
   if (esp_ping_new_session(&config, &callbacks, &pingSession) == ESP_OK) esp_ping_start(pingSession);
@@ -138,7 +144,7 @@ void loop() {
   if (connected) {
     lostAt = 0;
   } else {
-    if (lostAt == 0) lostAt = millis() | 1;
+    if (lostAt == 0) lostAt = timerStart();
     if (millis() - retryAt > 30000) {
       retryAt = millis();
       WiFi.reconnect();
@@ -151,12 +157,14 @@ void loop() {
   if (ESP.getFreeHeap() >= LOW_HEAP_BYTES) {
     lowSince = 0;
   } else {
-    if (lowSince == 0) lowSince = millis() | 1;
+    if (lowSince == 0) lowSince = timerStart();
     if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(2);
   }
   if (server->stalledMs(millis()) > 30000) restartFor(3);  // the loop runs but the server has stopped serving
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
-  if (connected && pingReplies > 0 && millis() - lastPingReply > PING_LOST_RESTART_MS) restartFor(4);
+  // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
+  uint32_t lastReply = lastPingReply;
+  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(4);
 
   static uint32_t printedAt = 0;
   if (millis() - printedAt > 10000) {
