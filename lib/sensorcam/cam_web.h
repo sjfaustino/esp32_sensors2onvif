@@ -95,7 +95,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <script>
 const STATES=["active","approaching","away","ltr","rtl"];
 const FILES=STATES.flatMap(s=>[s+".h264",s+"-delayed.h264"]);
-const MAX=8192, $=id=>document.getElementById(id);
+const MAX=32768, $=id=>document.getElementById(id);
 function el(tag,props,...kids){const e=Object.assign(document.createElement(tag),props||{});e.append(...kids);return e}
 function say(t,err){$("msg").textContent=t;$("msg").className=err?"err":""}
 async function call(method,url,body){
@@ -107,7 +107,7 @@ async function act(fn,done){try{await fn();if(done)say(done);await load()}catch(
 function pick(path){
   const i=el("input",{type:"file",accept:".h264"});
   i.onchange=()=>{const f=i.files[0];if(!f)return;
-    if(f.size>MAX){say(f.name+" is larger than 8 KB",true);return}
+    if(f.size>MAX){say(f.name+" is larger than 32 KB",true);return}
     act(()=>call("PUT","/api/file?path="+path,f),"Saved "+path)};
   i.click()}
 function del(path,what){if(confirm("Delete "+what+"?"))act(()=>call("DELETE","/api/file?path="+path),"Deleted "+what)}
@@ -176,7 +176,7 @@ function keepPicture(d){
   let at=0;for(const p of parts){out[at+3]=1;out.set(p,at+4);at+=p.length+4}
   return out}
 // Higher steps are smaller and softer. The first one that fits the hub's limit is used.
-const QUALITY=[38,42,46,48,51];
+const QUALITY=[24,28,32,36,38,42,46,48,51];
 async function encodeCanvas(c){
   const w=await getEncoder();
   const blob=await new Promise(r=>c.toBlob(r,"image/png")),png=new Uint8Array(await blob.arrayBuffer());
@@ -185,7 +185,7 @@ async function encodeCanvas(c){
     if(r.ret!==0)throw new Error("The encoder failed");
     const pic=keepPicture(r.data);
     if(pic.length<=MAX)return{pic,step}}
-  throw new Error("Even at the lowest quality this picture is over 8 KB. Try a simpler image.")}
+  throw new Error("Even at the lowest quality this picture is over 32 KB. Try a simpler image.")}
 async function encode(colour,lines){const c=el("canvas",{width:640,height:360});paint(c,colour,lines);return(await encodeCanvas(c)).pic}
 // Shows the picture exactly as it will be streamed, by decoding the encoded result.
 async function decoded(pic){
@@ -215,7 +215,7 @@ function imageDialog(path){
       note.textContent="Encoding. The first time, this downloads about 30 MB.";
       const r=await encodeCanvas(source);pic=r.pic;
       const size=(pic.length/1024).toFixed(1)+" KB";
-      note.textContent=size+(r.step?". Quality was lowered "+r.step+" of "+(QUALITY.length-1)+" steps to fit 8 KB.":" at full quality.");
+      note.textContent=size+(r.step?". Quality was lowered "+r.step+" of "+(QUALITY.length-1)+" steps to fit 32 KB.":" at full quality.");
       try{if(result.src)URL.revokeObjectURL(result.src);result.src=await decoded(pic);result.style.display="block"}
       catch(e){note.textContent+=" The preview could not be shown, but the picture can still be saved."}
       keep.disabled=false

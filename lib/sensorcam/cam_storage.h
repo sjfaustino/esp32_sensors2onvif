@@ -12,7 +12,7 @@
 #include <vector>
 #include "cam_frames.h"
 
-const size_t CAM_MAX_FRAME = 8 * 1024;  // generated pictures are about 5 KB, and boards without PSRAM are short of RAM
+const size_t CAM_MAX_FRAME = 32 * 1024;  // three buffers this size are in use with two viewers, on boards without PSRAM
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set.
 enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_SLAVE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT };

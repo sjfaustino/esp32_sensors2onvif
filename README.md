@@ -9,8 +9,8 @@ names the sensor that fired. The firmware knows nothing about NVR channels.
 1. Copy `include/secrets.example.h` to `include/secrets.h`. Set `SETUP_AP_PASSWORD` (at least 8 characters) to enable
    the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to protect the file
    manager; left empty, anyone on the network can change the pictures.
-2. Flash with `pio run -t upload`, which targets the Adafruit Feather ESP32-S2. Add `-e esp32dev` or `-e esp32s3` for
-   those boards. Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
+2. Flash with `pio run -t upload`, which targets a regular ESP32. Add `-e esp32s3` for an ESP32-S3.
+   Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
 
 Open `http://esp-alarmhub.local` for the file manager, from a device on the same network as the hub. The name does not
 work through a VPN, and some devices cannot resolve `.local` names. In those cases use the address printed on the serial
@@ -45,7 +45,7 @@ The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with 
 generic alert, so a sensor with no pictures still makes motion records.
 
 The page can add and delete slaves and sensors, and upload, download and delete pictures. Changes apply at once,
-without a reboot. Files must be a single H.264 picture of at most 8 KB in the hub's video format, and are stored with the hub's own header. Others are
+without a reboot. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 
 To change the words, open **Change the text** under a sensor, or beside `clear.h264`, and save. Your browser makes the
@@ -54,7 +54,7 @@ the first time. The hub remembers the words in a `text.json` file in the same fo
 
 To use a photo or drawing instead, click **Use an image** on any picture. The browser opens the image, fits it to
 640x360 with black bars if the shape differs, adds any text you type, and encodes it. Detailed images are made softer
-step by step until they fit the 8 KB limit, and a preview shows the result before you save. Only the finished picture
+step by step until they fit the 32 KB limit, and a preview shows the result before you save. Only the finished picture
 is stored on the hub, not the original. Saving **Change the text** replaces all 10 of that sensor's pictures,
 including any images.
 

@@ -11,7 +11,7 @@
 
 static const size_t MAX_REQUEST = 16 * 1024;
 static const size_t MAX_UPLOAD = CAM_MAX_FRAME + 2048;
-static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 512;
+static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 1024;  // the picture plus 18 bytes of headers per 1400-byte packet
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
 static const uint32_t RTSP_IDLE_MS = 120000;
 static const uint32_t RTSP_STALL_MS = 30000;
@@ -80,7 +80,7 @@ bool SensorCamServer::begin() {
   nextFrameAt_ = millis_();
   lastGoodWait_ = nextFrameAt_;
   frameData_.reserve(CAM_MAX_FRAME);
-  spareOut_.reserve(STREAM_BUFFER);
+  for (std::string& spare : spareOut_) spare.reserve(STREAM_BUFFER);
   rescan();
   return httpListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
@@ -115,9 +115,13 @@ void SensorCamServer::closeHttp(HttpConn& c) {
 }
 
 void SensorCamServer::closeRtsp(RtspConn& c) {
-  if (c.out.capacity() >= STREAM_BUFFER && spareOut_.capacity() < STREAM_BUFFER) {  // keep the reserved buffer for the next viewer
-    c.out.clear();
-    spareOut_.swap(c.out);
+  if (c.out.capacity() >= STREAM_BUFFER) {  // keep the reserved buffer for the next viewer
+    for (std::string& spare : spareOut_) {
+      if (spare.capacity() >= STREAM_BUFFER) continue;
+      c.out.clear();
+      spare.swap(c.out);
+      break;
+    }
   }
   if (c.fd >= 0) netClose(c.fd);
   c = RtspConn();
@@ -640,7 +644,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
       // Stored with the hub's own SPS, so the NVR sees one unchanging format whichever encoder made the picture.
       const CamNal parts[3] = {CAM_FRAMES[0].nals[0], nals[1], nals[2]};
       if (parts[0].len + parts[1].len + parts[2].len + 12 > CAM_MAX_FRAME) {
-        c.out = httpResponse(413, json, jsonError("file is larger than 8 KB"));
+        c.out = httpResponse(413, json, jsonError("file is larger than 32 KB"));
         return;
       }
       if (storage_.writeNals(path, parts, 3)) {
@@ -693,10 +697,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
       closeHttp(c);
       return false;
     }
-    return refuse(413, "file is larger than 8 KB");
+    return refuse(413, "file is larger than 32 KB");
   }
 
-  // A picture upload borrows the one picture buffer, because this board rarely has a spare 8 KB block.
+  // A picture upload borrows the one picture buffer, so it never needs a second block that size.
   bool filePut = method == "PUT" && target.compare(0, 15, "/api/file?path=") == 0;
   CamPathKind kind = filePut ? camClassifyPath(target.substr(15)) : CAM_PATH_INVALID;
   if (filePut && kind == CAM_PATH_INVALID) return refuse(400, "invalid path");
@@ -835,17 +839,17 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
                "\r\nSession: " + SESSION + ";timeout=60\r\n\r\n";
     }
   } else if (method == "PLAY") {
-    // One buffer for the life of the stream, sized for the largest picture, so frames never allocate.
-    size_t room = STREAM_BUFFER;
-    if (c.out.capacity() < room && spareOut_.capacity() >= room) {  // the first viewer takes the buffer reserved at boot
-      spareOut_.assign(c.out);
-      c.out.swap(spareOut_);
+    // One buffer reserved at boot for the life of the stream, sized for the largest picture, so nothing allocates here.
+    for (std::string& spare : spareOut_) {
+      if (c.out.capacity() >= STREAM_BUFFER) break;
+      if (spare.capacity() < STREAM_BUFFER) continue;
+      spare.assign(c.out);
+      c.out.swap(spare);
     }
-    if (c.out.capacity() < room && cfg_.canAllocate && !cfg_.canAllocate(room)) {
+    if (c.out.capacity() < STREAM_BUFFER) {
       c.out += "RTSP/1.0 503 Service Unavailable\r\nCSeq: " + cseq + "\r\n\r\n";
       c.closeAfterSend = true;
     } else {
-      c.out.reserve(room);
       c.out += head + "Session: " + SESSION + "\r\nRange: npt=0.000-\r\n\r\n";
       c.playing = true;
     }

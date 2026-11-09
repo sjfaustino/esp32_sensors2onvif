@@ -1,7 +1,0 @@
-# Feather ESP32-S2: one app slot and a LittleFS area for pictures. The UF2 bootloader stays where the board expects it.
-# Name,   Type, SubType, Offset,   Size, Flags
-nvs,      data, nvs,      0x9000,  20K,
-otadata,  data, ota,      0xe000,  8K,
-ota_0,    app,  ota_0,   0x10000,  1408K,
-spiffs,   data, spiffs, 0x170000,  1408K,
-uf2,      app,  factory,0x2d0000,  256K,

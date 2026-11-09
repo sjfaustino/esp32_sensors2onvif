@@ -177,7 +177,7 @@ class SensorCamServer {
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
   const CamFrame* frame_ = nullptr;
   std::string frameData_;
-  std::string spareOut_;  // a stream buffer reserved at boot, so the first viewer (the NVR) is never refused for lack of RAM
+  std::string spareOut_[MAX_RTSP];  // stream buffers reserved at boot, because a picture-sized allocation can fail once the hub is busy
   HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
   CamNal frameNals_[3];
   CamFrame loadedFrame_{frameNals_, 3};

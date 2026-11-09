@@ -221,10 +221,10 @@ def file_manager_tests(files, hub_files_free):
     check('stored picture carries the hub header', api('GET', f'/api/file?path={path}')[1] == good)
     # A browser shows a broken connection as a bare "failed to fetch", so a refusal has to arrive as a reply.
     uptime = status()['uptime_s']
-    for size in (8193, 20000, 33792, 60000):
+    for size in (32769, 40000, 60000, 100000):
         check(f'oversize upload ({size} bytes) gets a clear refusal', api('PUT', f'/api/file?path={path}', b'\x55' * size)[0] == 413)
-    largest = good + b'\x00' * (8192 - len(good))
-    check('picture at the 8 KB limit is accepted', api('PUT', f'/api/file?path={path}', largest)[0] == 200)
+    largest = good + b'\x00' * (32768 - len(good))
+    check('picture at the 32 KB limit is accepted', api('PUT', f'/api/file?path={path}', largest)[0] == 200)
     check('picture at the limit reads back', api('GET', f'/api/file?path={path}')[1] == largest)
     check('smaller picture replaces it', api('PUT', f'/api/file?path={path}', good)[0] == 200)
     check('hub did not restart after very large uploads', status()['uptime_s'] >= uptime, status())
