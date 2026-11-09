@@ -1,6 +1,6 @@
 # esp32_sensors2onvif
 
-A stand-alone ESP32 hub that receives alerts from slave ESP devices and presents itself as a normal ONVIF
+A stand-alone ESP32 hub that receives alerts from ESP sensor nodes and presents itself as a normal ONVIF
 camera. Add it to an NVR on any free channel. Each alert becomes a searchable motion record, and the picture
 names the sensor that fired. The firmware knows nothing about NVR channels.
 
@@ -9,7 +9,8 @@ names the sensor that fired. The firmware knows nothing about NVR channels.
 1. Copy `include/secrets.example.h` to `include/secrets.h`. Set `SETUP_AP_PASSWORD` (at least 8 characters) to enable
    the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to protect the file
    manager; left empty, anyone on the network can change the pictures.
-2. Flash with `pio run -t upload`, which targets a regular ESP32. Add `-e esp32s3` for an ESP32-S3.
+2. Flash with `pio run -t upload`, which targets a regular ESP32 with 16 MB of flash. Add `-e esp32dev` for one with 4 MB,
+   or `-e esp32s3` for an ESP32-S3.
    Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
 
 Open `http://esp-alarmhub.local` for the file manager, from a device on the same network as the hub. The name does not
@@ -35,14 +36,29 @@ one in `secrets.h` and survive reflashing.
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
 to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
 
+## ESP-NOW page
+
+**Network Manager > ESP-NOW** shows the hub's MAC address and WiFi channel, which sensor nodes need, and lists every sensor
+node with its state, last contact, battery, signal strength and last report number. Only nodes added under
+**Sensors Manager > Sensors** are listed, and the page refreshes itself every few seconds.
+
+## NVR page and live video
+
+**NVR Manager > NVR** stores the NVR's IP address and shows whether that NVR has the video and motion events open. The address
+is used only for that status: the NVR connects to the hub, and the hub never contacts the NVR.
+
+**NVR Manager > Live Video** shows the picture the hub is sending to the NVR and names the file it came from. The page asks
+once a second which picture is being sent, and your browser decodes a new one only when it changes, so no extra video stream
+runs. The first use on a device needs internet access to load the decoder, about 30 MB.
+
 ## Pictures and the file manager
 
 Pictures are stored on LittleFS, and the folders are also the list of known sensors:
 
 ```
 clear.h264                         optional replacement for the built-in "all clear"
-AA-BB-CC-DD-EE-01/                 one folder per slave ESP, named after its MAC address
-AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that slave
+AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
+AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 ```
 
@@ -50,7 +66,7 @@ The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with 
 `approaching-delayed.h264`. A missing picture falls back to the nearest one that exists, and finally to a built-in
 generic alert, so a sensor with no pictures still makes motion records.
 
-The page can add and delete slaves and sensors, and upload, download and delete pictures. Changes apply at once,
+The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
 without a reboot. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 

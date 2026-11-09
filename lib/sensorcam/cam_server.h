@@ -41,6 +41,9 @@ struct CamConfig {
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
   uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
   std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
+  std::function<std::string()> espNowInfo;  // JSON members for the ESP-NOW page: the hub's mac and channel
+  std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
+  std::function<bool(const std::string& ip)> nvrSave;
   std::function<std::string()> addressJson;              // JSON for the Network page
   std::function<bool(const CamAddress&)> addressSave;    // stores DHCP or a fixed address; applies after a restart
   uint16_t rtspPort = 8554;
@@ -60,7 +63,7 @@ class SensorCamServer {
   // Milliseconds since the socket wait last worked. A large value means the server has stopped serving.
   uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
   std::string debugLine();   // counters for the serial heartbeat
-  void espNowInput(const uint8_t mac[6], const SensorReport& report);  // call from the same task as poll()
+  void espNowInput(const uint8_t mac[6], const SensorReport& report, int8_t rssi = 0);  // call from the same task as poll()
 
  private:
   static const int MAX_HTTP = 6;
@@ -75,6 +78,7 @@ class SensorCamServer {
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     bool counterSeen = false;
     uint32_t counter = 0;
+    int8_t rssi = 0;  // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
   };
   struct Slot {
     bool used = false;
@@ -182,6 +186,8 @@ class SensorCamServer {
   CamStorage storage_;
   std::vector<Slot> slots_;
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
+  std::string frameFile_;  // the file behind frame_; empty means a built-in picture
+  uint32_t liveSeq_ = 0;  // changes whenever the picture being sent changes, so the Live page fetches only new ones
   const CamFrame* frame_ = nullptr;
   std::string frameData_;
   std::string spareOut_[MAX_RTSP];  // stream buffers reserved at boot, because a picture-sized allocation can fail once the hub is busy

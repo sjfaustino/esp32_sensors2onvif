@@ -70,9 +70,11 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 </style></head><body>
 <nav id="menu">
 <div class="first">Network Manager</div>
-<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
+<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="espnow">ESP-NOW</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
 <div class="first">Sensors Manager</div>
 <div class="subs"><div class="item" data-view="sensors">Sensors</div></div>
+<div class="first">NVR Manager</div>
+<div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
 </nav>
 <main>
 <div class="view" id="view-network" hidden><h1>Network</h1>
@@ -95,11 +97,18 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portForm"><button id="saveWeb">Save</button></div>
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
+<div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
+<h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div></div>
+<div class="view" id="view-nvr" hidden><h1>NVR</h1>
+<label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
+<div class="portForm"><button id="saveNvr">Save</button></div>
+<div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
+<div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
 <div id="msg"></div>
-<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add slave</button></span>
+<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add node</button></span>
 <span id="clear"></span></div>
 <div id="tree"></div>
 </div></main>
@@ -302,14 +311,14 @@ function render(t){
   if(t.clear!=null)c.append(" ",previewButton("clear.h264","clear.h264")," ",el("button",{className:"del",textContent:"Delete",onclick:()=>del("clear.h264","clear.h264")}));
   c.append(clearPanel());
   const tree=$("tree");tree.textContent="";
-  if(!t.slaves.length)tree.append(el("p",{className:"missing",textContent:"No slaves yet. Add one by its MAC address."}));
+  if(!t.slaves.length)tree.append(el("p",{className:"missing",textContent:"No nodes yet. Add one by its MAC address."}));
   for(const s of t.slaves){
     const num=el("input",{type:"text",placeholder:"sensor no.",size:9});
     const card=el("div",{className:"card"},el("div",{className:"head"},el("h2",{textContent:s.mac}),
       el("span",null,num," ",el("button",{textContent:"Add sensor",onclick:()=>{
         if(!/^[1-9][0-9]{0,2}$/.test(num.value)||+num.value>255){say("Sensor number must be 1 to 255",true);return}
         act(()=>call("POST","/api/mkdir?path="+s.mac+"/"+num.value),"Added sensor "+num.value)}}),
-      " ",el("button",{className:"del",textContent:"Delete slave",onclick:()=>del(s.mac,"slave "+s.mac+" and all its pictures")}))));
+      " ",el("button",{className:"del",textContent:"Delete node",onclick:()=>del(s.mac,"node "+s.mac+" and all its pictures")}))));
     for(const n of s.sensors){
       const sizes=Object.fromEntries(n.files.map(f=>[f.name,f.size]));
       const base=s.mac+"/"+n.input;
@@ -320,7 +329,7 @@ function render(t){
 async function load(){try{render(await call("GET","/api/tree"))}catch(e){say(e.message,true)}}
 $("addSlave").onclick=()=>{const m=$("mac").value.trim().toUpperCase().replace(/:/g,"-");
   if(!/^([0-9A-F]{2}-){5}[0-9A-F]{2}$/.test(m)){say("Enter a MAC address like AA:BB:CC:DD:EE:01",true);return}
-  act(()=>call("POST","/api/mkdir?path="+m),"Added slave "+m).then(()=>$("mac").value="")};
+  act(()=>call("POST","/api/mkdir?path="+m),"Added node "+m).then(()=>$("mac").value="")};
 load();
 </script>
 <script>
@@ -337,7 +346,35 @@ document.getElementById("pwRow").hidden=!i.password;document.getElementById("web
 if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial]]);
 if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"]])}catch(e){}}
 const netField=i=>document.getElementById(i);
+// Asks once a second which picture is being sent, and fetches and decodes one only when it changes.
+let liveRun=0,liveSeq=null,liveUrl=null;
+async function livePoll(run){if(run!=liveRun)return;let wait=1000;const m=netField("liveMsg");
+try{const j=await(await fetch("/api/live",{cache:"no-store"})).json();if(run!=liveRun)return;netField("liveFile").textContent=j.file;
+if(j.seq!==liveSeq){if(liveSeq===null)m.textContent="Getting the decoder ready. The first time, this downloads about 30 MB.";
+const r=await fetch("/api/live/frame",{cache:"no-store"});if(!r.ok)throw new Error("The hub could not send the picture.");
+const seq=Number(r.headers.get("X-Frame-Seq")),url=await decoded(new Uint8Array(await r.arrayBuffer()));
+if(run!=liveRun){URL.revokeObjectURL(url);return}
+if(liveUrl)URL.revokeObjectURL(liveUrl);liveUrl=url;const img=netField("liveImg");img.src=url;img.style.display="block";liveSeq=seq;m.className="portMsg";m.textContent=""}}
+catch(e){wait=5000;m.className="portMsg err";m.textContent="Could not show the picture. The decoder needs internet access the first time. "+(e.message||"")}
+setTimeout(()=>livePoll(run),wait)}
+function setLive(on){liveRun++;if(on){liveSeq=null;livePoll(liveRun)}}
 function netState(){const off=netField("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>netField(i).disabled=off)}
+let espTimer=0;
+function heardAgo(s){return s==null?"Never":s<60?s+" s ago":s<3600?Math.floor(s/60)+" min ago":s<86400?Math.floor(s/3600)+" h ago":Math.floor(s/86400)+" d ago"}
+async function loadEsp(){try{const j=await(await fetch("/api/espnow")).json();
+fill("espInfo",[["Hub MAC address",j.mac],["WiFi channel",j.channel]]);
+const STATES={active:"Active",idle:"Idle",silent:"Silent (no report for 3 hours)",never:"Not heard yet"};
+netField("espNodes").replaceChildren(...(j.nodes.length?[el("tr",null,...["Node","Sensor","State","Last heard","Battery","Signal","Report no."].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+...j.nodes.map(n=>el("tr",null,...[n.node,n.input,STATES[n.state],heardAgo(n.ago),n.battery==null?"-":n.battery+"%",n.rssi==null?"-":n.rssi+" dBm",n.counter==null?"-":n.counter].map(v=>el("td",{textContent:v})))));
+netField("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors."}catch(e){}}
+function setEsp(on){clearInterval(espTimer);if(on){loadEsp();espTimer=setInterval(loadEsp,3000)}}
+async function loadNvr(){try{const n=await(await fetch("/api/nvr")).json();netField("nvrIp").value=n.ip;
+const state=on=>!n.ip?"Enter the NVR's IP address":on?"Connected":"Not connected";
+fill("nvrInfo",[["Video",state(n.video)],["Motion events",state(n.events)],["Viewers connected now",n.viewers.join(", ")||"None"]])}catch(e){}}
+netField("saveNvr").onclick=async()=>{const m=netField("nvrMsg");m.className="portMsg";
+try{const r=await fetch("/api/nvr",{method:"POST",body:"ip="+encodeURIComponent(netField("nvrIp").value)});const j=await r.json();
+if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Saved.";loadNvr()}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
 async function loadNet(){try{const n=await(await fetch("/api/network")).json();
 netField("netType").value=n.type;netField("netMode").value=n.dhcp?"dhcp":"static";netField("netIp").value=n.ip;netField("netMask").value=n.mask;netField("netGw").value=n.gateway;netField("netDns").value=n.dns;netField("netMac").value=n.mac;netState();
 netField("netMsg").className="portMsg";netField("netMsg").textContent=n.dhcp?"":"This fixed address is used only on "+n.staticFor+". Other WiFi networks use DHCP."}catch(e){}}
@@ -374,6 +411,9 @@ document.querySelectorAll(".view").forEach(v=>v.hidden=v.id!="view-"+view);
 items.forEach(i=>{const on=i.dataset.view==view;i.classList.toggle("active",on);if(on){firsts.forEach(f=>expand(f,false));expand(i.parentElement.previousElementSibling,true)}});
 if(view=="wifi"){const n=document.getElementById("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
 if(view=="network")loadNet();
+if(view=="nvr")loadNvr();
+setLive(view=="live");
+setEsp(view=="espnow");
 if(view!="sensors")info(view)}
 firsts.forEach(f=>f.onclick=()=>{const on=!f.classList.contains("open");firsts.forEach(o=>expand(o,false));expand(f,on)});
 items.forEach(i=>i.onclick=()=>{location.hash=i.dataset.view});

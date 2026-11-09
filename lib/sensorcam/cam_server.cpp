@@ -282,10 +282,11 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   return true;
 }
 
-void SensorCamServer::espNowInput(const uint8_t mac[6], const SensorReport& r) {
+void SensorCamServer::espNowInput(const uint8_t mac[6], const SensorReport& r, int8_t rssi) {
   int id = findSlot(mac, r.input);
   if (id == 0) return;
   Health& h = health_[id - 1];
+  h.rssi = rssi;
   // A resend repeats the counter. Only equality is rejected, so a sensor that restarts its count still works.
   if (h.counterSeen && h.counter == r.counter) return;
   h.counterSeen = true;
@@ -441,13 +442,17 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
   bool delayed = false;
   bool on = sensors_.shown(now, id, direction, delayed);
   if (uploading_) {  // an upload is using the picture buffer
+    if (!frameKey_.empty()) liveSeq_++;
     frameKey_.clear();
+    frameFile_.clear();
     frame_ = &CAM_FRAMES[on ? 1 : 0];
     return *frame_;
   }
   std::string key = on ? slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") : "clear";
   if (key == frameKey_) return *frame_;
   frameKey_ = key;
+  frameFile_.clear();
+  liveSeq_++;
 
   std::vector<std::string> candidates;
   if (on) {
@@ -460,6 +465,7 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
   for (const std::string& path : candidates) {
     if (loadFrame(path)) {
       frame_ = &loadedFrame_;
+      frameFile_ = path;
       break;
     }
   }
@@ -547,6 +553,11 @@ static bool validAddress(const CamAddress& a) {
   return (gateway & mask) == (ip & mask) && gateway != ip;
 }
 
+static std::string peerText(uint32_t peer) {
+  const uint8_t* b = (const uint8_t*)&peer;
+  return std::to_string(b[0]) + "." + std::to_string(b[1]) + "." + std::to_string(b[2]) + "." + std::to_string(b[3]);
+}
+
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
@@ -585,6 +596,77 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   if (method == "GET" && route == "/api/tree") {
     c.out = httpResponse(200, json, treeJson());
+    return;
+  }
+  if (method == "GET" && (route == "/api/live" || route == "/api/live/frame")) {
+    if (!frame_) frameToShow(millis_());
+    if (route == "/api/live") {
+      c.out = httpResponse(200, json, "{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
+      return;
+    }
+    size_t size = 0;
+    for (int i = 0; i < frame_->count; i++) size += frame_->nals[i].len + 4;
+    if (cfg_.canAllocate && !cfg_.canAllocate(size)) {
+      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
+      return;
+    }
+    c.ownBody.clear();
+    c.ownBody.reserve(size);
+    for (int i = 0; i < frame_->count; i++) {
+      c.ownBody.append("\0\0\0\1", 4);
+      c.ownBody.append((const char*)frame_->nals[i].data, frame_->nals[i].len);
+    }
+    c.staticBody = c.ownBody.data();
+    c.staticLen = c.ownBody.size();
+    c.out = "HTTP/1.1 200 OK\r\nContent-Type: video/h264\r\nX-Frame-Seq: " + std::to_string(liveSeq_) + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+    return;
+  }
+  if (method == "GET" && route == "/api/espnow") {
+    if (cfg_.canAllocate && !cfg_.canAllocate((size_t)CAM_MAX_SENSORS * 260)) {
+      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
+      return;
+    }
+    std::string nodes;
+    nodes.reserve((size_t)CAM_MAX_SENSORS * 130);
+    uint32_t now = millis_();
+    auto optional = [](bool known, long value) { return known ? std::to_string(value) : std::string("null"); };
+    for (int id = 1; id <= sensors_.count(); id++) {
+      if (!slots_[id - 1].used) continue;
+      const Health& h = health_[id - 1];
+      std::string name = slotName(id);
+      const char* state = sensors_.active(id) ? "active" : !h.heard ? "never" : h.silent ? "silent" : "idle";
+      nodes += (nodes.empty() ? "" : ",") + std::string("{\"node\":\"") + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
+               ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
+               ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
+               ",\"counter\":" + optional(h.counterSeen, (long)h.counter) + "}";
+    }
+    c.out = httpResponse(200, json, "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "]}\n");
+    return;
+  }
+  if (method == "GET" && route == "/api/nvr") {
+    uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
+    bool video = false, events = false;
+    std::string viewers;
+    for (RtspConn& r : rtsp_) {
+      if (r.fd < 0 || !r.playing) continue;
+      viewers += (viewers.empty() ? "\"" : ",\"") + peerText(r.peer) + "\"";
+      video = video || (nvr && r.peer == nvr);
+    }
+    for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && subs_.at(i).used && subs_.at(i).peer == nvr);
+    c.out = httpResponse(200, json, "{\"ip\":\"" + cfg_.nvrIp + "\",\"video\":" + (video ? "true" : "false") + ",\"events\":" + (events ? "true" : "false") + ",\"viewers\":[" + viewers + "]}\n");
+    return;
+  }
+  if (method == "POST" && route == "/api/nvr") {
+    std::string ip = queryParam("?" + std::string(body, bodyLen), "ip");
+    uint32_t parsed;
+    if (!ip.empty() && !parseIpv4(ip, parsed)) {
+      c.out = httpResponse(400, json, jsonError("check the IP address"));
+    } else if (cfg_.nvrSave && cfg_.nvrSave(ip)) {
+      cfg_.nvrIp = ip;
+      c.out = httpResponse(200, json, JSON_OK);
+    } else {
+      c.out = httpResponse(507, json, jsonError("could not save the NVR address"));
+    }
     return;
   }
   if (method == "GET" && route == "/api/network") {

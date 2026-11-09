@@ -35,6 +35,7 @@ static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD;
 // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
 static String staticFor, staticIp, staticMask, staticGateway, staticDns;
 static bool usingStatic = false;
+static std::string nvrIp;
 static uint32_t connectedAt = 0;
 static const uint32_t STATIC_CHECK_MS = 120000;
 
@@ -47,6 +48,7 @@ static void loadSettings() {
   rtspPort = p.getUShort("rtsp", RTSP_PORT);
   hubName = p.getString("name", MDNS_NAME);
   webPassword = p.getString("webpw", WEB_PASSWORD);
+  nvrIp = p.getString("nvrip", "").c_str();
   staticFor = p.getString("ipfor", "");
   staticIp = p.getString("ip", "");
   staticMask = p.getString("mask", "");
@@ -192,6 +194,15 @@ static std::string networksJson() {
   return head + "\"scanning\":false,\"networks\":[" + list + "]}\n";
 }
 
+static bool saveNvr(const std::string& ip) {
+  Preferences p;
+  if (!p.begin("net", false)) return false;
+  p.putString("nvrip", ip.c_str());  // reading it back, because saving an empty value reports the same as a failure
+  bool ok = p.getString("nvrip", "") == ip.c_str();
+  p.end();
+  return ok;
+}
+
 static void forgetStatic() {
   Preferences p;
   if (p.begin("net", false)) {
@@ -232,6 +243,9 @@ static CamConfig makeConfig() {
   c.onvifPort = onvifPort;
   c.webPort = webPort;
   c.settingsSave = saveSettings;
+  c.espNowInfo = [] { return std::string("\"mac\":\"") + WiFi.macAddress().c_str() + "\",\"channel\":" + std::to_string(WiFi.channel()); };
+  c.nvrIp = nvrIp;
+  c.nvrSave = saveNvr;
   c.addressJson = addressJson;
   c.addressSave = saveAddress;
   if (webPort != 80) c.setupAddress += ":" + std::to_string(webPort);
@@ -300,6 +314,7 @@ static bool wasConnected = false;
 
 struct SensorMessage {
   uint8_t mac[6];
+  int8_t rssi;
   SensorReport report;
 };
 static QueueHandle_t sensorQueue;
@@ -309,6 +324,7 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
   SensorMessage m;
   if (!parseSensorPacket(data, len, m.report)) return;
   memcpy(m.mac, info->src_addr, 6);
+  m.rssi = info->rx_ctrl ? info->rx_ctrl->rssi : 0;
   xQueueSend(sensorQueue, &m, 0);
 }
 
@@ -423,6 +439,6 @@ void loop() {
   }
 
   SensorMessage m;
-  while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowInput(m.mac, m.report);
+  while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowInput(m.mac, m.report, m.rssi);
   server->poll(20);
 }

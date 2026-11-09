@@ -133,7 +133,8 @@ def file_manager_tests(files, hub_files_free):
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page offers a picture preview', b'title:"Preview"' in page)
-    check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"']))
+    check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
+                                                  b'data-view="espnow"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -191,6 +192,14 @@ def file_manager_tests(files, hub_files_free):
             c.close()
         check('setup port answers nothing outside setup mode', closed)
 
+        check('NVR address needs the web password', api('POST', '/api/nvr', 'ip=192.0.2.7', auth=False)[0] == 401)
+        check('NVR address is saved', api('POST', '/api/nvr', 'ip=192.0.2.7')[0] == 200)
+        nvr_info = json.loads(api('GET', '/api/nvr')[1])
+        check('NVR address reads back', nvr_info['ip'] == '192.0.2.7', nvr_info)
+        check('NVR not connected is reported', nvr_info['video'] is False and nvr_info['events'] is False, nvr_info)
+        for bad in ('ip=1.2.3', 'ip=999.1.1.1', 'ip=abc'):
+            check(f'NVR address is refused: {bad}', api('POST', '/api/nvr', bad)[0] == 400)
+        check('NVR address can be cleared', api('POST', '/api/nvr', 'ip=')[0] == 200 and json.loads(api('GET', '/api/nvr')[1])['ip'] == '')
         code, net = api('GET', '/api/network')
         check('network details are served', code == 200 and b'"mac"' in net and b'"gateway"' in net, code)
         check('network settings need the web password', api('POST', '/api/network', 'mode=dhcp', auth=False)[0] == 401)
@@ -362,6 +371,36 @@ def main():
             check('sensor can be cleared', get(f'/sensor?{sid(2)}&state=clear')[0] == 200)
             time.sleep(0.5)
             check('clear sends false at once', nvr.states()[before:][-1:] == ['false'], nvr.states()[before:])
+
+            # The Live page shows the picture being sent.
+            time.sleep(0.7)
+            idle = json.loads(api('GET', '/api/live')[1])
+            code, idle_frame = api('GET', '/api/live/frame')
+            check('Live sends a whole picture', code == 200 and idle_frame.startswith(b'\0\0\0\1') and idle_frame[4] & 0x1F == 7, code)
+            get(f'/sensor?{sid(2)}')
+            time.sleep(1)
+            firing = json.loads(api('GET', '/api/live')[1])
+            check('Live reports a new picture when a sensor fires', firing['seq'] != idle['seq'], firing)
+            check('Live picture changes when a sensor fires', api('GET', '/api/live/frame')[1] != idle_frame)
+            get(f'/sensor?{sid(2)}&state=clear')
+            time.sleep(1)
+            cleared = json.loads(api('GET', '/api/live')[1])
+            check('Live reports the picture going back', cleared['seq'] != firing['seq'], cleared)
+            check('Live picture goes back', api('GET', '/api/live/frame')[1] == idle_frame)
+            check('Live needs the web password', not PASSWORD or api('GET', '/api/live', auth=False)[0] == 401)
+
+            # The ESP-NOW page lists every sensor node.
+            node_list = json.loads(api('GET', '/api/espnow')[1])
+            entry = [n for n in node_list['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
+            check('ESP-NOW page lists a sensor that has reported', len(entry) == 1 and entry[0]['state'] == 'idle' and entry[0]['ago'] is not None, node_list)
+            quiet = [n for n in node_list['nodes'] if n['node'] == SENSORS[6][0] and n['input'] == SENSORS[6][1]]
+            check('ESP-NOW page shows the state of each sensor', len(quiet) == 1 and quiet[0]['state'] in ('never', 'idle'), node_list)
+            get(f'/sensor?{sid(2)}')
+            time.sleep(0.3)
+            firing = [n for n in json.loads(api('GET', '/api/espnow')[1])['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
+            check('ESP-NOW page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
+            get(f'/sensor?{sid(2)}&state=clear')
+            check('ESP-NOW page needs the web password', not PASSWORD or api('GET', '/api/espnow', auth=False)[0] == 401)
 
             # Other clients may poll instead.
             code, data = soap('CreatePullPointSubscription', '/onvif/events')
