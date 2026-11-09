@@ -29,6 +29,48 @@ static DNSServer dnsServer;
 static bool setupOpen = false;
 static bool wifiSaved = false;
 static uint32_t wifiSavedAt = 0;
+static uint32_t savedCause = 5;
+static uint16_t onvifPort = ONVIF_PORT, webPort = WEB_PORT, rtspPort = RTSP_PORT;
+static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD;
+
+// Settings saved on the web page win over the defaults compiled in from config.h and secrets.h.
+static void loadSettings() {
+  Preferences p;
+  if (!p.begin("net", false)) return;
+  onvifPort = p.getUShort("onvif", ONVIF_PORT);
+  webPort = p.getUShort("web", WEB_PORT);
+  rtspPort = p.getUShort("rtsp", RTSP_PORT);
+  hubName = p.getString("name", MDNS_NAME);
+  webPassword = p.getString("webpw", WEB_PASSWORD);
+  p.end();
+}
+
+static bool saveSettings(const CamSettings& s) {
+  Preferences p;
+  if (!p.begin("net", false)) return false;
+  bool ok = p.putUShort("onvif", s.onvifPort) == 2 && p.putUShort("web", s.webPort) == 2 && p.putUShort("rtsp", s.rtspPort) == 2;
+  if (!s.name.empty()) ok = ok && p.putString("name", s.name.c_str()) == s.name.size();
+  if (!s.passwordOn) p.putString("webpw", "");
+  else if (!s.password.empty()) ok = ok && p.putString("webpw", s.password.c_str()) == s.password.size();
+  p.end();
+  if (ok) {
+    savedCause = 6;
+    wifiSavedAt = millis();
+    wifiSaved = true;
+  }
+  return ok;
+}
+
+// Keeps the name and password, which cannot stop the ports from opening.
+static void forgetPorts() {
+  Preferences p;
+  if (p.begin("net", false)) {
+    p.remove("onvif");
+    p.remove("web");
+    p.remove("rtsp");
+    p.end();
+  }
+}
 
 // Networks saved on the setup page win over the one compiled in from secrets.h.
 static void loadWifi() {
@@ -120,7 +162,7 @@ static std::string jsonText(const String& s) {
 
 // The scan runs in the background so the video and ONVIF keep being served; the page asks again until it is done.
 static std::string networksJson() {
-  std::string head = std::string("{\"name\":\"") + MDNS_NAME + ".local\",\"current\":\"" + jsonText(wifiSsid[0]) + "\",\"backup\":\"" + jsonText(wifiSsid[1]) + "\",";
+  std::string head = std::string("{\"name\":\"") + hubName.c_str() + ".local" + (webPort == 80 ? std::string() : ":" + std::to_string(webPort)) + "\",\"current\":\"" + jsonText(wifiSsid[0]) + "\",\"backup\":\"" + jsonText(wifiSsid[1]) + "\",";
   int16_t n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) return head + "\"scanning\":true,\"networks\":[]}\n";
   if (n < 0) {
@@ -138,15 +180,18 @@ static std::string networksJson() {
 
 static CamConfig makeConfig() {
   CamConfig c;
-  c.onvifPort = ONVIF_PORT;
-  c.webPort = WEB_PORT;
+  c.onvifPort = onvifPort;
+  c.webPort = webPort;
+  c.settingsSave = saveSettings;
+  if (webPort != 80) c.setupAddress += ":" + std::to_string(webPort);
+  c.hostName = std::string(hubName.c_str()) + ".local";
   c.setupActive = [] { return setupOpen; };
   c.wifiNetworks = networksJson;
   c.wifiSave = saveWifi;
-  c.rtspPort = RTSP_PORT;
+  c.rtspPort = rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
   c.sensorToken = SENSOR_TOKEN;
-  c.webPassword = WEB_PASSWORD;
+  c.webPassword = webPassword.c_str();
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
   // A request for 0 bytes asks only whether new work is safe, which needs less headroom.
   c.canAllocate = [](size_t n) { return n == 0 ? ESP.getFreeHeap() >= 10 * 1024 : ESP.getMaxAllocHeap() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
@@ -170,7 +215,7 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings.
+// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web or ONVIF settings.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(uint32_t cause) {
@@ -221,11 +266,12 @@ void setup() {
   restartCause = 0;
   Serial.begin(115200);
   loadWifi();
+  loadSettings();
   WiFi.persistent(false);  // the settings are kept in one place only, by loadWifi and saveWifi
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // power save loses multicast and adds latency
   WiFi.setAutoReconnect(false);  // loop() chooses between the main and backup networks itself
-  WiFi.setHostname(MDNS_NAME);
+  WiFi.setHostname(hubName.c_str());
   WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
     wifiDrops = wifiDrops + 1;
     wifiDropReason = info.wifi_sta_disconnected.reason;
@@ -238,7 +284,8 @@ void setup() {
 
   server = new SensorCamServer(makeConfig(), localIp, nowMs);
   if (!server->begin()) {
-    Serial.println("Could not open the ONVIF or RTSP port; restarting.");
+    Serial.println("Could not open the ONVIF, web or RTSP port; going back to the default ports and restarting.");
+    forgetPorts();  // saved ports that cannot open must not keep the hub in a restart loop
     delay(2000);
     ESP.restart();
   }
@@ -257,8 +304,8 @@ void loop() {
     server->networkUp();
     if (!pingSession) startGatewayPing();
     static bool nameAnnounced = false;
-    if (!nameAnnounced && MDNS.begin(MDNS_NAME)) {
-      MDNS.addService("http", "tcp", WEB_PORT);
+    if (!nameAnnounced && MDNS.begin(hubName.c_str())) {
+      MDNS.addService("http", "tcp", webPort);
       nameAnnounced = true;
     }
   }
@@ -294,7 +341,7 @@ void loop() {
     if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(1);
   }
   if (setupOpen) dnsServer.processNextRequest();
-  if (wifiSaved && millis() - wifiSavedAt > 1500) restartFor(5);
+  if (wifiSaved && millis() - wifiSavedAt > 1500) restartFor(savedCause);
 
   // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
   static uint32_t lowSince = 0;
@@ -313,8 +360,8 @@ void loop() {
   static uint32_t printedAt = 0;
   if (millis() - printedAt > 10000) {
     printedAt = millis();
-    Serial.printf("ONVIF on %s:%u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
-                  WiFi.localIP().toString().c_str(), ONVIF_PORT, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
+    Serial.printf("ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
+                  WiFi.localIP().toString().c_str(), onvifPort, webPort, rtspPort, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
                   (unsigned)wifiDropReason, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
   }
 

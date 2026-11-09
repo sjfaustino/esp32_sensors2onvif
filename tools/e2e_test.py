@@ -132,6 +132,11 @@ def file_manager_tests(files, hub_files_free):
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
+    check('page has the menu', all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"']))
+    code, info = api('GET', '/api/info')
+    info = json.loads(info) if code == 200 else {}
+    check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
+    check('hub details need the web password', not PASSWORD or api('GET', '/api/info', auth=False)[0] == 401)
     c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
     c.request('GET', '/')
     r = c.getresponse()
@@ -159,6 +164,12 @@ def file_manager_tests(files, hub_files_free):
         check('Wi-Fi password is decoded exactly', api('POST', '/api/wifi', f'ssid=setup-on&{secret}')[0] == 200)
         code, page = api('GET', '/', auth=False)
         check('setup network opens the setup page without a login', code == 200 and b'Hub Wi-Fi setup' in page, code)
+        c = http.client.HTTPConnection(HOST, 18081, timeout=5)
+        c.request('GET', '/generate_204', headers={'Host': 'connectivitycheck.gstatic.com'})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        check('phone check reaches setup when the web port has moved', r.status == 302 and r.getheader('Location') == f'http://{HOST}:{WEB}/setup', r.status)
         check('setup network does not expose the files', api('GET', '/api/tree', auth=False)[0] == 401)
         c = http.client.HTTPConnection(HOST, WEB, timeout=5)
         c.request('GET', '/generate_204', headers={'Host': 'connectivitycheck.gstatic.com'})
@@ -169,6 +180,23 @@ def file_manager_tests(files, hub_files_free):
         check('ONVIF still answers in setup mode', soap('GetDeviceInformation', '/onvif/device_service')[0] == 200)
         check('leaving setup mode works', api('POST', '/api/wifi', f'ssid=setup-off&{secret}')[0] == 200)
         check('file manager is back after setup', b'SensorCam files' in api('GET', '/')[1])
+        try:
+            c = http.client.HTTPConnection(HOST, 18081, timeout=5)
+            c.request('GET', '/')
+            closed = c.getresponse().status is None
+        except (http.client.HTTPException, ConnectionError, socket.timeout):
+            closed = True
+        finally:
+            c.close()
+        check('setup port answers nothing outside setup mode', closed)
+
+        check('settings need the web password', api('POST', '/api/settings', 'web=8080', auth=False)[0] == 401)
+        for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2', 'protect=on&password=', 'protect=on&password=new%20pass', 'protect=off'):
+            check(f'setting is accepted: {good}', api('POST', '/api/settings', good)[0] == 200)
+        too_long = 'x' * 64
+        for bad in ('web=0', 'web=70000', 'web=abc', 'onvif=80x', f'onvif={RTSP}', f'web={ONVIF}', f'onvif={WEB}', 'rtsp=0', 'rtsp=abc', f'rtsp={WEB}', f'rtsp={ONVIF}',
+                    'name=-hub', 'name=hub-', 'name=a_b', 'name=a%20b', f'name={too_long}', f'protect=on&password={too_long}'):
+            check(f'setting is refused: {bad[:30]}', api('POST', '/api/settings', bad)[0] == 400)
 
     check('slave folder can be added', api('POST', f'/api/mkdir?path={A}')[0] == 200)
     check('slave alone is not a sensor', status()['sensors'] == baseline)

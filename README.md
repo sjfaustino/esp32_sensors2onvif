@@ -27,7 +27,7 @@ whether it is the main or the backup. A new main network moves the previous main
 one in `secrets.h` and survive reflashing.
 
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
-to the setup network. Networks can also be changed at any time from **Wi-Fi settings** in the file manager.
+to the setup network. Networks can also be changed at any time from **Network Manager > Network** on the web page.
 
 ## Pictures and the file manager
 
@@ -101,7 +101,12 @@ false alert.
 
 ## Sensor input over HTTP
 
-Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor:
+Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.
+The ports can be changed on the web page, under **Network Manager > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's
+`.local` name and turns the web password on or off. These are saved on the board, replace the values in `config.h` and
+`secrets.h`, and take effect after the hub restarts by itself. After changing the ONVIF port, set the same port on the NVR
+channel. The serial heartbeat always shows all three ports. A forgotten web password can only be cleared by erasing the board's
+settings over USB, which also erases its Wi-Fi networks.
 
 | Request | Effect |
 |---|---|

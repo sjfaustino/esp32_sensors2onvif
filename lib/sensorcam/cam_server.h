@@ -12,6 +12,15 @@
 
 const int CAM_MAX_SENSORS = 32;
 
+struct CamSettings {
+  uint16_t onvifPort = 0;
+  uint16_t webPort = 0;
+  uint16_t rtspPort = 0;
+  std::string name;      // empty keeps the current name
+  bool passwordOn = false;
+  std::string password;  // empty keeps the current password while protection stays on
+};
+
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
@@ -19,11 +28,14 @@ struct CamConfig {
   std::function<bool(size_t)> canAllocate;  // lets large requests be refused before they exhaust RAM
   // Wi-Fi setup page. The board supplies these; the setup network is the hub's own access point.
   std::function<bool()> setupActive;           // the setup network is open
+  std::string hostName;                        // the name shown in the web menu, such as esp-alarmhub.local
   std::string setupAddress = "192.168.4.1";    // where visitors to the setup network are sent
   std::function<std::string()> wifiNetworks;   // JSON for the setup page
   std::function<bool(const std::string& ssid, const std::string& password, bool backup)> wifiSave;
   uint16_t onvifPort = 8899;  // ONVIF requests only
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
+  uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
+  std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
@@ -149,7 +161,7 @@ class SensorCamServer {
   SensorBoard sensors_;
   MotionSignal signal_;
   SubTable subs_;
-  int httpListen_ = -1, webListen_ = -1, rtspListen_ = -1, udp_ = -1;
+  int httpListen_ = -1, webListen_ = -1, captiveListen_ = -1, rtspListen_ = -1, udp_ = -1;
   HttpConn http_[MAX_HTTP];
   RtspConn rtsp_[MAX_RTSP];
   NotifyIo notify_[SubTable::SIZE];

@@ -1,4 +1,5 @@
 #include "cam_server.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,6 +74,7 @@ bool SensorCamServer::begin() {
   netInit();
   httpListen_ = listenOn(cfg_.onvifPort);
   webListen_ = listenOn(cfg_.webPort);
+  if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort) captiveListen_ = listenOn(cfg_.captivePort);
   rtspListen_ = listenOn(cfg_.rtspPort);
   openDiscovery();
   nextFrameAt_ = millis_();
@@ -126,6 +128,10 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
+  if (listenFd == captiveListen_ && !(cfg_.setupActive && cfg_.setupActive())) {
+    netClose(fd);
+    return;
+  }
   if (cfg_.canAllocate && !cfg_.canAllocate(0)) {  // short of RAM: let existing traffic drain first
     refused_++;
     netClose(fd);
@@ -136,7 +142,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
     if (c.fd >= 0) continue;
     netNonblock(fd);
     c.fd = fd;
-    c.web = listenFd == webListen_;
+    c.web = listenFd != httpListen_;
     c.peer = a.sin_addr.s_addr;
     c.openedAt = now;
     return;
@@ -548,6 +554,47 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   if (method == "GET" && route == "/api/tree") {
     c.out = httpResponse(200, json, treeJson());
+    return;
+  }
+  if (method == "POST" && route == "/api/settings") {
+    std::string form = "?" + std::string(body, bodyLen);
+    auto port = [&](const char* name, long current) {  // absent keeps the current port; anything but a plain number is invalid
+      std::string text = queryParam(form, name);
+      if (text.empty()) return current;
+      char* end = nullptr;
+      long value = strtol(text.c_str(), &end, 10);
+      return *end ? -1L : value;
+    };
+    long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
+    std::string name = queryParam(form, "name"), protect = queryParam(form, "protect"), password = percentDecode(queryParam(form, "password"));
+    bool nameOk = name.size() <= 63 && (name.empty() || (name.front() != '-' && name.back() != '-'));
+    for (char ch : name) nameOk = nameOk && (isalnum((unsigned char)ch) || ch == '-');
+    bool passwordOn = protect.empty() ? !cfg_.webPassword.empty() : protect == "on";
+    if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
+      c.out = httpResponse(400, json, jsonError("ports must be 1 to 65535 and all different"));
+    } else if (!nameOk) {
+      c.out = httpResponse(400, json, jsonError("the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen"));
+    } else if (password.size() > 63 || (passwordOn && password.empty() && cfg_.webPassword.empty())) {
+      c.out = httpResponse(400, json, jsonError("enter a password of up to 63 characters"));
+    } else {
+      CamSettings s;
+      s.onvifPort = (uint16_t)onvif;
+      s.webPort = (uint16_t)web;
+      s.rtspPort = (uint16_t)rtsp;
+      s.name = name;
+      s.passwordOn = passwordOn;
+      s.password = password;
+      c.out = cfg_.settingsSave && cfg_.settingsSave(s) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the settings"));
+    }
+    return;
+  }
+  if (method == "GET" && route == "/api/info") {
+    int streams = 0;
+    for (RtspConn& r : rtsp_) streams += r.playing;
+    c.out = httpResponse(200, json, "{\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
+                                        ",\"webPort\":" + std::to_string(cfg_.webPort) + ",\"rtspPort\":" + std::to_string(cfg_.rtspPort) +
+                                        ",\"streams\":" + std::to_string(streams) + ",\"subscribers\":" + std::to_string(subs_.count()) +
+                                        ",\"serial\":\"" + cfg_.serial + "\",\"password\":" + (cfg_.webPassword.empty() ? "false" : "true") + "}\n");
     return;
   }
   bool fileRoute = route == "/api/file", mkdirRoute = route == "/api/mkdir";
@@ -975,6 +1022,7 @@ void SensorCamServer::poll(int maxWaitMs) {
 
   if (httpListen_ >= 0) add(httpListen_, rd);
   if (webListen_ >= 0) add(webListen_, rd);
+  if (captiveListen_ >= 0) add(captiveListen_, rd);
   if (rtspListen_ >= 0) add(rtspListen_, rd);
   if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {
@@ -1006,6 +1054,7 @@ void SensorCamServer::poll(int maxWaitMs) {
 
   if (httpListen_ >= 0 && FD_ISSET(httpListen_, &rd)) acceptHttp(httpListen_, now);
   if (webListen_ >= 0 && FD_ISSET(webListen_, &rd)) acceptHttp(webListen_, now);
+  if (captiveListen_ >= 0 && FD_ISSET(captiveListen_, &rd)) acceptHttp(captiveListen_, now);
   if (rtspListen_ >= 0 && FD_ISSET(rtspListen_, &rd)) acceptRtsp(now);
   if (udp_ >= 0 && FD_ISSET(udp_, &rd)) serviceDiscovery();
   for (HttpConn& c : http_)

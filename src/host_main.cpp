@@ -21,6 +21,9 @@ int main(int argc, char** argv) {
   cfg.webPort = 18080;
   // Stand-ins for the board's Wi-Fi. The test opens and closes setup mode by saving these two names.
   static bool setupOn = false;
+  cfg.captivePort = 18081;
+  cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
+  cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   cfg.setupActive = [] { return setupOn; };
   cfg.wifiNetworks = [] { return std::string("{\"name\":\"hub.local\",\"current\":\"\",\"scanning\":false,\"networks\":[{\"ssid\":\"test-net\",\"rssi\":-40,\"open\":false}]}\n"); };

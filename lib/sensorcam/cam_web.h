@@ -52,14 +52,46 @@ button.del{color:#b3261e;border-color:#e0b4b0}input[type=text]{font:inherit;padd
 details{margin-top:8px}summary{cursor:pointer;font-size:14px}
 #msg{min-height:20px;font-size:14px;margin:8px 0;white-space:pre-wrap}#msg.err{color:#b3261e}
 .bar{height:8px;background:#e6e9ed;border-radius:4px;overflow:hidden;margin-top:6px}.bar div{height:100%;background:#3b6fd4}
+body{display:flex;min-height:100vh;max-width:none;margin:0;padding:0;background:#fff}
+#menu{width:240px;min-width:240px;background:#f5f5f5;padding:15px 0}
+.first{padding:10px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:16px}
+.first::after{content:"\25BE";color:#666}.first.open::after{content:"\25B4"}
+.subs{max-height:0;overflow:hidden;transition:max-height .3s}.subs.show{max-height:300px}
+.item{position:relative;padding:5px 5px 5px 36px;font-size:14px;cursor:pointer}
+.item::before{content:"\2022";position:absolute;left:24px;top:50%;transform:translateY(-50%);color:#666;font-size:10px}
+.first:hover,.item:hover{background:#ddd}.item.active{background:#fff;color:blue}
+main{flex:1;min-width:0;padding:16px}.view{max-width:860px}.view>h1{margin-bottom:12px}
+.info td:first-child{font-family:inherit;color:#5a636d;width:40%}.info td{word-break:break-all}
+#netFrame{width:100%;height:620px;border:0}
+input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px;width:8em}
+.portForm{margin-bottom:6px}.portMsg{min-height:20px;font-size:14px;margin-bottom:8px}.portMsg.err{color:#b3261e}
+@media(max-width:640px){body{display:block}#menu{width:auto}}
 </style></head><body>
-<h1>SensorCam files</h1>
-<a href="/setup">Wi-Fi settings</a>
+<nav id="menu">
+<div class="first">Network Manager</div>
+<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
+<div class="first">Sensors Manager</div>
+<div class="subs"><div class="item" data-view="sensors">Sensors</div></div>
+</nav>
+<main>
+<div class="view" id="view-network" hidden><h1>Network</h1><table class="info" id="networkInfo"></table><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
+<div class="view" id="view-onvif" hidden><h1>ONVIF</h1><div class="portForm"><label>Port <input id="onvifPort" type="number" min="1" max="65535"></label> <button id="saveOnvif">Save</button></div><div class="portMsg" id="onvifMsg"></div><table class="info" id="onvifInfo"></table></div>
+<div class="view" id="view-http" hidden><h1>HTTP</h1>
+<div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
+<div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
+<div class="portForm"><label><input id="protect" type="checkbox"> Password protection (user admin)</label></div>
+<div class="portForm" id="pwRow" hidden><label>Password <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
+<div class="portForm"><button id="saveWeb">Save</button></div>
+<div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
+<div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
+<div class="view" id="view-sensors">
+<h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
 <div id="msg"></div>
 <div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add slave</button></span>
 <span id="clear"></span></div>
 <div id="tree"></div>
+</div></main>
 <script>
 const STATES=["active","approaching","away","ltr","rtl"];
 const FILES=STATES.flatMap(s=>[s+".h264",s+"-delayed.h264"]);
@@ -267,5 +299,49 @@ $("addSlave").onclick=()=>{const m=$("mac").value.trim().toUpperCase().replace(/
   if(!/^([0-9A-F]{2}-){5}[0-9A-F]{2}$/.test(m)){say("Enter a MAC address like AA:BB:CC:DD:EE:01",true);return}
   act(()=>call("POST","/api/mkdir?path="+m),"Added slave "+m).then(()=>$("mac").value="")};
 load();
+</script>
+<script>
+(()=>{
+const firsts=[...document.querySelectorAll(".first")],items=[...document.querySelectorAll(".item")];
+function fill(id,rows){const t=document.getElementById(id);t.replaceChildren(...rows.map(([k,v])=>{const r=t.insertRow(),a=r.insertCell(),b=r.insertCell();a.textContent=k;b.textContent=v;return r}))}
+async function info(view){try{const r=await fetch("/api/info");const i=await r.json();
+if(view=="network")fill("networkInfo",[["IP address",i.ip],["Name on the network",i.name]]);
+const at=i.webPort==80?"":":"+i.webPort;
+document.getElementById("onvifPort").value=i.onvifPort;document.getElementById("webPort").value=i.webPort;
+document.getElementById("rtspPort").value=i.rtspPort;
+if(view=="rtsp")fill("rtspInfo",[["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Video streams open",i.streams]]);
+document.getElementById("hubName").value=i.name.replace(/\.local$/,"");document.getElementById("protect").checked=i.password;
+document.getElementById("pwRow").hidden=!i.password;document.getElementById("webPw").placeholder=i.password?"Leave empty to keep it":"";
+if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Event subscribers",i.subscribers],["Video streams open",i.streams],["Serial number",i.serial]]);
+if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"]])}catch(e){}}
+async function savePort(field,input,msg,warning){const v=document.getElementById(input).value,m=document.getElementById(msg);
+if(!confirm(warning))return;m.className="portMsg";
+try{const r=await fetch("/api/settings",{method:"POST",body:field+"="+encodeURIComponent(v)});const j=await r.json();
+if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Saved. The hub is restarting.";
+setTimeout(()=>location.reload(),10000)}
+catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}}
+document.getElementById("protect").onchange=e=>{document.getElementById("pwRow").hidden=!e.target.checked};
+document.getElementById("saveRtsp").onclick=()=>savePort("rtsp","rtspPort","rtspMsg","The hub will restart and the video will stop briefly. A viewer such as VLC will need the new address. Continue?");
+document.getElementById("saveOnvif").onclick=()=>savePort("onvif","onvifPort","onvifMsg","The hub will restart, and the NVR will lose this camera until its channel is set to the new port. Continue?");
+document.getElementById("saveWeb").onclick=async()=>{const g=i=>document.getElementById(i),m=g("webMsg"),port=g("webPort").value,name=g("hubName").value,on=g("protect").checked;
+if(!confirm("The hub will restart to apply these settings. Continue?"))return;m.className="portMsg";
+try{const r=await fetch("/api/settings",{method:"POST",body:"web="+encodeURIComponent(port)+"&name="+encodeURIComponent(name)+"&protect="+(on?"on":"off")+"&password="+encodeURIComponent(g("webPw").value)});const j=await r.json();
+if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Saved. The hub is restarting.";
+const host=location.hostname.endsWith(".local")?name+".local":location.hostname;
+setTimeout(()=>{location.href=location.protocol+"//"+host+":"+port+"/"+location.hash},10000)}
+catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
+function expand(f,on){f.classList.toggle("open",on);f.nextElementSibling.classList.toggle("show",on)}
+function show(view){if(!document.getElementById("view-"+view))view="sensors";
+document.querySelectorAll(".view").forEach(v=>v.hidden=v.id!="view-"+view);
+items.forEach(i=>{const on=i.dataset.view==view;i.classList.toggle("active",on);if(on){firsts.forEach(f=>expand(f,false));expand(i.parentElement.previousElementSibling,true)}});
+if(view=="network"){const n=document.getElementById("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
+if(view!="sensors")info(view)}
+firsts.forEach(f=>f.onclick=()=>{const on=!f.classList.contains("open");firsts.forEach(o=>expand(o,false));expand(f,on)});
+items.forEach(i=>i.onclick=()=>{location.hash=i.dataset.view});
+addEventListener("hashchange",()=>show(location.hash.slice(1)));
+show(location.hash.slice(1));
+})();
 </script></body></html>
 )HTML";
