@@ -34,9 +34,6 @@ static int wifiTrying = 0;
 static uint32_t wifiTryAt = 0;
 static DNSServer dnsServer;
 static bool setupOpen = false;
-static bool wifiSaved = false;
-static uint32_t wifiSavedAt = 0;
-static uint32_t savedCause = 5;
 static uint16_t onvifPort = ONVIF_PORT, webPort = WEB_PORT, rtspPort = RTSP_PORT;
 static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD, sensorToken = SENSOR_TOKEN;
 static bool healthAlarm = false;
@@ -52,88 +49,127 @@ static uint32_t connectedAt = 0;
 static bool staticChecked = false;
 static const uint32_t STATIC_CHECK_MS = 120000;
 
+// Why the hub restarted itself, kept across the restart so Device Info and the heartbeat can say which rule caused it.
+enum RestartCause : uint32_t {
+  RESTART_UNKNOWN,
+  RESTART_WIFI_LOST,
+  RESTART_LOW_MEMORY,
+  RESTART_STALLED,
+  RESTART_ROUTER_SILENT,
+  RESTART_NEW_WIFI,
+  RESTART_NEW_SETTINGS,
+  RESTART_BAD_FIXED_ADDRESS,
+  RESTART_SCHEDULED,
+  RESTART_SETTINGS_RESET,
+  RESTART_BUTTON,
+  RESTART_FIRMWARE,
+  RESTART_RESTORED,
+  RESTART_CAUSES
+};
+static const char* const RESTART_TEXT[RESTART_CAUSES] = {
+    "Software restart",  "WiFi lost for 5 minutes",   "Low memory",     "Server stalled",  "Router stopped answering", "New WiFi settings", "New web, port or address settings",
+    "Fixed address could not reach the router", "Scheduled restart", "Settings reset", "Restart button", "Firmware update", "Settings restored"};
+
+static bool restartPending = false;
+static uint32_t restartRequestedAt = 0;
+static RestartCause restartRequested = RESTART_UNKNOWN;
+
+// The restart waits for the reply to reach the browser.
+static void requestRestart(RestartCause cause) {
+  restartRequested = cause;
+  restartRequestedAt = millis();
+  restartPending = true;
+}
+
+// Opens a settings namespace around one job. False when it could not be opened or the job failed.
+template <typename Job>
+static bool withPrefs(const char* space, Job job) {
+  Preferences p;
+  if (!p.begin(space, false)) return false;
+  bool ok = job(p);
+  p.end();
+  return ok;
+}
+
+// Read back, because saving an empty value reports the same as a failure.
+static bool putText(Preferences& p, const char* key, const String& value) {
+  p.putString(key, value);
+  return p.getString(key, "") == value;
+}
+
 // Settings saved on the web page win over the defaults compiled in from config.h and secrets.h.
 static void loadSettings() {
-  Preferences p;
-  if (!p.begin("net", false)) return;
-  onvifPort = p.getUShort("onvif", ONVIF_PORT);
-  webPort = p.getUShort("web", WEB_PORT);
-  rtspPort = p.getUShort("rtsp", RTSP_PORT);
-  hubName = p.getString("name", MDNS_NAME);
-  // A hub is password protected unless someone turns that off, so an empty setting falls back to the setup network's password.
-  webPassword = p.getString("webpw", strlen(WEB_PASSWORD) ? WEB_PASSWORD : SETUP_AP_PASSWORD);
-  sensorToken = p.getString("token", SENSOR_TOKEN);
-  if (sensorToken.isEmpty()) {  // made once and kept, and shown on the HTTP page
-    char made[17];
-    snprintf(made, sizeof(made), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
-    sensorToken = made;
-    p.putString("token", sensorToken);
-  }
-  healthAlarm = p.getBool("hlth", false);
-  nvrIp = p.getString("nvrip", "").c_str();
-  timeNtp = p.getBool("ntp", true);
-  ntpServer = p.getString("ntpsrv", NTP_SERVER);
-  tzOffset = p.getInt("tzoff", 0);
-  tzDst = p.getInt("tzdst", 0);
-  schedule.on = p.getBool("rben", false);
-  schedule.day = p.getInt("rbday", -1);
-  schedule.minute = p.getInt("rbmin", 0);
-  staticFor = p.getString("ipfor", "");
-  staticIp = p.getString("ip", "");
-  staticMask = p.getString("mask", "");
-  staticGateway = p.getString("gw", "");
-  staticDns = p.getString("dns", "");
-  p.end();
+  withPrefs("net", [](Preferences& p) {
+    onvifPort = p.getUShort("onvif", ONVIF_PORT);
+    webPort = p.getUShort("web", WEB_PORT);
+    rtspPort = p.getUShort("rtsp", RTSP_PORT);
+    hubName = p.getString("name", MDNS_NAME);
+    // A hub is password protected unless someone turns that off, so an empty setting falls back to the setup network's password.
+    webPassword = p.getString("webpw", strlen(WEB_PASSWORD) ? WEB_PASSWORD : SETUP_AP_PASSWORD);
+    sensorToken = p.getString("token", SENSOR_TOKEN);
+    if (sensorToken.isEmpty()) {  // made once and kept, and shown on the HTTP page
+      char made[17];
+      snprintf(made, sizeof(made), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
+      sensorToken = made;
+      p.putString("token", sensorToken);
+    }
+    healthAlarm = p.getBool("hlth", false);
+    nvrIp = p.getString("nvrip", "").c_str();
+    timeNtp = p.getBool("ntp", true);
+    ntpServer = p.getString("ntpsrv", NTP_SERVER);
+    tzOffset = p.getInt("tzoff", 0);
+    tzDst = p.getInt("tzdst", 0);
+    schedule.on = p.getBool("rben", false);
+    schedule.day = p.getInt("rbday", -1);
+    schedule.minute = p.getInt("rbmin", 0);
+    staticFor = p.getString("ipfor", "");
+    staticIp = p.getString("ip", "");
+    staticMask = p.getString("mask", "");
+    staticGateway = p.getString("gw", "");
+    staticDns = p.getString("dns", "");
+    return true;
+  });
 }
 
 static bool saveSettings(const CamSettings& s) {
-  Preferences p;
-  if (!p.begin("net", false)) return false;
-  bool ok = p.putUShort("onvif", s.onvifPort) == 2 && p.putUShort("web", s.webPort) == 2 && p.putUShort("rtsp", s.rtspPort) == 2;
-  if (!s.name.empty()) ok = ok && p.putString("name", s.name.c_str()) == s.name.size();
-  if (!s.passwordOn) p.putString("webpw", "");
-  else if (!s.password.empty()) ok = ok && p.putString("webpw", s.password.c_str()) == s.password.size();
-  p.end();
-  if (ok) {
-    savedCause = 6;
-    wifiSavedAt = millis();
-    wifiSaved = true;
-  }
+  bool ok = withPrefs("net", [&](Preferences& p) {
+    bool done = p.putUShort("onvif", s.onvifPort) == 2 && p.putUShort("web", s.webPort) == 2 && p.putUShort("rtsp", s.rtspPort) == 2;
+    if (!s.name.empty()) done = done && putText(p, "name", s.name.c_str());
+    if (!s.passwordOn) done = done && putText(p, "webpw", "");
+    else if (!s.password.empty()) done = done && putText(p, "webpw", s.password.c_str());
+    return done;
+  });
+  if (ok) requestRestart(RESTART_NEW_SETTINGS);
   return ok;
 }
 
 // Keeps the name and password, which cannot stop the ports from opening.
 static void forgetPorts() {
-  Preferences p;
-  if (p.begin("net", false)) {
+  withPrefs("net", [](Preferences& p) {
     p.remove("onvif");
     p.remove("web");
     p.remove("rtsp");
-    p.end();
-  }
+    return true;
+  });
 }
 
 // Networks saved on the setup page win over the one compiled in from secrets.h.
 static void loadWifi() {
-  Preferences p;
   wifiSsid[0] = WIFI_SSID;
   wifiPassword[0] = WIFI_PASSWORD;
-  if (p.begin("wifi", false)) {
+  withPrefs("wifi", [](Preferences& p) {
     wifiSsid[0] = p.getString("ssid", wifiSsid[0]);
     wifiPassword[0] = p.getString("password", wifiPassword[0]);
     wifiSsid[1] = p.getString("ssid2", "");
     wifiPassword[1] = p.getString("password2", "");
-    p.end();
-  }
+    return true;
+  });
 }
 
 static bool storeWifi() {
-  Preferences p;
-  if (!p.begin("wifi", false)) return false;
-  bool ok = p.putString("ssid", wifiSsid[0]) == wifiSsid[0].length() && p.putString("password", wifiPassword[0]) == wifiPassword[0].length() &&
-            p.putString("ssid2", wifiSsid[1]) == wifiSsid[1].length() && p.putString("password2", wifiPassword[1]) == wifiPassword[1].length();
-  p.end();
-  return ok;
+  return withPrefs("wifi", [](Preferences& p) {
+    return putText(p, "ssid", wifiSsid[0]) && putText(p, "password", wifiPassword[0]) && putText(p, "ssid2", wifiSsid[1]) && putText(p, "password2", wifiPassword[1]);
+  });
 }
 
 static bool saveWifi(const std::string& ssid, const std::string& password, bool backup) {
@@ -153,10 +189,7 @@ static bool saveWifi(const std::string& ssid, const std::string& password, bool 
     wifiPassword[0] = pass;
   }
   if (!storeWifi()) return false;
-  if (!backup || WiFi.status() != WL_CONNECTED) {  // a new backup needs no restart while the main network is working
-    wifiSavedAt = millis();
-    wifiSaved = true;  // the restart waits for the reply to reach the browser
-  }
+  if (!backup || WiFi.status() != WL_CONNECTED) requestRestart(RESTART_NEW_WIFI);  // a new backup needs no restart while the main network is working
   return true;
 }
 
@@ -198,15 +231,7 @@ static void closeSetup() {
   Serial.println("Joined Wi-Fi; setup network closed.");
 }
 
-static std::string jsonText(const String& s) {
-  std::string out;
-  for (size_t i = 0; i < s.length(); i++) {
-    char ch = s[i];
-    if (ch == '"' || ch == '\\') out += '\\';
-    if ((unsigned char)ch >= 0x20) out += ch;
-  }
-  return out;
-}
+static std::string jsonText(const String& s) { return camJsonEscape(s.c_str()); }
 
 // The scan runs in the background so the video and ONVIF keep being served; the page asks again until it is done.
 static std::string networksJson() {
@@ -270,11 +295,8 @@ static std::string timeJson() {
 }
 
 static bool saveTime(const CamTime& t) {
-  Preferences p;
-  if (!p.begin("net", false)) return false;
   String server = t.server.empty() ? ntpServer : String(t.server.c_str());
-  bool ok = p.putBool("ntp", t.ntp) == 1 && p.putInt("tzoff", t.offsetMinutes) == 4 && p.putInt("tzdst", t.dst) == 4 && p.putString("ntpsrv", server) == server.length();
-  p.end();
+  bool ok = withPrefs("net", [&](Preferences& p) { return p.putBool("ntp", t.ntp) == 1 && p.putInt("tzoff", t.offsetMinutes) == 4 && p.putInt("tzdst", t.dst) == 4 && putText(p, "ntpsrv", server); });
   if (!ok) return false;
   timeNtp = t.ntp;
   ntpServer = server;
@@ -289,52 +311,29 @@ static bool saveTime(const CamTime& t) {
 }
 
 static bool saveSchedule(const CamSchedule& s) {
-  Preferences p;
-  if (!p.begin("net", false)) return false;
-  bool ok = p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4;
-  p.end();
+  bool ok = withPrefs("net", [&](Preferences& p) { return p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4; });
   if (ok) schedule = s;
   return ok;
 }
 
-static void requestRestart(uint32_t cause) {
-  savedCause = cause;
-  wifiSavedAt = millis();
-  wifiSaved = true;  // the restart waits for the reply to reach the browser
-}
-
 // Pictures live on LittleFS, so they survive this.
 static bool maintenance(const std::string& action) {
-  if (action == "reset") {
-    bool ok = true;
-    for (const char* space : {"wifi", "net"}) {
-      Preferences p;
-      ok = p.begin(space, false) && p.clear() && ok;
-      p.end();
-    }
-    if (!ok) return false;
-    requestRestart(9);
-  } else {
-    requestRestart(10);
+  if (action != "reset") {
+    requestRestart(RESTART_BUTTON);
+    return true;
   }
-  return true;
-}
-
-static bool saveNvr(const std::string& ip) {
-  Preferences p;
-  if (!p.begin("net", false)) return false;
-  p.putString("nvrip", ip.c_str());  // reading it back, because saving an empty value reports the same as a failure
-  bool ok = p.getString("nvrip", "") == ip.c_str();
-  p.end();
+  bool ok = true;
+  for (const char* space : {"wifi", "net"}) ok = withPrefs(space, [](Preferences& p) { return p.clear(); }) && ok;
+  if (ok) requestRestart(RESTART_SETTINGS_RESET);
   return ok;
 }
 
+static bool saveNvr(const std::string& ip) {
+  return withPrefs("net", [&](Preferences& p) { return putText(p, "nvrip", ip.c_str()); });
+}
+
 static void forgetStatic() {
-  Preferences p;
-  if (p.begin("net", false)) {
-    p.remove("ipfor");
-    p.end();
-  }
+  withPrefs("net", [](Preferences& p) { return p.remove("ipfor"); });
 }
 
 static std::string addressJson() {
@@ -346,21 +345,11 @@ static std::string addressJson() {
 static bool saveAddress(const CamAddress& a) {
   String network = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : wifiSsid[0];
   if (!a.dhcp && network.isEmpty()) return false;
-  Preferences p;
-  if (!p.begin("net", false)) return false;
-  bool ok = true;
-  if (a.dhcp) {
-    p.remove("ipfor");
-  } else {
-    ok = p.putString("ipfor", network) == network.length() && p.putString("ip", a.ip.c_str()) == a.ip.size() && p.putString("mask", a.mask.c_str()) == a.mask.size() &&
-         p.putString("gw", a.gateway.c_str()) == a.gateway.size() && p.putString("dns", a.dns.c_str()) == a.dns.size();
-  }
-  p.end();
-  if (ok) {
-    savedCause = 6;
-    wifiSavedAt = millis();
-    wifiSaved = true;
-  }
+  bool ok = withPrefs("net", [&](Preferences& p) {
+    if (a.dhcp) return p.remove("ipfor") || !p.isKey("ipfor");
+    return putText(p, "ipfor", network) && putText(p, "ip", a.ip.c_str()) && putText(p, "mask", a.mask.c_str()) && putText(p, "gw", a.gateway.c_str()) && putText(p, "dns", a.dns.c_str());
+  });
+  if (ok) requestRestart(RESTART_NEW_SETTINGS);
   return ok;
 }
 
@@ -381,9 +370,8 @@ static const BackupKey BACKUP_KEYS[] = {
 static std::string backupText() {
   std::string out = "sensorcam-backup 1\n";
   for (const BackupKey& k : BACKUP_KEYS) {
-    Preferences p;
-    if (!p.begin(k.space, true)) continue;
-    if (p.isKey(k.key)) {
+    withPrefs(k.space, [&](Preferences& p) {
+      if (!p.isKey(k.key)) return true;
       String value = k.type == 's' ? p.getString(k.key, "") : k.type == 'u' ? String(p.getUShort(k.key, 0)) : k.type == 'i' ? String(p.getInt(k.key, 0)) : String(p.getBool(k.key, false) ? 1 : 0);
       out += std::string(k.space) + "." + k.key + "=";
       char hex[4];
@@ -392,8 +380,8 @@ static std::string backupText() {
         out += hex;
       }
       out += "\n";
-    }
-    p.end();
+      return true;
+    });
   }
   return out;
 }
@@ -437,23 +425,15 @@ static bool restoreText(const std::string& text) {
   }
   if (lines.empty()) return false;
   for (const Line& l : lines) {
-    Preferences p;
-    if (!p.begin(l.key->space, false)) return false;
-    bool ok;
-    if (l.key->type == 's') {
-      p.putString(l.key->key, l.value.c_str());  // reading it back, because saving an empty value reports the same as a failure
-      ok = p.getString(l.key->key, "") == l.value.c_str();
-    } else if (l.key->type == 'u') {
-      ok = p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
-    } else if (l.key->type == 'i') {
-      ok = p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
-    } else {
-      ok = p.putBool(l.key->key, l.value == "1") == 1;
-    }
-    p.end();
+    bool ok = withPrefs(l.key->space, [&](Preferences& p) {
+      if (l.key->type == 's') return putText(p, l.key->key, l.value.c_str());
+      if (l.key->type == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
+      if (l.key->type == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
+      return p.putBool(l.key->key, l.value == "1") == 1;
+    });
     if (!ok) return false;
   }
-  requestRestart(12);
+  requestRestart(RESTART_RESTORED);
   return true;
 }
 
@@ -496,13 +476,7 @@ static CamConfig makeConfig() {
   c.webPassword = webPassword.c_str();
   c.onvifPassword = webPassword.c_str();
   c.healthAlarm = healthAlarm;
-  c.healthSave = [](bool on) {
-    Preferences p;
-    if (!p.begin("net", false)) return false;
-    bool ok = p.putBool("hlth", on) == 1;
-    p.end();
-    return ok;
-  };
+  c.healthSave = [](bool on) { return withPrefs("net", [on](Preferences& p) { return p.putBool("hlth", on) == 1; }); };
   c.firmwareBegin = [](size_t size) { return Update.begin(size, U_FLASH); };
   c.firmwareWrite = [](const uint8_t* data, size_t len) { return Update.write((uint8_t*)data, len) == len; };
   c.firmwareEnd = [](bool commit) {
@@ -511,14 +485,14 @@ static CamConfig makeConfig() {
       return true;
     }
     bool ok = Update.end(true);
-    if (ok) requestRestart(11);
+    if (ok) requestRestart(RESTART_FIRMWARE);
     return ok;
   };
   c.backupText = backupText;
   c.restoreText = restoreText;
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
-  // A request for 0 bytes asks only whether new work is safe, which needs less headroom.
-  c.canAllocate = [](size_t n) { return n == 0 ? ESP.getFreeHeap() >= 10 * 1024 : ESP.getMaxAllocHeap() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
+  c.canAllocate = [](size_t n) { return ESP.getMaxAllocHeap() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
+  c.hasHeadroom = [] { return ESP.getFreeHeap() >= 10 * 1024; };
   c.fsUsage = [](uint32_t& used, uint32_t& total) {
     used = LittleFS.usedBytes();
     total = LittleFS.totalBytes();
@@ -539,10 +513,9 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router, 8 scheduled, 9 settings reset, 10 restart button, 11 firmware update, 12 settings restored.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
-static void restartFor(uint32_t cause) {
+static void restartFor(RestartCause cause) {
   restartCause = cause;
   ESP.restart();
 }
@@ -638,21 +611,7 @@ static const char* lastRestartText() {
     case ESP_RST_SW: break;
     default: return "Other";
   }
-  switch (lastRestartCause) {
-    case 1: return "WiFi lost for 5 minutes";
-    case 2: return "Low memory";
-    case 3: return "Server stalled";
-    case 4: return "Router stopped answering";
-    case 5: return "New WiFi settings";
-    case 6: return "New web, port or address settings";
-    case 7: return "Fixed address could not reach the router";
-    case 8: return "Scheduled restart";
-    case 9: return "Settings reset";
-    case 10: return "Restart button";
-    case 11: return "Firmware update";
-    case 12: return "Settings restored";
-    default: return "Software restart";
-  }
+  return RESTART_TEXT[lastRestartCause < RESTART_CAUSES ? lastRestartCause : RESTART_UNKNOWN];
 }
 
 static std::string deviceRows() {
@@ -762,10 +721,10 @@ void loop() {
         tryNetwork(0);
       }
     }
-    if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(1);
+    if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
   }
   if (setupOpen) dnsServer.processNextRequest();
-  if (wifiSaved && millis() - wifiSavedAt > 1500) restartFor(savedCause);
+  if (restartPending && millis() - restartRequestedAt > 1500) restartFor(restartRequested);
 
   // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
   static uint32_t lowSince = 0;
@@ -773,9 +732,9 @@ void loop() {
     lowSince = 0;
   } else {
     if (lowSince == 0) lowSince = timerStart();
-    if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(2);
+    if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(RESTART_LOW_MEMORY);
   }
-  if (server->stalledMs(millis()) > 30000) restartFor(3);  // the loop runs but the server has stopped serving
+  if (server->stalledMs(millis()) > 30000) restartFor(RESTART_STALLED);  // the loop runs but the server has stopped serving
 
   // The uptime check stops the hub from restarting again within the same minute.
   static uint32_t scheduleCheckedAt = 0;
@@ -784,20 +743,20 @@ void loop() {
     time_t now = time(nullptr);
     struct tm local;
     localtime_r(&now, &local);
-    if (now > 1577836800 && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(8);
+    if (now > 1577836800 && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(RESTART_SCHEDULED);
   }
   // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
   if (connected && usingStatic && !staticChecked && millis() - connectedAt > STATIC_CHECK_MS) {
     staticChecked = true;
     if (pingReplies == 0 && pingLost > 0 && !routerAnswersArp()) {
       forgetStatic();
-      restartFor(7);
+      restartFor(RESTART_BAD_FIXED_ADDRESS);
     }
   }
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
   uint32_t lastReply = lastPingReply;
-  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(4);
+  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(RESTART_ROUTER_SILENT);
 
   static uint32_t printedAt = 0;
   if (millis() - printedAt > 10000) {

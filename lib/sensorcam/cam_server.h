@@ -13,6 +13,8 @@
 
 const int CAM_MAX_SENSORS = 32;
 
+std::string camJsonEscape(const std::string& text);
+
 struct CamSettings {
   uint16_t onvifPort = 0;
   uint16_t webPort = 0;
@@ -41,11 +43,13 @@ struct CamAddress {
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
 };
 
+// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo and onvifNetwork.
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
   std::function<void(uint32_t& used, uint32_t& total)> fsUsage;
   std::function<bool(size_t)> canAllocate;  // lets large requests be refused before they exhaust RAM
+  std::function<bool()> hasHeadroom;        // whether new connections and video frames are safe right now
   // Wi-Fi setup page. The board supplies these; the setup network is the hub's own access point.
   std::function<bool()> setupActive;           // the setup network is open
   std::string hostName;                        // the name shown in the web menu, such as esp-alarmhub.local
@@ -203,6 +207,27 @@ class SensorCamServer {
   bool loadFrame(const std::string& path);
   bool authorized(const std::string& headers) const;
   void handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen);
+  struct ApiRequest {
+    HttpConn& c;
+    const std::string& method;
+    const std::string& route;
+    const std::string& target;
+    const char* body;
+    size_t bodyLen;
+    bool is(const char* m, const char* r) const { return method == m && route == r; }
+    std::string form() const { return "?" + std::string(body, bodyLen); }  // so queryParam can read a posted form
+  };
+  void apiSetup(const ApiRequest& r);
+  bool apiPages(const ApiRequest& r);
+  bool apiInfo(const ApiRequest& r);
+  bool apiSystem(const ApiRequest& r);
+  bool apiNetwork(const ApiRequest& r);
+  void apiFiles(const ApiRequest& r);
+  std::string espNowJson();
+  static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
+  int streamCount() const;
+  bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
+  bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed, uint8_t kind = 0);
@@ -231,7 +256,7 @@ class SensorCamServer {
   SensorBoard sensors_;
   MotionSignal signal_;
   SubTable subs_;
-  int httpListen_ = -1, webListen_ = -1, captiveListen_ = -1, rtspListen_ = -1, udp_ = -1;
+  int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1, rtspListen_ = -1, udp_ = -1;
   HttpConn http_[MAX_HTTP];
   RtspConn rtsp_[MAX_RTSP];
   NotifyIo notify_[SubTable::SIZE];

@@ -186,8 +186,8 @@ def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
         check('file operations need the password', api('DELETE', f'/api/file?path={A}', auth=False)[0] == 401)
-    for slave in (A, B):
-        api('DELETE', f'/api/file?path={slave}')
+    for node in (A, B):
+        api('DELETE', f'/api/file?path={node}')
     baseline = status()['sensors']
 
     check('endless web headers are dropped without a login', dropped_after(WEB, b'GET / HTTP/1.1\r\nX: ' + b'a' * 8000))
@@ -323,8 +323,8 @@ def file_manager_tests(files, hub_files_free):
                     'name=-hub', 'name=hub-', 'name=a_b', 'name=a%20b', f'name={too_long}', f'protect=on&password={too_long}'):
             check(f'setting is refused: {bad[:30]}', api('POST', '/api/settings', bad)[0] == 400)
 
-    check('slave folder can be added', api('POST', f'/api/mkdir?path={A}')[0] == 200)
-    check('slave alone is not a sensor', status()['sensors'] == baseline)
+    check('node folder can be added', api('POST', f'/api/mkdir?path={A}')[0] == 200)
+    check('node alone is not a sensor', status()['sensors'] == baseline)
     for n in SENSORS:
         check(f'sensor folder {name(n)} can be added', api('POST', f'/api/mkdir?path={name(n)}')[0] == 200)
     check('new folders become sensors without a reboot', status()['sensors'] == baseline + 6, status())
@@ -371,9 +371,9 @@ def file_manager_tests(files, hub_files_free):
     check('thumbnail is saved', api('PUT', f'/api/file?path={jpg}', tiny)[0] == 200)
     check('thumbnail reads back', api('GET', f'/api/file?path={jpg}')[1] == tiny)
     check('bad thumbnail name is refused', api('PUT', f'/api/file?path={path[:-5]}x.jpg', tiny)[0] == 400)
-    listed = [f for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors'] for f in n['files'] if f['name'] == 'approaching.h264']
+    listed = [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'] == 'approaching.h264']
     check('tree says a picture has a thumbnail', any(f['preview'] for f in listed), listed)
-    check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
+    check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
     get(f'/sensor?{sid(4)}&direction=1')
     time.sleep(1)
     check('snapshot shows the picture being sent', snapshot(ONVIF)[2] == tiny)
@@ -392,9 +392,9 @@ def file_manager_tests(files, hub_files_free):
     check('delete of nothing reports it', api('DELETE', f'/api/file?path={name(1)}/rtl.h264')[0] == 404)
 
     tree = json.loads(api('GET', '/api/tree')[1])
-    by_mac = {s['mac']: s for s in tree['slaves']}
+    by_mac = {s['mac']: s for s in tree['nodes']}
     sensors_b = {s['input']: s for s in by_mac[B]['sensors']}
-    check('tree shows slaves and sensors', set(by_mac) >= {A, B} and sorted(s['input'] for s in by_mac[A]['sensors']) == [1, 2, 3], tree)
+    check('tree shows nodes and sensors', set(by_mac) >= {A, B} and sorted(s['input'] for s in by_mac[A]['sensors']) == [1, 2, 3], tree)
     check('tree shows the file and its size', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good), 'preview': False}], sensors_b[1])
 
     words = json.dumps({'label': 'FRONT DOOR', 'active': 'SOMEONE THERE'}).encode()
@@ -560,7 +560,7 @@ def main():
                 label = 'Front "gate"'.encode()
                 check('a sensor can be named', api('PUT', f'/api/file?path={name(1)}/name.txt', label)[0] == 200)
                 check('the name is shown with the node', node_entry(radio())['name'] == label.decode(), node_entry(radio()))
-                check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors']))
+                check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors']))
 
                 # Battery and silence alerts.
                 api('POST', '/api/wifi', 'ssid=radio-low')
@@ -733,7 +733,7 @@ def main():
             count = status()['sensors']
             check('sensor folder can be deleted', api('DELETE', f'/api/file?path={name(6)}')[0] == 200)
             check('deleted sensor is unknown at once', get(f'/sensor?{sid(6)}')[0] == 404 and status()['sensors'] == count - 1)
-            check('slave folder can be deleted with its contents', api('DELETE', f'/api/file?path={A}')[0] == 200)
+            check('node folder can be deleted with its contents', api('DELETE', f'/api/file?path={A}')[0] == 200)
             check('all its sensors are gone', get(f'/sensor?{sid(1)}')[0] == 404 and status()['sensors'] == count - 4)
 
             if proc:

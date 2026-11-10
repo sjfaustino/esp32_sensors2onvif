@@ -20,6 +20,11 @@ static const size_t MAX_FIRMWARE = 3 * 1024 * 1024;
 static const uint8_t LOW_BATTERY_PERCENT = 20;
 static const char EVENTS_FILE[] = "events.bin";
 static const char RTSP_REALM[] = "SensorCam";
+static const char HUB_USER[] = "admin";
+static const char JSON_TYPE[] = "application/json";
+static const char HTML_TYPE[] = "text/html; charset=utf-8";
+static const char JSON_OK[] = "{\"ok\":true}\n";
+static const char UNAUTHORIZED[] = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 static const uint32_t RTSP_IDLE_MS = 120000;
 static const uint32_t RTSP_STALL_MS = 30000;
 static const uint32_t NOTIFY_SEND_MS = 2000;
@@ -79,7 +84,7 @@ void SensorCamServer::openDiscovery() {
 
 bool SensorCamServer::begin() {
   netInit();
-  httpListen_ = listenOn(cfg_.onvifPort);
+  onvifListen_ = listenOn(cfg_.onvifPort);
   webListen_ = listenOn(cfg_.webPort);
   if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort) captiveListen_ = listenOn(cfg_.captivePort);
   rtspListen_ = listenOn(cfg_.rtspPort);
@@ -90,7 +95,7 @@ bool SensorCamServer::begin() {
   for (std::string& spare : spareOut_) spare.reserve(STREAM_BUFFER);
   rescan();
   loadEvents();
-  return httpListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
+  return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
 
 std::string SensorCamServer::debugLine() {
@@ -126,7 +131,7 @@ std::string* SensorCamServer::borrowFileOut(HttpConn& c) {
 
 void SensorCamServer::closeHttp(HttpConn& c) {
   if (c.firmwareActive) {  // the browser went away partway through, so the update is abandoned
-    if (cfg_.firmwareEnd) cfg_.firmwareEnd(false);
+    cfg_.firmwareEnd(false);
     firmwareOwner_ = nullptr;
   }
   if (fileOutOwner_ == &c) {
@@ -159,11 +164,11 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
-  if (listenFd == captiveListen_ && !(cfg_.setupActive && cfg_.setupActive())) {
+  if (listenFd == captiveListen_ && !cfg_.setupActive()) {
     netClose(fd);
     return;
   }
-  if (cfg_.canAllocate && !cfg_.canAllocate(0)) {  // short of RAM: let existing traffic drain first
+  if (!hasHeadroom()) {  // short of RAM: let existing traffic drain first
     refused_++;
     netClose(fd);
     return;
@@ -173,7 +178,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
     if (c.fd >= 0) continue;
     netNonblock(fd);
     c.fd = fd;
-    c.web = listenFd != httpListen_;
+    c.web = listenFd != onvifListen_;
     c.peer = a.sin_addr.s_addr;
     c.openedAt = now;
     return;
@@ -186,7 +191,7 @@ void SensorCamServer::acceptRtsp(uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(rtspListen_, (sockaddr*)&a, &len);
   if (fd < 0) return;
-  if (cfg_.canAllocate && !cfg_.canAllocate(0)) {
+  if (!hasHeadroom()) {
     netClose(fd);
     return;
   }
@@ -201,9 +206,9 @@ void SensorCamServer::acceptRtsp(uint32_t now) {
   netClose(fd);
 }
 
-// ---- HTTP: ONVIF SOAP and the sensor input share one port ----
+// ---- HTTP: ONVIF SOAP on its own port; the web pages and sensor input on another ----
 
-static std::string httpResponse(int status, const char* type, const std::string& body) {
+static std::string httpHead(int status, const char* type, size_t length, const std::string& extraHeaders = std::string()) {
   const char* text = status == 200   ? "OK"
                      : status == 400 ? "Bad Request"
                      : status == 403 ? "Forbidden"
@@ -211,8 +216,25 @@ static std::string httpResponse(int status, const char* type, const std::string&
                      : status == 422 ? "Unprocessable Entity"
                      : status == 507 ? "Insufficient Storage"
                                      : "Not Found";
-  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type + "\r\nContent-Length: " +
-         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type + "\r\n" + extraHeaders + "Content-Length: " + std::to_string(length) + "\r\nConnection: close\r\n\r\n";
+}
+
+static std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }
+static std::string jsonOk(const std::string& body) { return httpResponse(200, JSON_TYPE, body); }
+static std::string jsonFail(int status, const std::string& message) { return httpResponse(status, JSON_TYPE, "{\"ok\":false,\"error\":\"" + message + "\"}\n"); }
+static std::string saved(bool ok, const char* failure) { return ok ? jsonOk(JSON_OK) : jsonFail(507, failure); }
+
+// Replies with data that stays valid until the connection closes, without copying it.
+void SensorCamServer::sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders) {
+  c.staticBody = data;
+  c.staticLen = len;
+  c.out = httpHead(200, type, len, extraHeaders);
+}
+
+int SensorCamServer::streamCount() const {
+  int streams = 0;
+  for (const RtspConn& c : rtsp_) streams += c.playing;
+  return streams;
 }
 
 // How long a PullMessages may wait, from an xs:duration such as PT1M. Zero when it asks not to wait.
@@ -258,7 +280,7 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
     static const char* const OPEN[] = {"GetSystemDateAndTime", "GetCapabilities", "GetServices", "GetServiceCapabilities", "GetHostname", "GetEndpointReference", "GetWsdlUrl"};
     bool open = false;
     for (const char* name : OPEN) open = open || action == name;
-    if (!open && !camWsseValid(body, "admin", cfg_.onvifPassword)) {
+    if (!open && !camWsseValid(body, HUB_USER, cfg_.onvifPassword)) {
       status = 400;
       return soapNotAuthorized();
     }
@@ -322,21 +344,16 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
 // The JPEG of the picture being sent, or the built-in one for the same state when that picture has none.
 void SensorCamServer::serveSnapshot(HttpConn& c) {
   if (!frame_) frameToShow(millis_());
-  c.staticBody = nullptr;
   if (!frameFile_.empty()) {
     std::string path = camPreviewPath(frameFile_);
     std::string* out = storage_.fileSize(path) ? borrowFileOut(c) : nullptr;
     if (out && storage_.readFile(path, *out, CAM_MAX_FRAME)) {
-      c.staticBody = out->data();
-      c.staticLen = out->size();
+      sendBody(c, "image/jpeg", out->data(), out->size());
+      return;
     }
   }
-  if (!c.staticBody) {
-    const CamJpeg& builtin = CAM_SNAPSHOTS[sensors_.anyActive() ? 1 : 0];
-    c.staticBody = (const char*)builtin.data;
-    c.staticLen = builtin.len;
-  }
-  c.out = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+  const CamJpeg& builtin = CAM_SNAPSHOTS[sensors_.anyActive() ? 1 : 0];
+  sendBody(c, "image/jpeg", (const char*)builtin.data, builtin.len);
 }
 
 void SensorCamServer::servicePolls(uint32_t now) {
@@ -440,16 +457,16 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
 void SensorCamServer::noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi) {
   uint32_t now = millis_();
   UnknownSender* entry = nullptr;
+  UnknownSender* spare = &unknown_[0];  // a free row, or else the one silent for longest
   for (UnknownSender& u : unknown_) {
     if (u.used && u.input == input && memcmp(u.mac, mac, 6) == 0) {
       entry = &u;
       break;
     }
-    if (!entry || !u.used || (entry->used && now - u.heardAt > now - entry->heardAt)) {
-      if (!entry || entry->used) entry = &u;
-    }
+    if (spare->used && (!u.used || now - u.heardAt > now - spare->heardAt)) spare = &u;
   }
-  if (!entry->used || entry->input != input || memcmp(entry->mac, mac, 6) != 0) {
+  if (!entry) {
+    entry = spare;
     *entry = UnknownSender();
     entry->used = true;
     memcpy(entry->mac, mac, 6);
@@ -522,8 +539,6 @@ std::string SensorCamServer::statusJson(uint32_t now) {
     known += slots_[id - 1].used;
     if (sensors_.active(id)) active += (active.empty() ? "\"" : ",\"") + slotName(id) + "\"";
   }
-  int streams = 0;
-  for (RtspConn& c : rtsp_) streams += c.playing;
   std::string health;
   for (int id = 1; id <= sensors_.count(); id++) {
     const Health& h = health_[id - 1];
@@ -534,11 +549,11 @@ std::string SensorCamServer::statusJson(uint32_t now) {
               ",\"silent\":" + (h.silent ? "true" : "false") + "}";
   }
   return "{\"sensors\":" + std::to_string(known) + ",\"active\":[" + active + "],\"subscribers\":" +
-         std::to_string(subs_.count()) + ",\"streams\":" + std::to_string(streams) + ",\"delayed_waiting\":" + std::to_string(delayedCount_) +
+         std::to_string(subs_.count()) + ",\"streams\":" + std::to_string(streamCount()) + ",\"delayed_waiting\":" + std::to_string(delayedCount_) +
          ",\"heard\":[" + health + "],\"uptime_s\":" + std::to_string(now / 1000) + "}\n";
 }
 
-static std::string jsonEscape(const std::string& s) {
+std::string camJsonEscape(const std::string& s) {
   std::string out;
   for (char ch : s) {
     if (ch == '"' || ch == '\\') out += '\\';
@@ -550,7 +565,7 @@ static std::string jsonEscape(const std::string& s) {
 std::string SensorCamServer::eventsJson() {
   // Trimmed to what RAM allows, because running out is fatal. About 200 bytes each, doubled while building the reply.
   int count = eventCount_;
-  while (count > 0 && cfg_.canAllocate && !cfg_.canAllocate((size_t)count * 400)) count /= 2;
+  while (count > 0 && !roomFor((size_t)count * 400)) count /= 2;
   std::string out = "[";
   out.reserve((size_t)count * 200 + 8);
   for (int n = 0; n < count; n++) {
@@ -558,7 +573,7 @@ std::string SensorCamServer::eventsJson() {
     bool clockOk = e.received >= CLOCK_VALID_AFTER;
     bool ageKnown = e.age != CAM_AGE_UNKNOWN;
     if (n) out += ",";
-    out += std::string("{\"sensor\":\"") + e.sensor + "\",\"name\":\"" + jsonEscape(e.name) + "\",\"kind\":" + std::to_string(e.kind) + ",\"active\":" + (e.active ? "true" : "false") +
+    out += std::string("{\"sensor\":\"") + e.sensor + "\",\"name\":\"" + camJsonEscape(e.name) + "\",\"kind\":" + std::to_string(e.kind) + ",\"active\":" + (e.active ? "true" : "false") +
            ",\"delayed\":" + (e.delayed ? "true" : "false") +
            ",\"received\":" + (clockOk ? "\"" + iso(e.received) + "\"" : std::string("null")) +
            ",\"happened\":" + (clockOk && ageKnown ? "\"" + iso(e.received - (time_t)e.age) + "\"" : std::string("null")) +
@@ -588,9 +603,9 @@ std::string SensorCamServer::slotName(int id) const {
 
 void SensorCamServer::rescan() {
   bool seen[CAM_MAX_SENSORS] = {false};
-  std::vector<CamFsEntry> slaves;
-  storage_.list("", slaves);
-  for (const CamFsEntry& s : slaves) {
+  std::vector<CamFsEntry> nodes;
+  storage_.list("", nodes);
+  for (const CamFsEntry& s : nodes) {
     uint8_t mac[6];
     if (!s.dir || !camParseMac(s.name, mac)) continue;
     std::vector<CamFsEntry> inputs;
@@ -668,13 +683,8 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
 
 // ---- file manager ----
 
-static std::string jsonError(const char* message) { return std::string("{\"ok\":false,\"error\":\"") + message + "\"}\n"; }
-static const char JSON_OK[] = "{\"ok\":true}\n";
-
 bool SensorCamServer::authorized(const std::string& headers) const {
-  if (cfg_.webPassword.empty()) return true;
-  std::string pair = "admin:" + cfg_.webPassword;
-  return headerValue(headers, "authorization") == "Basic " + base64((const uint8_t*)pair.data(), pair.size());
+  return cfg_.webPassword.empty() || camBasicValid(headerValue(headers, "authorization"), HUB_USER, cfg_.webPassword);
 }
 
 std::string SensorCamServer::treeJson() {
@@ -682,10 +692,10 @@ std::string SensorCamServer::treeJson() {
   if (cfg_.fsUsage) cfg_.fsUsage(used, total);
   std::vector<CamFsEntry> root;
   storage_.list("", root);
-  std::string clear = "null", slaves;
+  std::string clear = "null", nodes;
   for (const CamFsEntry& s : root) {
     if (!s.dir && s.name == "clear.h264") clear = std::to_string(s.size);
-    if (!s.dir || camClassifyPath(s.name) != CAM_PATH_SLAVE) continue;
+    if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
     std::string sensors;
@@ -701,11 +711,11 @@ std::string SensorCamServer::treeJson() {
       }
       uint8_t mac[6];
       int slot = camParseMac(s.name, mac) ? findSlot(mac, (uint8_t)atoi(n.name.c_str())) : 0;
-      sensors += (sensors.empty() ? "" : ",") + std::string("{\"input\":") + n.name + ",\"name\":\"" + (slot ? jsonEscape(slots_[slot - 1].name) : std::string()) + "\",\"files\":[" + files + "]}";
+      sensors += (sensors.empty() ? "" : ",") + std::string("{\"input\":") + n.name + ",\"name\":\"" + (slot ? camJsonEscape(slots_[slot - 1].name) : std::string()) + "\",\"files\":[" + files + "]}";
     }
-    slaves += (slaves.empty() ? "" : ",") + std::string("{\"mac\":\"") + s.name + "\",\"sensors\":[" + sensors + "]}";
+    nodes += (nodes.empty() ? "" : ",") + std::string("{\"mac\":\"") + s.name + "\",\"sensors\":[" + sensors + "]}";
   }
-  return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (storage_.exists("clear.jpg") ? "true" : "false") + ",\"slaves\":[" + slaves + "]}\n";
+  return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (storage_.exists("clear.jpg") ? "true" : "false") + ",\"nodes\":[" + nodes + "]}\n";
 }
 
 // A Wi-Fi name or password can hold any character, so form values arrive percent-encoded.
@@ -772,81 +782,119 @@ static std::string peerText(uint32_t peer) {
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
-  bool inSetup = cfg_.setupActive && cfg_.setupActive();
+  bool inSetup = cfg_.setupActive();
   bool setupRoute = route == "/setup" || route == "/api/wifi" || route == "/api/wifi/scan" || (inSetup && route == "/");
   if (!(inSetup && setupRoute) && !authorized(headers)) {
-    c.out = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    c.out = UNAUTHORIZED;
     return;
   }
-  const char* json = "application/json";
-  if (setupRoute) {
-    if (method == "GET" && (route == "/" || route == "/setup")) {
-      c.staticBody = CAM_SETUP_PAGE;
-      c.staticLen = sizeof(CAM_SETUP_PAGE) - 1;
-      c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
-    } else if (method == "GET" && route == "/api/wifi/scan") {
-      c.out = httpResponse(200, json, cfg_.wifiNetworks ? cfg_.wifiNetworks() : std::string("{\"scanning\":false,\"networks\":[]}\n"));
-    } else if (method == "POST" && route == "/api/wifi") {
-      std::string form = "?" + std::string(body, bodyLen);
-      std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
-      if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63))) {
-        c.out = httpResponse(400, json, jsonError("the name must be 1 to 32 characters and the password empty or 8 to 63"));
-      } else {
-        c.out = cfg_.wifiSave && cfg_.wifiSave(ssid, password, queryParam(form, "role") == "backup") ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the Wi-Fi settings"));
-      }
-    } else {
-      c.out = httpResponse(404, json, jsonError("not found"));
-    }
-    return;
+  const ApiRequest r{c, method, route, target, body, bodyLen};
+  if (setupRoute) apiSetup(r);
+  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r)) apiFiles(r);
+}
+
+void SensorCamServer::apiSetup(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
+    sendBody(c, HTML_TYPE, CAM_SETUP_PAGE, sizeof(CAM_SETUP_PAGE) - 1);
+  } else if (r.is("GET", "/api/wifi/scan")) {
+    c.out = jsonOk(cfg_.wifiNetworks());
+  } else if (r.is("POST", "/api/wifi")) {
+    std::string form = r.form();
+    std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
+    if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63))) c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
+    else c.out = saved(cfg_.wifiSave(ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
+  } else {
+    c.out = jsonFail(404, "not found");
   }
-  if (method == "GET" && (route == "/" || route == "/files")) {
-    c.staticBody = CAM_WEB_PAGE;
-    c.staticLen = sizeof(CAM_WEB_PAGE) - 1;
-    c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
-    return;
-  }
-  if (method == "GET" && route == "/api/tree") {
-    c.out = httpResponse(200, json, treeJson());
-    return;
-  }
-  if (method == "GET" && (route == "/api/live" || route == "/api/live/frame")) {
+}
+
+bool SensorCamServer::apiPages(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.is("GET", "/") || r.is("GET", "/files")) {
+    sendBody(c, HTML_TYPE, CAM_WEB_PAGE, sizeof(CAM_WEB_PAGE) - 1);
+  } else if (r.is("GET", "/api/tree")) {
+    c.out = jsonOk(treeJson());
+  } else if (r.is("GET", "/api/live")) {
     if (!frame_) frameToShow(millis_());
-    if (route == "/api/live") {
-      c.out = httpResponse(200, json, "{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
-      return;
-    }
+    c.out = jsonOk("{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
+  } else if (r.is("GET", "/api/live/frame")) {
+    if (!frame_) frameToShow(millis_());
     std::string* out = borrowFileOut(c);
     if (!out) {
-      c.out = httpResponse(507, json, jsonError("the hub is busy; try again"));
-      return;
+      c.out = jsonFail(507, "the hub is busy; try again");
+      return true;
     }
     out->clear();
     for (int i = 0; i < frame_->count; i++) {
       out->append("\0\0\0\1", 4);
       out->append((const char*)frame_->nals[i].data, frame_->nals[i].len);
     }
-    c.staticBody = out->data();
-    c.staticLen = out->size();
-    c.out = "HTTP/1.1 200 OK\r\nContent-Type: video/h264\r\nX-Frame-Seq: " + std::to_string(liveSeq_) + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
-    return;
+    sendBody(c, "video/h264", out->data(), out->size(), "X-Frame-Seq: " + std::to_string(liveSeq_) + "\r\n");
+  } else {
+    return false;
   }
-  if (method == "GET" && route == "/api/device") {
-    std::string rows = cfg_.deviceRows ? cfg_.deviceRows() : std::string();
-    int known = 0, streams = 0;
+  return true;
+}
+
+std::string SensorCamServer::espNowJson() {
+  std::string nodes;
+  nodes.reserve((size_t)CAM_MAX_SENSORS * 170);
+  uint32_t now = millis_();
+  auto optional = [](bool known, long value) { return known ? std::to_string(value) : std::string("null"); };
+  for (int id = 1; id <= sensors_.count(); id++) {
+    if (!slots_[id - 1].used) continue;
+    const Health& h = health_[id - 1];
+    std::string name = slotName(id);
+    const char* state = sensors_.active(id) ? "active" : !h.heard ? "never" : h.silent ? "silent" : "idle";
+    nodes += (nodes.empty() ? "" : ",") + std::string("{\"low\":") + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + camJsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
+             ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
+             ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
+             ",\"counter\":" + optional(h.counterSeen, (long)h.counter) + "}";
+  }
+  std::string unknown;
+  for (const UnknownSender& u : unknown_) {
+    if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
+    unknown += (unknown.empty() ? "" : ",") + std::string("{\"mac\":\"") + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
+               ",\"rssi\":" + optional(u.rssi != 0, u.rssi) + ",\"messages\":" + std::to_string(u.messages) + "}";
+  }
+  return "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "],\"unknown\":[" + unknown + "]}\n";
+}
+
+bool SensorCamServer::apiInfo(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.is("GET", "/api/device")) {
+    std::string rows = cfg_.deviceRows();
+    int known = 0;
     for (const Slot& s : slots_) known += s.used;
-    for (RtspConn& r : rtsp_) streams += r.playing;
     uint32_t used = 0, total = 0;
     if (cfg_.fsUsage) cfg_.fsUsage(used, total);
-    c.out = httpResponse(200, json, "{\"rows\":[" + rows + (rows.empty() ? "" : ",") + "[\"Picture storage\",\"" + std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB\"]," +
-                                        "[\"Sensors\",\"" + std::to_string(known) + "\"],[\"Video streams open\",\"" + std::to_string(streams) + "\"],[\"Event subscribers\",\"" + std::to_string(subs_.count()) + "\"]]}\n");
-    return;
+    c.out = jsonOk("{\"rows\":[" + rows + (rows.empty() ? "" : ",") + "[\"Picture storage\",\"" + std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB\"]," +
+                   "[\"Sensors\",\"" + std::to_string(known) + "\"],[\"Video streams open\",\"" + std::to_string(streamCount()) + "\"],[\"Event subscribers\",\"" + std::to_string(subs_.count()) + "\"]]}\n");
+  } else if (r.is("GET", "/api/events")) {
+    c.out = jsonOk(eventsJson());
+  } else if (r.is("GET", "/api/espnow")) {
+    c.out = roomFor((size_t)CAM_MAX_SENSORS * 340) ? jsonOk(espNowJson()) : jsonFail(507, "the hub is short of memory; try again");
+  } else if (r.is("GET", "/api/info")) {
+    std::string unsupported;
+    for (const std::string& seen : unsupported_)
+      if (!seen.empty()) unsupported += (unsupported.empty() ? "\"" : ",\"") + seen + "\"";
+    c.out = jsonOk("{\"unsupported\":[" + unsupported + "],\"token\":\"" + cfg_.sensorToken + "\",\"onvifLogin\":" + (cfg_.onvifPassword.empty() ? "false" : "true") + ",\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
+                   ",\"webPort\":" + std::to_string(cfg_.webPort) + ",\"rtspPort\":" + std::to_string(cfg_.rtspPort) +
+                   ",\"streams\":" + std::to_string(streamCount()) + ",\"subscribers\":" + std::to_string(subs_.count()) +
+                   ",\"serial\":\"" + cfg_.serial + "\",\"password\":" + (cfg_.webPassword.empty() ? "false" : "true") + "}\n");
+  } else {
+    return false;
   }
-  if (method == "GET" && route == "/api/time") {
-    c.out = httpResponse(200, json, cfg_.timeJson ? cfg_.timeJson() : std::string("{}\n"));
-    return;
-  }
-  if (method == "POST" && route == "/api/time") {
-    std::string form = "?" + std::string(body, bodyLen), epochText = queryParam(form, "epoch");
+  return true;
+}
+
+bool SensorCamServer::apiSystem(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.is("GET", "/api/time")) {
+    c.out = jsonOk(cfg_.timeJson());
+  } else if (r.is("POST", "/api/time")) {
+    std::string form = r.form(), epochText = queryParam(form, "epoch");
     CamTime t;
     t.ntp = queryParam(form, "mode") != "manual";
     t.server = queryParam(form, "server");
@@ -855,166 +903,103 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     if (t.ntp) ok = ok && validNtpServer(t.server);
     else ok = ok && (t.server.empty() || validNtpServer(t.server)) && (epochText.empty() || (wholeNumber(epochText, epoch) && epoch > (long long)CLOCK_VALID_AFTER && epoch < 4102444800LL));
     if (!ok) {
-      c.out = httpResponse(400, json, jsonError("check the timezone, the NTP server name and the date and time"));
+      c.out = jsonFail(400, "check the timezone, the NTP server name and the date and time");
     } else {
       t.offsetMinutes = (int)offset;
       t.dst = (int)dst;
       t.epoch = epoch;
-      c.out = cfg_.timeSave && cfg_.timeSave(t) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the time settings"));
+      c.out = saved(cfg_.timeSave(t), "could not save the time settings");
     }
-    return;
-  }
-  if (method == "GET" && route == "/api/schedule") {
-    c.out = httpResponse(200, json, std::string("{\"on\":") + (cfg_.schedule.on ? "true" : "false") + ",\"day\":" + std::to_string(cfg_.schedule.day) + ",\"minute\":" + std::to_string(cfg_.schedule.minute) + "}\n");
-    return;
-  }
-  if (method == "POST" && route == "/api/schedule") {
-    std::string form = "?" + std::string(body, bodyLen);
+  } else if (r.is("GET", "/api/schedule")) {
+    c.out = jsonOk(std::string("{\"on\":") + (cfg_.schedule.on ? "true" : "false") + ",\"day\":" + std::to_string(cfg_.schedule.day) + ",\"minute\":" + std::to_string(cfg_.schedule.minute) + "}\n");
+  } else if (r.is("POST", "/api/schedule")) {
+    std::string form = r.form();
     long long day = 0, minute = 0;
     if (!wholeNumber(queryParam(form, "day"), day) || day < -1 || day > 6 || !wholeNumber(queryParam(form, "minute"), minute) || minute < 0 || minute > 1439) {
-      c.out = httpResponse(400, json, jsonError("check the day and the time"));
+      c.out = jsonFail(400, "check the day and the time");
     } else {
       CamSchedule s;
       s.on = queryParam(form, "on") == "1";
       s.day = (int)day;
       s.minute = (int)minute;
-      if (cfg_.scheduleSave && cfg_.scheduleSave(s)) {
-        cfg_.schedule = s;
-        c.out = httpResponse(200, json, JSON_OK);
-      } else {
-        c.out = httpResponse(507, json, jsonError("could not save the schedule"));
-      }
+      bool ok = cfg_.scheduleSave(s);
+      if (ok) cfg_.schedule = s;
+      c.out = saved(ok, "could not save the schedule");
     }
-    return;
+  } else if (r.is("POST", "/api/reboot")) {
+    c.out = saved(cfg_.maintenance("reboot"), "could not do that");
+  } else if (r.is("POST", "/api/reset")) {
+    if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
+    else c.out = saved(cfg_.maintenance("reset"), "could not do that");
+  } else if (r.is("GET", "/api/alerts")) {
+    c.out = jsonOk(std::string("{\"alarm\":") + (cfg_.healthAlarm ? "true" : "false") + "}\n");
+  } else if (r.is("POST", "/api/alerts")) {
+    bool on = queryParam(r.form(), "alarm") == "1", ok = cfg_.healthSave(on);
+    if (ok) cfg_.healthAlarm = on;
+    c.out = saved(ok, "could not save the setting");
+  } else if (r.is("GET", "/api/backup")) {
+    c.out = httpResponse(200, "text/plain", cfg_.backupText());
+  } else if (r.is("POST", "/api/restore")) {
+    c.out = cfg_.restoreText(std::string(r.body, r.bodyLen)) ? jsonOk(JSON_OK) : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
+  } else {
+    return false;
   }
-  if (method == "POST" && (route == "/api/reboot" || route == "/api/reset")) {
-    bool reset = route == "/api/reset";
-    if (reset && queryParam("?" + std::string(body, bodyLen), "confirm") != "yes") {  // erases Wi-Fi and every setting, so a stray request must not do it
-      c.out = httpResponse(400, json, jsonError("not confirmed"));
-    } else {
-      c.out = cfg_.maintenance && cfg_.maintenance(reset ? "reset" : "reboot") ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not do that"));
-    }
-    return;
-  }
-  if (method == "GET" && route == "/api/events") {
-    c.out = httpResponse(200, json, eventsJson());
-    return;
-  }
-  if (method == "GET" && route == "/api/alerts") {
-    c.out = httpResponse(200, json, std::string("{\"alarm\":") + (cfg_.healthAlarm ? "true" : "false") + "}\n");
-    return;
-  }
-  if (method == "POST" && route == "/api/alerts") {
-    bool on = queryParam("?" + std::string(body, bodyLen), "alarm") == "1";
-    if (cfg_.healthSave && cfg_.healthSave(on)) {
-      cfg_.healthAlarm = on;
-      c.out = httpResponse(200, json, JSON_OK);
-    } else {
-      c.out = httpResponse(507, json, jsonError("could not save the setting"));
-    }
-    return;
-  }
-  if (method == "GET" && route == "/api/backup") {
-    c.out = httpResponse(200, "text/plain", cfg_.backupText ? cfg_.backupText() : std::string());
-    return;
-  }
-  if (method == "POST" && route == "/api/restore") {
-    c.out = cfg_.restoreText && cfg_.restoreText(std::string(body, bodyLen)) ? httpResponse(200, json, JSON_OK) : httpResponse(400, json, jsonError("could not restore that file: it is damaged, or the hub's settings storage is full"));
-    return;
-  }
-  if (method == "GET" && route == "/api/espnow") {
-    if (cfg_.canAllocate && !cfg_.canAllocate((size_t)CAM_MAX_SENSORS * 340)) {
-      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
-      return;
-    }
-    std::string nodes;
-    nodes.reserve((size_t)CAM_MAX_SENSORS * 170);
-    uint32_t now = millis_();
-    auto optional = [](bool known, long value) { return known ? std::to_string(value) : std::string("null"); };
-    for (int id = 1; id <= sensors_.count(); id++) {
-      if (!slots_[id - 1].used) continue;
-      const Health& h = health_[id - 1];
-      std::string name = slotName(id);
-      const char* state = sensors_.active(id) ? "active" : !h.heard ? "never" : h.silent ? "silent" : "idle";
-      nodes += (nodes.empty() ? "" : ",") + std::string("{\"low\":") + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + jsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
-               ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
-               ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
-               ",\"counter\":" + optional(h.counterSeen, (long)h.counter) + "}";
-    }
-    std::string unknown;
-    for (const UnknownSender& u : unknown_) {
-      if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
-      unknown += (unknown.empty() ? "" : ",") + std::string("{\"mac\":\"") + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
-                 ",\"rssi\":" + optional(u.rssi != 0, u.rssi) + ",\"messages\":" + std::to_string(u.messages) + "}";
-    }
-    c.out = httpResponse(200, json, "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "],\"unknown\":[" + unknown + "]}\n");
-    return;
-  }
-  if (method == "GET" && route == "/api/nvr") {
+  return true;
+}
+
+bool SensorCamServer::apiNetwork(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.is("GET", "/api/nvr")) {
     uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
     bool video = false, events = false;
     std::string viewers;
-    for (RtspConn& r : rtsp_) {
-      if (r.fd < 0 || !r.playing) continue;
-      viewers += (viewers.empty() ? "\"" : ",\"") + peerText(r.peer) + "\"";
-      video = video || (nvr && r.peer == nvr);
+    for (RtspConn& v : rtsp_) {
+      if (v.fd < 0 || !v.playing) continue;
+      viewers += (viewers.empty() ? "\"" : ",\"") + peerText(v.peer) + "\"";
+      video = video || (nvr && v.peer == nvr);
     }
     for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && subs_.at(i).used && subs_.at(i).peer == nvr);
-    c.out = httpResponse(200, json, "{\"ip\":\"" + cfg_.nvrIp + "\",\"video\":" + (video ? "true" : "false") + ",\"events\":" + (events ? "true" : "false") + ",\"viewers\":[" + viewers + "]}\n");
-    return;
-  }
-  if (method == "POST" && route == "/api/nvr") {
-    std::string ip = queryParam("?" + std::string(body, bodyLen), "ip");
+    c.out = jsonOk("{\"ip\":\"" + cfg_.nvrIp + "\",\"video\":" + (video ? "true" : "false") + ",\"events\":" + (events ? "true" : "false") + ",\"viewers\":[" + viewers + "]}\n");
+  } else if (r.is("POST", "/api/nvr")) {
+    std::string ip = queryParam(r.form(), "ip");
     uint32_t parsed;
     if (!ip.empty() && !parseIpv4(ip, parsed)) {
-      c.out = httpResponse(400, json, jsonError("check the IP address"));
-    } else if (cfg_.nvrSave && cfg_.nvrSave(ip)) {
-      cfg_.nvrIp = ip;
-      c.out = httpResponse(200, json, JSON_OK);
+      c.out = jsonFail(400, "check the IP address");
     } else {
-      c.out = httpResponse(507, json, jsonError("could not save the NVR address"));
+      bool ok = cfg_.nvrSave(ip);
+      if (ok) cfg_.nvrIp = ip;
+      c.out = saved(ok, "could not save the NVR address");
     }
-    return;
-  }
-  if (method == "GET" && route == "/api/network") {
-    c.out = httpResponse(200, json, cfg_.addressJson ? cfg_.addressJson() : std::string("{}\n"));
-    return;
-  }
-  if (method == "POST" && route == "/api/network") {
-    std::string form = "?" + std::string(body, bodyLen);
+  } else if (r.is("GET", "/api/network")) {
+    c.out = jsonOk(cfg_.addressJson());
+  } else if (r.is("POST", "/api/network")) {
+    std::string form = r.form();
     CamAddress a;
     a.dhcp = queryParam(form, "mode") != "static";
     a.ip = queryParam(form, "ip");
     a.mask = queryParam(form, "mask");
     a.gateway = queryParam(form, "gateway");
     a.dns = queryParam(form, "dns");
-    if (!a.dhcp && !validAddress(a)) {
-      c.out = httpResponse(400, json, jsonError("check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address"));
-    } else {
-      c.out = cfg_.addressSave && cfg_.addressSave(a) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the address"));
-    }
-    return;
-  }
-  if (method == "POST" && route == "/api/settings") {
-    std::string form = "?" + std::string(body, bodyLen);
-    auto port = [&](const char* name, long current) {  // absent keeps the current port; anything but a plain number is invalid
+    if (!a.dhcp && !validAddress(a)) c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
+    else c.out = saved(cfg_.addressSave(a), "could not save the address");
+  } else if (r.is("POST", "/api/settings")) {
+    std::string form = r.form();
+    auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
       std::string text = queryParam(form, name);
-      if (text.empty()) return current;
-      char* end = nullptr;
-      long value = strtol(text.c_str(), &end, 10);
-      return *end ? -1L : value;
+      long long value = current;
+      return text.empty() || wholeNumber(text, value) ? value : -1LL;
     };
-    long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
+    long long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
     std::string name = queryParam(form, "name"), protect = queryParam(form, "protect"), password = percentDecode(queryParam(form, "password"));
     bool nameOk = name.size() <= 63 && (name.empty() || (name.front() != '-' && name.back() != '-'));
     for (char ch : name) nameOk = nameOk && (isalnum((unsigned char)ch) || ch == '-');
     bool passwordOn = protect.empty() ? !cfg_.webPassword.empty() : protect == "on";
     if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
-      c.out = httpResponse(400, json, jsonError("ports must be 1 to 65535 and all different"));
+      c.out = jsonFail(400, "ports must be 1 to 65535 and all different");
     } else if (!nameOk) {
-      c.out = httpResponse(400, json, jsonError("the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen"));
+      c.out = jsonFail(400, "the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen");
     } else if (password.size() > 63 || (passwordOn && password.empty() && cfg_.webPassword.empty())) {
-      c.out = httpResponse(400, json, jsonError("enter a password of up to 63 characters"));
+      c.out = jsonFail(400, "enter a password of up to 63 characters");
     } else {
       CamSettings s;
       s.onvifPort = (uint16_t)onvif;
@@ -1023,90 +1008,85 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
       s.name = name;
       s.passwordOn = passwordOn;
       s.password = password;
-      c.out = cfg_.settingsSave && cfg_.settingsSave(s) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the settings"));
+      c.out = saved(cfg_.settingsSave(s), "could not save the settings");
     }
-    return;
+  } else {
+    return false;
   }
-  if (method == "GET" && route == "/api/info") {
-    int streams = 0;
-    for (RtspConn& r : rtsp_) streams += r.playing;
-    std::string unsupported;
-    for (const std::string& seen : unsupported_)
-      if (!seen.empty()) unsupported += (unsupported.empty() ? "\"" : ",\"") + seen + "\"";
-    c.out = httpResponse(200, json, "{\"unsupported\":[" + unsupported + "],\"token\":\"" + cfg_.sensorToken + "\",\"onvifLogin\":" + (cfg_.onvifPassword.empty() ? "false" : "true") + ",\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
-                                        ",\"webPort\":" + std::to_string(cfg_.webPort) + ",\"rtspPort\":" + std::to_string(cfg_.rtspPort) +
-                                        ",\"streams\":" + std::to_string(streams) + ",\"subscribers\":" + std::to_string(subs_.count()) +
-                                        ",\"serial\":\"" + cfg_.serial + "\",\"password\":" + (cfg_.webPassword.empty() ? "false" : "true") + "}\n");
-    return;
-  }
-  bool fileRoute = route == "/api/file", mkdirRoute = route == "/api/mkdir";
+  return true;
+}
+
+void SensorCamServer::apiFiles(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  const std::string& method = r.method;
+  bool fileRoute = r.route == "/api/file", mkdirRoute = r.route == "/api/mkdir";
   if (!fileRoute && !mkdirRoute) {
-    c.out = httpResponse(404, json, jsonError("not found"));
+    c.out = jsonFail(404, "not found");
     return;
   }
-  std::string path = queryParam(target, "path");
+  std::string path = queryParam(r.target, "path");
   CamPathKind kind = camClassifyPath(path);
   bool isFile = kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR;
   bool isText = kind == CAM_PATH_TEXT;
   bool isPreview = kind == CAM_PATH_PREVIEW;
+  const char* body = r.body;
+  size_t bodyLen = r.bodyLen;
   if (kind == CAM_PATH_INVALID) {
-    c.out = httpResponse(400, json, jsonError("invalid path"));
+    c.out = jsonFail(400, "invalid path");
     return;
   }
   if (mkdirRoute && method == "POST" && !isFile && !isText && !isPreview) {
     bool ok = storage_.makeDirs(path);
     rescan();
-    c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not create the folder"));
+    c.out = saved(ok, "could not create the folder");
   } else if (fileRoute && method == "PUT" && isPreview) {
-    if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0) c.out = httpResponse(422, json, jsonError("not a JPEG"));
-    else c.out = storage_.writeFile(path, body, bodyLen) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the preview; storage may be full"));
+    if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0) c.out = jsonFail(422, "not a JPEG");
+    else c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the preview; storage may be full");
   } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
     size_t size = storage_.fileSize(path);
     if (size == 0) {
-      c.out = httpResponse(404, json, jsonError("no such file"));
+      c.out = jsonFail(404, "no such file");
     } else if (!borrowFileOut(c)) {
-      c.out = httpResponse(507, json, jsonError("the hub is busy; try again"));
+      c.out = jsonFail(507, "the hub is busy; try again");
     } else if (!storage_.readFile(path, *fileOut_, CAM_MAX_FRAME)) {
-      c.out = httpResponse(404, json, jsonError("no such file"));
+      c.out = jsonFail(404, "no such file");
     } else {
-      c.staticBody = fileOut_->data();
-      c.staticLen = fileOut_->size();
-      c.out = std::string("HTTP/1.1 200 OK\r\nContent-Type: ") + (isText ? json : isPreview ? "image/jpeg" : "video/h264") + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+      sendBody(c, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264", fileOut_->data(), fileOut_->size());
     }
   } else if (fileRoute && method == "PUT" && isText) {
-    if (bodyLen > 1024) c.out = httpResponse(413, json, jsonError("text is too long"));
-    else {
-      c.out = storage_.writeFile(path, body, bodyLen) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the text; storage may be full"));
+    if (bodyLen > 1024) {
+      c.out = jsonFail(413, "text is too long");
+    } else {
+      c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");
       if (path.size() > 9 && path.compare(path.size() - 9, 9, "/name.txt") == 0) rescan();
     }
   } else if (fileRoute && method == "PUT" && isFile) {
     CamNal nals[3];
     if (!camParseFrame((const uint8_t*)body, bodyLen, nals)) {
-      c.out = httpResponse(422, json, jsonError("not a single H.264 picture with SPS, PPS and IDR"));
+      c.out = jsonFail(422, "not a single H.264 picture with SPS, PPS and IDR");
     } else if (!camCompatibleSps(nals[0], CAM_FRAMES[0].nals[0])) {
-      c.out = httpResponse(422, json, jsonError("wrong video format: make it with tools/make_frames.py"));
+      c.out = jsonFail(422, "wrong video format: make it with tools/make_frames.py");
     } else {
       // Stored with the hub's own SPS, so the NVR sees one unchanging format whichever encoder made the picture.
       const CamNal parts[3] = {CAM_FRAMES[0].nals[0], nals[1], nals[2]};
       if (parts[0].len + parts[1].len + parts[2].len + 12 > CAM_MAX_FRAME) {
-        c.out = httpResponse(413, json, jsonError("file is larger than 32 KB"));
+        c.out = jsonFail(413, "file is larger than 32 KB");
         return;
       }
-      if (storage_.writeNals(path, parts, 3)) {
+      bool ok = storage_.writeNals(path, parts, 3);
+      if (ok) {
         if (storage_.exists(camPreviewPath(path))) storage_.removeTree(camPreviewPath(path));  // it shows the old picture
         rescan();
-        c.out = httpResponse(200, json, JSON_OK);
-      } else {
-        c.out = httpResponse(507, json, jsonError("could not save the file; storage may be full"));
       }
+      c.out = saved(ok, "could not save the file; storage may be full");
     }
   } else if (fileRoute && method == "DELETE") {
     bool ok = storage_.exists(path) && storage_.removeTree(path);
     if (ok && isFile && storage_.exists(camPreviewPath(path))) storage_.removeTree(camPreviewPath(path));
     rescan();
-    c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(404, json, jsonError("nothing to delete at that path"));
+    c.out = ok ? jsonOk(JSON_OK) : jsonFail(404, "nothing to delete at that path");
   } else {
-    c.out = httpResponse(400, json, jsonError("unsupported request"));
+    c.out = jsonFail(400, "unsupported request");
   }
 }
 
@@ -1117,7 +1097,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
   c.firmwareLeft = 0;
-  c.out = done ? httpResponse(200, "application/json", JSON_OK) : httpResponse(400, "application/json", jsonError("that is not valid firmware for this hub, so nothing was changed"));
+  c.out = done ? jsonOk(JSON_OK) : jsonFail(400, "that is not valid firmware for this hub, so nothing was changed");
   c.answered = true;
 }
 
@@ -1153,7 +1133,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   size_t contentLength = (size_t)strtoul(headerValue(headers, "content-length").c_str(), nullptr, 10);
   // A browser reports a connection closed mid-upload as a bare network error, so read the rest of the body before replying.
   auto refuse = [&](int code, const char* message) {
-    c.out = httpResponse(code, "application/json", jsonError(message));
+    c.out = jsonFail(code, message);
     c.answered = true;
     size_t got = c.in.size() - (headEnd + 4);
     c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
@@ -1163,7 +1143,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");
   // Phones and laptops probe a known site on joining a network; sending them here is what opens the setup page by itself.
-  if (c.web && isGet && cfg_.setupActive && cfg_.setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
+  if (c.web && isGet && cfg_.setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
     c.out = "HTTP/1.1 302 Found\r\nLocation: http://" + cfg_.setupAddress + "/setup\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     c.answered = true;
     return true;
@@ -1174,14 +1154,14 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   }
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
     if (!authorized(headers)) {
-      c.out = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+      c.out = UNAUTHORIZED;
       c.answered = true;
       size_t got = c.in.size() - (headEnd + 4);
       c.discardLeft = contentLength > got && contentLength <= MAX_FIRMWARE ? contentLength - got : 0;  // read the rest, so the refusal arrives as a reply
       return true;
     }
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware");
-    if (firmwareOwner_ || !cfg_.firmwareBegin || !cfg_.firmwareBegin(contentLength)) return refuse(507, "could not start the update");
+    if (firmwareOwner_ || !cfg_.firmwareBegin(contentLength)) return refuse(507, "could not start the update");
     firmwareOwner_ = &c;
     c.firmwareActive = true;
     c.firmwareLeft = contentLength;
@@ -1219,7 +1199,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     // Room for the body is claimed once at its exact size, because string growth would briefly need about twice that.
     size_t whole = headEnd + 4 + contentLength;
     if (c.in.capacity() < whole) {
-      if (cfg_.canAllocate && !cfg_.canAllocate(whole)) return refuse(507, "the hub is short of memory; try again");
+      if (!roomFor(whole)) return refuse(507, "the hub is short of memory; try again");
       c.in.reserve(whole);
     }
     if (c.in.size() < whole) return false;
@@ -1239,7 +1219,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (!cfg_.onvifPassword.empty() && queryParam(target, "token") != camSnapshotToken(cfg_.onvifPassword)) c.out = httpResponse(403, "text/plain", "not authorized\n");
     else serveSnapshot(c);
   } else if (isGet && (target.compare(0, 7, "/status") == 0 || target.compare(0, 7, "/events") == 0) && !authorized(headers)) {
-    c.out = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    c.out = UNAUTHORIZED;
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
     std::string body = handleSensor(target, status);
     c.out = httpResponse(status, "application/json", body);
@@ -1335,7 +1315,7 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
   if (!cfg_.onvifPassword.empty() && method != "OPTIONS" && !c.authed) {
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
     std::string auth = headerValue(text, "authorization");
-    if (camDigestValid(auth, method, "admin", cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, "admin", cfg_.onvifPassword)) {
+    if (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword)) {
       c.authed = true;
     } else {
       c.out += "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + RTSP_REALM + "\", nonce=\"" + c.nonce + "\"\r\nWWW-Authenticate: Basic realm=\"" + RTSP_REALM + "\"\r\n\r\n";
@@ -1421,7 +1401,7 @@ void SensorCamServer::pushFrames(uint32_t now) {
   if ((int32_t)(now - nextFrameAt_) < 0) return;
   nextFrameAt_ = now + 1000 / CAM_FPS;
   const CamFrame& frame = frameToShow(now);
-  if (cfg_.canAllocate && !cfg_.canAllocate(0)) return;  // every frame stands alone, so skipping some lets the network stack drain
+  if (!hasHeadroom()) return;  // every frame stands alone, so skipping some lets the network stack drain
   for (RtspConn& c : rtsp_) {
     // Every frame is independently decodable, so a slow client just skips one.
     if (c.fd < 0 || !c.playing || !c.out.empty()) continue;
@@ -1550,7 +1530,7 @@ void SensorCamServer::poll(int maxWaitMs) {
     if (fd > maxFd) maxFd = fd;
   };
 
-  if (httpListen_ >= 0) add(httpListen_, rd);
+  if (onvifListen_ >= 0) add(onvifListen_, rd);
   if (webListen_ >= 0) add(webListen_, rd);
   if (captiveListen_ >= 0) add(captiveListen_, rd);
   if (rtspListen_ >= 0) add(rtspListen_, rd);
@@ -1582,7 +1562,7 @@ void SensorCamServer::poll(int maxWaitMs) {
   now = millis_();
   lastGoodWait_ = now;
 
-  if (httpListen_ >= 0 && FD_ISSET(httpListen_, &rd)) acceptHttp(httpListen_, now);
+  if (onvifListen_ >= 0 && FD_ISSET(onvifListen_, &rd)) acceptHttp(onvifListen_, now);
   if (webListen_ >= 0 && FD_ISSET(webListen_, &rd)) acceptHttp(webListen_, now);
   if (captiveListen_ >= 0 && FD_ISSET(captiveListen_, &rd)) acceptHttp(captiveListen_, now);
   if (rtspListen_ >= 0 && FD_ISSET(rtspListen_, &rd)) acceptRtsp(now);

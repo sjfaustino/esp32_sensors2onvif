@@ -73,7 +73,7 @@ static void shown_sensor_carries_direction_and_delay() {
 static void classifies_storage_paths() {
   const char* mac = "AA-BB-CC-DD-EE-01";
   TEST_ASSERT_EQUAL(CAM_PATH_CLEAR, camClassifyPath("clear.h264"));
-  TEST_ASSERT_EQUAL(CAM_PATH_SLAVE, camClassifyPath(mac));
+  TEST_ASSERT_EQUAL(CAM_PATH_NODE, camClassifyPath(mac));
   TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath(std::string(mac) + "/1"));
   TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath(std::string(mac) + "/255"));
   TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/active.h264"));

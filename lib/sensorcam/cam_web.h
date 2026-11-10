@@ -38,7 +38,7 @@ static const char CAM_WEB_PAGE[] = R"HTML(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SensorCam files</title>
 <style>
-body{font:15px/1.4 system-ui,sans-serif;margin:0 auto;max-width:860px;padding:16px;color:#1b1f24;background:#f6f7f9}
+body{font:15px/1.4 system-ui,sans-serif;color:#1b1f24;display:flex;min-height:100vh;margin:0;background:#fff}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0;font-family:ui-monospace,monospace}
 .card{background:#fff;border:1px solid #d8dde3;border-radius:8px;padding:12px;margin:12px 0}
 .head{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -52,7 +52,6 @@ button.del{color:#b3261e;border-color:#e0b4b0}input[type=text]{font:inherit;padd
 details{margin-top:8px}summary{cursor:pointer;font-size:14px}
 #msg{min-height:20px;font-size:14px;margin:8px 0;white-space:pre-wrap}#msg.err{color:#b3261e}
 .bar{height:8px;background:#e6e9ed;border-radius:4px;overflow:hidden;margin-top:6px}.bar div{height:100%;background:#3b6fd4}
-body{display:flex;min-height:100vh;max-width:none;margin:0;padding:0;background:#fff}
 #menu{width:240px;min-width:240px;background:#f5f5f5;padding:15px 0}
 .first{padding:10px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:16px}
 .first::after{content:"\25BE";color:#666}.first.open::after{content:"\25B4"}
@@ -142,7 +141,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
 <div id="msg"></div>
-<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add node</button></span>
+<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addNode">Add node</button></span>
 <span id="clear"></span></div>
 <div id="tree"></div>
 <p><button id="makeThumbs">Create missing thumbnails</button></p>
@@ -302,12 +301,10 @@ async function makePreview(path,pic){
   finally{URL.revokeObjectURL(url)}}
 function header(p){let h="",n=4;while(n<p.length&&!(p[n]==0&&p[n+1]==0&&p[n+2]==0))h+=p[n++].toString(16).padStart(2,"0");return h}
 async function save(path,pic){
-  for(let tries=0;;tries++){
-    try{const done=await call("PUT","/api/file?path="+path,pic);await makePreview(path,pic).catch(()=>{});return done}
-    catch(e){
-      if(e.message.includes("short of memory")&&tries<4){await new Promise(r=>setTimeout(r,1500));continue}
-      if(e.message.includes("wrong video format"))throw new Error("The hub refused this browser's video format. Please report this header: "+header(pic));
-      throw e}}}
+  try{const done=await call("PUT","/api/file?path="+path,pic);await makePreview(path,pic).catch(()=>{});return done}
+  catch(e){
+    if(e.message.includes("wrong video format"))throw new Error("The hub refused this browser's video format. Please report this header: "+header(pic));
+    throw e}}
 async function readText(p){try{const r=await fetch("/api/file?path="+p);if(r.ok)return await r.json()}catch(e){}return {}}
 let busy=false;
 async function makeAll(jobsList,textPath,text){
@@ -354,8 +351,8 @@ function render(t){
   if(t.clear!=null)c.append(" ",previewButton("clear.h264","clear.h264")," ",el("button",{className:"del",textContent:"Delete",onclick:()=>del("clear.h264","clear.h264")}));
   c.append(clearPanel());
   const tree=$("tree");tree.textContent="";
-  if(!t.slaves.length)tree.append(el("p",{className:"missing",textContent:"No nodes yet. Add one by its MAC address."}));
-  for(const s of t.slaves){
+  if(!t.nodes.length)tree.append(el("p",{className:"missing",textContent:"No nodes yet. Add one by its MAC address."}));
+  for(const s of t.nodes){
     const num=el("input",{type:"text",placeholder:"sensor no.",size:9});
     const card=el("div",{className:"card"},el("div",{className:"head"},el("h2",{textContent:s.mac}),
       el("span",null,num," ",el("button",{textContent:"Add sensor",onclick:()=>{
@@ -373,11 +370,11 @@ function render(t){
 async function load(){try{render(await call("GET","/api/tree"))}catch(e){say(e.message,true)}}
 $("makeThumbs").onclick=()=>act(async()=>{const t=await call("GET","/api/tree"),list=[];
   if(t.clear!=null&&!t.clearPreview)list.push("clear.h264");
-  for(const s of t.slaves)for(const n of s.sensors)for(const f of n.files)if(!f.preview)list.push(s.mac+"/"+n.input+"/"+f.name);
+  for(const s of t.nodes)for(const n of s.sensors)for(const f of n.files)if(!f.preview)list.push(s.mac+"/"+n.input+"/"+f.name);
   for(let i=0;i<list.length;i++){say("Making thumbnail "+(i+1)+" of "+list.length+". The first time, this downloads about 30 MB.");
     const r=await fetch("/api/file?path="+list[i]);if(!r.ok)throw new Error("The hub could not send "+list[i]);
     await makePreview(list[i],new Uint8Array(await r.arrayBuffer()))}},"Thumbnails are up to date");
-$("addSlave").onclick=()=>{const m=$("mac").value.trim().toUpperCase().replace(/:/g,"-");
+$("addNode").onclick=()=>{const m=$("mac").value.trim().toUpperCase().replace(/:/g,"-");
   if(!/^([0-9A-F]{2}-){5}[0-9A-F]{2}$/.test(m)){say("Enter a MAC address like AA:BB:CC:DD:EE:01",true);return}
   act(()=>call("POST","/api/mkdir?path="+m),"Added node "+m).then(()=>$("mac").value="")};
 load();
@@ -385,58 +382,58 @@ load();
 <script>
 (()=>{
 const firsts=[...document.querySelectorAll(".first")],items=[...document.querySelectorAll(".item")];
-function fill(id,rows){const t=document.getElementById(id);t.replaceChildren(...rows.map(([k,v])=>{const r=t.insertRow(),a=r.insertCell(),b=r.insertCell();a.textContent=k;b.textContent=v;return r}))}
+function fill(id,rows){const t=$(id);t.replaceChildren(...rows.map(([k,v])=>{const r=t.insertRow(),a=r.insertCell(),b=r.insertCell();a.textContent=k;b.textContent=v;return r}))}
+// Sends a change to the hub and reports the outcome in m. True when the hub accepted it.
+async function send(m,url,body,done,method,failed){m.className="portMsg";
+try{const r=await fetch(url,{method:method||"POST",body});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return false}
+if(done)m.textContent=done;return true}catch(e){m.className="portMsg err";m.textContent=failed||"The hub did not answer. Try again.";return false}}
+const headRow=names=>el("tr",null,...names.map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})));
 async function info(view){try{const r=await fetch("/api/info");const i=await r.json();
 const at=i.webPort==80?"":":"+i.webPort;
-document.getElementById("onvifPort").value=i.onvifPort;document.getElementById("webPort").value=i.webPort;
-document.getElementById("rtspPort").value=i.rtspPort;
+$("onvifPort").value=i.onvifPort;$("webPort").value=i.webPort;
+$("rtspPort").value=i.rtspPort;
 if(view=="rtsp")fill("rtspInfo",[["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Video streams open",i.streams]]);
-document.getElementById("hubName").value=i.name.replace(/\.local$/,"");document.getElementById("protect").checked=i.password;
-document.getElementById("pwRow").hidden=!i.password;document.getElementById("webPw").placeholder=i.password?"Leave empty to keep it":"";
+$("hubName").value=i.name.replace(/\.local$/,"");$("protect").checked=i.password;
+$("pwRow").hidden=!i.password;$("webPw").placeholder=i.password?"Leave empty to keep it":"";
 if(view=="onvif")fill("onvifInfo",[["Login",i.onvifLogin?"Required: user admin and the hub password":"None"],["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial],["Requests not supported",i.unsupported.join(", ")||"None"]]);
 if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"],["Sensor token","add &token="+i.token+" to /sensor requests"]])}catch(e){}}
-const netField=i=>document.getElementById(i);
 // Asks once a second which picture is being sent, and fetches and decodes one only when it changes.
 let liveRun=0,liveSeq=null,liveUrl=null;
-async function livePoll(run){if(run!=liveRun)return;let wait=1000;const m=netField("liveMsg");
-try{const j=await(await fetch("/api/live",{cache:"no-store"})).json();if(run!=liveRun)return;netField("liveFile").textContent=j.file;
+async function livePoll(run){if(run!=liveRun)return;let wait=1000;const m=$("liveMsg");
+try{const j=await(await fetch("/api/live",{cache:"no-store"})).json();if(run!=liveRun)return;$("liveFile").textContent=j.file;
 if(j.seq!==liveSeq){if(liveSeq===null)m.textContent="Getting the decoder ready. The first time, this downloads about 30 MB.";
 const r=await fetch("/api/live/frame",{cache:"no-store"});if(!r.ok)throw new Error("The hub could not send the picture.");
 const seq=Number(r.headers.get("X-Frame-Seq")),url=await decoded(new Uint8Array(await r.arrayBuffer()));
 if(run!=liveRun){URL.revokeObjectURL(url);return}
-if(liveUrl)URL.revokeObjectURL(liveUrl);liveUrl=url;const img=netField("liveImg");img.src=url;img.style.display="block";liveSeq=seq;m.className="portMsg";m.textContent=""}}
+if(liveUrl)URL.revokeObjectURL(liveUrl);liveUrl=url;const img=$("liveImg");img.src=url;img.style.display="block";liveSeq=seq;m.className="portMsg";m.textContent=""}}
 catch(e){wait=5000;m.className="portMsg err";m.textContent="Could not show the picture. The decoder needs internet access the first time. "+(e.message||"")}
 setTimeout(()=>livePoll(run),wait)}
 function setLive(on){liveRun++;if(on){liveSeq=null;livePoll(liveRun)}}
-function netState(){const off=netField("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>netField(i).disabled=off)}
+function netState(){const off=$("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>$(i).disabled=off)}
 let sysTimer=0;
 const ZONES=[-720,-660,-600,-540,-480,-420,-360,-300,-270,-240,-210,-180,-120,-60,0,60,120,180,210,240,270,300,330,345,360,390,420,480,540,570,600,660,720,780];
 const two=n=>String(n).padStart(2,"0");
-netField("tmZone").replaceChildren(...ZONES.map(z=>el("option",{value:z,textContent:"UTC"+(z<0?"-":"+")+two(Math.floor(Math.abs(z)/60))+":"+two(Math.abs(z)%60)})));
-function timeState(){const manual=netField("tmMode").value=="manual";netField("tmServer").disabled=manual;netField("tmManual").disabled=!manual}
-netField("tmMode").onchange=timeState;
-async function tickTime(){try{const t=await(await fetch("/api/time")).json();netField("tmNow").value=t.synced?t.local:"Not set yet";return t}catch(e){return null}}
-async function loadTime(){const t=await tickTime();if(!t)return;netField("tmZone").value=t.offset;netField("tmDst").value=t.dst;netField("tmMode").value=t.ntp?"ntp":"manual";netField("tmServer").value=t.server;timeState()}
-netField("tmFromPc").onclick=()=>{const d=new Date();netField("tmMode").value="manual";timeState();
-netField("tmManual").value=d.getFullYear()+"-"+two(d.getMonth()+1)+"-"+two(d.getDate())+"T"+two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds());
-const m=netField("tmMsg");m.className="portMsg";m.textContent="Read from this PC. Press Save to set the hub to this time."};
-netField("saveTime").onclick=async()=>{const m=netField("tmMsg"),manual=netField("tmMode").value=="manual",v=netField("tmManual").value;m.className="portMsg";
+$("tmZone").replaceChildren(...ZONES.map(z=>el("option",{value:z,textContent:"UTC"+(z<0?"-":"+")+two(Math.floor(Math.abs(z)/60))+":"+two(Math.abs(z)%60)})));
+function timeState(){const manual=$("tmMode").value=="manual";$("tmServer").disabled=manual;$("tmManual").disabled=!manual}
+$("tmMode").onchange=timeState;
+async function tickTime(){try{const t=await(await fetch("/api/time")).json();$("tmNow").value=t.synced?t.local:"Not set yet";return t}catch(e){return null}}
+async function loadTime(){const t=await tickTime();if(!t)return;$("tmZone").value=t.offset;$("tmDst").value=t.dst;$("tmMode").value=t.ntp?"ntp":"manual";$("tmServer").value=t.server;timeState()}
+$("tmFromPc").onclick=()=>{const d=new Date();$("tmMode").value="manual";timeState();
+$("tmManual").value=d.getFullYear()+"-"+two(d.getMonth()+1)+"-"+two(d.getDate())+"T"+two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds());
+const m=$("tmMsg");m.className="portMsg";m.textContent="Read from this PC. Press Save to set the hub to this time."};
+$("saveTime").onclick=async()=>{const m=$("tmMsg"),manual=$("tmMode").value=="manual",v=$("tmManual").value;m.className="portMsg";
 if(manual&&!v){m.className="portMsg err";m.textContent="Enter the date and time, or use Read from this PC.";return}
-let body="mode="+(manual?"manual":"ntp")+"&offset="+netField("tmZone").value+"&dst="+netField("tmDst").value+"&server="+encodeURIComponent(netField("tmServer").value);
+let body="mode="+(manual?"manual":"ntp")+"&offset="+$("tmZone").value+"&dst="+$("tmDst").value+"&server="+encodeURIComponent($("tmServer").value);
 if(manual)body+="&epoch="+Math.floor(new Date(v).getTime()/1000);
-try{const r=await fetch("/api/time",{method:"POST",body});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Saved.";tickTime()}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
-async function loadSchedule(){try{const s=await(await fetch("/api/schedule")).json();netField("rbOn").checked=s.on;netField("rbDay").value=s.day;netField("rbTime").value=two(Math.floor(s.minute/60))+":"+two(s.minute%60)}catch(e){}}
-netField("saveRb").onclick=async()=>{const m=netField("rbMsg"),v=netField("rbTime").value;m.className="portMsg";
+if(await send(m,"/api/time",body,"Saved."))tickTime()};
+async function loadSchedule(){try{const s=await(await fetch("/api/schedule")).json();$("rbOn").checked=s.on;$("rbDay").value=s.day;$("rbTime").value=two(Math.floor(s.minute/60))+":"+two(s.minute%60)}catch(e){}}
+$("saveRb").onclick=async()=>{const m=$("rbMsg"),v=$("rbTime").value;m.className="portMsg";
 if(!v){m.className="portMsg err";m.textContent="Enter a time.";return}
 const minute=Number(v.slice(0,2))*60+Number(v.slice(3,5));
-try{const r=await fetch("/api/schedule",{method:"POST",body:"on="+(netField("rbOn").checked?1:0)+"&day="+netField("rbDay").value+"&minute="+minute});const j=await r.json();
-if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}m.textContent="Saved."}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
-async function sysAction(url,body,done,after){const m=netField("sysMsg");m.className="portMsg";
-try{const r=await fetch(url,{method:"POST",body});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent=done;if(after)setTimeout(after,12000)}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}}
-netField("rebootNow").onclick=()=>{if(confirm("Restart the hub now? The video stops for a few seconds."))sysAction("/api/reboot","","The hub is restarting.",()=>location.reload())};
-netField("resetAll").onclick=()=>{if(confirm("Erase the saved WiFi networks, ports, name, web password, fixed address and time settings? The hub will restart and may move to another address."))sysAction("/api/reset","confirm=yes","Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network.")};
+send(m,"/api/schedule","on="+($("rbOn").checked?1:0)+"&day="+$("rbDay").value+"&minute="+minute,"Saved.")};
+async function sysAction(url,body,done,after){if(await send($("sysMsg"),url,body,done)&&after)setTimeout(after,12000)}
+$("rebootNow").onclick=()=>{if(confirm("Restart the hub now? The video stops for a few seconds."))sysAction("/api/reboot","","The hub is restarting.",()=>location.reload())};
+$("resetAll").onclick=()=>{if(confirm("Erase the saved WiFi networks, ports, name, web password, fixed address and time settings? The hub will restart and may move to another address."))sysAction("/api/reset","confirm=yes","Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network.")};
 async function loadDevice(){try{const j=await(await fetch("/api/device")).json();fill("devInfo",j.rows)}catch(e){}}
 function setSys(view){clearInterval(sysTimer);
 if(view=="maintenance")loadSchedule();
@@ -448,74 +445,60 @@ function heardAgo(s){return s==null?"Never":s<60?s+" s ago":s<3600?Math.floor(s/
 async function loadEsp(){try{const j=await(await fetch("/api/espnow")).json();
 fill("espInfo",[["Hub MAC address",j.mac],["WiFi channel",j.channel]]);
 const STATES={active:"Active",idle:"Idle",silent:"Silent (no report for 3 hours)",never:"Not heard yet"};
-netField("espNodes").replaceChildren(...(j.nodes.length?[el("tr",null,...["Name","Node","Sensor","State","Last heard","Battery","Signal","Report no."].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+$("espNodes").replaceChildren(...(j.nodes.length?[headRow(["Name","Node","Sensor","State","Last heard","Battery","Signal","Report no."])]:[]),
 ...j.nodes.map(n=>el("tr",null,...[n.name||"-",n.node,n.input,STATES[n.state],heardAgo(n.ago),n.battery==null?"-":n.battery+"%"+(n.low?" (low)":""),n.rssi==null?"-":n.rssi+" dBm",n.counter==null?"-":n.counter].map(v=>el("td",{textContent:v})))));
-netField("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors.";
-netField("espUnknown").replaceChildren(...(j.unknown.length?[el("tr",null,...["Node","Sensor","Last heard","Signal","Messages",""].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
-...j.unknown.map(n=>el("tr",null,...[n.mac,n.input,heardAgo(n.ago),n.rssi==null?"-":n.rssi+" dBm",n.messages].map(v=>el("td",{textContent:v})),el("td",null,el("button",{textContent:"Add node",onclick:async()=>{try{await call("POST","/api/mkdir?path="+n.mac+"/"+n.input);loadEsp();load()}catch(e){netField("espNone").textContent=e.message}}})))));
-netField("espNone").textContent=j.unknown.length?"These are ignored until added under Sensors Manager > Sensors.":"None since the hub last started."}catch(e){}}
-function setEsp(on){clearInterval(espTimer);if(on){loadEsp();call("GET","/api/alerts").then(a=>netField("espAlarm").checked=a.alarm).catch(()=>{});espTimer=setInterval(loadEsp,3000)}}
-netField("espAlarm").onchange=e=>{call("POST","/api/alerts","alarm="+(e.target.checked?1:0)).catch(()=>{})};
+$("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors.";
+$("espUnknown").replaceChildren(...(j.unknown.length?[headRow(["Node","Sensor","Last heard","Signal","Messages",""])]:[]),
+...j.unknown.map(n=>el("tr",null,...[n.mac,n.input,heardAgo(n.ago),n.rssi==null?"-":n.rssi+" dBm",n.messages].map(v=>el("td",{textContent:v})),el("td",null,el("button",{textContent:"Add node",onclick:async()=>{try{await call("POST","/api/mkdir?path="+n.mac+"/"+n.input);loadEsp();load()}catch(e){$("espNone").textContent=e.message}}})))));
+$("espNone").textContent=j.unknown.length?"These are ignored until added under Sensors Manager > Sensors.":"None since the hub last started."}catch(e){}}
+function setEsp(on){clearInterval(espTimer);if(on){loadEsp();call("GET","/api/alerts").then(a=>$("espAlarm").checked=a.alarm).catch(()=>{});espTimer=setInterval(loadEsp,3000)}}
+$("espAlarm").onchange=e=>{call("POST","/api/alerts","alarm="+(e.target.checked?1:0)).catch(()=>{})};
 const DIRECTIONS=["","approaching","moving away","left to right","right to left"];
 async function loadEvents(){try{const list=await call("GET","/api/events");
-netField("evTable").replaceChildren(...(list.length?[el("tr",null,...["Time","Sensor","Event","Details","Battery"].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+$("evTable").replaceChildren(...(list.length?[headRow(["Time","Sensor","Event","Details","Battery"])]:[]),
 ...list.map(e=>{const when=e.happened||e.received,what=e.kind==1?"Went silent":e.kind==2?"Low battery":e.active?"Active":"Clear";
 const details=[e.delayed?"delayed":""].concat(e.targets.map(t=>[t.distance_cm==null?"":(t.distance_cm/100).toFixed(2)+" m",DIRECTIONS[t.direction]||""].filter(Boolean).join(" "))).filter(Boolean).join(", ");
 return el("tr",null,...[when?new Date(when).toLocaleString():"Clock not set",e.name||e.sensor,what,details||"-",e.battery==null?"-":e.battery+"%"].map(v=>el("td",{textContent:v})))}));
-netField("evNone").textContent=list.length?"":"No events yet."}catch(e){}}
-netField("fwSend").onclick=async()=>{const m=netField("fwMsg"),f=netField("fwFile").files[0];m.className="portMsg";
+$("evNone").textContent=list.length?"":"No events yet."}catch(e){}}
+$("fwSend").onclick=async()=>{const m=$("fwMsg"),f=$("fwFile").files[0];m.className="portMsg";
 if(!f){m.className="portMsg err";m.textContent="Choose a firmware .bin file first.";return}
 if(!confirm("Update the firmware? The hub restarts when it finishes, and the video stops until then."))return;
 m.textContent="Uploading. Keep this page open.";
-try{const r=await fetch("/api/firmware",{method:"PUT",body:f});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Done. The hub is restarting.";setTimeout(()=>location.reload(),25000)}catch(e){m.className="portMsg err";m.textContent="The upload failed. The hub keeps its current firmware."}};
-netField("rsSend").onclick=async()=>{const m=netField("rsMsg"),f=netField("rsFile").files[0];m.className="portMsg";
+if(await send(m,"/api/firmware",f,"Done. The hub is restarting.","PUT","The upload failed. The hub keeps its current firmware."))setTimeout(()=>location.reload(),25000)};
+$("rsSend").onclick=async()=>{const m=$("rsMsg"),f=$("rsFile").files[0];m.className="portMsg";
 if(!f){m.className="portMsg err";m.textContent="Choose a backup file first.";return}
 if(!confirm("Replace the hub's settings with this backup? It will restart and may move to another address."))return;
-try{const r=await fetch("/api/restore",{method:"POST",body:await f.text()});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Restored. The hub is restarting."}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
-async function loadNvr(){try{const n=await(await fetch("/api/nvr")).json();netField("nvrIp").value=n.ip;
+send(m,"/api/restore",await f.text(),"Restored. The hub is restarting.")};
+async function loadNvr(){try{const n=await(await fetch("/api/nvr")).json();$("nvrIp").value=n.ip;
 const state=on=>!n.ip?"Enter the NVR's IP address":on?"Connected":"Not connected";
 fill("nvrInfo",[["Video",state(n.video)],["Motion events",state(n.events)],["Viewers connected now",n.viewers.join(", ")||"None"]])}catch(e){}}
-netField("saveNvr").onclick=async()=>{const m=netField("nvrMsg");m.className="portMsg";
-try{const r=await fetch("/api/nvr",{method:"POST",body:"ip="+encodeURIComponent(netField("nvrIp").value)});const j=await r.json();
-if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Saved.";loadNvr()}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
+$("saveNvr").onclick=async()=>{if(await send($("nvrMsg"),"/api/nvr","ip="+encodeURIComponent($("nvrIp").value),"Saved."))loadNvr()};
 async function loadNet(){try{const n=await(await fetch("/api/network")).json();
-netField("netType").value=n.type;netField("netMode").value=n.dhcp?"dhcp":"static";netField("netIp").value=n.ip;netField("netMask").value=n.mask;netField("netGw").value=n.gateway;netField("netDns").value=n.dns;netField("netMac").value=n.mac;netState();
-netField("netMsg").className="portMsg";netField("netMsg").textContent=n.dhcp?"":"This fixed address is used only on "+n.staticFor+". Other WiFi networks use DHCP."}catch(e){}}
-netField("netMode").onchange=netState;
-netField("saveNet").onclick=async()=>{const m=netField("netMsg"),mode=netField("netMode").value,ip=netField("netIp").value;
-if(!confirm("The hub will restart to apply this. A fixed address is used only on the WiFi network it is connected to now. Continue?"))return;m.className="portMsg";
-try{const r=await fetch("/api/network",{method:"POST",body:"mode="+mode+"&ip="+encodeURIComponent(ip)+"&mask="+encodeURIComponent(netField("netMask").value)+"&gateway="+encodeURIComponent(netField("netGw").value)+"&dns="+encodeURIComponent(netField("netDns").value)});const j=await r.json();
-if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+$("netType").value=n.type;$("netMode").value=n.dhcp?"dhcp":"static";$("netIp").value=n.ip;$("netMask").value=n.mask;$("netGw").value=n.gateway;$("netDns").value=n.dns;$("netMac").value=n.mac;netState();
+$("netMsg").className="portMsg";$("netMsg").textContent=n.dhcp?"":"This fixed address is used only on "+n.staticFor+". Other WiFi networks use DHCP."}catch(e){}}
+$("netMode").onchange=netState;
+$("saveNet").onclick=async()=>{const m=$("netMsg"),mode=$("netMode").value,ip=$("netIp").value;
+if(!confirm("The hub will restart to apply this. A fixed address is used only on the WiFi network it is connected to now. Continue?"))return;
+if(!await send(m,"/api/network","mode="+mode+"&ip="+encodeURIComponent(ip)+"&mask="+encodeURIComponent($("netMask").value)+"&gateway="+encodeURIComponent($("netGw").value)+"&dns="+encodeURIComponent($("netDns").value)))return;
 const named=location.hostname.endsWith(".local");
 m.textContent=mode=="static"||named?"Saved. The hub is restarting.":"Saved. The hub is restarting and will get its address from the router. Open it by name, or find the new address in the router.";
-if(mode=="static"||named)setTimeout(()=>{location.href=location.protocol+"//"+(named?location.hostname:ip)+(location.port?":"+location.port:"")+"/"+location.hash},12000)}
-catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
-async function savePort(field,input,msg,warning){const v=document.getElementById(input).value,m=document.getElementById(msg);
-if(!confirm(warning))return;m.className="portMsg";
-try{const r=await fetch("/api/settings",{method:"POST",body:field+"="+encodeURIComponent(v)});const j=await r.json();
-if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Saved. The hub is restarting.";
-setTimeout(()=>location.reload(),10000)}
-catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}}
-document.getElementById("protect").onchange=e=>{document.getElementById("pwRow").hidden=!e.target.checked};
-document.getElementById("saveRtsp").onclick=()=>savePort("rtsp","rtspPort","rtspMsg","The hub will restart and the video will stop briefly. A viewer such as VLC will need the new address. Continue?");
-document.getElementById("saveOnvif").onclick=()=>savePort("onvif","onvifPort","onvifMsg","The hub will restart, and the NVR will lose this camera until its channel is set to the new port. Continue?");
-document.getElementById("saveWeb").onclick=async()=>{const g=i=>document.getElementById(i),m=g("webMsg"),port=g("webPort").value,name=g("hubName").value,on=g("protect").checked;
-if(!confirm("The hub will restart to apply these settings. Continue?"))return;m.className="portMsg";
-try{const r=await fetch("/api/settings",{method:"POST",body:"web="+encodeURIComponent(port)+"&name="+encodeURIComponent(name)+"&protect="+(on?"on":"off")+"&password="+encodeURIComponent(g("webPw").value)});const j=await r.json();
-if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
-m.textContent="Saved. The hub is restarting.";
+if(mode=="static"||named)setTimeout(()=>{location.href=location.protocol+"//"+(named?location.hostname:ip)+(location.port?":"+location.port:"")+"/"+location.hash},12000)};
+async function savePort(field,input,msg,warning){const v=$(input).value,m=$(msg);
+if(!confirm(warning))return;
+if(await send(m,"/api/settings",field+"="+encodeURIComponent(v),"Saved. The hub is restarting."))setTimeout(()=>location.reload(),10000)}
+$("protect").onchange=e=>{$("pwRow").hidden=!e.target.checked};
+$("saveRtsp").onclick=()=>savePort("rtsp","rtspPort","rtspMsg","The hub will restart and the video will stop briefly. A viewer such as VLC will need the new address. Continue?");
+$("saveOnvif").onclick=()=>savePort("onvif","onvifPort","onvifMsg","The hub will restart, and the NVR will lose this camera until its channel is set to the new port. Continue?");
+$("saveWeb").onclick=async()=>{const m=$("webMsg"),port=$("webPort").value,name=$("hubName").value,on=$("protect").checked;
+if(!confirm("The hub will restart to apply these settings. Continue?"))return;
+if(!await send(m,"/api/settings","web="+encodeURIComponent(port)+"&name="+encodeURIComponent(name)+"&protect="+(on?"on":"off")+"&password="+encodeURIComponent($("webPw").value),"Saved. The hub is restarting."))return;
 const host=location.hostname.endsWith(".local")?name+".local":location.hostname;
-setTimeout(()=>{location.href=location.protocol+"//"+host+":"+port+"/"+location.hash},10000)}
-catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
+setTimeout(()=>{location.href=location.protocol+"//"+host+":"+port+"/"+location.hash},10000)};
 function expand(f,on){f.classList.toggle("open",on);f.nextElementSibling.classList.toggle("show",on)}
-function show(view){if(!document.getElementById("view-"+view))view="sensors";
+function show(view){if(!$("view-"+view))view="sensors";
 document.querySelectorAll(".view").forEach(v=>v.hidden=v.id!="view-"+view);
 items.forEach(i=>{const on=i.dataset.view==view;i.classList.toggle("active",on);if(on){firsts.forEach(f=>expand(f,false));expand(i.parentElement.previousElementSibling,true)}});
-if(view=="wifi"){const n=document.getElementById("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
+if(view=="wifi"){const n=$("netFrame");if(!n.getAttribute("src"))n.src="/setup"}
 if(view=="network")loadNet();
 if(view=="nvr")loadNvr();
 setLive(view=="live");

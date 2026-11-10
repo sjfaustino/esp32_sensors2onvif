@@ -93,15 +93,9 @@ std::string camMd5Hex(const std::string& data) {
     h[2] += c;
     h[3] += d;
   }
-  static const char hex[] = "0123456789abcdef";
-  std::string out;
-  for (uint32_t v : h)
-    for (int i = 0; i < 4; i++) {
-      uint8_t byte = (uint8_t)(v >> (8 * i));
-      out += hex[byte >> 4];
-      out += hex[byte & 15];
-    }
-  return out;
+  uint8_t bytes[16];
+  for (int i = 0; i < 16; i++) bytes[i] = (uint8_t)(h[i / 4] >> (8 * (i % 4)));
+  return camHex(bytes, sizeof(bytes));
 }
 
 std::string camBase64Decode(const std::string& text) {
@@ -168,11 +162,5 @@ bool camBasicValid(const std::string& auth, const std::string& user, const std::
 
 std::string camSnapshotToken(const std::string& password) {
   std::string digest = camSha1("snapshot:" + password);
-  static const char hex[] = "0123456789abcdef";
-  std::string out;
-  for (int i = 0; i < 8; i++) {
-    out += hex[(uint8_t)digest[i] >> 4];
-    out += hex[(uint8_t)digest[i] & 15];
-  }
-  return out;
+  return camHex((const uint8_t*)digest.data(), 8);
 }

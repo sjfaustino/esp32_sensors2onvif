@@ -70,16 +70,20 @@ std::string base64(const uint8_t* d, size_t len) {
   return o;
 }
 
+std::string camHex(const uint8_t* d, size_t len) {
+  static const char digits[] = "0123456789abcdef";
+  std::string out;
+  for (size_t i = 0; i < len; i++) {
+    out += digits[d[i] >> 4];
+    out += digits[d[i] & 15];
+  }
+  return out;
+}
+
 std::string cameraSdp() {
   const CamNal& sps = CAM_FRAMES[0].nals[0];
   const CamNal& pps = CAM_FRAMES[0].nals[1];
-  char profile[8];
-  static const char hex[] = "0123456789abcdef";
-  for (int i = 0; i < 3; i++) {
-    profile[i * 2] = hex[sps.data[i + 1] >> 4];
-    profile[i * 2 + 1] = hex[sps.data[i + 1] & 15];
-  }
-  profile[6] = 0;
+  std::string profile = camHex(sps.data + 1, 3);
   return std::string("v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=SensorCam\r\nt=0 0\r\na=control:*\r\nm=video 0 RTP/AVP 96\r\n") +
          "c=IN IP4 0.0.0.0\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 packetization-mode=1;profile-level-id=" + profile +
          ";sprop-parameter-sets=" + base64(sps.data, sps.len) + "," + base64(pps.data, pps.len) +

@@ -1,7 +1,7 @@
 // Picture files on LittleFS, laid out as:
 //   clear.h264                      optional replacement for the built-in "all clear"
-//   AA-BB-CC-DD-EE-01/              one folder per slave ESP, named after its MAC address
-//   AA-BB-CC-DD-EE-01/1/            one subfolder per sensor on that slave
+//   AA-BB-CC-DD-EE-01/              one folder per node ESP, named after its MAC address
+//   AA-BB-CC-DD-EE-01/1/            one subfolder per sensor on that node
 //   AA-BB-CC-DD-EE-01/1/active.h264 ... one file per state
 // Uses C stdio, which reaches LittleFS through the ESP-IDF VFS and a plain folder on a PC.
 #pragma once
@@ -16,7 +16,7 @@ const size_t CAM_MAX_FRAME = 32 * 1024;  // three buffers this size are in use w
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set.
 // CAM_PATH_PREVIEW is the JPEG beside a picture, made by the browser for ONVIF snapshots, because the hub cannot decode H.264.
-enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_SLAVE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT, CAM_PATH_PREVIEW };
+enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_NODE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT, CAM_PATH_PREVIEW };
 std::string camPreviewPath(const std::string& picturePath);
 
 // Only exact, canonical names pass, which is also what keeps requests inside the storage root.

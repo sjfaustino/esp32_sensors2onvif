@@ -12,4 +12,5 @@ struct RtpState {
 void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, int fps, std::string& out);
 
 std::string base64(const uint8_t* data, size_t len);
+std::string camHex(const uint8_t* data, size_t len);  // lowercase
 std::string cameraSdp();
