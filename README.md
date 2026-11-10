@@ -36,6 +36,12 @@ one in `secrets.h` and survive reflashing.
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
 to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
 
+## ONVIF thumbnails
+
+ONVIF clients ask the hub for a JPEG of the current picture. The hub stores only H.264 and cannot convert it, so the browser
+saves a small JPEG beside each picture it uploads. **Create missing thumbnails** on the Sensors page makes them for pictures
+that have none. A picture without a thumbnail shows the built-in All Clear or Alert image instead.
+
 ## System Manager
 
 **Maintenance** schedules a restart, restarts the hub now, and resets its settings. A reset erases the saved WiFi networks,

@@ -285,6 +285,37 @@ def file_manager_tests(files, hub_files_free):
     check('picture at the 32 KB limit is accepted', api('PUT', f'/api/file?path={path}', largest)[0] == 200)
     check('picture at the limit reads back', api('GET', f'/api/file?path={path}')[1] == largest)
     check('smaller picture replaces it', api('PUT', f'/api/file?path={path}', good)[0] == 200)
+
+    def snapshot(port):
+        c = http.client.HTTPConnection(HOST, port, timeout=5)
+        c.request('GET', '/onvif/snapshot')
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        return r.status, r.getheader('Content-Type'), data
+
+    code, kind, data = snapshot(ONVIF)
+    check('ONVIF snapshot is a JPEG', code == 200 and kind == 'image/jpeg' and data.startswith(b'\xff\xd8\xff'), (code, kind))
+    check('snapshot is not on the web port', snapshot(WEB)[0] == 404)
+    check('ONVIF gives a snapshot address', '/onvif/snapshot</tt:Uri>' in soap('GetSnapshotUri')[1])
+    jpg = path[:-5] + '.jpg'
+    tiny = b'\xff\xd8\xff\xe0' + b'\x01' * 60
+    check('thumbnail must be a JPEG', api('PUT', f'/api/file?path={jpg}', b'not a jpeg at all')[0] == 422)
+    check('thumbnail is saved', api('PUT', f'/api/file?path={jpg}', tiny)[0] == 200)
+    check('thumbnail reads back', api('GET', f'/api/file?path={jpg}')[1] == tiny)
+    check('bad thumbnail name is refused', api('PUT', f'/api/file?path={path[:-5]}x.jpg', tiny)[0] == 400)
+    listed = [f for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors'] for f in n['files'] if f['name'] == 'approaching.h264']
+    check('tree says a picture has a thumbnail', any(f['preview'] for f in listed), listed)
+    check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
+    get(f'/sensor?{sid(4)}&direction=1')
+    time.sleep(1)
+    check('snapshot shows the picture being sent', snapshot(ONVIF)[2] == tiny)
+    get(f'/sensor?{sid(4)}&state=clear')
+    time.sleep(0.7)
+    check('replacing a picture removes its old thumbnail', api('PUT', f'/api/file?path={path}', good)[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)
+    api('PUT', f'/api/file?path={jpg}', tiny)
+    check('deleting a picture removes its thumbnail', api('DELETE', f'/api/file?path={path}')[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)
+    check('picture can be restored', api('PUT', f'/api/file?path={path}', good)[0] == 200)
     check('hub did not restart after very large uploads', status()['uptime_s'] >= uptime, status())
     check('refused uploads leave the file intact', api('GET', f'/api/file?path={path}')[1] == good)
 
@@ -297,14 +328,14 @@ def file_manager_tests(files, hub_files_free):
     by_mac = {s['mac']: s for s in tree['slaves']}
     sensors_b = {s['input']: s for s in by_mac[B]['sensors']}
     check('tree shows slaves and sensors', set(by_mac) >= {A, B} and sorted(s['input'] for s in by_mac[A]['sensors']) == [1, 2, 3], tree)
-    check('tree shows the file and its size', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good)}], sensors_b[1])
+    check('tree shows the file and its size', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good), 'preview': False}], sensors_b[1])
 
     words = json.dumps({'label': 'FRONT DOOR', 'active': 'SOMEONE THERE'}).encode()
     text = f'{name(4)}/text.json'
     check('sensor text can be saved', api('PUT', f'/api/file?path={text}', words)[0] == 200)
     check('sensor text reads back', api('GET', f'/api/file?path={text}') == (200, words))
     check('oversize text is refused', api('PUT', f'/api/file?path={text}', b'x' * 1025)[0] == 413)
-    check('text file is not listed as a picture', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good)}])
+    check('text file is not listed as a picture', sensors_b[1]['files'] == [{'name': 'approaching.h264', 'size': len(good), 'preview': False}])
     if hub_files_free:
         check('hub text can be saved', api('PUT', '/api/file?path=text.json', b'{"clear":"QUIET"}')[0] == 200)
         check('hub text can be deleted', api('DELETE', '/api/file?path=text.json')[0] == 200)

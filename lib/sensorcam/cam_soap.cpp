@@ -231,6 +231,9 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
            "/stream</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect><tt:InvalidAfterReboot>false</tt:InvalidAfterReboot>"
            "<tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetStreamUriResponse>";
   }
+  if (a == "GetSnapshotUri")
+    return "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>http://" + c.host + "/onvif/snapshot</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>"
+           "<tt:InvalidAfterReboot>false</tt:InvalidAfterReboot><tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetSnapshotUriResponse>";
   if (a == "GetVideoSources")
     return "<trt:GetVideoSourcesResponse><trt:VideoSources token=\"src\"><tt:Framerate>" + f + "</tt:Framerate><tt:Resolution><tt:Width>" + w +
            "</tt:Width><tt:Height>" + h + "</tt:Height></tt:Resolution></trt:VideoSources></trt:GetVideoSourcesResponse>";

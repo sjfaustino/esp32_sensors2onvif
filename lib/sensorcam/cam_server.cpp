@@ -105,7 +105,22 @@ void SensorCamServer::networkUp() {
   sendto(udp_, hello.data(), (int)hello.size(), 0, (sockaddr*)&to, sizeof(to));
 }
 
+std::string* SensorCamServer::borrowFileOut(HttpConn& c) {
+  if (fileOutOwner_) return fileOutOwner_ == &c ? fileOut_ : nullptr;
+  for (std::string& spare : spareOut_) {
+    if (spare.capacity() < STREAM_BUFFER) continue;
+    fileOut_ = &spare;
+    fileOutOwner_ = &c;
+    return fileOut_;
+  }
+  return nullptr;  // every stream buffer is carrying video
+}
+
 void SensorCamServer::closeHttp(HttpConn& c) {
+  if (fileOutOwner_ == &c) {
+    fileOutOwner_ = nullptr;
+    fileOut_ = nullptr;
+  }
   if (uploading_ == &c) {
     uploading_ = nullptr;
     frameKey_.clear();
@@ -250,6 +265,26 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   }
   status = 200;
   return soapEnvelope(reply);
+}
+
+// The JPEG of the picture being sent, or the built-in one for the same state when that picture has none.
+void SensorCamServer::serveSnapshot(HttpConn& c) {
+  if (!frame_) frameToShow(millis_());
+  c.staticBody = nullptr;
+  if (!frameFile_.empty()) {
+    std::string path = camPreviewPath(frameFile_);
+    std::string* out = storage_.fileSize(path) ? borrowFileOut(c) : nullptr;
+    if (out && storage_.readFile(path, *out, CAM_MAX_FRAME)) {
+      c.staticBody = out->data();
+      c.staticLen = out->size();
+    }
+  }
+  if (!c.staticBody) {
+    const CamJpeg& builtin = CAM_SNAPSHOTS[sensors_.anyActive() ? 1 : 0];
+    c.staticBody = (const char*)builtin.data;
+    c.staticLen = builtin.len;
+  }
+  c.out = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
 }
 
 void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed) {
@@ -541,13 +576,13 @@ std::string SensorCamServer::treeJson() {
       std::string files;
       for (const CamFsEntry& f : items) {
         if (f.dir || camClassifyPath(base + "/" + f.name) != CAM_PATH_FILE) continue;
-        files += (files.empty() ? "" : ",") + std::string("{\"name\":\"") + f.name + "\",\"size\":" + std::to_string(f.size) + "}";
+        files += (files.empty() ? "" : ",") + std::string("{\"name\":\"") + f.name + "\",\"size\":" + std::to_string(f.size) + ",\"preview\":" + (storage_.exists(camPreviewPath(base + "/" + f.name)) ? "true" : "false") + "}";
       }
       sensors += (sensors.empty() ? "" : ",") + std::string("{\"input\":") + n.name + ",\"files\":[" + files + "]}";
     }
     slaves += (slaves.empty() ? "" : ",") + std::string("{\"mac\":\"") + s.name + "\",\"sensors\":[" + sensors + "]}";
   }
-  return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"slaves\":[" + slaves + "]}\n";
+  return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (storage_.exists("clear.jpg") ? "true" : "false") + ",\"slaves\":[" + slaves + "]}\n";
 }
 
 // A Wi-Fi name or password can hold any character, so form values arrive percent-encoded.
@@ -657,20 +692,18 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
       c.out = httpResponse(200, json, "{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
       return;
     }
-    size_t size = 0;
-    for (int i = 0; i < frame_->count; i++) size += frame_->nals[i].len + 4;
-    if (cfg_.canAllocate && !cfg_.canAllocate(size)) {
-      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
+    std::string* out = borrowFileOut(c);
+    if (!out) {
+      c.out = httpResponse(507, json, jsonError("the hub is busy; try again"));
       return;
     }
-    c.ownBody.clear();
-    c.ownBody.reserve(size);
+    out->clear();
     for (int i = 0; i < frame_->count; i++) {
-      c.ownBody.append("\0\0\0\1", 4);
-      c.ownBody.append((const char*)frame_->nals[i].data, frame_->nals[i].len);
+      out->append("\0\0\0\1", 4);
+      out->append((const char*)frame_->nals[i].data, frame_->nals[i].len);
     }
-    c.staticBody = c.ownBody.data();
-    c.staticLen = c.ownBody.size();
+    c.staticBody = out->data();
+    c.staticLen = out->size();
     c.out = "HTTP/1.1 200 OK\r\nContent-Type: video/h264\r\nX-Frame-Seq: " + std::to_string(liveSeq_) + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
     return;
   }
@@ -866,26 +899,30 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   CamPathKind kind = camClassifyPath(path);
   bool isFile = kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR;
   bool isText = kind == CAM_PATH_TEXT;
+  bool isPreview = kind == CAM_PATH_PREVIEW;
   if (kind == CAM_PATH_INVALID) {
     c.out = httpResponse(400, json, jsonError("invalid path"));
     return;
   }
-  if (mkdirRoute && method == "POST" && !isFile && !isText) {
+  if (mkdirRoute && method == "POST" && !isFile && !isText && !isPreview) {
     bool ok = storage_.makeDirs(path);
     rescan();
     c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not create the folder"));
-  } else if (fileRoute && method == "GET" && (isFile || isText)) {
+  } else if (fileRoute && method == "PUT" && isPreview) {
+    if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0) c.out = httpResponse(422, json, jsonError("not a JPEG"));
+    else c.out = storage_.writeFile(path, body, bodyLen) ? httpResponse(200, json, JSON_OK) : httpResponse(507, json, jsonError("could not save the preview; storage may be full"));
+  } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
     size_t size = storage_.fileSize(path);
     if (size == 0) {
       c.out = httpResponse(404, json, jsonError("no such file"));
-    } else if (cfg_.canAllocate && !cfg_.canAllocate(size)) {
-      c.out = httpResponse(507, json, jsonError("the hub is short of memory; try again"));
-    } else if (!storage_.readFile(path, c.ownBody, CAM_MAX_FRAME)) {
+    } else if (!borrowFileOut(c)) {
+      c.out = httpResponse(507, json, jsonError("the hub is busy; try again"));
+    } else if (!storage_.readFile(path, *fileOut_, CAM_MAX_FRAME)) {
       c.out = httpResponse(404, json, jsonError("no such file"));
     } else {
-      c.staticBody = c.ownBody.data();
-      c.staticLen = c.ownBody.size();
-      c.out = std::string("HTTP/1.1 200 OK\r\nContent-Type: ") + (isText ? json : "video/h264") + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
+      c.staticBody = fileOut_->data();
+      c.staticLen = fileOut_->size();
+      c.out = std::string("HTTP/1.1 200 OK\r\nContent-Type: ") + (isText ? json : isPreview ? "image/jpeg" : "video/h264") + "\r\nContent-Length: " + std::to_string(c.staticLen) + "\r\nConnection: close\r\n\r\n";
     }
   } else if (fileRoute && method == "PUT" && isText) {
     if (bodyLen > 1024) c.out = httpResponse(413, json, jsonError("text is too long"));
@@ -904,6 +941,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
         return;
       }
       if (storage_.writeNals(path, parts, 3)) {
+        if (storage_.exists(camPreviewPath(path))) storage_.removeTree(camPreviewPath(path));  // it shows the old picture
         rescan();
         c.out = httpResponse(200, json, JSON_OK);
       } else {
@@ -912,6 +950,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     }
   } else if (fileRoute && method == "DELETE") {
     bool ok = storage_.exists(path) && storage_.removeTree(path);
+    if (ok && isFile && storage_.exists(camPreviewPath(path))) storage_.removeTree(camPreviewPath(path));
     rescan();
     c.out = ok ? httpResponse(200, json, JSON_OK) : httpResponse(404, json, jsonError("nothing to delete at that path"));
   } else {
@@ -940,7 +979,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
     return true;
   };
-  bool isOnvif = !isApi && !isGet;
+  bool isSnapshot = isGet && target == "/onvif/snapshot";  // the one GET that ONVIF clients make
+  bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");
   // Phones and laptops probe a known site on joining a network; sending them here is what opens the setup page by itself.
   if (c.web && isGet && cfg_.setupActive && cfg_.setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
@@ -960,7 +1000,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   bool filePut = method == "PUT" && target.compare(0, 15, "/api/file?path=") == 0;
   CamPathKind kind = filePut ? camClassifyPath(target.substr(15)) : CAM_PATH_INVALID;
   if (filePut && kind == CAM_PATH_INVALID) return refuse(400, "invalid path");
-  if ((kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR) && !c.toFrameBuffer) {
+  bool borrowsFrame = kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR || kind == CAM_PATH_PREVIEW;
+  // Only pictures may be large, and they arrive in a buffer reserved at boot, so nothing here asks for a picture-sized block.
+  if (isApi && !borrowsFrame && contentLength > 2048) return refuse(413, "request is too large");
+  if (borrowsFrame && !c.toFrameBuffer) {
     if (uploading_) return refuse(507, "the hub is busy with another upload; try again");
     uploading_ = &c;
     c.toFrameBuffer = true;
@@ -990,6 +1033,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
       c.toFrameBuffer = false;
       frameKey_.clear();
     }
+  } else if (isSnapshot) {
+    serveSnapshot(c);
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
     std::string body = handleSensor(target, status);
     c.out = httpResponse(status, "application/json", body);
@@ -1098,7 +1143,7 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
     // One buffer reserved at boot for the life of the stream, sized for the largest picture, so nothing allocates here.
     for (std::string& spare : spareOut_) {
       if (c.out.capacity() >= STREAM_BUFFER) break;
-      if (spare.capacity() < STREAM_BUFFER) continue;
+      if (spare.capacity() < STREAM_BUFFER || &spare == fileOut_) continue;  // a lent buffer is back within moments
       spare.assign(c.out);
       c.out.swap(spare);
     }

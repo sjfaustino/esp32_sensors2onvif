@@ -139,9 +139,8 @@ class SensorCamServer {
     std::string in, out;
     size_t outPos = 0;
     bool answered = false;
-    const char* staticBody = nullptr;  // sent after out without being copied into it: the page in flash, or ownBody
+    const char* staticBody = nullptr;  // sent after out without being copied into it: flash data, or the borrowed buffer
     size_t staticLen = 0;
-    std::string ownBody;
     bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
     size_t bodyWanted = 0;
     size_t discardLeft = 0;  // body still to read and drop, so a refusal arrives as a reply rather than a reset
@@ -187,6 +186,7 @@ class SensorCamServer {
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed);
   void noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi);
+  void serveSnapshot(HttpConn& c);
   void serviceDelayed(uint32_t now);
   std::string statusJson(uint32_t now);
   std::string eventsJson();
@@ -224,6 +224,11 @@ class SensorCamServer {
   const CamFrame* frame_ = nullptr;
   std::string frameData_;
   std::string spareOut_[MAX_RTSP];  // stream buffers reserved at boot, because a picture-sized allocation can fail once the hub is busy
+  // An idle stream buffer lent to one reply at a time. A picture-sized allocation can fail and restart the hub,
+  // and a third reserved buffer would leave the network stack too little memory to send video.
+  std::string* fileOut_ = nullptr;
+  HttpConn* fileOutOwner_ = nullptr;
+  std::string* borrowFileOut(HttpConn& c);
   HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
   CamNal frameNals_[3];
   CamFrame loadedFrame_{frameNals_, 3};

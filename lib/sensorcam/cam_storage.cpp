@@ -25,6 +25,12 @@ static bool validStateFile(const std::string& name) {
   return false;
 }
 
+std::string camPreviewPath(const std::string& picturePath) { return picturePath.substr(0, picturePath.size() - 5) + ".jpg"; }
+
+static bool validPreviewFile(const std::string& name) {
+  return name.size() > 4 && name.compare(name.size() - 4, 4, ".jpg") == 0 && validStateFile(name.substr(0, name.size() - 4) + ".h264");
+}
+
 bool camParseMac(const std::string& t, uint8_t mac[6]) {
   if (t.size() != 17) return false;
   for (int i = 0; i < 6; i++) {
@@ -66,11 +72,13 @@ CamPathKind camClassifyPath(const std::string& path) {
   uint8_t mac[6];
   if (parts.size() == 1 && parts[0] == "clear.h264") return CAM_PATH_CLEAR;
   if (parts.size() == 1 && parts[0] == "text.json") return CAM_PATH_TEXT;
+  if (parts.size() == 1 && parts[0] == "clear.jpg") return CAM_PATH_PREVIEW;
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_SLAVE;
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
   if (parts[2] == "text.json") return CAM_PATH_TEXT;
+  if (validPreviewFile(parts[2])) return CAM_PATH_PREVIEW;
   return validStateFile(parts[2]) ? CAM_PATH_FILE : CAM_PATH_INVALID;
 }
 

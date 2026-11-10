@@ -136,6 +136,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addSlave">Add node</button></span>
 <span id="clear"></span></div>
 <div id="tree"></div>
+<p><button id="makeThumbs">Create missing thumbnails</button></p>
 </div></main>
 <script>
 const STATES=["active","approaching","away","ltr","rtl"];
@@ -153,7 +154,7 @@ function pick(path){
   const i=el("input",{type:"file",accept:".h264"});
   i.onchange=()=>{const f=i.files[0];if(!f)return;
     if(f.size>MAX){say(f.name+" is larger than 32 KB",true);return}
-    act(()=>call("PUT","/api/file?path="+path,f),"Saved "+path)};
+    act(async()=>{await call("PUT","/api/file?path="+path,f);await makePreview(path,new Uint8Array(await f.arrayBuffer())).catch(()=>{})},"Saved "+path)};
   i.click()}
 function del(path,what){if(confirm("Delete "+what+"?"))act(()=>call("DELETE","/api/file?path="+path),"Deleted "+what)}
 function previewButton(path,name){return el("button",{textContent:"\u{1F441}",title:"Preview",ariaLabel:"Preview "+name,onclick:()=>showPicture(path,name)})}
@@ -282,10 +283,18 @@ function imageDialog(path){
     catch(e){note.textContent=e.message;keep.disabled=false}finally{busy=false}};
   dlg.onclose=()=>{if(result.src)URL.revokeObjectURL(result.src);dlg.remove()};
   document.body.append(dlg);dlg.showModal()}
+// ONVIF clients ask for a JPEG snapshot, which the hub cannot make from H.264, so one is stored beside each picture.
+async function makePreview(path,pic){
+  const url=await decoded(pic),img=new Image();
+  try{await new Promise((ok,bad)=>{img.onload=ok;img.onerror=bad;img.src=url});
+    const c=el("canvas",{width:320,height:180});c.getContext("2d").drawImage(img,0,0,320,180);
+    const jpeg=await new Promise(r=>c.toBlob(r,"image/jpeg",0.75));
+    await call("PUT","/api/file?path="+path.replace(/\.h264$/,".jpg"),jpeg)}
+  finally{URL.revokeObjectURL(url)}}
 function header(p){let h="",n=4;while(n<p.length&&!(p[n]==0&&p[n+1]==0&&p[n+2]==0))h+=p[n++].toString(16).padStart(2,"0");return h}
 async function save(path,pic){
   for(let tries=0;;tries++){
-    try{return await call("PUT","/api/file?path="+path,pic)}
+    try{const done=await call("PUT","/api/file?path="+path,pic);await makePreview(path,pic).catch(()=>{});return done}
     catch(e){
       if(e.message.includes("short of memory")&&tries<4){await new Promise(r=>setTimeout(r,1500));continue}
       if(e.message.includes("wrong video format"))throw new Error("The hub refused this browser's video format. Please report this header: "+header(pic));
@@ -352,6 +361,12 @@ function render(t){
         el("table",null,el("tbody",null,...FILES.map(f=>fileRow(base+"/"+f,f,sizes[f])))),textPanel(base,n.input)))}
     tree.append(card)}}
 async function load(){try{render(await call("GET","/api/tree"))}catch(e){say(e.message,true)}}
+$("makeThumbs").onclick=()=>act(async()=>{const t=await call("GET","/api/tree"),list=[];
+  if(t.clear!=null&&!t.clearPreview)list.push("clear.h264");
+  for(const s of t.slaves)for(const n of s.sensors)for(const f of n.files)if(!f.preview)list.push(s.mac+"/"+n.input+"/"+f.name);
+  for(let i=0;i<list.length;i++){say("Making thumbnail "+(i+1)+" of "+list.length+". The first time, this downloads about 30 MB.");
+    const r=await fetch("/api/file?path="+list[i]);if(!r.ok)throw new Error("The hub could not send "+list[i]);
+    await makePreview(list[i],new Uint8Array(await r.arrayBuffer()))}},"Thumbnails are up to date");
 $("addSlave").onclick=()=>{const m=$("mac").value.trim().toUpperCase().replace(/:/g,"-");
   if(!/^([0-9A-F]{2}-){5}[0-9A-F]{2}$/.test(m)){say("Enter a MAC address like AA:BB:CC:DD:EE:01",true);return}
   act(()=>call("POST","/api/mkdir?path="+m),"Added node "+m).then(()=>$("mac").value="")};
