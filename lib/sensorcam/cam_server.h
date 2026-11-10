@@ -56,6 +56,14 @@ struct CamConfig {
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
   uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
   std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
+  std::string onvifPassword;  // when set, ONVIF and RTSP need the user admin and this password
+  bool healthAlarm = false;   // a silent node or low battery also raises an NVR alarm
+  std::function<bool(bool)> healthSave;
+  std::function<bool(size_t size)> firmwareBegin;
+  std::function<bool(const uint8_t* data, size_t len)> firmwareWrite;
+  std::function<bool(bool commit)> firmwareEnd;  // commit restarts the hub shortly after the reply
+  std::function<std::string()> backupText;
+  std::function<bool(const std::string& text)> restoreText;
   std::function<void(SoapContext&)> onvifNetwork;  // fills in the hub's network details for ONVIF clients
   std::function<std::string()> timeJson;       // JSON for the Time page
   std::function<bool(const CamTime&)> timeSave;
@@ -85,6 +93,7 @@ class SensorCamServer {
   // Milliseconds since the socket wait last worked. A large value means the server has stopped serving.
   uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
   std::string debugLine();   // counters for the serial heartbeat
+  void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }  // for the PC tests
   void espNowInput(const uint8_t mac[6], const SensorReport& report, int8_t rssi = 0);  // call from the same task as poll()
 
  private:
@@ -102,11 +111,13 @@ class SensorCamServer {
     bool counterSeen = false;
     uint32_t counter = 0;
     int8_t rssi = 0;  // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
+    bool lowBattery = false;
   };
   struct Slot {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
+    std::string name;  // from name.txt in the sensor's folder
   };
   struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
     bool used = false;
@@ -120,6 +131,8 @@ class SensorCamServer {
     time_t received = 0;
     uint32_t age = 0;
     char sensor[22] = "";  // AA-BB-CC-DD-EE-FF/255
+    char name[26] = "";
+    uint8_t kind = 0;      // 0 a report, 1 went silent, 2 low battery
     bool active = false;
     bool delayed = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
@@ -144,6 +157,12 @@ class SensorCamServer {
     bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
     size_t bodyWanted = 0;
     size_t discardLeft = 0;  // body still to read and drop, so a refusal arrives as a reply rather than a reset
+    bool pollWaiting = false;  // a PullMessages held until something changes or pollUntil
+    uint32_t pollUntil = 0;
+    uint32_t pollSub = 0;
+    std::string pollHost;
+    bool firmwareActive = false;  // the body is going straight to the update, not into memory
+    size_t firmwareLeft = 0;
   };
   struct RtspConn {
     int fd = -1;
@@ -153,6 +172,8 @@ class SensorCamServer {
     size_t outPos = 0;
     bool playing = false;
     bool closeAfterSend = false;
+    bool authed = false;
+    std::string nonce;
     int channel = 0;
     RtpState rtp;
   };
@@ -184,7 +205,13 @@ class SensorCamServer {
   void handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen);
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
-  void logEvent(int id, const SensorReport& report, bool delayed);
+  void logEvent(int id, const SensorReport& report, bool delayed, uint8_t kind = 0);
+  void healthAlert(int id, uint8_t kind, uint32_t now);
+  void saveEvents();
+  void loadEvents();
+  void servicePolls(uint32_t now);
+  void feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now);
+  void finishFirmware(HttpConn& c, bool ok);
   void noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi);
   void serveSnapshot(HttpConn& c);
   void serviceDelayed(uint32_t now);
@@ -229,6 +256,7 @@ class SensorCamServer {
   std::string* fileOut_ = nullptr;
   HttpConn* fileOutOwner_ = nullptr;
   std::string* borrowFileOut(HttpConn& c);
+  HttpConn* firmwareOwner_ = nullptr;
   HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
   CamNal frameNals_[3];
   CamFrame loadedFrame_{frameNals_, 3};

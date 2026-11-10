@@ -36,15 +36,31 @@ one in `secrets.h` and survive reflashing.
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
 to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
 
+## Events and alerts
+
+**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. A sensor can be given a name on the Sensors
+page, which then appears on the ESP-NOW and Events pages. A node that stays silent for 3 hours, or reports 20% battery or less,
+is logged as an event. The ESP-NOW page can also raise an NVR alarm for these.
+
 ## ONVIF thumbnails
 
 ONVIF clients ask the hub for a JPEG of the current picture. The hub stores only H.264 and cannot convert it, so the browser
 saves a small JPEG beside each picture it uploads. **Create missing thumbnails** on the Sensors page makes them for pictures
 that have none. A picture without a thumbnail shows the built-in All Clear or Alert image instead.
 
+## Security
+
+One hub password, with the user name `admin`, protects the web page, ONVIF and RTSP. It comes from `WEB_PASSWORD`, or from
+`SETUP_AP_PASSWORD` when that is empty, and can be changed or turned off under **Network Manager > HTTP**. An NVR needs the same
+user and password on its channel. ONVIF clients may ask for the clock and capabilities before logging in, as ONVIF requires.
+
+HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
+ESP-NOW reports do not use it.
+
 ## System Manager
 
-**Maintenance** schedules a restart, restarts the hub now, and resets its settings. A reset erases the saved WiFi networks,
+**Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
+restores a settings backup (which holds the passwords in plain text), and resets the settings. A reset erases the saved WiFi networks,
 ports, name, web password, fixed address and time settings, and keeps the pictures and sensor nodes.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always

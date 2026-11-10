@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <Update.h>
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_sntp.h>
@@ -34,7 +35,8 @@ static bool wifiSaved = false;
 static uint32_t wifiSavedAt = 0;
 static uint32_t savedCause = 5;
 static uint16_t onvifPort = ONVIF_PORT, webPort = WEB_PORT, rtspPort = RTSP_PORT;
-static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD;
+static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD, sensorToken = SENSOR_TOKEN;
+static bool healthAlarm = false;
 // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
 static String staticFor, staticIp, staticMask, staticGateway, staticDns;
 static bool usingStatic = false;
@@ -54,7 +56,16 @@ static void loadSettings() {
   webPort = p.getUShort("web", WEB_PORT);
   rtspPort = p.getUShort("rtsp", RTSP_PORT);
   hubName = p.getString("name", MDNS_NAME);
-  webPassword = p.getString("webpw", WEB_PASSWORD);
+  // A hub is password protected unless someone turns that off, so an empty setting falls back to the setup network's password.
+  webPassword = p.getString("webpw", strlen(WEB_PASSWORD) ? WEB_PASSWORD : SETUP_AP_PASSWORD);
+  sensorToken = p.getString("token", SENSOR_TOKEN);
+  if (sensorToken.isEmpty()) {  // made once and kept, and shown on the HTTP page
+    char made[17];
+    snprintf(made, sizeof(made), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
+    sensorToken = made;
+    p.putString("token", sensorToken);
+  }
+  healthAlarm = p.getBool("hlth", false);
   nvrIp = p.getString("nvrip", "").c_str();
   timeNtp = p.getBool("ntp", true);
   ntpServer = p.getString("ntpsrv", NTP_SERVER);
@@ -348,6 +359,80 @@ static bool saveAddress(const CamAddress& a) {
 
 static std::string deviceRows();
 
+struct BackupKey {
+  const char* space;
+  const char* key;
+  char type;  // s text, u 16-bit number, i number, b true or false
+};
+static const BackupKey BACKUP_KEYS[] = {
+    {"wifi", "ssid", 's'},    {"wifi", "password", 's'}, {"wifi", "ssid2", 's'},  {"wifi", "password2", 's'}, {"net", "onvif", 'u'}, {"net", "web", 'u'},
+    {"net", "rtsp", 'u'},     {"net", "name", 's'},      {"net", "webpw", 's'},   {"net", "token", 's'},      {"net", "ipfor", 's'}, {"net", "ip", 's'},
+    {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
+    {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
+};
+
+static std::string backupText() {
+  std::string out = "sensorcam-backup 1\n";
+  for (const BackupKey& k : BACKUP_KEYS) {
+    Preferences p;
+    if (!p.begin(k.space, true)) continue;
+    if (p.isKey(k.key)) {
+      String value = k.type == 's' ? p.getString(k.key, "") : k.type == 'u' ? String(p.getUShort(k.key, 0)) : k.type == 'i' ? String(p.getInt(k.key, 0)) : String(p.getBool(k.key, false) ? 1 : 0);
+      out += std::string(k.space) + "." + k.key + "=";
+      char hex[4];
+      for (size_t i = 0; i < value.length(); i++) {
+        snprintf(hex, sizeof(hex), "%%%02X", (uint8_t)value[i]);
+        out += hex;
+      }
+      out += "\n";
+    }
+    p.end();
+  }
+  return out;
+}
+
+// Checks every line before changing anything, so a damaged file cannot leave half of the settings replaced.
+static bool restoreText(const std::string& text) {
+  if (text.compare(0, 19, "sensorcam-backup 1\n") != 0) return false;
+  struct Line {
+    const BackupKey* key;
+    std::string value;
+  };
+  std::vector<Line> lines;
+  for (size_t at = 19; at < text.size();) {
+    size_t end = text.find('\n', at);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(at, end - at);
+    at = end + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) return false;
+    const BackupKey* found = nullptr;
+    for (const BackupKey& k : BACKUP_KEYS)
+      if (line.compare(0, eq, std::string(k.space) + "." + k.key) == 0) found = &k;
+    if (!found) return false;
+    std::string value;
+    for (size_t i = eq + 1; i < line.size(); i += 3) {
+      if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
+      value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
+    }
+    lines.push_back({found, value});
+  }
+  if (lines.empty()) return false;
+  for (const Line& l : lines) {
+    Preferences p;
+    if (!p.begin(l.key->space, false)) return false;
+    if (l.key->type == 's') p.putString(l.key->key, l.value.c_str());
+    else if (l.key->type == 'u') p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str()));
+    else if (l.key->type == 'i') p.putInt(l.key->key, atoi(l.value.c_str()));
+    else p.putBool(l.key->key, l.value == "1");
+    p.end();
+  }
+  requestRestart(12);
+  return true;
+}
+
 static CamConfig makeConfig() {
   CamConfig c;
   c.onvifPort = onvifPort;
@@ -381,8 +466,30 @@ static CamConfig makeConfig() {
   c.wifiSave = saveWifi;
   c.rtspPort = rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
-  c.sensorToken = SENSOR_TOKEN;
+  c.sensorToken = sensorToken.c_str();
   c.webPassword = webPassword.c_str();
+  c.onvifPassword = webPassword.c_str();
+  c.healthAlarm = healthAlarm;
+  c.healthSave = [](bool on) {
+    Preferences p;
+    if (!p.begin("net", false)) return false;
+    bool ok = p.putBool("hlth", on) == 1;
+    p.end();
+    return ok;
+  };
+  c.firmwareBegin = [](size_t size) { return Update.begin(size, U_FLASH); };
+  c.firmwareWrite = [](const uint8_t* data, size_t len) { return Update.write((uint8_t*)data, len) == len; };
+  c.firmwareEnd = [](bool commit) {
+    if (!commit) {
+      Update.abort();
+      return true;
+    }
+    bool ok = Update.end(true);
+    if (ok) requestRestart(11);
+    return ok;
+  };
+  c.backupText = backupText;
+  c.restoreText = restoreText;
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
   // A request for 0 bytes asks only whether new work is safe, which needs less headroom.
   c.canAllocate = [](size_t n) { return n == 0 ? ESP.getFreeHeap() >= 10 * 1024 : ESP.getMaxAllocHeap() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
@@ -406,7 +513,7 @@ static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
-// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router, 8 scheduled, 9 settings reset, 10 restart button.
+// Survives a software restart, so the heartbeat can say which rule caused it: 1 Wi-Fi, 2 low RAM, 3 server stalled, 4 router silent, 5 new Wi-Fi settings, 6 new web, port or address settings, 7 fixed address could not reach the router, 8 scheduled, 9 settings reset, 10 restart button, 11 firmware update, 12 settings restored.
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(uint32_t cause) {
@@ -483,6 +590,8 @@ static const char* lastRestartText() {
     case 8: return "Scheduled restart";
     case 9: return "Settings reset";
     case 10: return "Restart button";
+    case 11: return "Firmware update";
+    case 12: return "Settings restored";
     default: return "Software restart";
   }
 }

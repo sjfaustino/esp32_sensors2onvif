@@ -9,7 +9,7 @@ E2E_WEB_PASSWORD too. It creates and deletes only the 02-00-00-00-00-0x test fol
 has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
 if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
-import base64, datetime, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time
+import base64, datetime, hashlib, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_frames
@@ -23,6 +23,7 @@ ONVIF, RTSP, DISCOVERY = (8899, 8554, 3702) if DEVICE else (18899, 18554, 13702)
 WEB = 80 if DEVICE else 18080
 HOLD_MS = 10000 if DEVICE else 8000
 PASSWORD = os.environ.get('E2E_WEB_PASSWORD', '') if DEVICE else 'test-pass'
+TOKEN = os.environ.get('E2E_SENSOR_TOKEN', '')
 A, B = '02-00-00-00-00-01', '02-00-00-00-00-02'
 SENSORS = {1: (A, 1), 2: (A, 2), 3: (A, 3), 4: (B, 1), 5: (B, 2), 6: (B, 3)}
 failures = []
@@ -54,12 +55,50 @@ def soap(action, path='/onvif/media', inner=''):
 
 
 def get(path):
+    headers = {}
+    if PASSWORD:
+        headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
+    if TOKEN and path.startswith('/sensor'):
+        path += f'&token={TOKEN}'
     c = http.client.HTTPConnection(HOST, WEB, timeout=5)
-    c.request('GET', path)
+    c.request('GET', path, headers=headers)
     r = c.getresponse()
     data = r.read().decode()
     c.close()
     return r.status, data
+
+
+def http_status(path):
+    c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+    c.request('GET', path)
+    r = c.getresponse()
+    r.read()
+    c.close()
+    return r.status
+
+
+def soap_login(action, password, digest=True, path='/onvif/media', user='admin'):
+    nonce, created = os.urandom(16), '2026-01-01T00:00:00Z'
+    value = base64.b64encode(hashlib.sha1(nonce + created.encode() + password.encode()).digest()).decode() if digest else password
+    header = ('<s:Header><Security xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"><UsernameToken>'
+              f'<Username>{user}</Username><Password>{value}</Password><Nonce>{base64.b64encode(nonce).decode()}</Nonce><Created>{created}</Created>'
+              '</UsernameToken></Security></s:Header>')
+    body = f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{header}<s:Body><{action} xmlns="x"/></s:Body></s:Envelope>'
+    c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+    c.request('POST', path, body, {'Content-Type': 'application/soap+xml'})
+    r = c.getresponse()
+    data = r.read().decode()
+    c.close()
+    return r.status, data
+
+
+def rtsp_describe(authorization=None):
+    """Returns (status code, WWW-Authenticate lines)."""
+    s = socket.create_connection((HOST, RTSP), timeout=5)
+    extra = f'Authorization: {authorization}\r\n' if authorization else ''
+    s.sendall(f'DESCRIBE rtsp://{HOST}:{RTSP}/stream RTSP/1.0\r\nCSeq: 1\r\n{extra}\r\n'.encode())
+    data = s.recv(4096).decode(errors='replace')
+    return s, int(data.split(' ')[1]), [l for l in data.split('\r\n') if l.startswith('WWW-Authenticate')]
 
 
 def api(method, path, body=None, auth=True):
@@ -134,7 +173,7 @@ def file_manager_tests(files, hub_files_free):
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page offers a picture preview', b'title:"Preview"' in page)
     check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
-                                                  b'data-view="espnow"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
+                                                  b'data-view="espnow"', b'data-view="events"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -489,11 +528,110 @@ def main():
                 check('adding the sender removes it from the unknown list', radio()['unknown'] == [], radio()['unknown'])
                 api('DELETE', '/api/file?path=02-00-00-00-00-99')
 
+                # Sensor names.
+                label = 'Front "gate"'.encode()
+                check('a sensor can be named', api('PUT', f'/api/file?path={name(1)}/name.txt', label)[0] == 200)
+                check('the name is shown with the node', node_entry(radio())['name'] == label.decode(), node_entry(radio()))
+                check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in json.loads(api('GET', '/api/tree')[1])['slaves'] for n in s['sensors']))
+
+                # Battery and silence alerts.
+                api('POST', '/api/wifi', 'ssid=radio-low')
+                check('low battery is flagged', node_entry(radio())['low'] is True, node_entry(radio()))
+                history = json.loads(api('GET', '/api/events')[1])
+                check('low battery is in the event history', history and history[0]['kind'] == 2 and history[0]['name'] == label.decode(), history[:1])
+                before_again = len(json.loads(api('GET', '/api/events')[1]))
+                api('POST', '/api/wifi', 'ssid=radio-low')
+                check('low battery alerts only once', len(json.loads(api('GET', '/api/events')[1])) == before_again)
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                check('a good battery clears the flag', node_entry(radio())['low'] is False, node_entry(radio()))
+                check('the alarm setting is saved', api('POST', '/api/alerts', 'alarm=1')[0] == 200 and json.loads(api('GET', '/api/alerts')[1])['alarm'] is True)
+                api('POST', '/api/wifi', 'ssid=radio-low')
+                time.sleep(0.2)
+                check('a low battery can raise the alarm', node_entry(radio())['state'] == 'active', node_entry(radio()))
+                get(f'/sensor?{sid(1)}&state=clear')
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                api('POST', '/api/alerts', 'alarm=0')
+                check('the event history needs the web password', api('GET', '/api/events', auth=False)[0] == 401)
+                check('/status needs the web password', http_status('/status') == 401)
+
+                # Firmware and backup.
+                check('firmware update needs the web password', api('PUT', '/api/firmware', b'\xe9' * 100, auth=False)[0] == 401)
+                check('valid firmware is accepted', api('PUT', '/api/firmware', b'\xe9' + b'\x01' * 9000)[0] == 200)
+                check('other files are refused as firmware', api('PUT', '/api/firmware', b'not firmware' * 500)[0] == 400)
+                check('the hub still answers after a firmware upload', status()['uptime_s'] >= 0)
+                code, backup = api('GET', '/api/backup')
+                check('backup can be downloaded', code == 200 and backup.startswith(b'sensorcam-backup 1'), code)
+                check('backup needs the web password', api('GET', '/api/backup', auth=False)[0] == 401)
+                check('backup can be restored', api('POST', '/api/restore', backup)[0] == 200)
+                check('other files are refused as a backup', api('POST', '/api/restore', b'hello')[0] == 400)
+                check('restore needs the web password', api('POST', '/api/restore', backup, auth=False)[0] == 401)
+
+                # ONVIF and RTSP login.
+                api('POST', '/api/wifi', 'ssid=auth-on')
+                check('ONVIF needs a login', soap('GetProfiles')[0] == 400 and 'NotAuthorized' in soap('GetProfiles')[1])
+                check('the clock is open before login', soap('GetSystemDateAndTime', '/onvif/device_service')[0] == 200)
+                check('ONVIF accepts a digest login', soap_login('GetProfiles', 'onvif-secret')[0] == 200)
+                check('ONVIF accepts a plain login', soap_login('GetProfiles', 'onvif-secret', digest=False)[0] == 200)
+                check('ONVIF refuses a wrong password', soap_login('GetProfiles', 'wrong')[0] == 400)
+                check('ONVIF refuses a wrong user', soap_login('GetProfiles', 'onvif-secret', user='bob')[0] == 400)
+                sock, code, challenge = rtsp_describe()
+                sock.close()
+                check('RTSP asks for a login', code == 401 and any('Digest' in l for l in challenge), (code, challenge))
+                sock, code, challenge = rtsp_describe()
+                nonce = re.search(r'nonce="([^"]+)"', challenge[0]).group(1)
+                uri = f'rtsp://{HOST}:{RTSP}/stream'
+                md5 = lambda v: hashlib.md5(v.encode()).hexdigest()
+                response = md5(md5('admin:SensorCam:onvif-secret') + ':' + nonce + ':' + md5('DESCRIBE:' + uri))
+                sock.sendall(f'DESCRIBE {uri} RTSP/1.0\r\nCSeq: 2\r\nAuthorization: Digest username="admin", realm="SensorCam", nonce="{nonce}", uri="{uri}", response="{response}"\r\n\r\n'.encode())
+                check('RTSP accepts a digest login', sock.recv(4096).startswith(b'RTSP/1.0 200'))
+                sock.close()
+                basic = 'Basic ' + base64.b64encode(b'admin:onvif-secret').decode()
+                sock, code, _ = rtsp_describe(basic)
+                sock.close()
+                check('RTSP accepts a basic login', code == 200, code)
+                sock, code, _ = rtsp_describe('Basic ' + base64.b64encode(b'admin:wrong').decode())
+                sock.close()
+                check('RTSP refuses a wrong password', code == 401, code)
+                c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+                c.request('GET', '/onvif/snapshot')
+                r = c.getresponse()
+                r.read()
+                c.close()
+                check('snapshot needs its token', r.status == 403, r.status)
+                uri = re.search(r'<tt:Uri>http://[^/]+([^<]+)</tt:Uri>', soap_login('GetSnapshotUri', 'onvif-secret')[1]).group(1)
+                c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+                c.request('GET', uri)
+                r = c.getresponse()
+                r.read()
+                c.close()
+                check('the snapshot address from a login works', r.status == 200 and 'token=' in uri, (r.status, uri))
+                api('POST', '/api/wifi', 'ssid=auth-off')
+                check('ONVIF is open again without a password', soap('GetProfiles')[0] == 200)
+
             # Other clients may poll instead.
             code, data = soap('CreatePullPointSubscription', '/onvif/events')
             address = re.search(r'/onvif/sub/\d+', data).group(0)
             check('pull point delivers the state once', 'Value="false"' in soap('PullMessages', address)[1])
             check('pull point is quiet until a change', 'NotificationMessage' not in soap('PullMessages', address)[1])
+
+            # A poll with a timeout waits for news, instead of being answered at once.
+            started = time.time()
+            quiet = soap('PullMessages', address, '<Timeout>PT2S</Timeout>')
+            check('a quiet poll waits for its timeout', 1.5 < time.time() - started < 4 and 'NotificationMessage' not in quiet[1], time.time() - started)
+            held = {}
+            def hold():
+                begun = time.time()
+                held['reply'] = soap('PullMessages', address, '<Timeout>PT8S</Timeout>')
+                held['took'] = time.time() - begun
+            waiter = threading.Thread(target=hold)
+            waiter.start()
+            time.sleep(0.5)
+            get(f'/sensor?{sid(3)}')
+            waiter.join(9)
+            check('a held poll is answered when something changes', held.get('took', 99) < 3 and 'Value="true"' in held['reply'][1], held.get('took'))
+            get(f'/sensor?{sid(3)}&state=clear')
+            time.sleep(0.3)
+            soap('PullMessages', address)
 
             # WS-Discovery, sent directly.
             udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

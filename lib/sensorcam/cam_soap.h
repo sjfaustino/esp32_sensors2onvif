@@ -31,12 +31,14 @@ struct SoapContext {
   std::string ip = "0.0.0.0", mac = "00:00:00:00:00:00", gateway = "0.0.0.0", dns = "0.0.0.0", hostName = "hub", ntpServer;
   int prefixLength = 24;
   bool dhcp = true;
+  std::string snapshotToken;  // added to the snapshot address when ONVIF has a password
 };
 
 // Device and media calls, independent of event state. Empty when the action is unknown.
 std::string soapDeviceReply(const std::string& action, const SoapContext& ctx);
 std::string soapEnvelope(const std::string& body);
 std::string soapFault(const char* reason);
+std::string soapNotAuthorized();
 
 std::string soapSubscribeReply(const SoapContext& ctx, uint32_t subId);
 std::string soapPullPointReply(const SoapContext& ctx, uint32_t subId);

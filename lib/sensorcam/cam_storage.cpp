@@ -77,7 +77,7 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() == 1) return CAM_PATH_SLAVE;
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
-  if (parts[2] == "text.json") return CAM_PATH_TEXT;
+  if (parts[2] == "text.json" || parts[2] == "name.txt") return CAM_PATH_TEXT;
   if (validPreviewFile(parts[2])) return CAM_PATH_PREVIEW;
   return validStateFile(parts[2]) ? CAM_PATH_FILE : CAM_PATH_INVALID;
 }

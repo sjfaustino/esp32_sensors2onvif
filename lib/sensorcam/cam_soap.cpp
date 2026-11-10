@@ -164,6 +164,11 @@ std::string soapFault(const char* reason) {
                       reason + "</s:Text></s:Reason></s:Fault>");
 }
 
+std::string soapNotAuthorized() {
+  return soapEnvelope("<s:Fault><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value xmlns:ter=\"http://www.onvif.org/ver10/error\">ter:NotAuthorized</s:Value></s:Subcode></s:Code>"
+                      "<s:Reason><s:Text xml:lang=\"en\">Sender not authorized</s:Text></s:Reason></s:Fault>");
+}
+
 static std::string encoderBody() {
   std::string w = num(CAM_WIDTH), h = num(CAM_HEIGHT), f = num(CAM_FPS);
   return "<tt:Name>Enc</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>H264</tt:Encoding><tt:Resolution><tt:Width>" + w +
@@ -232,7 +237,7 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
            "<tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetStreamUriResponse>";
   }
   if (a == "GetSnapshotUri")
-    return "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>http://" + c.host + "/onvif/snapshot</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>"
+    return "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>http://" + c.host + "/onvif/snapshot" + (c.snapshotToken.empty() ? std::string() : "?token=" + c.snapshotToken) + "</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>"
            "<tt:InvalidAfterReboot>false</tt:InvalidAfterReboot><tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetSnapshotUriResponse>";
   if (a == "GetVideoSources")
     return "<trt:GetVideoSourcesResponse><trt:VideoSources token=\"src\"><tt:Framerate>" + f + "</tt:Framerate><tt:Resolution><tt:Width>" + w +

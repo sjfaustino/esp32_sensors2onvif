@@ -26,7 +26,22 @@ int main(int argc, char** argv) {
   cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
   cfg.addressJson = [] { return std::string("{\"type\":\"WiFi\",\"dhcp\":true,\"staticFor\":\"\",\"ip\":\"127.0.0.1\",\"mask\":\"255.0.0.0\",\"gateway\":\"127.0.0.1\",\"dns\":\"127.0.0.1\",\"mac\":\"02:00:00:00:00:01\"}\n"); };
   cfg.addressSave = [](const CamAddress&) { return true; };
-  cfg.nvrSave = [](const std::string&) { return true; };
+  static bool firmwareGood = false;
+  cfg.firmwareBegin = [](size_t) {
+    firmwareGood = false;
+    return true;
+  };
+  cfg.firmwareWrite = [](const uint8_t* data, size_t len) {
+    static bool first = true;
+    if (first || !firmwareGood) firmwareGood = len && data[0] == 0xE9;
+    first = false;
+    return firmwareGood;
+  };
+  cfg.firmwareEnd = [](bool commit) { return !commit || firmwareGood; };
+  cfg.backupText = [] { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); };
+  cfg.restoreText = [](const std::string& text) { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; };
+  cfg.healthSave = [](bool) { return true; };
+  cfg.nvrSave =[](const std::string&) { return true; };
   cfg.timeJson = [] { return std::string("{\"ntp\":true,\"server\":\"pool.ntp.org\",\"offset\":0,\"dst\":0,\"synced\":true,\"local\":\"2026-01-01 00:00:00\"}\n"); };
   cfg.timeSave = [](const CamTime&) { return true; };
   cfg.scheduleSave = [](const CamSchedule&) { return true; };
@@ -40,13 +55,17 @@ int main(int argc, char** argv) {
     if (ssid == "setup-on") setupOn = true;
     if (ssid == "setup-off") setupOn = false;
     if (ssid == "want-backup") return backup;
-    if (ssid == "radio-known" || ssid == "radio-unknown") {  // this build has no radio, so the test delivers a report this way
-      bool known = ssid == "radio-known";
+    if (ssid == "auth-on" || ssid == "auth-off") {
+      hub->setOnvifPassword(ssid == "auth-on" ? "onvif-secret" : "");
+      return true;
+    }
+    if (ssid == "radio-known" || ssid == "radio-unknown" || ssid == "radio-low") {  // this build has no radio, so the test delivers a report this way
+      bool known = ssid != "radio-unknown";
       uint8_t mac[6] = {2, 0, 0, 0, 0, (uint8_t)(known ? 1 : 0x99)};
       static uint32_t counter = 77;
       SensorReport report;
       report.counter = counter++;
-      report.battery = 55;
+      report.battery = ssid == "radio-low" ? 10 : 55;
       hub->espNowInput(mac, report, -61);
       return true;
     }

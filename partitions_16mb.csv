@@ -1,7 +1,8 @@
-# 16 MB boards: one 4 MB program slot and about 12 MB of LittleFS for pictures.
+# 16 MB boards: two 3 MB program slots, so firmware can be updated from the web page, and about 10 MB of LittleFS for pictures.
 # Name,   Type, SubType,  Offset,   Size
 nvs,      data, nvs,      0x9000,   0x5000
 otadata,  data, ota,      0xe000,   0x2000
-app0,     app,  ota_0,    0x10000,  0x400000
-spiffs,   data, spiffs,   0x410000, 0xBE0000
+app0,     app,  ota_0,    0x10000,  0x300000
+app1,     app,  ota_1,    0x310000, 0x300000
+spiffs,   data, spiffs,   0x610000, 0x9E0000
 coredump, data, coredump, 0xFF0000, 0x10000

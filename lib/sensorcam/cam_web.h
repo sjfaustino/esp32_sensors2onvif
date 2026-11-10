@@ -72,7 +72,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="first">Network Manager</div>
 <div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="espnow">ESP-NOW</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
 <div class="first">Sensors Manager</div>
-<div class="subs"><div class="item" data-view="sensors">Sensors</div></div>
+<div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="events">Events</div></div>
 <div class="first">NVR Manager</div>
 <div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
 <div class="first">System Manager</div>
@@ -100,6 +100,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
+<label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low</label>
 <h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
 <h2 style="font-family:inherit;margin-top:18px">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>
@@ -107,6 +108,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portForm"><button id="saveNvr">Save</button></div>
 <div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
 <div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
+<div class="view" id="view-events" hidden><h1>Events</h1><table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
 <div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
 <h2 style="font-family:inherit;margin-bottom:6px">Scheduled restart</h2>
 <label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" style="width:auto"></label>
@@ -115,6 +117,13 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portForm"><button id="saveRb">Save</button></div><div class="portMsg" id="rbMsg"></div>
 <h2 style="font-family:inherit;margin:18px 0 6px">Restart now</h2>
 <div class="portForm"><button id="rebootNow">Restart the hub</button></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Firmware update</h2>
+<div class="portForm"><input id="fwFile" type="file" accept=".bin"> <button id="fwSend">Update firmware</button></div>
+<div class="portMsg" id="fwMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Backup and restore</h2>
+<p style="margin:0 0 6px;font-size:14px">The backup file holds the WiFi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
+<div class="portForm"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a> <input id="rsFile" type="file" accept=".txt"> <button id="rsSend">Restore</button></div>
+<div class="portMsg" id="rsMsg"></div>
 <h2 style="font-family:inherit;margin:18px 0 6px">Reset settings</h2>
 <p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address and time settings. Pictures and sensor nodes are kept.</p>
 <div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
@@ -356,7 +365,8 @@ function render(t){
     for(const n of s.sensors){
       const sizes=Object.fromEntries(n.files.map(f=>[f.name,f.size]));
       const base=s.mac+"/"+n.input;
-      card.append(el("div",{className:"sensor"},el("div",{className:"head"},el("strong",{textContent:"Sensor "+n.input}),
+      const nameField=el("input",{type:"text",value:n.name||"",maxLength:24,size:18,placeholder:"Name"});
+      card.append(el("div",{className:"sensor"},el("div",{className:"head"},el("span",null,el("strong",{textContent:"Sensor "+n.input})," ",nameField," ",el("button",{textContent:"Save name",onclick:()=>act(()=>call("PUT","/api/file?path="+base+"/name.txt",nameField.value),"Saved the name")})),
         el("button",{className:"del",textContent:"Delete sensor",onclick:()=>del(base,"sensor "+base+" and its pictures")})),
         el("table",null,el("tbody",null,...FILES.map(f=>fileRow(base+"/"+f,f,sizes[f])))),textPanel(base,n.input)))}
     tree.append(card)}}
@@ -383,8 +393,8 @@ document.getElementById("rtspPort").value=i.rtspPort;
 if(view=="rtsp")fill("rtspInfo",[["Video address","rtsp://"+i.ip+":"+i.rtspPort+"/stream"],["Video streams open",i.streams]]);
 document.getElementById("hubName").value=i.name.replace(/\.local$/,"");document.getElementById("protect").checked=i.password;
 document.getElementById("pwRow").hidden=!i.password;document.getElementById("webPw").placeholder=i.password?"Leave empty to keep it":"";
-if(view=="onvif")fill("onvifInfo",[["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial],["Requests not supported",i.unsupported.join(", ")||"None"]]);
-if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"]])}catch(e){}}
+if(view=="onvif")fill("onvifInfo",[["Login",i.onvifLogin?"Required: user admin and the hub password":"None"],["Device address","http://"+i.ip+":"+i.onvifPort+"/onvif/device_service"],["Event subscribers",i.subscribers],["Serial number",i.serial],["Requests not supported",i.unsupported.join(", ")||"None"]]);
+if(view=="http")fill("httpInfo",[["Address","http://"+i.ip+at+"/"],["Name","http://"+i.name+at+"/"],["Sensor token","add &token="+i.token+" to /sensor requests"]])}catch(e){}}
 const netField=i=>document.getElementById(i);
 // Asks once a second which picture is being sent, and fetches and decodes one only when it changes.
 let liveRun=0,liveSeq=null,liveUrl=null;
@@ -430,6 +440,7 @@ netField("resetAll").onclick=()=>{if(confirm("Erase the saved WiFi networks, por
 async function loadDevice(){try{const j=await(await fetch("/api/device")).json();fill("devInfo",j.rows)}catch(e){}}
 function setSys(view){clearInterval(sysTimer);
 if(view=="maintenance")loadSchedule();
+if(view=="events"){loadEvents();sysTimer=setInterval(loadEvents,3000)}
 if(view=="time"){loadTime();sysTimer=setInterval(tickTime,1000)}
 if(view=="device"){loadDevice();sysTimer=setInterval(loadDevice,5000)}}
 let espTimer=0;
@@ -437,13 +448,32 @@ function heardAgo(s){return s==null?"Never":s<60?s+" s ago":s<3600?Math.floor(s/
 async function loadEsp(){try{const j=await(await fetch("/api/espnow")).json();
 fill("espInfo",[["Hub MAC address",j.mac],["WiFi channel",j.channel]]);
 const STATES={active:"Active",idle:"Idle",silent:"Silent (no report for 3 hours)",never:"Not heard yet"};
-netField("espNodes").replaceChildren(...(j.nodes.length?[el("tr",null,...["Node","Sensor","State","Last heard","Battery","Signal","Report no."].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
-...j.nodes.map(n=>el("tr",null,...[n.node,n.input,STATES[n.state],heardAgo(n.ago),n.battery==null?"-":n.battery+"%",n.rssi==null?"-":n.rssi+" dBm",n.counter==null?"-":n.counter].map(v=>el("td",{textContent:v})))));
+netField("espNodes").replaceChildren(...(j.nodes.length?[el("tr",null,...["Name","Node","Sensor","State","Last heard","Battery","Signal","Report no."].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+...j.nodes.map(n=>el("tr",null,...[n.name||"-",n.node,n.input,STATES[n.state],heardAgo(n.ago),n.battery==null?"-":n.battery+"%"+(n.low?" (low)":""),n.rssi==null?"-":n.rssi+" dBm",n.counter==null?"-":n.counter].map(v=>el("td",{textContent:v})))));
 netField("espEmpty").textContent=j.nodes.length?"":"No sensor nodes yet. Add one under Sensors Manager > Sensors.";
-netField("espUnknown").replaceChildren(...(j.unknown.length?[el("tr",null,...["Node","Sensor","Last heard","Signal","Messages"].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
-...j.unknown.map(n=>el("tr",null,...[n.mac,n.input,heardAgo(n.ago),n.rssi==null?"-":n.rssi+" dBm",n.messages].map(v=>el("td",{textContent:v})))));
+netField("espUnknown").replaceChildren(...(j.unknown.length?[el("tr",null,...["Node","Sensor","Last heard","Signal","Messages",""].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+...j.unknown.map(n=>el("tr",null,...[n.mac,n.input,heardAgo(n.ago),n.rssi==null?"-":n.rssi+" dBm",n.messages].map(v=>el("td",{textContent:v})),el("td",null,el("button",{textContent:"Add node",onclick:async()=>{try{await call("POST","/api/mkdir?path="+n.mac+"/"+n.input);loadEsp();load()}catch(e){netField("espNone").textContent=e.message}}})))));
 netField("espNone").textContent=j.unknown.length?"These are ignored until added under Sensors Manager > Sensors.":"None since the hub last started."}catch(e){}}
-function setEsp(on){clearInterval(espTimer);if(on){loadEsp();espTimer=setInterval(loadEsp,3000)}}
+function setEsp(on){clearInterval(espTimer);if(on){loadEsp();call("GET","/api/alerts").then(a=>netField("espAlarm").checked=a.alarm).catch(()=>{});espTimer=setInterval(loadEsp,3000)}}
+netField("espAlarm").onchange=e=>{call("POST","/api/alerts","alarm="+(e.target.checked?1:0)).catch(()=>{})};
+const DIRECTIONS=["","approaching","moving away","left to right","right to left"];
+async function loadEvents(){try{const list=await call("GET","/api/events");
+netField("evTable").replaceChildren(...(list.length?[el("tr",null,...["Time","Sensor","Event","Details","Battery"].map(h=>el("th",{textContent:h,style:"text-align:left;font-size:13px;padding-right:6px"})))]:[]),
+...list.map(e=>{const when=e.happened||e.received,what=e.kind==1?"Went silent":e.kind==2?"Low battery":e.active?"Active":"Clear";
+const details=[e.delayed?"delayed":""].concat(e.targets.map(t=>[t.distance_cm==null?"":(t.distance_cm/100).toFixed(2)+" m",DIRECTIONS[t.direction]||""].filter(Boolean).join(" "))).filter(Boolean).join(", ");
+return el("tr",null,...[when?new Date(when).toLocaleString():"Clock not set",e.name||e.sensor,what,details||"-",e.battery==null?"-":e.battery+"%"].map(v=>el("td",{textContent:v})))}));
+netField("evNone").textContent=list.length?"":"No events yet."}catch(e){}}
+netField("fwSend").onclick=async()=>{const m=netField("fwMsg"),f=netField("fwFile").files[0];m.className="portMsg";
+if(!f){m.className="portMsg err";m.textContent="Choose a firmware .bin file first.";return}
+if(!confirm("Update the firmware? The hub restarts when it finishes, and the video stops until then."))return;
+m.textContent="Uploading. Keep this page open.";
+try{const r=await fetch("/api/firmware",{method:"PUT",body:f});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Done. The hub is restarting.";setTimeout(()=>location.reload(),25000)}catch(e){m.className="portMsg err";m.textContent="The upload failed. The hub keeps its current firmware."}};
+netField("rsSend").onclick=async()=>{const m=netField("rsMsg"),f=netField("rsFile").files[0];m.className="portMsg";
+if(!f){m.className="portMsg err";m.textContent="Choose a backup file first.";return}
+if(!confirm("Replace the hub's settings with this backup? It will restart and may move to another address."))return;
+try{const r=await fetch("/api/restore",{method:"POST",body:await f.text()});const j=await r.json();if(!r.ok){m.className="portMsg err";m.textContent=j.error;return}
+m.textContent="Restored. The hub is restarting."}catch(e){m.className="portMsg err";m.textContent="The hub did not answer. Try again."}};
 async function loadNvr(){try{const n=await(await fetch("/api/nvr")).json();netField("nvrIp").value=n.ip;
 const state=on=>!n.ip?"Enter the NVR's IP address":on?"Connected":"Not connected";
 fill("nvrInfo",[["Video",state(n.video)],["Motion events",state(n.events)],["Viewers connected now",n.viewers.join(", ")||"None"]])}catch(e){}}

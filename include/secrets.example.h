@@ -10,8 +10,8 @@
 
 #define NTP_SERVER "pool.ntp.org"
 
-// Optional. When set, sensors must add &token=<value> to their requests.
+// Sensors must add &token=<value> to HTTP reports. Left empty, the hub makes one and shows it on the HTTP page.
 #define SENSOR_TOKEN ""
 
-// Optional password for the file manager page (user name "admin").
+// The hub password (user name "admin") for the web page, ONVIF and RTSP. Left empty, the setup network's password is used.
 #define WEB_PASSWORD ""
