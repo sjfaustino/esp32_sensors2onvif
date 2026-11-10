@@ -204,7 +204,7 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
   if (a == "GetSystemDateAndTime") {
     time_t now = c.now;
     struct tm* u = gmtime(&now);
-    return "<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime><tt:DateTimeType>NTP</tt:DateTimeType><tt:DaylightSavings>false"
+    return std::string("<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime><tt:DateTimeType>") + (c.timeFromNtp ? "NTP" : "Manual") + "</tt:DateTimeType><tt:DaylightSavings>false"
            "</tt:DaylightSavings><tt:TimeZone><tt:TZ>UTC0</tt:TZ></tt:TimeZone><tt:UTCDateTime><tt:Time><tt:Hour>" + num(u->tm_hour) +
            "</tt:Hour><tt:Minute>" + num(u->tm_min) + "</tt:Minute><tt:Second>" + num(u->tm_sec) + "</tt:Second></tt:Time><tt:Date><tt:Year>" +
            num(u->tm_year + 1900) + "</tt:Year><tt:Month>" + num(u->tm_mon + 1) + "</tt:Month><tt:Day>" + num(u->tm_mday) +
@@ -212,7 +212,7 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
   }
   if (a == "GetDeviceInformation")
     return "<tds:GetDeviceInformationResponse><tds:Manufacturer>SensorCam</tds:Manufacturer><tds:Model>ESP32</tds:Model>"
-           "<tds:FirmwareVersion>1.0</tds:FirmwareVersion><tds:SerialNumber>" + c.serial +
+           "<tds:FirmwareVersion>" + c.firmwareVersion + "</tds:FirmwareVersion><tds:SerialNumber>" + c.serial +
            "</tds:SerialNumber><tds:HardwareId>1.0</tds:HardwareId></tds:GetDeviceInformationResponse>";
   if (a == "GetCapabilities")
     return "<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Device><tt:XAddr>" + device + "</tt:XAddr></tt:Device><tt:Media><tt:XAddr>" + media +

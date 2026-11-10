@@ -7,8 +7,8 @@ names the sensor that fired. The firmware knows nothing about NVR channels.
 ## Setup
 
 1. Copy `include/secrets.example.h` to `include/secrets.h`. Set `SETUP_AP_PASSWORD` (at least 8 characters) to enable
-   the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to protect the file
-   manager; left empty, anyone on the network can change the pictures.
+   the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to choose the hub
+   password; left empty, the setup network's password is used.
 2. Flash with `pio run -t upload`, which targets a regular ESP32 with 16 MB of flash. Add `-e esp32dev` for one with 4 MB,
    or `-e esp32s3` for an ESP32-S3.
    Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
@@ -20,7 +20,7 @@ console once Wi-Fi is up, as `http://<address>/`. Add the hub to the NVR by addr
 ### IP address
 
 **Network Manager > Network** switches between DHCP and a fixed address. A fixed address is used only on the WiFi network the
-hub was connected to when it was saved, and other networks use DHCP. If the router never answers from a fixed address, the
+hub was connected to when it was saved, and other networks use DHCP. If the router cannot be found from a fixed address, the
 hub forgets it about two minutes after joining and goes back to DHCP.
 
 ### Changing the Wi-Fi network
@@ -170,15 +170,16 @@ settings over USB, which also erases its Wi-Fi networks.
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&state=clear` | That sensor ends now. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&direction=1&distance=250&age=100&battery=80` | Same as an ESP-NOW report. |
 | `GET /status` | Active sensors, subscribers, streams and each sensor's last contact, as JSON. |
-| `GET /events` | The last 64 state changes, newest first, with true event times. Cleared by a reboot. |
+| `GET /events` | The last 64 events, newest first, with true event times. Kept across restarts. |
 
-Add `&token=<value>` if `SENSOR_TOKEN` is set. Unknown sensors get a 404.
+Sensor reports need `&token=<value>`, using the token shown on the HTTP page. `/status` and `/events` need the hub login.
+Unknown sensors get a 404.
 When several sensors are active, the picture alternates between them every 2 s.
 
 ## Adding it to the NVR
 
-Search for it, or add it by address, with protocol ONVIF and port 8899. The firmware does not check the
-camera user name or password. For motion records, turn on motion detection for that channel in the NVR,
+Search for it, or add it by address, with protocol ONVIF and port 8899. Enter the user `admin` and the hub
+password on the channel, unless password protection is off on the HTTP page. For motion records, turn on motion detection for that channel in the NVR,
 with recording and logging enabled. The event comes from the camera, so the NVR's picture-based detection
 has nothing to do.
 

@@ -14,7 +14,7 @@ button{margin-top:16px;cursor:pointer}#msg{min-height:24px;margin-top:12px;white
 <div id="state">Looking for networks...</div>
 <label>Network<select id="list"></select></label>
 <label>Or type its name<input id="name" maxlength="32" autocomplete="off" autocapitalize="none"></label>
-<label>Password<input id="pass" type="password" maxlength="63" autocomplete="off"></label>
+<label>Password<input id="pass" type="password" maxlength="63" autocomplete="off" placeholder="Empty for an open or already saved network"></label>
 <label>Use as<select id="role"><option value="main">Main network</option><option value="backup">Backup network</option></select></label>
 <button id="save">Save</button>
 <div id="msg"></div>

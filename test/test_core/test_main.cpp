@@ -294,6 +294,15 @@ static void stream_uri_uses_the_address_the_client_used() {
   TEST_ASSERT_NOT_EQUAL(std::string::npos, soapDeviceReply("GetStreamUri", c).find("rtsp://192.0.2.9:8554/stream"));
 }
 
+static void reports_firmware_version_and_time_source() {
+  SoapContext c;
+  c.firmwareVersion = "9.8.7";
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, soapDeviceReply("GetDeviceInformation", c).find("<tds:FirmwareVersion>9.8.7<"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, soapDeviceReply("GetSystemDateAndTime", c).find("<tt:DateTimeType>NTP<"));
+  c.timeFromNtp = false;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, soapDeviceReply("GetSystemDateAndTime", c).find("<tt:DateTimeType>Manual<"));
+}
+
 static void notify_carries_both_topics() {
   std::string n = soapNotify(true, false, 1800000000);
   TEST_ASSERT_NOT_EQUAL(std::string::npos, n.find("tns1:VideoSource/MotionAlarm"));
@@ -375,6 +384,7 @@ int main() {
   RUN_TEST(parses_headers_and_query);
   RUN_TEST(answers_every_call_the_nvr_made);
   RUN_TEST(stream_uri_uses_the_address_the_client_used);
+  RUN_TEST(reports_firmware_version_and_time_source);
   RUN_TEST(notify_carries_both_topics);
   RUN_TEST(rtp_reassembles_to_the_original_nals);
   RUN_TEST(base64_matches_known_values);

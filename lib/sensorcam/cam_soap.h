@@ -32,6 +32,8 @@ struct SoapContext {
   int prefixLength = 24;
   bool dhcp = true;
   std::string snapshotToken;  // added to the snapshot address when ONVIF has a password
+  std::string firmwareVersion = "0";
+  bool timeFromNtp = true;
 };
 
 // Device and media calls, independent of event state. Empty when the action is unknown.

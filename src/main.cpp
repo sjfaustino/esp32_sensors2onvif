@@ -5,8 +5,11 @@
 #include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <esp_netif.h>
+#include <esp_netif_net_stack.h>
 #include <esp_now.h>
 #include <esp_sntp.h>
+#include <lwip/etharp.h>
 #include <nvs.h>
 #include <sys/time.h>
 #include <freertos/queue.h>
@@ -46,6 +49,7 @@ static String ntpServer = NTP_SERVER;
 static int tzOffset = 0, tzDst = 0;
 static CamSchedule schedule;
 static uint32_t connectedAt = 0;
+static bool staticChecked = false;
 static const uint32_t STATIC_CHECK_MS = 120000;
 
 // Settings saved on the web page win over the defaults compiled in from config.h and secrets.h.
@@ -134,6 +138,9 @@ static bool storeWifi() {
 
 static bool saveWifi(const std::string& ssid, const std::string& password, bool backup) {
   String name = ssid.c_str(), pass = password.c_str();
+  // Saving a known network again with the password left blank must not erase it. An open network has none to keep.
+  for (int i = 0; pass.isEmpty() && i < 2; i++)
+    if (name == wifiSsid[i]) pass = wifiPassword[i];
   if (backup) {
     wifiSsid[1] = name;
     wifiPassword[1] = pass;
@@ -391,6 +398,14 @@ static std::string backupText() {
   return out;
 }
 
+static bool validBackupValue(char type, const std::string& value) {
+  if (type == 's') return true;
+  if (type == 'b') return value == "0" || value == "1";
+  char* end = nullptr;
+  long number = strtol(value.c_str(), &end, 10);
+  return !value.empty() && *end == 0 && (type != 'u' || (number >= 1 && number <= 65535));  // 'u' is always a port
+}
+
 // Checks every line before changing anything, so a damaged file cannot leave half of the settings replaced.
 static bool restoreText(const std::string& text) {
   if (text.compare(0, 19, "sensorcam-backup 1\n") != 0) return false;
@@ -417,17 +432,26 @@ static bool restoreText(const std::string& text) {
       if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
       value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
     }
+    if (!validBackupValue(found->type, value)) return false;
     lines.push_back({found, value});
   }
   if (lines.empty()) return false;
   for (const Line& l : lines) {
     Preferences p;
     if (!p.begin(l.key->space, false)) return false;
-    if (l.key->type == 's') p.putString(l.key->key, l.value.c_str());
-    else if (l.key->type == 'u') p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str()));
-    else if (l.key->type == 'i') p.putInt(l.key->key, atoi(l.value.c_str()));
-    else p.putBool(l.key->key, l.value == "1");
+    bool ok;
+    if (l.key->type == 's') {
+      p.putString(l.key->key, l.value.c_str());  // reading it back, because saving an empty value reports the same as a failure
+      ok = p.getString(l.key->key, "") == l.value.c_str();
+    } else if (l.key->type == 'u') {
+      ok = p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
+    } else if (l.key->type == 'i') {
+      ok = p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
+    } else {
+      ok = p.putBool(l.key->key, l.value == "1") == 1;
+    }
     p.end();
+    if (!ok) return false;
   }
   requestRestart(12);
   return true;
@@ -448,6 +472,8 @@ static CamConfig makeConfig() {
     s.ntpServer = ntpServer.c_str();
     s.prefixLength = __builtin_popcount((uint32_t)WiFi.subnetMask());
     s.dhcp = !usingStatic;
+    s.firmwareVersion = FIRMWARE_VERSION;
+    s.timeFromNtp = timeNtp;
   };
   c.timeJson = timeJson;
   c.timeSave = saveTime;
@@ -524,12 +550,24 @@ static void restartFor(uint32_t cause) {
 static const uint32_t PING_LOST_RESTART_MS = 90000;
 static volatile uint32_t pingReplies = 0, pingLost = 0, lastPingReply = 0;
 static esp_ping_handle_t pingSession = nullptr;
+static uint32_t pingTarget = 0;
 
 // Wi-Fi can report "connected" while the network stack answers nothing, so the router is asked directly.
+// Called on every connection: replies count only from this one, and the backup network has a different router.
 static void startGatewayPing() {
+  pingReplies = 0;  // the restart rule waits for a reply, which also brings the reply time up to date
+  pingLost = 0;
+  uint32_t gateway = WiFi.gatewayIP();
+  if (pingSession && gateway == pingTarget) return;
+  if (pingSession) {
+    esp_ping_stop(pingSession);
+    esp_ping_delete_session(pingSession);
+    pingSession = nullptr;
+  }
+  pingTarget = gateway;
   esp_ping_config_t config = ESP_PING_DEFAULT_CONFIG();
   config.target_addr.type = IPADDR_TYPE_V4;
-  config.target_addr.u_addr.ip4.addr = (uint32_t)WiFi.gatewayIP();
+  config.target_addr.u_addr.ip4.addr = gateway;
   config.count = ESP_PING_COUNT_INFINITE;
   config.interval_ms = 20000;
   config.timeout_ms = 3000;
@@ -540,6 +578,27 @@ static void startGatewayPing() {
   };
   callbacks.on_ping_timeout = [](esp_ping_handle_t, void*) { pingLost = pingLost + 1; };
   if (esp_ping_new_session(&config, &callbacks, &pingSession) == ESP_OK) esp_ping_start(pingSession);
+}
+
+struct ArpQuery {
+  struct netif* network;
+  ip4_addr_t address;
+  bool found;
+};
+
+static esp_err_t findInArpTable(void* arg) {
+  ArpQuery* q = (ArpQuery*)arg;
+  struct eth_addr* mac;
+  const ip4_addr_t* ip;
+  q->found = q->network && etharp_find_addr(q->network, &q->address, &mac, &ip) >= 0;
+  return ESP_OK;
+}
+
+// A router may ignore ping, but it has to answer ARP to be a router at all.
+static bool routerAnswersArp() {
+  ArpQuery q = {(struct netif*)esp_netif_get_netif_impl(WiFi.STA.netif()), {}, false};
+  q.address.addr = (uint32_t)WiFi.gatewayIP();
+  return esp_netif_tcpip_exec(findInArpTable, &q) != ESP_OK || q.found;  // unable to ask is not evidence of a bad address
 }
 
 static SensorCamServer* server;
@@ -666,7 +725,8 @@ void loop() {
   if (connected && !wasConnected) {
     server->networkUp();
     connectedAt = timerStart();
-    if (!pingSession) startGatewayPing();
+    startGatewayPing();
+    staticChecked = false;
     static bool nameAnnounced = false;
     if (!nameAnnounced && MDNS.begin(hubName.c_str())) {
       MDNS.addService("http", "tcp", webPort);
@@ -726,13 +786,16 @@ void loop() {
     localtime_r(&now, &local);
     if (now > 1577836800 && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(8);
   }
+  // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
+  if (connected && usingStatic && !staticChecked && millis() - connectedAt > STATIC_CHECK_MS) {
+    staticChecked = true;
+    if (pingReplies == 0 && pingLost > 0 && !routerAnswersArp()) {
+      forgetStatic();
+      restartFor(7);
+    }
+  }
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
-  // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
-  if (connected && usingStatic && pingReplies == 0 && pingLost > 0 && millis() - connectedAt > STATIC_CHECK_MS) {
-    forgetStatic();
-    restartFor(7);
-  }
   uint32_t lastReply = lastPingReply;
   if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(4);
 

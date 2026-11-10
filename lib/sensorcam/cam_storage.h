@@ -52,9 +52,10 @@ class CamStorage {
   bool writeNals(const std::string& path, const CamNal* parts, int count) const;
   bool makeDirs(const std::string& path) const;
   bool removeTree(const std::string& path) const;
+  // Writes a file through the callback without building it in RAM first. Creates parent folders.
+  bool writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const;
 
  private:
-  bool writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const;
   std::string full(const std::string& path) const;
   std::string root_;
 };

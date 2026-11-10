@@ -11,7 +11,7 @@
 #include "cam_web.h"
 
 static const size_t MAX_REQUEST = 16 * 1024;
-static const size_t MAX_UPLOAD = CAM_MAX_FRAME + 2048;
+static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
 static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 1024;  // the picture plus 18 bytes of headers per 1400-byte packet
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
 static const uint32_t MAX_POLL_MS = 10000;      // the longest a PullMessages is held, so it cannot occupy a connection for long
@@ -354,15 +354,14 @@ void SensorCamServer::servicePolls(uint32_t now) {
     c.out = httpResponse(200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
     c.pollWaiting = false;
     c.answered = true;
+    c.openedAt = now;  // the time limit now covers sending this reply, not the wait before it
   }
 }
 
 // The history survives a restart. Events are rare, so rewriting this small file each time costs the flash very little.
 void SensorCamServer::saveEvents() {
   uint32_t header[4] = {0x31564543, (uint32_t)sizeof(CamEvent), (uint32_t)eventCount_, (uint32_t)eventNext_};
-  std::string blob((const char*)header, sizeof(header));
-  blob.append((const char*)events_, sizeof(events_));
-  storage_.writeFile(EVENTS_FILE, blob.data(), blob.size());
+  storage_.writeWith(EVENTS_FILE, [&](FILE* f) { return fwrite(header, 1, sizeof(header), f) == sizeof(header) && fwrite(events_, 1, sizeof(events_), f) == sizeof(events_); });
 }
 
 void SensorCamServer::loadEvents() {
@@ -920,7 +919,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     return;
   }
   if (method == "POST" && route == "/api/restore") {
-    c.out = cfg_.restoreText && cfg_.restoreText(std::string(body, bodyLen)) ? httpResponse(200, json, JSON_OK) : httpResponse(400, json, jsonError("that is not a backup from this hub"));
+    c.out = cfg_.restoreText && cfg_.restoreText(std::string(body, bodyLen)) ? httpResponse(200, json, JSON_OK) : httpResponse(400, json, jsonError("could not restore that file: it is damaged, or the hub's settings storage is full"));
     return;
   }
   if (method == "GET" && route == "/api/espnow") {
@@ -1137,6 +1136,10 @@ void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint
 bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   if (c.pollWaiting) return false;
   size_t headEnd = c.in.find("\r\n\r\n");
+  if ((headEnd == std::string::npos ? c.in.size() : headEnd) > MAX_HEADERS) {
+    closeHttp(c);
+    return false;
+  }
   if (headEnd == std::string::npos) return false;
   std::string headers = c.in.substr(0, headEnd);
   std::string target = headers.substr(0, headers.find("\r\n"));
@@ -1164,6 +1167,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.out = "HTTP/1.1 302 Found\r\nLocation: http://" + cfg_.setupAddress + "/setup\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     c.answered = true;
     return true;
+  }
+  if (isApi && !isGet) {  // a browser names the site a request came from, so another site cannot use this browser's login
+    std::string origin = headerValue(headers, "origin");
+    if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");
   }
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
     if (!authorized(headers)) {
@@ -1274,10 +1281,6 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
         frameData_.append(buf, (size_t)n < room ? (size_t)n : room);
       } else {
         c.in.append(buf, n);
-      }
-      if (c.in.size() > MAX_UPLOAD + 2048) {
-        closeHttp(c);
-        return;
       }
       handleHttp(c, now);
       if (c.fd < 0) return;
@@ -1404,7 +1407,7 @@ void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uin
         handleRtspRequest(c, c.in.substr(0, end + 2), now);
         c.in.erase(0, end + 4);
       }
-      if (c.in.size() > MAX_REQUEST) {
+      if (c.in.size() > MAX_HEADERS) {
         closeRtsp(c);
         return;
       }

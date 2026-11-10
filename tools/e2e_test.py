@@ -4,12 +4,12 @@ Plays the NVR's part using the call order recorded from the real NVR. By default
 loopback. Needs ffmpeg.
 
 To test a flashed board instead, restart it first, then set E2E_DEVICE to its address and
-E2E_LOCAL_IP to this PC's address on the same network. If the board has a web password, set
-E2E_WEB_PASSWORD too. It creates and deletes only the 02-00-00-00-00-0x test folders. If the board
+E2E_LOCAL_IP to this PC's address on the same network. If the board has a password, set
+E2E_WEB_PASSWORD to it and E2E_SENSOR_TOKEN to the token on its HTTP page. It creates and deletes only the 02-00-00-00-00-0x test folders. If the board
 has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
 if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
-import base64, datetime, hashlib, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time
+import base64, datetime, hashlib, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_frames
@@ -24,6 +24,8 @@ WEB = 80 if DEVICE else 18080
 HOLD_MS = 10000 if DEVICE else 8000
 PASSWORD = os.environ.get('E2E_WEB_PASSWORD', '') if DEVICE else 'test-pass'
 TOKEN = os.environ.get('E2E_SENSOR_TOKEN', '')
+# A board uses one password for the web page, ONVIF and RTSP. The PC build's ONVIF stays open until a test turns its login on.
+BOARD_LOGIN = PASSWORD if DEVICE else ''
 A, B = '02-00-00-00-00-01', '02-00-00-00-00-02'
 SENSORS = {1: (A, 1), 2: (A, 2), 3: (A, 3), 4: (B, 1), 5: (B, 2), 6: (B, 3)}
 failures = []
@@ -43,8 +45,17 @@ def sid(n):
     return f'mac={SENSORS[n][0]}&input={SENSORS[n][1]}'
 
 
+def wsse_header(password, digest=True, user='admin'):
+    nonce, created = os.urandom(16), '2026-01-01T00:00:00Z'
+    value = base64.b64encode(hashlib.sha1(nonce + created.encode() + password.encode()).digest()).decode() if digest else password
+    return ('<s:Header><Security xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"><UsernameToken>'
+            f'<Username>{user}</Username><Password>{value}</Password><Nonce>{base64.b64encode(nonce).decode()}</Nonce><Created>{created}</Created>'
+            '</UsernameToken></Security></s:Header>')
+
+
 def soap(action, path='/onvif/media', inner=''):
-    body = ('<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+    header = wsse_header(BOARD_LOGIN) if BOARD_LOGIN else ''
+    body = (f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{header}<s:Body>'
             f'<{action} xmlns="x">{inner}</{action}></s:Body></s:Envelope>')
     c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
     c.request('POST', path, body, {'Content-Type': 'application/soap+xml', 'Host': f'{HOST}:{ONVIF}'})
@@ -78,12 +89,7 @@ def http_status(path):
 
 
 def soap_login(action, password, digest=True, path='/onvif/media', user='admin'):
-    nonce, created = os.urandom(16), '2026-01-01T00:00:00Z'
-    value = base64.b64encode(hashlib.sha1(nonce + created.encode() + password.encode()).digest()).decode() if digest else password
-    header = ('<s:Header><Security xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"><UsernameToken>'
-              f'<Username>{user}</Username><Password>{value}</Password><Nonce>{base64.b64encode(nonce).decode()}</Nonce><Created>{created}</Created>'
-              '</UsernameToken></Security></s:Header>')
-    body = f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{header}<s:Body><{action} xmlns="x"/></s:Body></s:Envelope>'
+    body = f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{wsse_header(password, digest, user)}<s:Body><{action} xmlns="x"/></s:Body></s:Envelope>'
     c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
     c.request('POST', path, body, {'Content-Type': 'application/soap+xml'})
     r = c.getresponse()
@@ -101,9 +107,9 @@ def rtsp_describe(authorization=None):
     return s, int(data.split(' ')[1]), [l for l in data.split('\r\n') if l.startswith('WWW-Authenticate')]
 
 
-def api(method, path, body=None, auth=True):
+def api(method, path, body=None, auth=True, origin=None):
     """Returns (status, body bytes)."""
-    headers = {}
+    headers = {'Origin': origin} if origin else {}
     if auth and PASSWORD:
         headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
     c = http.client.HTTPConnection(HOST, WEB, timeout=15)
@@ -151,7 +157,8 @@ class FakeNvrListener:
 
 def grab_colour():
     """Pull one decoded frame over RTSP/TCP and report which colour dominates."""
-    out = subprocess.run(['ffmpeg', '-v', 'error', '-rtsp_transport', 'tcp', '-i', f'rtsp://{HOST}:{RTSP}/stream', '-frames:v', '1',
+    login = f'admin:{urllib.parse.quote(BOARD_LOGIN, safe="")}@' if BOARD_LOGIN else ''
+    out = subprocess.run(['ffmpeg', '-v', 'error', '-rtsp_transport', 'tcp', '-i', f'rtsp://{login}{HOST}:{RTSP}/stream', '-frames:v', '1',
                           '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, timeout=40)
     if len(out.stdout) != 640 * 360 * 3:
         return 'no frame: ' + out.stderr.decode(errors='replace')[:300]
@@ -161,6 +168,20 @@ def grab_colour():
     return 'amber' if g > 0.3 * r else 'red'
 
 
+def dropped_after(port, data):
+    """True when the hub hangs up on a request it should not keep buffering."""
+    s = socket.create_connection((HOST, port), timeout=5)
+    try:
+        s.sendall(data)
+        return s.recv(16) == b''
+    except ConnectionError:
+        return True
+    except socket.timeout:
+        return False
+    finally:
+        s.close()
+
+
 def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
@@ -168,6 +189,13 @@ def file_manager_tests(files, hub_files_free):
     for slave in (A, B):
         api('DELETE', f'/api/file?path={slave}')
     baseline = status()['sensors']
+
+    check('endless web headers are dropped without a login', dropped_after(WEB, b'GET / HTTP/1.1\r\nX: ' + b'a' * 8000))
+    check('endless ONVIF headers are dropped without a login', dropped_after(ONVIF, b'POST / HTTP/1.1\r\nX: ' + b'a' * 8000))
+    check('endless RTSP headers are dropped without a login', dropped_after(RTSP, b'OPTIONS * RTSP/1.0\r\nX: ' + b'a' * 8000))
+    own_site = f'http://{HOST}' + ('' if WEB == 80 else f':{WEB}')
+    check('another site cannot use a logged-in browser', api('POST', '/api/restore', b'hello', origin='http://evil.example')[0] == 403)
+    check('the hub\'s own page is not refused as another site', api('POST', '/api/restore', b'hello', origin=own_site)[0] == 400)
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
@@ -327,7 +355,7 @@ def file_manager_tests(files, hub_files_free):
 
     def snapshot(port):
         c = http.client.HTTPConnection(HOST, port, timeout=5)
-        c.request('GET', '/onvif/snapshot')
+        c.request('GET', '/onvif/snapshot' + (f"?token={hashlib.sha1(f'snapshot:{BOARD_LOGIN}'.encode()).digest()[:8].hex()}" if BOARD_LOGIN else ''))
         r = c.getresponse()
         data = r.read()
         c.close()
@@ -336,7 +364,7 @@ def file_manager_tests(files, hub_files_free):
     code, kind, data = snapshot(ONVIF)
     check('ONVIF snapshot is a JPEG', code == 200 and kind == 'image/jpeg' and data.startswith(b'\xff\xd8\xff'), (code, kind))
     check('snapshot is not on the web port', snapshot(WEB)[0] == 404)
-    check('ONVIF gives a snapshot address', '/onvif/snapshot</tt:Uri>' in soap('GetSnapshotUri')[1])
+    check('ONVIF gives a snapshot address', '/onvif/snapshot' in soap('GetSnapshotUri')[1])
     jpg = path[:-5] + '.jpg'
     tiny = b'\xff\xd8\xff\xe0' + b'\x01' * 60
     check('thumbnail must be a JPEG', api('PUT', f'/api/file?path={jpg}', b'not a jpeg at all')[0] == 422)

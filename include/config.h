@@ -6,7 +6,7 @@
 #include "secrets.example.h"
 #endif
 
-// Optional password for the file manager page (user name "admin"). Empty leaves it open on the network.
+// The hub password (user name "admin") for the web page, ONVIF and RTSP. Empty falls back to the setup network's password.
 #ifndef WEB_PASSWORD
 #define WEB_PASSWORD ""
 #endif
