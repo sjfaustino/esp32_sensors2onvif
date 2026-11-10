@@ -39,7 +39,7 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 ## Events and alerts
 
 **Sensors Manager > Events** lists the last 64 events and keeps them across restarts. A sensor can be given a name on the Sensors
-page, which then appears on the ESP-NOW and Events pages. A node that stays silent for 3 hours, or reports 20% battery or less,
+page, which then appears on the ESP-NOW and Events pages. A node that stays silent for 3 hours, counted from the last restart if it has not reported since, or reports 20% battery or less,
 is logged as an event. The ESP-NOW page can also raise an NVR alarm for these.
 
 ## ONVIF thumbnails
@@ -60,7 +60,8 @@ ESP-NOW reports do not use it.
 ## System Manager
 
 **Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
-restores a settings backup (which holds the passwords in plain text), and resets the settings. A reset erases the saved WiFi networks,
+restores a settings backup (which holds the passwords in plain text), and resets the settings. A new firmware must stay on the network for a minute;
+if it crashes, stalls or loses the network first, or the power fails during that minute, the hub goes back to the previous firmware and Device Info says so. A reset erases the saved WiFi networks,
 ports, name, web password, fixed address and time settings, and keeps the pictures and sensor nodes.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
@@ -132,7 +133,7 @@ plus 3 for each target.
 | 1 | Version, `1` |
 | 1 | Input number on the device, starting at `1` |
 | 1 | Active: `1` active, `0` inactive |
-| 1 | Battery percent, `0xFF` when unknown or mains powered |
+| 1 | Battery percent, `0xFF` when unknown or mains powered. Other values above 100 also count as unknown. |
 | 4 | Event counter. A resend of the same event repeats it, and the hub ignores the repeat. |
 | 4 | Age in seconds, `0` when live, `0xFFFFFFFF` when unknown |
 | 1 | Number of targets, `0` to `3` |

@@ -84,6 +84,7 @@ struct CamConfig {
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
   uint32_t holdMs = 10000;
+  uint32_t silentMs = 3UL * 3600UL * 1000UL;  // a known sensor quiet for this long is reported as silent
   std::string sensorToken;  // when set, /sensor requires token=<value>
   std::string serial = "000000000000";
 };
@@ -101,6 +102,8 @@ class SensorCamServer {
   void espNowInput(const uint8_t mac[6], const SensorReport& report, int8_t rssi = 0);  // call from the same task as poll()
 
  private:
+  // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
+  // and web connections and event pushes share the other 7. Web connections stop at 6, so a push can always start.
   static const int MAX_HTTP = 6;
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
@@ -110,6 +113,7 @@ class SensorCamServer {
   struct Health {
     bool heard = false;
     uint32_t heardAt = 0;
+    uint32_t watchedAt = 0;  // when the hub started expecting reports, so a node dead since before a restart is still noticed
     bool silent = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     bool counterSeen = false;
@@ -158,6 +162,7 @@ class SensorCamServer {
     bool answered = false;
     const char* staticBody = nullptr;  // sent after out without being copied into it: flash data, or the borrowed buffer
     size_t staticLen = 0;
+    std::string body;  // a reply too large to copy; staticBody points into it
     bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
     size_t bodyWanted = 0;
     size_t discardLeft = 0;  // body still to read and drop, so a refusal arrives as a reply rather than a reset
@@ -201,6 +206,8 @@ class SensorCamServer {
   std::string handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status);
   std::string handleSensor(const std::string& target, int& status);
   void rescan();  // rebuilds the sensor table from the folders on storage
+  bool sensorFits(const std::string& path) const;  // false when the path would add a sensor beyond the limit
+  int sharedSockets() const;  // web connections and event pushes in progress
   int findSlot(const uint8_t mac[6], uint8_t input) const;
   std::string slotName(int id) const;
   const CamFrame& frameToShow(uint32_t now);

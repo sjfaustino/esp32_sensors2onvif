@@ -7,6 +7,7 @@ const int CAM_MAX_TARGETS = 3;
 const uint32_t CAM_AGE_UNKNOWN = 0xFFFFFFFFu;
 const uint16_t CAM_DISTANCE_UNKNOWN = 0xFFFF;
 const uint8_t CAM_BATTERY_UNKNOWN = 0xFF;
+inline uint8_t camBatteryPercent(int value) { return value >= 0 && value <= 100 ? (uint8_t)value : CAM_BATTERY_UNKNOWN; }
 
 struct SensorTarget {
   uint16_t distanceCm = CAM_DISTANCE_UNKNOWN;

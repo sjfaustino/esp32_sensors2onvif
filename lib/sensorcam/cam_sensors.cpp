@@ -13,7 +13,7 @@ bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
   SensorReport r;
   r.input = d[1];
   r.active = d[2] == 1;
-  r.battery = d[3];
+  r.battery = camBatteryPercent(d[3]);
   r.counter = readU32(d + 4);
   r.age = readU32(d + 8);
   r.targetCount = d[12];

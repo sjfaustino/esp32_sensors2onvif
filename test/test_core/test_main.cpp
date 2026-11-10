@@ -153,6 +153,19 @@ static void builtin_pictures_are_valid() {
   TEST_ASSERT_TRUE(camSameNal(CAM_FRAMES[0].nals[0], CAM_FRAMES[1].nals[0]));
 }
 
+static void battery_outside_0_to_100_is_unknown() {
+  uint8_t p[] = {1, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0};
+  SensorReport r;
+  TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
+  TEST_ASSERT_EQUAL(100, r.battery);
+  p[3] = 101;
+  TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
+  TEST_ASSERT_EQUAL(CAM_BATTERY_UNKNOWN, r.battery);
+  TEST_ASSERT_EQUAL(CAM_BATTERY_UNKNOWN, camBatteryPercent(300));
+  TEST_ASSERT_EQUAL(CAM_BATTERY_UNKNOWN, camBatteryPercent(-1));
+  TEST_ASSERT_EQUAL(0, camBatteryPercent(0));
+}
+
 static void parses_report_with_no_targets() {
   // version, input, active, battery, counter 0x01020304, age 300, no targets
   const uint8_t p[] = {1, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0};
@@ -388,5 +401,6 @@ int main() {
   RUN_TEST(notify_carries_both_topics);
   RUN_TEST(rtp_reassembles_to_the_original_nals);
   RUN_TEST(base64_matches_known_values);
+  RUN_TEST(battery_outside_0_to_100_is_unknown);
   return UNITY_END();
 }

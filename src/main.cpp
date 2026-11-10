@@ -5,9 +5,11 @@
 #include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_netif.h>
 #include <esp_netif_net_stack.h>
 #include <esp_now.h>
+#include <esp_ota_ops.h>
 #include <esp_sntp.h>
 #include <lwip/etharp.h>
 #include <nvs.h>
@@ -19,6 +21,9 @@
 
 static std::string localIp() { return WiFi.localIP().toString().c_str(); }
 static uint32_t nowMs() { return millis(); }
+
+// What malloc can really hand out. ESP.getMaxAllocHeap() also counts instruction RAM, which strings cannot use.
+static uint32_t largestBlock() { return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT); }
 
 static std::string macSerial() {
   uint64_t mac = ESP.getEfuseMac();
@@ -355,6 +360,17 @@ static bool saveAddress(const CamAddress& a) {
 
 static std::string deviceRows();
 
+// The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
+extern "C" bool verifyRollbackLater() { return true; }
+
+static const uint32_t FIRMWARE_PROOF_MS = 60000;
+static bool firmwareUnproven = false;
+
+// Until this is called, any restart makes the bootloader go back to the previous firmware.
+static void confirmFirmware() {
+  if (firmwareUnproven && esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) firmwareUnproven = false;
+}
+
 struct BackupKey {
   const char* space;
   const char* key;
@@ -394,14 +410,14 @@ static bool validBackupValue(char type, const std::string& value) {
   return !value.empty() && *end == 0 && (type != 'u' || (number >= 1 && number <= 65535));  // 'u' is always a port
 }
 
-// Checks every line before changing anything, so a damaged file cannot leave half of the settings replaced.
-static bool restoreText(const std::string& text) {
+struct BackupLine {
+  const BackupKey* key;
+  std::string value;
+};
+
+// False for a damaged file, and for one with no settings in it.
+static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines) {
   if (text.compare(0, 19, "sensorcam-backup 1\n") != 0) return false;
-  struct Line {
-    const BackupKey* key;
-    std::string value;
-  };
-  std::vector<Line> lines;
   for (size_t at = 19; at < text.size();) {
     size_t end = text.find('\n', at);
     if (end == std::string::npos) end = text.size();
@@ -423,15 +439,29 @@ static bool restoreText(const std::string& text) {
     if (!validBackupValue(found->type, value)) return false;
     lines.push_back({found, value});
   }
-  if (lines.empty()) return false;
-  for (const Line& l : lines) {
-    bool ok = withPrefs(l.key->space, [&](Preferences& p) {
-      if (l.key->type == 's') return putText(p, l.key->key, l.value.c_str());
-      if (l.key->type == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
-      if (l.key->type == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
-      return p.putBool(l.key->key, l.value == "1") == 1;
-    });
-    if (!ok) return false;
+  return !lines.empty();
+}
+
+static bool writeBackupLine(const BackupLine& l) {
+  return withPrefs(l.key->space, [&](Preferences& p) {
+    if (l.key->type == 's') return putText(p, l.key->key, l.value.c_str());
+    if (l.key->type == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
+    if (l.key->type == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
+    return p.putBool(l.key->key, l.value == "1") == 1;
+  });
+}
+
+// All or nothing: a damaged file changes nothing, and a write that fails puts back what the earlier ones replaced.
+static bool restoreText(const std::string& text) {
+  std::vector<BackupLine> wanted, before;
+  if (!parseBackup(text, wanted)) return false;
+  parseBackup(backupText(), before);
+  for (size_t done = 0; done < wanted.size(); done++) {
+    if (writeBackupLine(wanted[done])) continue;
+    for (size_t i = 0; i <= done; i++)  // removed first, because the write may have failed for lack of space
+      withPrefs(wanted[i].key->space, [&](Preferences& p) { return p.remove(wanted[i].key->key); });
+    for (const BackupLine& l : before) writeBackupLine(l);
+    return false;
   }
   requestRestart(RESTART_RESTORED);
   return true;
@@ -477,7 +507,10 @@ static CamConfig makeConfig() {
   c.onvifPassword = webPassword.c_str();
   c.healthAlarm = healthAlarm;
   c.healthSave = [](bool on) { return withPrefs("net", [on](Preferences& p) { return p.putBool("hlth", on) == 1; }); };
-  c.firmwareBegin = [](size_t size) { return Update.begin(size, U_FLASH); };
+  c.firmwareBegin = [](size_t size) {
+    confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
+    return Update.begin(size, U_FLASH);
+  };
   c.firmwareWrite = [](const uint8_t* data, size_t len) { return Update.write((uint8_t*)data, len) == len; };
   c.firmwareEnd = [](bool commit) {
     if (!commit) {
@@ -491,7 +524,7 @@ static CamConfig makeConfig() {
   c.backupText = backupText;
   c.restoreText = restoreText;
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
-  c.canAllocate = [](size_t n) { return ESP.getMaxAllocHeap() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
+  c.canAllocate = [](size_t n) { return largestBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
   c.hasHeadroom = [] { return ESP.getFreeHeap() >= 10 * 1024; };
   c.fsUsage = [](uint32_t& used, uint32_t& total) {
     used = LittleFS.usedBytes();
@@ -614,25 +647,28 @@ static const char* lastRestartText() {
   return RESTART_TEXT[lastRestartCause < RESTART_CAUSES ? lastRestartCause : RESTART_UNKNOWN];
 }
 
+static uint32_t programBytes = 0;
+
 static std::string deviceRows() {
   std::string out;
   auto add = [&](const char* label, const String& value) { out += (out.empty() ? "[\"" : ",[\"") + std::string(label) + "\",\"" + jsonText(value) + "\"]"; };
   add("Device name", hubName);
   add("Firmware version", FIRMWARE_VERSION);
   add("Firmware built", __DATE__ " " __TIME__);
+  add("Firmware check", firmwareUnproven ? "New firmware, being checked" : esp_ota_get_last_invalid_partition() ? "The last update failed and was undone" : "Good");
   add("Serial number", macSerial().c_str());
   add("Chip", String(ESP.getChipModel()) + " revision " + ESP.getChipRevision());
   add("CPU", String(ESP.getChipCores()) + " cores at " + ESP.getCpuFreqMHz() + " MHz");
   add("Flash size", String(ESP.getFlashChipSize() / (1024 * 1024)) + " MB");
   add("PSRAM", ESP.getPsramSize() ? String(ESP.getPsramSize() / (1024 * 1024)) + " MB" : String("None"));
-  add("Program size", String(ESP.getSketchSize() / 1024) + " KB of " + (ESP.getSketchSize() + ESP.getFreeSketchSpace()) / 1024 + " KB");
+  add("Program size", String(programBytes / 1024) + " KB of " + esp_ota_get_running_partition()->size / 1024 + " KB");
   add("Arduino core", ESP_ARDUINO_VERSION_STR);
   add("ESP-IDF", esp_get_idf_version());
   add("Uptime", uptimeText());
   add("Last restart", lastRestartText());
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
-  add("Largest free block", String(ESP.getMaxAllocHeap() / 1024) + " KB");
+  add("Largest free block", String(largestBlock() / 1024) + " KB");
   nvs_stats_t settings;
   if (nvs_get_stats(nullptr, &settings) == ESP_OK) add("Settings storage", String(settings.used_entries) + " of " + settings.total_entries + " entries used");
   add("WiFi network", WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("Not connected"));
@@ -643,6 +679,9 @@ static std::string deviceRows() {
 }
 
 void setup() {
+  programBytes = ESP.getSketchSize();  // verifies the whole firmware, which stalls the hub for 0.4 s, so only once
+  esp_ota_img_states_t firmwareState;
+  firmwareUnproven = esp_ota_get_state_partition(esp_ota_get_running_partition(), &firmwareState) == ESP_OK && firmwareState == ESP_OTA_IMG_PENDING_VERIFY;
   lastRestartCause = esp_reset_reason() == ESP_RST_SW ? restartCause : 0;
   restartCause = 0;
   Serial.begin(115200);
@@ -724,7 +763,12 @@ void loop() {
     if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
   }
   if (setupOpen) dnsServer.processNextRequest();
-  if (restartPending && millis() - restartRequestedAt > 1500) restartFor(restartRequested);
+  if (restartPending && millis() - restartRequestedAt > 1500) {
+    confirmFirmware();  // someone used this firmware's pages to ask for this restart, so it must not count as a failure
+    restartFor(restartRequested);
+  }
+  // A new firmware has to stay on the network for a minute. Any restart before that, including the Wi-Fi one above, undoes the update.
+  if (firmwareUnproven && (connected ? millis() - connectedAt > FIRMWARE_PROOF_MS : wifiSsid[0].isEmpty() && millis() > FIRMWARE_PROOF_MS)) confirmFirmware();
 
   // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
   static uint32_t lowSince = 0;
@@ -763,7 +807,7 @@ void loop() {
     printedAt = millis();
     Serial.printf("ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
                   WiFi.localIP().toString().c_str(), onvifPort, webPort, rtspPort, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
-                  (unsigned)wifiDropReason, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
+                  (unsigned)wifiDropReason, ESP.getFreeHeap(), largestBlock(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
   }
 
   SensorMessage m;

@@ -186,6 +186,7 @@ def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
         check('file operations need the password', api('DELETE', f'/api/file?path={A}', auth=False)[0] == 401)
+        check('picture upload needs the password', api('PUT', '/api/file?path=clear.h264', b'x' * 2000, auth=False)[0] == 401)
     for node in (A, B):
         api('DELETE', f'/api/file?path={node}')
     baseline = status()['sensors']
@@ -225,6 +226,7 @@ def file_manager_tests(files, hub_files_free):
         check(f'ONVIF answers {action}', code == 200 and wanted in data, data[:200])
     check('an unsupported ONVIF request is refused', soap('NoSuchRequest', '/onvif/device_service')[0] == 400)
     check('an unsupported ONVIF request is recorded', 'NoSuchRequest' in json.loads(api('GET', '/api/info')[1])['unsupported'])
+    check('setting the time over ONVIF is refused, because the hub would ignore it', soap('SetSystemDateAndTime', '/onvif/device_service')[0] == 400)
 
     code, device = api('GET', '/api/device')
     rows = dict(json.loads(device)['rows']) if code == 200 else {}
@@ -464,6 +466,12 @@ def main():
                 check('clear.h264 can be uploaded', api('PUT', '/api/file?path=clear.h264', files['active.h264'])[0] == 200)
                 colour = grab_colour()
                 check('uploaded clear picture is streamed', colour == 'red', colour)
+                if PASSWORD:
+                    half = socket.create_connection((HOST, WEB), timeout=5)
+                    half.sendall(b'PUT /api/file?path=clear.h264 HTTP/1.1\r\nHost: x\r\nContent-Length: 30000\r\n\r\nabc')
+                    time.sleep(1.2)
+                    check('an upload with no login leaves the picture alone', json.loads(api('GET', '/api/live')[1])['file'] == 'clear.h264')
+                    half.close()
                 check('clear.h264 can be deleted', api('DELETE', '/api/file?path=clear.h264')[0] == 200)
                 colour = grab_colour()
                 check('built-in clear picture returns', colour == 'green', colour)
@@ -546,6 +554,9 @@ def main():
                 get(f'/sensor?{sid(1)}&state=clear')
                 check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
                 check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])
+                api('POST', '/api/wifi', 'ssid=radio-huge')
+                check('a report number above 2 billion stays positive', node_entry(radio())['counter'] == 3000000000, node_entry(radio()))
+                get(f'/sensor?{sid(1)}&state=clear')
                 api('POST', '/api/wifi', 'ssid=radio-unknown')
                 api('POST', '/api/wifi', 'ssid=radio-unknown')
                 stranger = radio()['unknown']
@@ -707,6 +718,9 @@ def main():
             check('unknown age has no event time', e5['happened'] is None and e5['age_s'] is None and e5['delayed'] is True, e5)
             heard = {h['sensor']: h for h in status()['heard']}
             check('status tracks last heard and battery', heard[name(4)]['battery'] == 80 and heard[name(4)]['silent'] is False, heard)
+            get(f'/sensor?{sid(4)}&state=clear&battery=300')
+            heard = {h['sensor']: h for h in status()['heard']}
+            check('an impossible battery reading does not replace the last good one', heard[name(4)]['battery'] == 80, heard)
             played = time.time()
             while status()['active'] and time.time() - played < 15:
                 time.sleep(0.2)
@@ -729,6 +743,36 @@ def main():
             get(f'/sensor?{sid(1)}&state=clear')
             check('still answering at the end', soap('GetSystemDateAndTime', device)[0] == 200)
 
+            # Web connections and pushes share a few sockets, so a push may have to wait for one. It must still go out.
+            if proc:
+                played = time.time()
+                while status()['active'] and time.time() - played < 15:
+                    time.sleep(0.2)
+                time.sleep(3)  # the hung listener's socket is given up
+                second = FakeNvrListener()
+                soap('Subscribe', device, f'<ConsumerReference><Address>http://{LOCAL}:{second.port}/x</Address></ConsumerReference>')
+                first_seen, second_seen = len(nvr.events), len(second.events)
+                idle = [socket.create_connection((HOST, WEB), timeout=5) for _ in range(5)]
+                time.sleep(0.2)
+                get(f'/sensor?{sid(1)}')
+                time.sleep(2)
+                for c in idle:
+                    c.close()
+                check('pushes that wait for a socket still go out', len(nvr.events) > first_seen and len(second.events) > second_seen, (len(nvr.events), first_seen, len(second.events), second_seen))
+                get(f'/sensor?{sid(1)}&state=clear')
+
+            # The limit of 32 is refused up front. Everything made here is under a node this test owns, and is removed again.
+            extra = '02-00-00-00-33-33'
+            free = 32 - status()['sensors']
+            made = [api('POST', f'/api/mkdir?path={extra}/{i + 1}')[0] for i in range(free)]
+            check('sensor folders up to the limit are accepted', set(made) <= {200}, made)
+            check('a sensor folder beyond the limit is refused', api('POST', f'/api/mkdir?path={extra}/{free + 1}')[0] == 409)
+            check('a name for a sensor beyond the limit is refused', api('PUT', f'/api/file?path={extra}/{free + 1}/name.txt', b'x')[0] == 409)
+            if free:
+                check('an existing sensor can still be changed at the limit', api('PUT', f'/api/file?path={extra}/1/name.txt', b'x')[0] == 200)
+            api('DELETE', f'/api/file?path={extra}')
+            check('the limit frees up when sensors are deleted', status()['sensors'] == 32 - free, status())
+
             # Deleting folders removes the sensors, without a reboot.
             count = status()['sensors']
             check('sensor folder can be deleted', api('DELETE', f'/api/file?path={name(6)}')[0] == 200)
@@ -739,10 +783,14 @@ def main():
             if proc:
                 proc.kill()
                 proc.wait()
-                proc = subprocess.Popen([EXE, str(HOLD_MS), storage, PASSWORD], stdout=subprocess.PIPE, text=True)
+                proc = subprocess.Popen([EXE, str(HOLD_MS), storage, PASSWORD, '1500'], stdout=subprocess.PIPE, text=True)
                 proc.stdout.readline()
                 check('folders are still sensors after a restart', status()['sensors'] == count - 4, status())
                 check('stored pictures survive a restart', api('GET', f'/api/file?path={name(4)}/active.h264')[1] == files['active.h264'])
+                time.sleep(2.5)
+                quiet_nodes = json.loads(api('GET', '/api/espnow')[1])['nodes']
+                check('a node quiet since the restart is reported silent', quiet_nodes and all(n['state'] == 'silent' for n in quiet_nodes), quiet_nodes)
+                check('going silent after a restart is logged', any(e['kind'] == 1 for e in json.loads(api('GET', '/api/events')[1])))
             api('DELETE', f'/api/file?path={B}')
         finally:
             if proc:

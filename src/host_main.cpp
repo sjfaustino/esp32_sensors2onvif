@@ -1,5 +1,5 @@
 // PC build of the firmware library for tools/e2e_test.py. Binds to loopback only.
-// Usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD]
+// Usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD [SILENT_MS]]
 #include <chrono>
 #include <cstdlib>
 #include <cstdio>
@@ -12,7 +12,7 @@ static uint32_t nowMs() {
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD]\n");
+    fprintf(stderr, "usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD [SILENT_MS]]\n");
     return 1;
   }
   CamConfig cfg;
@@ -59,12 +59,12 @@ int main(int argc, char** argv) {
       hub->setOnvifPassword(ssid == "auth-on" ? "onvif-secret" : "");
       return true;
     }
-    if (ssid == "radio-known" || ssid == "radio-unknown" || ssid == "radio-low") {  // this build has no radio, so the test delivers a report this way
+    if (ssid == "radio-known" || ssid == "radio-unknown" || ssid == "radio-low" || ssid == "radio-huge") {  // this build has no radio, so the test delivers a report this way
       bool known = ssid != "radio-unknown";
       uint8_t mac[6] = {2, 0, 0, 0, 0, (uint8_t)(known ? 1 : 0x99)};
       static uint32_t counter = 77;
       SensorReport report;
-      report.counter = counter++;
+      report.counter = ssid == "radio-huge" ? 3000000000UL : counter++;
       report.battery = ssid == "radio-low" ? 10 : 55;
       hub->espNowInput(mac, report, -61);
       return true;
@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
   cfg.holdMs = (uint32_t)atol(argv[1]);
   cfg.fsRoot = argv[2];
   if (argc > 3) cfg.webPassword = argv[3];
+  if (argc > 4) cfg.silentMs = (uint32_t)atol(argv[4]);
   SensorCamServer server(cfg, [] { return std::string("127.0.0.1"); }, nowMs);
   hub = &server;
   if (!server.begin()) {

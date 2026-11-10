@@ -402,11 +402,12 @@ let liveRun=0,liveSeq=null,liveUrl=null;
 async function livePoll(run){if(run!=liveRun)return;let wait=1000;const m=$("liveMsg");
 try{const j=await(await fetch("/api/live",{cache:"no-store"})).json();if(run!=liveRun)return;$("liveFile").textContent=j.file;
 if(j.seq!==liveSeq){if(liveSeq===null)m.textContent="Getting the decoder ready. The first time, this downloads about 30 MB.";
-const r=await fetch("/api/live/frame",{cache:"no-store"});if(!r.ok)throw new Error("The hub could not send the picture.");
-const seq=Number(r.headers.get("X-Frame-Seq")),url=await decoded(new Uint8Array(await r.arrayBuffer()));
+const r=await fetch("/api/live/frame",{cache:"no-store"});if(!r.ok)throw new Error(r.status==507?"Both video connections are in use, or the hub is sending another file. Trying again.":"The hub could not send the picture.");
+const seq=Number(r.headers.get("X-Frame-Seq")),data=new Uint8Array(await r.arrayBuffer());let url;
+try{url=await decoded(data)}catch(e){throw new Error("Could not show the picture. The decoder needs internet access the first time. "+(e.message||""))}
 if(run!=liveRun){URL.revokeObjectURL(url);return}
 if(liveUrl)URL.revokeObjectURL(liveUrl);liveUrl=url;const img=$("liveImg");img.src=url;img.style.display="block";liveSeq=seq;m.className="portMsg";m.textContent=""}}
-catch(e){wait=5000;m.className="portMsg err";m.textContent="Could not show the picture. The decoder needs internet access the first time. "+(e.message||"")}
+catch(e){wait=5000;m.className="portMsg err";m.textContent=e instanceof TypeError?"Could not reach the hub. Trying again.":e.message}
 setTimeout(()=>livePoll(run),wait)}
 function setLive(on){liveRun++;if(on){liveSeq=null;livePoll(liveRun)}}
 function netState(){const off=$("netMode").value=="dhcp";["netIp","netMask","netGw","netDns"].forEach(i=>$(i).disabled=off)}

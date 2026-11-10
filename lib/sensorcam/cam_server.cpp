@@ -32,7 +32,6 @@ static const uint32_t NOTIFY_CLOSE_MS = 1000;
 static const uint32_t REPEAT_TRUE_MS = 1000;
 static const uint32_t DELAYED_AFTER_S = 30;       // older reports are shown as delayed
 static const uint32_t DELAYED_GAP_MS = 4000;      // lets the NVR close one record before the next
-static const uint32_t SILENT_AFTER_MS = 3UL * 3600UL * 1000UL;  // missed heartbeats
 static const time_t CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means NTP has not synced
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
@@ -159,6 +158,13 @@ void SensorCamServer::closeRtsp(RtspConn& c) {
   c = RtspConn();
 }
 
+int SensorCamServer::sharedSockets() const {
+  int open = 0;
+  for (const HttpConn& c : http_) open += c.fd >= 0;
+  for (const NotifyIo& n : notify_) open += n.fd >= 0;
+  return open;
+}
+
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   sockaddr_in a{};
   socklen_t len = sizeof(a);
@@ -168,7 +174,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
     netClose(fd);
     return;
   }
-  if (!hasHeadroom()) {  // short of RAM: let existing traffic drain first
+  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP) {  // short of RAM or sockets: the client will retry once existing traffic has drained
     refused_++;
     netClose(fd);
     return;
@@ -183,7 +189,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
     c.openedAt = now;
     return;
   }
-  netClose(fd);  // all slots busy; the client will retry
+  netClose(fd);
 }
 
 void SensorCamServer::acceptRtsp(uint32_t now) {
@@ -519,7 +525,7 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
   std::string age = queryParam(target, "age");
   r.age = age == "unknown" ? CAM_AGE_UNKNOWN : (uint32_t)strtoul(age.c_str(), nullptr, 10);
   std::string battery = queryParam(target, "battery");
-  if (!battery.empty()) r.battery = (uint8_t)atoi(battery.c_str());
+  if (!battery.empty()) r.battery = camBatteryPercent(atoi(battery.c_str()));
   std::string distance = queryParam(target, "distance"), direction = queryParam(target, "direction");
   if (!distance.empty() || !direction.empty()) {
     int d = atoi(direction.c_str());
@@ -601,6 +607,16 @@ std::string SensorCamServer::slotName(int id) const {
   return camMacText(slots_[id - 1].mac) + "/" + std::to_string(slots_[id - 1].input);
 }
 
+bool SensorCamServer::sensorFits(const std::string& path) const {
+  uint8_t mac[6];
+  size_t slash = path.find('/');
+  if (slash == std::string::npos || !camParseMac(path.substr(0, slash), mac)) return true;  // not inside a sensor's folder
+  if (findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1))) return true;
+  for (const Slot& s : slots_)
+    if (!s.used) return true;
+  return false;
+}
+
 void SensorCamServer::rescan() {
   bool seen[CAM_MAX_SENSORS] = {false};
   std::vector<CamFsEntry> nodes;
@@ -620,6 +636,7 @@ void SensorCamServer::rescan() {
         memcpy(slots_[i].mac, mac, 6);
         slots_[i].input = input;
         health_[i] = Health();
+        health_[i].watchedAt = millis_();
         id = i + 1;
       }
       if (id) {
@@ -687,35 +704,65 @@ bool SensorCamServer::authorized(const std::string& headers) const {
   return cfg_.webPassword.empty() || camBasicValid(headerValue(headers, "authorization"), HUB_USER, cfg_.webPassword);
 }
 
+static bool hasFile(const std::vector<CamFsEntry>& items, const std::string& name) {
+  for (const CamFsEntry& e : items)
+    if (!e.dir && e.name == name) return true;
+  return false;
+}
+
+// Built as one string that grows only when the memory for it is there, and is never copied.
+// Empty when the hub is too short of memory to build it.
 std::string SensorCamServer::treeJson() {
   uint32_t used = 0, total = 0;
   if (cfg_.fsUsage) cfg_.fsUsage(used, total);
   std::vector<CamFsEntry> root;
   storage_.list("", root);
-  std::string clear = "null", nodes;
-  for (const CamFsEntry& s : root) {
+  std::string out;
+  auto makeRoom = [&](size_t bytes) {  // reserved in advance, so a failed allocation is a refusal and not a crash
+    if (out.capacity() - out.size() >= bytes) return true;
+    size_t wanted = out.capacity() * 2 + bytes;
+    if (!roomFor(wanted)) return false;
+    out.reserve(wanted);
+    return true;
+  };
+  if (!makeRoom(128)) return std::string();
+  std::string clear = "null";
+  for (const CamFsEntry& s : root)
     if (!s.dir && s.name == "clear.h264") clear = std::to_string(s.size);
+  out += "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (hasFile(root, "clear.jpg") ? "true" : "false") + ",\"nodes\":[";
+  bool firstNode = true;
+  for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
+    if (!makeRoom(64)) return std::string();
+    out += std::string(firstNode ? "" : ",") + "{\"mac\":\"" + s.name + "\",\"sensors\":[";
+    firstNode = false;
+    uint8_t mac[6];
+    camParseMac(s.name, mac);
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
-    std::string sensors;
+    bool firstSensor = true;
     for (const CamFsEntry& n : inputs) {
       std::string base = s.name + "/" + n.name;
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
+      int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
+      if (!slot) continue;  // beyond the sensor limit, so it does nothing
+      if (!makeRoom(900)) return std::string();  // the longest possible entry, with all ten pictures
+      out += std::string(firstSensor ? "" : ",") + "{\"input\":" + n.name + ",\"name\":\"" + camJsonEscape(slots_[slot - 1].name) + "\",\"files\":[";
+      firstSensor = false;
       std::vector<CamFsEntry> items;
       storage_.list(base, items);
-      std::string files;
+      bool firstFile = true;
       for (const CamFsEntry& f : items) {
         if (f.dir || camClassifyPath(base + "/" + f.name) != CAM_PATH_FILE) continue;
-        files += (files.empty() ? "" : ",") + std::string("{\"name\":\"") + f.name + "\",\"size\":" + std::to_string(f.size) + ",\"preview\":" + (storage_.exists(camPreviewPath(base + "/" + f.name)) ? "true" : "false") + "}";
+        out += std::string(firstFile ? "" : ",") + "{\"name\":\"" + f.name + "\",\"size\":" + std::to_string(f.size) + ",\"preview\":" + (hasFile(items, camPreviewPath(f.name)) ? "true" : "false") + "}";
+        firstFile = false;
       }
-      uint8_t mac[6];
-      int slot = camParseMac(s.name, mac) ? findSlot(mac, (uint8_t)atoi(n.name.c_str())) : 0;
-      sensors += (sensors.empty() ? "" : ",") + std::string("{\"input\":") + n.name + ",\"name\":\"" + (slot ? camJsonEscape(slots_[slot - 1].name) : std::string()) + "\",\"files\":[" + files + "]}";
+      out += "]}";
     }
-    nodes += (nodes.empty() ? "" : ",") + std::string("{\"mac\":\"") + s.name + "\",\"sensors\":[" + sensors + "]}";
+    out += "]}";
   }
-  return "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (storage_.exists("clear.jpg") ? "true" : "false") + ",\"nodes\":[" + nodes + "]}\n";
+  out += "]}\n";
+  return out;
 }
 
 // A Wi-Fi name or password can hold any character, so form values arrive percent-encoded.
@@ -814,7 +861,9 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
   if (r.is("GET", "/") || r.is("GET", "/files")) {
     sendBody(c, HTML_TYPE, CAM_WEB_PAGE, sizeof(CAM_WEB_PAGE) - 1);
   } else if (r.is("GET", "/api/tree")) {
-    c.out = jsonOk(treeJson());
+    c.body = treeJson();
+    if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
+    else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/live")) {
     if (!frame_) frameToShow(millis_());
     c.out = jsonOk("{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
@@ -837,28 +886,39 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
   return true;
 }
 
+// Sized for the sensors that exist, and empty when the hub is too short of memory to build it.
 std::string SensorCamServer::espNowJson() {
-  std::string nodes;
-  nodes.reserve((size_t)CAM_MAX_SENSORS * 170);
+  int known = 0;
+  for (const Slot& s : slots_) known += s.used;
+  size_t room = (size_t)known * 260 + MAX_UNKNOWN * 120 + 128;  // the longest possible entries
+  if (!roomFor(room)) return std::string();
+  std::string out;
+  out.reserve(room);
+  out += "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[";
+  bool first = true;
   uint32_t now = millis_();
-  auto optional = [](bool known, long value) { return known ? std::to_string(value) : std::string("null"); };
+  auto optional = [](bool known, long long value) { return known ? std::to_string(value) : std::string("null"); };
   for (int id = 1; id <= sensors_.count(); id++) {
     if (!slots_[id - 1].used) continue;
     const Health& h = health_[id - 1];
     std::string name = slotName(id);
-    const char* state = sensors_.active(id) ? "active" : !h.heard ? "never" : h.silent ? "silent" : "idle";
-    nodes += (nodes.empty() ? "" : ",") + std::string("{\"low\":") + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + camJsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
+    const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
+    out += std::string(first ? "" : ",") + "{\"low\":" + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + camJsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
              ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
              ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
-             ",\"counter\":" + optional(h.counterSeen, (long)h.counter) + "}";
+             ",\"counter\":" + optional(h.counterSeen, h.counter) + "}";
+    first = false;
   }
-  std::string unknown;
+  out += "],\"unknown\":[";
+  first = true;
   for (const UnknownSender& u : unknown_) {
     if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
-    unknown += (unknown.empty() ? "" : ",") + std::string("{\"mac\":\"") + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
+    out += std::string(first ? "" : ",") + "{\"mac\":\"" + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
                ",\"rssi\":" + optional(u.rssi != 0, u.rssi) + ",\"messages\":" + std::to_string(u.messages) + "}";
+    first = false;
   }
-  return "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[" + nodes + "],\"unknown\":[" + unknown + "]}\n";
+  out += "]}\n";
+  return out;
 }
 
 bool SensorCamServer::apiInfo(const ApiRequest& r) {
@@ -874,7 +934,9 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
   } else if (r.is("GET", "/api/events")) {
     c.out = jsonOk(eventsJson());
   } else if (r.is("GET", "/api/espnow")) {
-    c.out = roomFor((size_t)CAM_MAX_SENSORS * 340) ? jsonOk(espNowJson()) : jsonFail(507, "the hub is short of memory; try again");
+    c.body = espNowJson();
+    if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
+    else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/info")) {
     std::string unsupported;
     for (const std::string& seen : unsupported_)
@@ -1035,6 +1097,10 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
     c.out = jsonFail(400, "invalid path");
     return;
   }
+  if (method != "GET" && method != "DELETE" && !sensorFits(path)) {  // it would be stored and then never do anything
+    c.out = jsonFail(409, "the hub already has its limit of " + std::to_string(CAM_MAX_SENSORS) + " sensors; delete one first");
+    return;
+  }
   if (mkdirRoute && method == "POST" && !isFile && !isText && !isPreview) {
     bool ok = storage_.makeDirs(path);
     rescan();
@@ -1139,6 +1205,14 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
     return true;
   };
+  // The same for a missing login, on the requests that are acted on before their body has arrived.
+  auto needLogin = [&](size_t drainLimit) {
+    c.out = UNAUTHORIZED;
+    c.answered = true;
+    size_t got = c.in.size() - (headEnd + 4);
+    c.discardLeft = contentLength > got && contentLength <= drainLimit ? contentLength - got : 0;
+    return true;
+  };
   bool isSnapshot = isGet && target.substr(0, target.find('?')) == "/onvif/snapshot";  // the one GET that ONVIF clients make
   bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");
@@ -1153,13 +1227,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");
   }
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
-    if (!authorized(headers)) {
-      c.out = UNAUTHORIZED;
-      c.answered = true;
-      size_t got = c.in.size() - (headEnd + 4);
-      c.discardLeft = contentLength > got && contentLength <= MAX_FIRMWARE ? contentLength - got : 0;  // read the rest, so the refusal arrives as a reply
-      return true;
-    }
+    if (!authorized(headers)) return needLogin(MAX_FIRMWARE);
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware");
     if (firmwareOwner_ || !cfg_.firmwareBegin(contentLength)) return refuse(507, "could not start the update");
     firmwareOwner_ = &c;
@@ -1186,6 +1254,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   // Only pictures may be large, and they arrive in a buffer reserved at boot, so nothing here asks for a picture-sized block.
   if (isApi && !borrowsFrame && contentLength > (target == "/api/restore" ? 8192 : 2048)) return refuse(413, "request is too large");
   if (borrowsFrame && !c.toFrameBuffer) {
+    if (!authorized(headers)) return needLogin(CAM_MAX_FRAME);  // before taking the picture buffer, which changes what the NVR sees
     if (uploading_) return refuse(507, "the hub is busy with another upload; try again");
     uploading_ = &c;
     c.toFrameBuffer = true;
@@ -1230,7 +1299,9 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   } else if (isGet) {
     c.out = httpResponse(404, "text/plain", "not found\n");
   } else {
-    std::string body = handleOnvif(c, headers, c.in.substr(headEnd + 4, contentLength), now, status);
+    c.in.erase(0, headEnd + 4);  // in place, because a second copy of a large request could run the hub out of memory
+    c.in.resize(contentLength);
+    std::string body = handleOnvif(c, headers, c.in, now, status);
     if (status == -1) {  // held until something changes
       c.in.clear();
       return false;
@@ -1420,11 +1491,14 @@ void SensorCamServer::endNotify(NotifyIo& n) {
 void SensorCamServer::startNotify(int i, uint32_t now) {
   CamSub& sub = subs_.at(i);
   NotifyIo& n = notify_[i];
-  sub.pending = false;
   HttpUrl url;
-  if (!parseHttpUrl(sub.consumer, url)) return;
+  if (!parseHttpUrl(sub.consumer, url)) {
+    sub.pending = false;
+    return;
+  }
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return;
+  if (fd < 0) return;  // still pending, so it is tried again on the next pass
+  sub.pending = false;
   netNonblock(fd);
   sockaddr_in to{};
   to.sin_family = AF_INET;
@@ -1508,16 +1582,16 @@ void SensorCamServer::poll(int maxWaitMs) {
   // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {
     Health& h = health_[i];
-    if (!h.heard || h.silent || now - h.heardAt <= SILENT_AFTER_MS) continue;
+    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= cfg_.silentMs) continue;
     h.silent = true;
-    if (slots_[i].used) healthAlert(i + 1, 1, now);
+    healthAlert(i + 1, 1, now);
   }
   subs_.expire(now);
   servicePolls(now);
   if (signal_.update(sensors_.anyActive(), now)) subs_.markAllPending();
   for (int i = 0; i < SubTable::SIZE; i++) {
     CamSub& s = subs_.at(i);
-    if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE) startNotify(i, now);
+    if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
   pushFrames(now);
 

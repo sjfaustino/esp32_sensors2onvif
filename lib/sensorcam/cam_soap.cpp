@@ -256,7 +256,6 @@ std::string soapDeviceReply(const std::string& a, const SoapContext& c) {
            "</tt:Min><tt:Max>" + f + "</tt:Max></tt:FrameRateRange><tt:EncodingIntervalRange><tt:Min>1</tt:Min><tt:Max>1</tt:Max></tt:EncodingIntervalRange><tt:H264ProfilesSupported>Baseline</tt:H264ProfilesSupported></tt:H264></trt:Options></trt:GetVideoEncoderConfigurationOptionsResponse>";
   if (a == "SetVideoEncoderConfiguration") return "<trt:SetVideoEncoderConfigurationResponse/>";
   if (a == "SetSynchronizationPoint") return "<trt:SetSynchronizationPointResponse/>";
-  if (a == "SetSystemDateAndTime") return "<tds:SetSystemDateAndTimeResponse/>";
   if (a == "GetNetworkInterfaces") {
     std::string address = "<tt:Address>" + c.ip + "</tt:Address><tt:PrefixLength>" + num(c.prefixLength) + "</tt:PrefixLength>";
     return "<tds:GetNetworkInterfacesResponse><tds:NetworkInterfaces token=\"wlan0\"><tt:Enabled>true</tt:Enabled><tt:Info><tt:Name>wlan0</tt:Name><tt:HwAddress>" + c.mac +
