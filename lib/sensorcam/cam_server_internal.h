@@ -27,6 +27,7 @@ static const uint32_t NOTIFY_CLOSE_MS = 1000;
 static const uint32_t REPEAT_TRUE_MS = 1000;
 static const uint32_t DELAYED_AFTER_S = 30;       // older reports are shown as delayed
 static const uint32_t DELAYED_GAP_MS = 4000;      // lets the NVR close one record before the next
+static const uint32_t RESEND_WINDOW_MS = 60000;   // the same ESP-NOW report again within this is a resend
 static const uint32_t EVENT_SAVE_MS = 5000;  // a burst of events is written to storage once, not once per event
 static const char EVENTS_CSV[] = "events.csv";
 static const char EVENTS_CSV_OLD[] = "events-old.csv";

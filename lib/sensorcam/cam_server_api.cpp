@@ -63,12 +63,11 @@ std::string SensorCamServer::treeJson() {
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
       int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
       if (!slot) continue;  // beyond the sensor limit, so it does nothing
-      if (!makeRoom(1000)) return std::string();  // the longest possible entry, with all ten pictures
+      if (!makeRoom(960)) return std::string();  // the longest possible entry, with all ten pictures
       const CamSensorSettings& set = slots_[slot - 1].settings;
       out += std::string(firstSensor ? "" : ",") + "{\"input\":" + n.name + ",\"name\":\"" + camJsonEscape(slots_[slot - 1].name) +
              "\",\"hold\":" + (set.holdS ? std::to_string(set.holdS) : std::string("null")) +
-             ",\"quiet\":" + (set.quietFrom >= 0 ? "[" + std::to_string(set.quietFrom) + "," + std::to_string(set.quietTo) + "]" : std::string("null")) +
-             ",\"restart\":" + (set.restartGap ? std::to_string(set.restartGap) : std::string("null")) + ",\"files\":[";
+             ",\"quiet\":" + (set.quietFrom >= 0 ? "[" + std::to_string(set.quietFrom) + "," + std::to_string(set.quietTo) + "]" : std::string("null")) + ",\"files\":[";
       firstSensor = false;
       std::vector<CamFsEntry> items;
       storage_.list(base, items);
@@ -471,17 +470,16 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path"), form = r.form();
-    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to"), restart = queryParam(form, "restart");
+    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to");
     uint8_t mac[6];
     size_t slash = path.find('/');
     bool sensor = camClassifyPath(path) == CAM_PATH_SENSOR && camParseMac(path.substr(0, slash), mac) && findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1));
     CamSensorSettings s;
-    std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n") +
-                       (restart.empty() ? "" : "restart=" + restart + "\n");
+    std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n");
     if (!sensor) {
       c.out = jsonFail(404, "no such sensor");
     } else if (!camParseSensorSettings(text, s)) {
-      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the restart gap must be 1 to 1000000");
+      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, and quiet hours need a start and an end that differ");
     } else {
       std::string file = path + "/settings.txt", clean = camSensorSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());

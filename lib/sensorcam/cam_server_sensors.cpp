@@ -130,25 +130,58 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
 
   bool late = r.age > DELAYED_AFTER_S;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
+  bool wasReported = h.reported;
+  h.reported = r.active;
   bool quiet = r.active && quietNow(id);  // logged, but the NVR is not told
   if (r.active && late && !quiet) {
-    if (delayedCount_ < DELAYED_QUEUE_SIZE) {
-      DelayedAlert& d = delayed_[(delayedHead_ + delayedCount_) % DELAYED_QUEUE_SIZE];
-      memcpy(d.mac, slots_[id - 1].mac, 6);
-      d.input = slots_[id - 1].input;
-      d.direction = reportDirection(r);
-      delayedCount_++;
-    }
+    queueDelayed(id, r, now);
   } else if (r.active && !quiet) {
+    // Starts the alert, or extends it, so activations closer together than the hold make one NVR record.
     sensors_.trigger(id, now, reportDirection(r), false, holdFor(id));
-  } else if (!r.active && !late) {
-    sensors_.clear(id);
   }
+  // A clear report does not end the alert early, for the same reason: the alert ends when its hold runs out.
   // Repeats and heartbeats that change nothing would push real events out of the log.
-  if (late || r.active != wasActive) logEvent(id, r, late, quiet ? 3 : 0);
+  // An activation is logged unless it only repeats one whose alert is still running; a sensor that never reports clear
+  // still has each new alert logged.
+  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? 3 : 0);
   if (r.active && !quiet && (late || !wasActive)) notifyHook(id, 0, late);
-  if (batteryWentLow) healthAlert(id, 2, now);  // last, because an inactive report would cancel the alarm straight away
+  if (batteryWentLow) healthAlert(id, 2, now);
   return true;
+}
+
+// A late alert waits for its own NVR record. One from the same sensor within the hold of a waiting one joins it, as it
+// would have live. When the queue is full, it joins any waiting alert from that sensor rather than being lost.
+void SensorCamServer::queueDelayed(int id, const SensorReport& r, uint32_t now) {
+  const Slot& s = slots_[id - 1];
+  bool known = r.age != CAM_AGE_UNKNOWN && r.age < 1000000;  // the millisecond clock covers 49 days
+  uint32_t happened = known ? now - r.age * 1000 : now;
+  DelayedAlert* same = nullptr;
+  for (int n = 0; n < delayedCount_; n++) {
+    DelayedAlert& d = delayed_[(delayedHead_ + n) % DELAYED_QUEUE_SIZE];
+    if (d.input != s.input || memcmp(d.mac, s.mac, 6) != 0) continue;
+    int32_t apart = (int32_t)(happened - d.happenedAt);
+    if (known && d.timeKnown && (uint32_t)(apart < 0 ? -apart : apart) <= holdFor(id)) {
+      same = &d;
+      break;
+    }
+    if (delayedCount_ == DELAYED_QUEUE_SIZE) same = &d;
+  }
+  if (!same && delayedCount_ < DELAYED_QUEUE_SIZE) {
+    same = &delayed_[(delayedHead_ + delayedCount_) % DELAYED_QUEUE_SIZE];
+    *same = DelayedAlert();
+    memcpy(same->mac, s.mac, 6);
+    same->input = s.input;
+    same->timeKnown = known;
+    same->happenedAt = happened;
+    delayedCount_++;
+  }
+  if (!same) return;  // the queue is full of other sensors' alerts; this one is still in the event history
+  same->direction = reportDirection(r);
+  if (known && same->timeKnown && (int32_t)(happened - same->happenedAt) > 0) same->happenedAt = happened;
+}
+
+void SensorCamServer::endAlerts() {
+  for (int id = 1; id <= sensors_.count(); id++) sensors_.clear(id);
 }
 
 // Keeps the most recent senders, so a new sensor can be seen on the page before it has been added.
@@ -185,12 +218,10 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
     return;
   }
   Health& h = health_[id - 1];
-  // A signed report must be newer than the last one, so a recorded report cannot be played back later, unless the
-  // sensor's settings take a large enough drop as the sensor counting again from the start.
-  bool old = check == CAM_PACKET_SIGNED && h.counterSeen && camOldReport(h.counter, r.counter, slots_[id - 1].settings.restartGap);
+  // The report number is never a reason to refuse a correctly signed report: a sensor that restarts its count must
+  // not lose an alert. The price is that a recorded report could be played back to make a false alert.
   const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                    ? "wrong signature"
                         : check == CAM_PACKET_UNSIGNED && !cfg_.espNowUnsigned ? "not signed"
-                        : old                                                  ? "old report number"
                                                                                : nullptr;
   if (refusal) {
     h.refused++;
@@ -198,11 +229,15 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
     return;
   }
   noteSignal(id, rssi);
-  // A resend repeats the counter, and the hub ignores the repeat. An unsigned sensor that restarts its count still works.
-  if (h.counterSeen && h.counter == r.counter) return;
+  // A resend repeats the report a moment later, and the hub ignores it. Only a short while, so a restarted sensor that
+  // happens to reuse the last number is still heard.
+  uint32_t now = millis_();
+  if (h.counterSeen && h.counter == r.counter && h.counterActive == r.active && now - h.counterAt < RESEND_WINDOW_MS) return;
   h.counterSeen = true;
   h.counter = r.counter;
-  applyReport(id, r, millis_());
+  h.counterAt = now;
+  h.counterActive = r.active;
+  applyReport(id, r, now);
 }
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.

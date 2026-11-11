@@ -125,6 +125,7 @@ class SensorCamServer {
   void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }  // for the PC tests
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow();  // writes any events not yet saved; call before a restart
+  void endAlerts();  // ends every alert now, without waiting for its hold; for tests
 
  private:
   // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
@@ -144,7 +145,10 @@ class SensorCamServer {
     bool silent = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     bool counterSeen = false;
-    uint32_t counter = 0;
+    uint32_t counter = 0;      // the last report number, used only to ignore resends
+    uint32_t counterAt = 0;    // when it arrived
+    bool counterActive = false;
+    bool reported = false;     // the state the sensor last reported, for the event history
     int8_t rssi = 0;  // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
     bool lowBattery = false;
     int16_t rssiAvg8 = 0;  // smoothed signal, in eighths of a dBm
@@ -184,6 +188,8 @@ class SensorCamServer {
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
     uint8_t direction = 0;
+    bool timeKnown = false;  // the report gave its age, so when it happened is known
+    uint32_t happenedAt = 0;  // on the millis() clock; the latest of the alerts merged into this one
   };
 
   struct HttpConn {
@@ -292,6 +298,7 @@ class SensorCamServer {
   void endNotify(NotifyIo& n, const char* result = "");
   void noteSignal(int id, int8_t rssi);
   uint32_t holdFor(int id) const;
+  void queueDelayed(int id, const SensorReport& r, uint32_t now);
   bool quietNow(int id) const;
   void notifyHook(int id, uint8_t kind, bool delayed);
   void queueHook(const std::string& message, const std::string& json);

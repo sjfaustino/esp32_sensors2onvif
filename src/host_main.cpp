@@ -10,9 +10,9 @@
 static const char ESPNOW_KEY[] = "test-espnow-key-0123456789";
 
 // Sends a report the way a sensor node would: version 2 signs it, version 1 does not.
-static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key) {
+static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key, bool active = false) {
   uint8_t mac[6] = {2, 0, 0, 0, 0, last};
-  uint8_t p[13 + 8] = {(uint8_t)version, 1, 0, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
+  uint8_t p[13 + 8] = {(uint8_t)version, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
   if (version == 2) memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
   hub->espNowPacket(mac, p, version == 2 ? 21 : 13, rssi);
 }
@@ -79,6 +79,10 @@ int main(int argc, char** argv) {
     if (ssid == "setup-on") setupOn = true;
     if (ssid == "setup-off") setupOn = false;
     if (ssid == "want-backup") return backup;
+    if (ssid == "end-alerts") {  // so the test need not wait out each hold
+      hub->endAlerts();
+      return true;
+    }
     if (ssid == "auth-on" || ssid == "auth-off") {
       hub->setOnvifPassword(ssid == "auth-on" ? "onvif-secret" : "");
       return true;
@@ -90,6 +94,7 @@ int main(int argc, char** argv) {
       else if (ssid == "radio-unsigned") radio(hub, node, counter++, 55, -61, 1, "");
       else if (ssid == "radio-forged") radio(hub, node, counter++, 55, -61, 2, "not-the-key");
       else if (ssid == "radio-old") radio(hub, node, counter - 10, 55, -61, 2, ESPNOW_KEY);
+      else if (ssid == "radio-restart-alert") radio(hub, node, 1, 55, -61, 2, ESPNOW_KEY, true);  // a sensor that restarted, firing
       else if (ssid == "radio-weak")
         for (int i = 0; i < 10; i++) radio(hub, node, counter++, 55, -90, 2, ESPNOW_KEY);
       else radio(hub, node, counter++, ssid == "radio-low" ? 10 : 55, -61, 2, ESPNOW_KEY);

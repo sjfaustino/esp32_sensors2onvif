@@ -48,8 +48,8 @@ silence and low battery.
 
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
-NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. They also set the
-**restart gap** for signed ESP-NOW messages, described below. The settings are kept in `settings.txt` in the sensor's folder.
+NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
+`settings.txt` in the sensor's folder.
 
 ## Notifications
 
@@ -179,7 +179,7 @@ plus 3 for each target, plus the 8-byte signature in version 2.
 | 1 | Input number on the device, starting at `1` |
 | 1 | Active: `1` active, `0` inactive |
 | 1 | Battery percent, `0xFF` when unknown or mains powered. Other values above 100 also count as unknown. |
-| 4 | Event counter. A resend of the same event repeats it, and the hub ignores the repeat. In version 2 each new event must have a higher number than the last. |
+| 4 | Event counter. A resend of the same event repeats it, and the hub ignores a repeat within a minute. It need not survive the sensor's restarts. |
 | 4 | Age in seconds, `0` when live, `0xFFFFFFFF` when unknown |
 | 1 | Number of targets, `0` to `3` |
 | 2 per target | Distance in cm, `0xFFFF` when unknown |
@@ -196,20 +196,22 @@ Devices that cache alerts should send them oldest first and keep resending until
 They should also resend their current state about hourly, because `/status` marks a sensor silent after 3 hours
 without a message.
 
+An alert lasts its hold time, 10 seconds or the sensor's own alert time, from the sensor's latest activation. Another
+activation before then extends it, so a person moving about makes one NVR record rather than several. A clear report is
+logged but does not end the alert early. Every activation that starts an alert, and every clear report, is in the event
+history.
+
 Alerts older than 30 seconds, or of unknown age, show the delayed picture and play back one at a time so each gets
-its own NVR record. The NVR files them at arrival time. `GET /events` gives the true times.
+its own NVR record. Late alerts from one sensor that happened within its hold of each other make one record, as they would
+have live. Up to 16 records can wait; beyond that a late alert joins a waiting one from the same sensor, or, if there is
+none, is only logged. The NVR files them at arrival time. `GET /events` gives the true times.
 
 The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
-carried in backups. The hub refuses a version 2 message with a wrong signature, and one whose counter is lower than the last
-it accepted, so a recorded message cannot be played back later; the ESP-NOW page counts these. The counter should therefore
-survive the sensor's restarts and battery changes, for example kept in flash. The hub forgets counters when it restarts, so
-one recorded message could be played back once after a hub restart.
-
-A sensor that cannot keep its counter can be given a **restart gap** in its alert settings, from 1 to 1000000. A message
-numbered more than the gap below the last one is then taken as the sensor counting again from the start, and accepted; one
-less far below is still refused. With a gap of 100, after report 5000 the hub refuses 4900 to 4999 but accepts 0. A small gap
-lets a restarted sensor back in sooner, but means a recorded message only needs to be a little older to be played back.
-Without a gap, every lower number is refused.
+carried in backups. The hub refuses a version 2 message with a wrong signature; the ESP-NOW page counts these. The report
+number is never a reason to refuse a correctly signed message, so a sensor that restarts its count, or loses it with a
+battery change, is never ignored. It is used only to ignore a resend: the same number and state again within a minute.
+The cost is that someone who records a sensor's message could play it back later to make a false alert, though not a
+false all-clear, because a clear report never ends an alert. A missed intruder is worse than a false alert.
 
 Version 1 messages carry no signature, so anything within radio range that knows a listed MAC address could send a false
 alert. The hub refuses them unless **Also accept unsigned messages** is ticked on the ESP-NOW page.
@@ -226,7 +228,7 @@ settings over USB, which also erases its Wi-Fi networks.
 | Request | Effect |
 |---|---|
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&input=1` | That sensor is active for 10 s, or its own alert time. Another alert restarts it. `input` defaults to 1. |
-| `GET /sensor?mac=AA-BB-CC-DD-EE-01&state=clear` | That sensor ends now. |
+| `GET /sensor?mac=AA-BB-CC-DD-EE-01&state=clear` | Logged in the event history. The alert still lasts its hold. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&direction=1&distance=250&age=100&battery=80` | Same as an ESP-NOW report. |
 | `GET /status` | Active sensors, subscribers, streams and each sensor's last contact, as JSON. |
 | `GET /events` | The last 64 events, newest first, with true event times. Kept across restarts. |

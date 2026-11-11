@@ -54,19 +54,6 @@ static bool smallNumber(const std::string& s, int& out) {  // digits only, up to
 
 static bool minuteOfDay(const std::string& s, int& out) { return smallNumber(s, out) && out < 1440; }
 
-static bool restartGap(const std::string& s, uint32_t& out) {  // 1 to CAM_MAX_RESTART_GAP
-  if (s.empty() || s.size() > 7) return false;
-  for (char ch : s)
-    if (ch < '0' || ch > '9') return false;
-  out = (uint32_t)atol(s.c_str());
-  return out >= 1 && out <= CAM_MAX_RESTART_GAP;
-}
-
-bool camOldReport(uint32_t last, uint32_t next, uint32_t restartGap) {
-  if ((int32_t)(next - last) >= 0) return false;  // newer, or a resend
-  return restartGap == 0 || last - next <= restartGap;
-}
-
 bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
   CamSensorSettings s;
   for (size_t at = 0; at < text.size();) {
@@ -84,7 +71,6 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
       s.holdS = (uint32_t)hold;
     } else if (key == "quiet" && dash != std::string::npos && minuteOfDay(value.substr(0, dash), s.quietFrom) &&
                minuteOfDay(value.substr(dash + 1), s.quietTo) && s.quietFrom != s.quietTo) {
-    } else if (key == "restart" && restartGap(value, s.restartGap)) {
     } else {
       return false;
     }
@@ -97,7 +83,6 @@ std::string camSensorSettingsText(const CamSensorSettings& s) {
   std::string out;
   if (s.holdS) out += "hold=" + std::to_string(s.holdS) + "\n";
   if (s.quietFrom >= 0) out += "quiet=" + std::to_string(s.quietFrom) + "-" + std::to_string(s.quietTo) + "\n";
-  if (s.restartGap) out += "restart=" + std::to_string(s.restartGap) + "\n";
   return out;
 }
 

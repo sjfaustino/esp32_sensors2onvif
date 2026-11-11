@@ -354,13 +354,11 @@ const hm=m=>String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2
 function settingsPanel(base,n){
   const hold=el("input",{type:"number",min:1,max:3600,value:n.hold||"",placeholder:"default",style:"width:6em"});
   const from=el("input",{type:"time",value:n.quiet?hm(n.quiet[0]):""}),to=el("input",{type:"time",value:n.quiet?hm(n.quiet[1]):""});
-  const gap=el("input",{type:"number",min:1,max:1000000,value:n.restart||"",placeholder:"none",style:"width:7em"});
   const minutes=v=>v?Number(v.slice(0,2))*60+Number(v.slice(3,5)):"";
-  return el("details",null,el("summary",{textContent:"Alert settings"+(n.hold||n.quiet||n.restart?" (changed)":"")}),
+  return el("details",null,el("summary",{textContent:"Alert settings"+(n.hold||n.quiet?" (changed)":"")}),
     el("p",null,"An alert lasts ",hold," seconds. Empty uses the hub's default."),
     el("p",null,"Quiet hours from ",from," to ",to,". During quiet hours alerts are logged but not sent to the NVR or to Notifications. Leave both empty for none."),
-    el("p",null,"A signed ESP-NOW report numbered more than ",gap," below the last one is taken as the sensor counting again from the start, and accepted. Anything less far below is refused as an old message. Empty refuses every lower number, which is safest, but then the sensor must keep its count through restarts. The smaller the number, the sooner a restarted sensor is accepted, and the further back a recorded message would have to come from to be played back."),
-    el("button",{textContent:"Save alert settings",onclick:()=>act(()=>call("POST","/api/sensor-settings?path="+base,"hold="+hold.value+"&from="+minutes(from.value)+"&to="+minutes(to.value)+"&restart="+gap.value),"Saved the alert settings")}))}
+    el("button",{textContent:"Save alert settings",onclick:()=>act(()=>call("POST","/api/sensor-settings?path="+base,"hold="+hold.value+"&from="+minutes(from.value)+"&to="+minutes(to.value)),"Saved the alert settings")}))}
 function clearPanel(){
   const d=el("details",null,el("summary",{textContent:"Change the text"}));let built=false;
   d.ontoggle=async()=>{if(!d.open||built)return;built=true;
@@ -506,7 +504,7 @@ if(t.clear!=null)await add("clear.h264");if(t.clearPreview)await add("clear.jpg"
 for(const s of t.nodes){files.push([s.mac+"/.node",new Uint8Array(0)]);
   for(const n of s.sensors){const base=s.mac+"/"+n.input;files.push([base+"/.sensor",new Uint8Array(0)]);
     for(const f of n.files){await add(base+"/"+f.name);if(f.preview)await add(base+"/"+f.name.replace(/\.h264$/,".jpg"))}
-    if(n.name)await add(base+"/name.txt");await add(base+"/text.json");if(n.hold||n.quiet||n.restart)await add(base+"/settings.txt")}}
+    if(n.name)await add(base+"/name.txt");await add(base+"/text.json");if(n.hold||n.quiet)await add(base+"/settings.txt")}}
 const a=el("a",{href:URL.createObjectURL(tarBuild(files)),download:"hub-backup-"+new Date().toISOString().slice(0,10)+".tar"});
 document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
 m.textContent="Saved "+files.length+" files. The file holds the WiFi and hub passwords, so keep it somewhere safe."}catch(e){m.className="portMsg err";m.textContent=e.message}};
