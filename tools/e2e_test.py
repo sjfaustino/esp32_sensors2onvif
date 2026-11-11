@@ -592,6 +592,20 @@ def main():
                 refused = node_entry(radio())['refused']
                 api('POST', '/api/wifi', 'ssid=radio-old')
                 check('an older signed message is refused, so a recording cannot be played back', node_entry(radio())['refused'] == refused + 1 and node_entry(radio())['refusal'] == 'old report number', node_entry(radio()))
+                # A restart gap lets a sensor that counts again from the start back in.
+                check('a sensor can have a restart gap', api('POST', f'/api/sensor-settings?path={name(1)}', 'restart=5')[0] == 200)
+                check('the Sensors page data shows the restart gap', [n for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]['restart'] == 5)
+                before = node_entry(radio())
+                api('POST', '/api/wifi', 'ssid=radio-old')
+                after = node_entry(radio())
+                check('a number further below than the gap is taken as a restarted count', after['refused'] == before['refused'] and after['counter'] == before['counter'] - 9, (before, after))
+                api('POST', f'/api/sensor-settings?path={name(1)}', 'restart=20')
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                refused = node_entry(radio())['refused']
+                api('POST', '/api/wifi', 'ssid=radio-old')
+                check('a number within the gap is still refused as old', node_entry(radio())['refused'] == refused + 1, node_entry(radio()))
+                check('a bad restart gap is refused', api('POST', f'/api/sensor-settings?path={name(1)}', 'restart=0')[0] == 400)
+                api('POST', f'/api/sensor-settings?path={name(1)}', '')
 
                 # Weak signal.
                 api('POST', '/api/wifi', 'ssid=radio-weak')

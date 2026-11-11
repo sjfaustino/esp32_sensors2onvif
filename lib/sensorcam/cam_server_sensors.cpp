@@ -185,11 +185,13 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
     return;
   }
   Health& h = health_[id - 1];
-  // A signed report must be newer than the last one, so a recorded report cannot be played back later.
-  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                                                        ? "wrong signature"
-                        : check == CAM_PACKET_UNSIGNED && !cfg_.espNowUnsigned                                     ? "not signed"
-                        : check == CAM_PACKET_SIGNED && h.counterSeen && (int32_t)(r.counter - h.counter) < 0 ? "old report number"
-                                                                                                                 : nullptr;
+  // A signed report must be newer than the last one, so a recorded report cannot be played back later, unless the
+  // sensor's settings take a large enough drop as the sensor counting again from the start.
+  bool old = check == CAM_PACKET_SIGNED && h.counterSeen && camOldReport(h.counter, r.counter, slots_[id - 1].settings.restartGap);
+  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                    ? "wrong signature"
+                        : check == CAM_PACKET_UNSIGNED && !cfg_.espNowUnsigned ? "not signed"
+                        : old                                                  ? "old report number"
+                                                                               : nullptr;
   if (refusal) {
     h.refused++;
     h.refusal = refusal;

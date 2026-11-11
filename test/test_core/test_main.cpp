@@ -217,17 +217,32 @@ static void signed_messages_are_checked() {
 
 static void sensor_settings_round_trip_and_refuse_bad_values() {
   CamSensorSettings s;
-  TEST_ASSERT_TRUE(camParseSensorSettings("hold=30\nquiet=1320-420\n", s));
+  TEST_ASSERT_TRUE(camParseSensorSettings("hold=30\nquiet=1320-420\nrestart=1000000\n", s));
   TEST_ASSERT_EQUAL(30, s.holdS);
   TEST_ASSERT_EQUAL(1320, s.quietFrom);
   TEST_ASSERT_EQUAL(420, s.quietTo);
-  TEST_ASSERT_EQUAL_STRING("hold=30\nquiet=1320-420\n", camSensorSettingsText(s).c_str());
+  TEST_ASSERT_EQUAL(1000000, s.restartGap);
+  TEST_ASSERT_EQUAL_STRING("hold=30\nquiet=1320-420\nrestart=1000000\n", camSensorSettingsText(s).c_str());
   TEST_ASSERT_TRUE(camParseSensorSettings("", s));
   TEST_ASSERT_EQUAL(0, s.holdS);
   TEST_ASSERT_EQUAL(-1, s.quietFrom);
+  TEST_ASSERT_EQUAL(0, s.restartGap);
   TEST_ASSERT_EQUAL_STRING("", camSensorSettingsText(s).c_str());
-  const char* bad[] = {"hold=0\n", "hold=3601\n", "hold=-5\n", "hold=1x\n", "quiet=60-60\n", "quiet=1440-10\n", "quiet=10\n", "colour=red\n"};
+  const char* bad[] = {"hold=0\n", "hold=3601\n", "hold=-5\n", "hold=1x\n", "quiet=60-60\n", "quiet=1440-10\n", "quiet=10\n", "colour=red\n",
+                       "restart=0\n", "restart=1000001\n", "restart=99999999\n", "restart=\n", "restart=5x\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseSensorSettings(text, s), text);
+}
+
+static void old_reports_and_restarted_counts() {
+  TEST_ASSERT_FALSE(camOldReport(100, 101, 0));  // newer
+  TEST_ASSERT_FALSE(camOldReport(100, 100, 0));  // a resend, which is ignored elsewhere
+  TEST_ASSERT_TRUE(camOldReport(100, 99, 0));    // without a gap, any lower number is old
+  TEST_ASSERT_TRUE(camOldReport(100, 0, 0));
+  TEST_ASSERT_TRUE(camOldReport(100, 90, 10));   // 10 below, within the gap
+  TEST_ASSERT_FALSE(camOldReport(100, 89, 10));  // 11 below: the sensor counted again from the start
+  TEST_ASSERT_FALSE(camOldReport(5000, 1, 10));
+  TEST_ASSERT_FALSE(camOldReport(0xFFFFFFF0u, 5, 0));  // the count wrapped, so 5 is newer
+  TEST_ASSERT_TRUE(camOldReport(5, 0xFFFFFFF0u, 100));  // 21 below across the wrap
 }
 
 static void quiet_hours_cross_midnight() {
@@ -539,6 +554,7 @@ int main() {
   RUN_TEST(hmac_sha1_matches_rfc_2202);
   RUN_TEST(signed_messages_are_checked);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
+  RUN_TEST(old_reports_and_restarted_counts);
   RUN_TEST(quiet_hours_cross_midnight);
   RUN_TEST(a_sensor_can_have_its_own_hold);
   RUN_TEST(rtp_time_follows_the_clock_when_frames_are_skipped);

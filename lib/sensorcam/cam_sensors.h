@@ -39,14 +39,18 @@ CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len
 // The signature for a message of len bytes, without its own signature. For senders and tests.
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);
 
-// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
-// FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
+// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS", "quiet=FROM-TO" and "restart=GAP"
+// lines, FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
 struct CamSensorSettings {
   uint32_t holdS = 0;  // how long an alert stays active; 0 uses the hub's default
   int quietFrom = -1;  // -1 for no quiet hours
   int quietTo = -1;
+  uint32_t restartGap = 0;  // a signed report number more than this below the last is a restarted count; 0 refuses any lower number
 };
 const uint32_t CAM_MAX_HOLD_S = 3600;
+const uint32_t CAM_MAX_RESTART_GAP = 1000000;
+// Whether a signed report numbered next, after one numbered last, is an old message to refuse.
+bool camOldReport(uint32_t last, uint32_t next, uint32_t restartGap);
 bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  // false for anything the page would refuse
 std::string camSensorSettingsText(const CamSensorSettings& s);
 bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, an unknown clock, is never quiet

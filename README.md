@@ -48,8 +48,8 @@ silence and low battery.
 
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
-NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
-`settings.txt` in the sensor's folder.
+NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. They also set the
+**restart gap** for signed ESP-NOW messages, described below. The settings are kept in `settings.txt` in the sensor's folder.
 
 ## Notifications
 
@@ -201,9 +201,15 @@ its own NVR record. The NVR files them at arrival time. `GET /events` gives the 
 
 The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
 carried in backups. The hub refuses a version 2 message with a wrong signature, and one whose counter is lower than the last
-it accepted, so a recorded message cannot be played back later; the ESP-NOW page counts these. The counter must therefore
+it accepted, so a recorded message cannot be played back later; the ESP-NOW page counts these. The counter should therefore
 survive the sensor's restarts and battery changes, for example kept in flash. The hub forgets counters when it restarts, so
 one recorded message could be played back once after a hub restart.
+
+A sensor that cannot keep its counter can be given a **restart gap** in its alert settings, from 1 to 1000000. A message
+numbered more than the gap below the last one is then taken as the sensor counting again from the start, and accepted; one
+less far below is still refused. With a gap of 100, after report 5000 the hub refuses 4900 to 4999 but accepts 0. A small gap
+lets a restarted sensor back in sooner, but means a recorded message only needs to be a little older to be played back.
+Without a gap, every lower number is refused.
 
 Version 1 messages carry no signature, so anything within radio range that knows a listed MAC address could send a false
 alert. The hub refuses them unless **Also accept unsigned messages** is ticked on the ESP-NOW page.
