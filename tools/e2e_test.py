@@ -877,6 +877,32 @@ def main():
             while status()['active'] and time.time() - played < 15:
                 time.sleep(0.2)
 
+            # Each node sets how old an alert must be to count as a past event. Sensor 3 has no pictures.
+            node3 = SENSORS[3][0]
+            check('a node can have its own past-event time', api('POST', f'/api/node-settings?path={node3}', 'late=300')[0] == 200)
+            check('the Sensors page data shows it', [s for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == node3][0]['late'] == 300)
+            check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\n'))
+            get(f'/sensor?{sid(3)}&age=100')
+            time.sleep(0.3)
+            check('an alert younger than the node\'s time is live', status()['active'] == [name(3)] and json.loads(get('/events')[1])[0]['delayed'] is False, json.loads(get('/events')[1])[0])
+            colour = grab_colour()
+            check('a live alert with no pictures shows the built-in alert', colour == 'red', colour)
+            clear(3)
+            get(f'/sensor?{sid(3)}&age=400')
+            time.sleep(0.5)
+            check('an alert older than the node\'s time is a past event', json.loads(get('/events')[1])[0]['delayed'] is True and status()['active'] == [name(3)], json.loads(get('/events')[1])[0])
+            colour = grab_colour()
+            check('a past event with no pictures shows the built-in past-event picture', colour == 'amber', colour)
+            clear(3)
+            check('a bad past-event time is refused', api('POST', f'/api/node-settings?path={node3}', 'late=0')[0] == 400)
+            check('settings for a node that does not exist are refused', api('POST', '/api/node-settings?path=02-00-00-00-00-77', 'late=60')[0] == 404)
+            check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
+            get(f'/sensor?{sid(3)}&age=100')
+            time.sleep(0.3)
+            check('without the setting, 100 seconds is a past event again', json.loads(get('/events')[1])[0]['delayed'] is True)
+            clear(3)
+            time.sleep(HOLD_MS / 1000 + 5)  # the gap after a past event, so later checks start with nothing waiting
+
             # A listener that accepts and never answers must not stall the camera or the good subscriber.
             hung = socket.socket()
             hung.bind((LOCAL, 0))

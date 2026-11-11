@@ -23,9 +23,10 @@ extern const CamJpeg CAM_SNAPSHOTS[];
 
 const int CAM_DIRECTIONS = 5;
 
-// Built-in pictures: [0] "all clear" and [1] a generic alert. They are used when LittleFS has no
-// file to show, and [0]'s SPS is the format every stored picture must match.
+// Built-in pictures: [0] "all clear", [1] a generic alert and [2] "past event, check logs". They are used when
+// LittleFS has no file to show, and [0]'s SPS is the format every stored picture must match.
 extern const CamFrame CAM_FRAMES[];
+inline int builtinFrame(bool on, bool delayed) { return on ? (delayed ? 2 : 1) : 0; }
 extern const int CAM_WIDTH;
 extern const int CAM_HEIGHT;
 extern const int CAM_FPS;

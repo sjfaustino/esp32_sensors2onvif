@@ -64,7 +64,7 @@ time; up to 8 wait, and the page shows how the last one went.
 
 ONVIF clients ask the hub for a JPEG of the current picture. The hub stores only H.264 and cannot convert it, so the browser
 saves a small JPEG beside each picture it uploads. **Create missing thumbnails** on the Sensors page makes them for pictures
-that have none. A picture without a thumbnail shows the built-in All Clear or Alert image instead.
+that have none. A picture without a thumbnail shows the built-in All Clear, Alert or Past Event image instead.
 
 ## Security
 
@@ -86,7 +86,7 @@ during that minute, the hub goes back to the previous firmware and Device Info s
 networks, ports, name, web password, fixed address, time and notification settings, and keeps the pictures, the sensor nodes,
 and the ESP-NOW key and token that sensors use.
 
-A **full backup** is one `.tar` file with the settings, every picture and thumbnail, and each sensor's name and alert settings.
+A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, and each node's settings.
 Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
 pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the
 settings backup, it holds the passwords in plain text.
@@ -136,6 +136,7 @@ Pictures are stored on LittleFS, and the folders are also the list of known sens
 ```
 clear.h264                         optional replacement for the built-in "all clear"
 AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
+AA-BB-CC-DD-EE-01/settings.txt     optional past-event time for the node, set on the Sensors page
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
@@ -143,8 +144,9 @@ AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time and quiet hours, set on t
 ```
 
 The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with a `-delayed` version such as
-`approaching-delayed.h264`. A missing picture falls back to the nearest one that exists, and finally to a built-in
-generic alert, so a sensor with no pictures still makes motion records.
+`approaching-delayed.h264` for past events. A missing picture falls back to `active.h264` or `active-delayed.h264`, and
+finally to the built-in red "ALERT" or amber "PAST EVENT, CHECK LOGS", so a sensor with no pictures still makes motion
+records. A past event never falls back to a live picture.
 
 The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
 without a reboot. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
@@ -201,8 +203,12 @@ activation before then extends it, so a person moving about makes one NVR record
 logged but does not end the alert early. Every activation that starts an alert, and every clear report, is in the event
 history.
 
-Alerts older than 30 seconds, or of unknown age, show the delayed picture and play back one at a time so each gets
-its own NVR record. Late alerts from one sensor that happened within its hold of each other make one record, as they would
+A node has no clock, so it sends how many seconds ago the event happened, and the hub works out the time. An alert older
+than 30 seconds, or of unknown age, is a **past event**. The time can be set for each node under **Node settings** on the
+Sensors page, from 1 to 86400 seconds; set it to how long that node can take to deliver an alert, retries included. A past
+event shows the sensor's `-delayed` picture, or else the built-in amber "PAST EVENT, CHECK LOGS", never the live picture,
+so whoever watches the recording can tell it did not happen at that moment. Past events play back one at a time so each
+gets its own NVR record. Late alerts from one sensor that happened within its hold of each other make one record, as they would
 have live. Up to 16 records can wait; beyond that a late alert joins a waiting one from the same sensor, or, if there is
 none, is only logged. The NVR files them at arrival time. `GET /events` gives the true times.
 

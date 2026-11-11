@@ -163,6 +163,7 @@ class SensorCamServer {
     uint8_t input = 0;
     std::string name;  // from name.txt in the sensor's folder
     CamSensorSettings settings;  // from settings.txt
+    CamNodeSettings node;        // from settings.txt in the node's folder, the same for each of its sensors
   };
   struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
     bool used = false;

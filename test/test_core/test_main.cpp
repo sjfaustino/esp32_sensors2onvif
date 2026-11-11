@@ -82,6 +82,8 @@ static void classifies_storage_paths() {
   TEST_ASSERT_EQUAL(CAM_PATH_FILE, camClassifyPath(std::string(mac) + "/1/rtl-delayed.h264"));
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath("text.json"));
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/1/text.json"));
+  TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/settings.txt"));  // the node's own settings
+  TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/name.txt"));
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/text.json"));
   const char* bad[] = {"", "/", "..", "../x", "clear.h264/x", "aa-bb-cc-dd-ee-01", "AA:BB:CC:DD:EE:01", "AA-BB-CC-DD-EE-01/",
                        "AA-BB-CC-DD-EE-01/0", "AA-BB-CC-DD-EE-01/256", "AA-BB-CC-DD-EE-01/01", "AA-BB-CC-DD-EE-01/..",
@@ -228,6 +230,19 @@ static void sensor_settings_round_trip_and_refuse_bad_values() {
   TEST_ASSERT_EQUAL_STRING("", camSensorSettingsText(s).c_str());
   const char* bad[] = {"hold=0\n", "hold=3601\n", "hold=-5\n", "hold=1x\n", "quiet=60-60\n", "quiet=1440-10\n", "quiet=10\n", "colour=red\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseSensorSettings(text, s), text);
+}
+
+static void node_settings_round_trip_and_refuse_bad_values() {
+  CamNodeSettings s;
+  TEST_ASSERT_TRUE(camParseNodeSettings("late=300\r\n", s));
+  TEST_ASSERT_EQUAL(300, s.lateS);
+  TEST_ASSERT_EQUAL_STRING("late=300\n", camNodeSettingsText(s).c_str());
+  TEST_ASSERT_TRUE(camParseNodeSettings("late=86400\n", s));
+  TEST_ASSERT_TRUE(camParseNodeSettings("", s));
+  TEST_ASSERT_EQUAL(0, s.lateS);
+  TEST_ASSERT_EQUAL_STRING("", camNodeSettingsText(s).c_str());
+  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n"};
+  for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseNodeSettings(text, s), text);
 }
 
 static void quiet_hours_cross_midnight() {
@@ -539,6 +554,7 @@ int main() {
   RUN_TEST(hmac_sha1_matches_rfc_2202);
   RUN_TEST(signed_messages_are_checked);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
+  RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(quiet_hours_cross_midnight);
   RUN_TEST(a_sensor_can_have_its_own_hold);
   RUN_TEST(rtp_time_follows_the_clock_when_frames_are_skipped);

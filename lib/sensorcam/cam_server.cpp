@@ -328,7 +328,11 @@ void SensorCamServer::serveSnapshot(HttpConn& c) {
       return;
     }
   }
-  const CamJpeg& builtin = CAM_SNAPSHOTS[sensors_.anyActive() ? 1 : 0];
+  int id = 0;
+  uint8_t direction = 0;
+  bool delayed = false;
+  bool on = sensors_.shown(millis_(), id, direction, delayed);
+  const CamJpeg& builtin = CAM_SNAPSHOTS[builtinFrame(on, delayed)];
   sendBody(c, "image/jpeg", (const char*)builtin.data, builtin.len);
 }
 
@@ -369,7 +373,7 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
     if (!frameKey_.empty()) liveSeq_++;
     frameKey_.clear();
     frameFile_.clear();
-    frame_ = &CAM_FRAMES[on ? 1 : 0];
+    frame_ = &CAM_FRAMES[builtinFrame(on, delayed)];
     return *frame_;
   }
   std::string key = on ? slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") : "clear";
@@ -380,12 +384,13 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
 
   std::vector<std::string> candidates;
   if (on) {
+    // A past event never borrows the live picture, which would make it look like it is happening now.
     std::string base = slotName(id) + "/";
-    candidates = {base + camStateFile(direction, delayed), base + camStateFile(0, delayed), base + camStateFile(direction, false), base + camStateFile(0, false)};
+    candidates = {base + camStateFile(direction, delayed), base + camStateFile(0, delayed)};
   } else {
     candidates = {"clear.h264"};
   }
-  frame_ = &CAM_FRAMES[on ? 1 : 0];
+  frame_ = &CAM_FRAMES[builtinFrame(on, delayed)];
   for (const std::string& path : candidates) {
     if (loadFrame(path)) {
       frame_ = &loadedFrame_;

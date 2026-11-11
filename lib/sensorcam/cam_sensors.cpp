@@ -86,6 +86,27 @@ std::string camSensorSettingsText(const CamSensorSettings& s) {
   return out;
 }
 
+bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
+  CamNodeSettings s;
+  for (size_t at = 0; at < text.size();) {
+    size_t end = text.find('\n', at);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(at, end - at);
+    at = end + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    if (line.compare(0, 5, "late=") != 0 || line.size() < 6 || line.size() > 10) return false;
+    for (size_t i = 5; i < line.size(); i++)
+      if (line[i] < '0' || line[i] > '9') return false;
+    s.lateS = (uint32_t)atol(line.c_str() + 5);
+    if (s.lateS < 1 || s.lateS > CAM_MAX_LATE_S) return false;
+  }
+  out = s;
+  return true;
+}
+
+std::string camNodeSettingsText(const CamNodeSettings& s) { return s.lateS ? "late=" + std::to_string(s.lateS) + "\n" : std::string(); }
+
 bool camQuiet(const CamSensorSettings& s, int minute) {
   if (minute < 0 || s.quietFrom < 0) return false;
   if (s.quietFrom < s.quietTo) return minute >= s.quietFrom && minute < s.quietTo;

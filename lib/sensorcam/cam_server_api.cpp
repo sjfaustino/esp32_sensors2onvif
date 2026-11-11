@@ -50,8 +50,11 @@ std::string SensorCamServer::treeJson() {
   bool firstNode = true;
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
-    if (!makeRoom(64)) return std::string();
-    out += std::string(firstNode ? "" : ",") + "{\"mac\":\"" + s.name + "\",\"sensors\":[";
+    if (!makeRoom(80)) return std::string();
+    CamNodeSettings node;
+    std::string nodeText;
+    if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
+    out += std::string(firstNode ? "" : ",") + "{\"mac\":\"" + s.name + "\",\"late\":" + (node.lateS ? std::to_string(node.lateS) : std::string("null")) + ",\"sensors\":[";
     firstNode = false;
     uint8_t mac[6];
     camParseMac(s.name, mac);
@@ -485,6 +488,19 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
       rescan();
       c.out = saved(ok, "could not save the settings; storage may be full");
+    }
+  } else if (r.is("POST", "/api/node-settings")) {
+    std::string path = queryParam(r.target, "path"), late = queryParam(r.form(), "late");
+    CamNodeSettings s;
+    if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path)) {
+      c.out = jsonFail(404, "no such node");
+    } else if (!camParseNodeSettings(late.empty() ? "" : "late=" + late + "\n", s)) {
+      c.out = jsonFail(400, "the time must be 1 to 86400 seconds");
+    } else {
+      std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
+      bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
+      rescan();
+      c.out = saved(ok, "could not save the setting; storage may be full");
     }
   } else if (r.is("GET", "/api/webhook")) {
     c.out = jsonOk(webhookJson());

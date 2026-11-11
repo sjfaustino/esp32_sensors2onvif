@@ -128,7 +128,8 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
     }
   }
 
-  bool late = r.age > DELAYED_AFTER_S;  // an unknown age counts as late
+  uint32_t lateAfter = slots_[id - 1].node.lateS ? slots_[id - 1].node.lateS : DELAYED_AFTER_S;
+  bool late = r.age > lateAfter;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
   bool wasReported = h.reported;
   h.reported = r.active;
@@ -385,6 +386,9 @@ void SensorCamServer::rescan() {
     if (!s.dir || !camParseMac(s.name, mac)) continue;
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
+    CamNodeSettings node;  // a damaged file means the defaults
+    std::string nodeText;
+    if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
     for (const CamFsEntry& e : inputs) {
       if (!e.dir || camClassifyPath(s.name + "/" + e.name) != CAM_PATH_SENSOR) continue;
       uint8_t input = (uint8_t)atoi(e.name.c_str());
@@ -405,6 +409,7 @@ void SensorCamServer::rescan() {
         CamSensorSettings settings;  // a damaged file means the defaults
         if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
         slots_[id - 1].settings = settings;
+        slots_[id - 1].node = node;
       }
     }
   }

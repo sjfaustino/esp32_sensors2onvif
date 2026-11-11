@@ -222,8 +222,8 @@ const data=core.FS.readFile("out.h264");core.FS.unlink("in.png");core.FS.unlink(
 postMessage({id:m.id,data,ret})
 }catch(err){postMessage({id:m.id,error:String(err)})}};`;
 const RED="#B00000",AMBER="#B06000",GREEN="#004000";
-const WORDS={active:"ACTIVE",approaching:"APPROACHING",away:"MOVING AWAY",ltr:"LEFT TO RIGHT",rtl:"RIGHT TO LEFT",delayed:"DELAYED"};
-const NAMES=[["label","Name (first line)"],["active","Active"],["approaching","Approaching"],["away","Moving away"],["ltr","Left to right"],["rtl","Right to left"],["delayed","Delayed (last line)"]];
+const WORDS={active:"ACTIVE",approaching:"APPROACHING",away:"MOVING AWAY",ltr:"LEFT TO RIGHT",rtl:"RIGHT TO LEFT",delayed:"PAST EVENT - CHECK LOGS"};
+const NAMES=[["label","Name (first line)"],["active","Active"],["approaching","Approaching"],["away","Moving away"],["ltr","Left to right"],["rtl","Right to left"],["delayed","Past event (last line)"]];
 let encoder=null,jobs=new Map(),nextJob=1;
 function talk(w,msg,transfer){return new Promise((ok,bad)=>{const id=nextJob++;jobs.set(id,{ok,bad});w.postMessage({...msg,id},transfer||[])})}
 function getEncoder(){
@@ -359,6 +359,11 @@ function settingsPanel(base,n){
     el("p",null,"An alert lasts ",hold," seconds. Empty uses the hub's default."),
     el("p",null,"Quiet hours from ",from," to ",to,". During quiet hours alerts are logged but not sent to the NVR or to Notifications. Leave both empty for none."),
     el("button",{textContent:"Save alert settings",onclick:()=>act(()=>call("POST","/api/sensor-settings?path="+base,"hold="+hold.value+"&from="+minutes(from.value)+"&to="+minutes(to.value)),"Saved the alert settings")}))}
+function nodePanel(s){
+  const late=el("input",{type:"number",min:1,max:86400,value:s.late||"",placeholder:"30",style:"width:7em"});
+  return el("details",null,el("summary",{textContent:"Node settings"+(s.late?" (changed)":"")}),
+    el("p",null,"An alert this node reports as having happened more than ",late," seconds ago is a past event: it shows the sensor's past-event picture, or the built-in \"PAST EVENT, CHECK LOGS\", and gets its own NVR record. Its true time is in the Events list. Empty uses 30 seconds. Set it to how long this node can take to deliver an alert in real time, including retries."),
+    el("button",{textContent:"Save node settings",onclick:()=>act(()=>call("POST","/api/node-settings?path="+s.mac,"late="+late.value),"Saved the node settings")}))}
 function clearPanel(){
   const d=el("details",null,el("summary",{textContent:"Change the text"}));let built=false;
   d.ontoggle=async()=>{if(!d.open||built)return;built=true;
@@ -383,7 +388,8 @@ function render(t){
       el("span",null,num," ",el("button",{textContent:"Add sensor",onclick:()=>{
         if(!/^[1-9][0-9]{0,2}$/.test(num.value)||+num.value>255){say("Sensor number must be 1 to 255",true);return}
         act(()=>call("POST","/api/mkdir?path="+s.mac+"/"+num.value),"Added sensor "+num.value)}}),
-      " ",el("button",{className:"del",textContent:"Delete node",onclick:()=>del(s.mac,"node "+s.mac+" and all its pictures")}))));
+      " ",el("button",{className:"del",textContent:"Delete node",onclick:()=>del(s.mac,"node "+s.mac+" and all its pictures")}))),
+      nodePanel(s));
     for(const n of s.sensors){
       const sizes=Object.fromEntries(n.files.map(f=>[f.name,f.size]));
       const base=s.mac+"/"+n.input;
@@ -501,7 +507,7 @@ const b=await fetch("/api/backup");if(!b.ok)throw new Error("The hub could not s
 files.push(["hub-settings.txt",new Uint8Array(await b.arrayBuffer())]);
 const t=await call("GET","/api/tree");
 if(t.clear!=null)await add("clear.h264");if(t.clearPreview)await add("clear.jpg");await add("text.json");
-for(const s of t.nodes){files.push([s.mac+"/.node",new Uint8Array(0)]);
+for(const s of t.nodes){files.push([s.mac+"/.node",new Uint8Array(0)]);if(s.late)await add(s.mac+"/settings.txt");
   for(const n of s.sensors){const base=s.mac+"/"+n.input;files.push([base+"/.sensor",new Uint8Array(0)]);
     for(const f of n.files){await add(base+"/"+f.name);if(f.preview)await add(base+"/"+f.name.replace(/\.h264$/,".jpg"))}
     if(n.name)await add(base+"/name.txt");await add(base+"/text.json");if(n.hold||n.quiet)await add(base+"/settings.txt")}}
