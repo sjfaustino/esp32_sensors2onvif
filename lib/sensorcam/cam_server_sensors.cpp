@@ -14,6 +14,7 @@
 
 // The history survives a restart. The whole file is rewritten, so a burst of events waits and is written once.
 void SensorCamServer::saveEvents() {
+  flushCsv();
   uint32_t header[4] = {0x31564543, (uint32_t)sizeof(CamEvent), (uint32_t)eventCount_, (uint32_t)eventNext_};
   eventsSaveFailed_ = !storage_.writeWith(EVENTS_FILE, [&](FILE* f) { return fwrite(header, 1, sizeof(header), f) == sizeof(header) && fwrite(events_, 1, sizeof(events_), f) == sizeof(events_); });
   eventsDirty_ = false;
@@ -39,7 +40,8 @@ void SensorCamServer::healthAlert(int id, uint8_t kind, uint32_t now) {
   SensorReport r;
   r.battery = health_[id - 1].battery;
   logEvent(id, r, false, kind);
-  if (cfg_.healthAlarm) sensors_.trigger(id, now);
+  notifyHook(id, kind, false);
+  if (cfg_.healthAlarm) sensors_.trigger(id, now, 0, false, holdFor(id));
 }
 
 void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint8_t kind) {
@@ -57,7 +59,57 @@ void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint
   eventNext_ = (eventNext_ + 1) % EVENT_LOG_SIZE;
   if (eventCount_ < EVENT_LOG_SIZE) eventCount_++;
   eventsDirty_ = true;
+  csvPending_ += csvLine(e);
+  if (csvPending_.size() > 4096) flushCsv();
 }
+
+// Quoted when it holds a comma, quote or line break; a leading = + - or @ is kept from being read as a formula.
+static std::string csvText(const std::string& s) {
+  std::string out = !s.empty() && strchr("=+-@", s[0]) ? "'" + s : s;
+  if (out.find_first_of(",\"\r\n") == std::string::npos) return out;
+  std::string quoted = "\"";
+  for (char ch : out) {
+    if (ch == '"') quoted += '"';
+    quoted += ch;
+  }
+  return quoted + "\"";
+}
+
+std::string SensorCamServer::csvLine(const CamEvent& e) {
+  static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
+  bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
+  const char* what = e.kind == 1 ? "went silent" : e.kind == 2 ? "low battery" : e.kind == 3 ? "alert in quiet hours" : e.kind == 4 ? "weak signal" : !e.active ? "clear" : e.delayed ? "delayed alert" : "alert";
+  int nearest = -1;
+  for (int i = 0; i < e.targetCount; i++)
+    if (nearest < 0 || e.targets[i].distanceCm < e.targets[nearest].distanceCm) nearest = i;
+  std::string distance, direction;
+  if (nearest >= 0) {
+    const SensorTarget& t = e.targets[nearest];
+    char metres[16];
+    snprintf(metres, sizeof(metres), "%.2f", t.distanceCm / 100.0);
+    if (t.distanceCm != CAM_DISTANCE_UNKNOWN) distance = metres;
+    if (t.direction < CAM_DIRECTIONS) direction = DIRECTIONS[t.direction];
+  }
+  return (clockOk ? iso(e.received) : std::string()) + "," + (clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string()) + "," + e.sensor + "," +
+         csvText(e.name) + "," + what + "," + (e.battery == CAM_BATTERY_UNKNOWN ? std::string() : std::to_string(e.battery)) + "," + distance + "," + direction + "\n";
+}
+
+// Added to rather than rewritten, so the history can grow far beyond the events kept in memory.
+void SensorCamServer::flushCsv() {
+  if (csvPending_.empty()) return;
+  bool downloading = false;  // a download reads both files, so they must not change places under it
+  for (const HttpConn& c : http_) downloading = downloading || (c.fd >= 0 && c.pull == &csvRead_);
+  if (!downloading && storage_.fileSize(EVENTS_CSV) + csvPending_.size() > EVENTS_CSV_MAX) storage_.renameFile(EVENTS_CSV, EVENTS_CSV_OLD);
+  // With storage full the lines are dropped, rather than kept and grown without limit.
+  if (storage_.appendFile(EVENTS_CSV, csvPending_.data(), csvPending_.size()) || csvPending_.size() > 8192) csvPending_.clear();
+}
+
+uint32_t SensorCamServer::holdFor(int id) const {
+  uint32_t seconds = slots_[id - 1].settings.holdS;
+  return seconds ? seconds * 1000 : cfg_.holdMs;
+}
+
+bool SensorCamServer::quietNow(int id) const { return camQuiet(slots_[id - 1].settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
 
 bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   if (id < 1 || id > sensors_.count()) return false;
@@ -78,7 +130,8 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
 
   bool late = r.age > DELAYED_AFTER_S;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
-  if (r.active && late) {
+  bool quiet = r.active && quietNow(id);  // logged, but the NVR is not told
+  if (r.active && late && !quiet) {
     if (delayedCount_ < DELAYED_QUEUE_SIZE) {
       DelayedAlert& d = delayed_[(delayedHead_ + delayedCount_) % DELAYED_QUEUE_SIZE];
       memcpy(d.mac, slots_[id - 1].mac, 6);
@@ -86,13 +139,14 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
       d.direction = reportDirection(r);
       delayedCount_++;
     }
-  } else if (r.active) {
-    sensors_.trigger(id, now, reportDirection(r));
-  } else if (!late) {
+  } else if (r.active && !quiet) {
+    sensors_.trigger(id, now, reportDirection(r), false, holdFor(id));
+  } else if (!r.active && !late) {
     sensors_.clear(id);
   }
   // Repeats and heartbeats that change nothing would push real events out of the log.
-  if (late || r.active != wasActive) logEvent(id, r, late);
+  if (late || r.active != wasActive) logEvent(id, r, late, quiet ? 3 : 0);
+  if (r.active && !quiet && (late || !wasActive)) notifyHook(id, 0, late);
   if (batteryWentLow) healthAlert(id, 2, now);  // last, because an inactive report would cancel the alarm straight away
   return true;
 }
@@ -121,19 +175,50 @@ void SensorCamServer::noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rs
   entry->messages++;
 }
 
-void SensorCamServer::espNowInput(const uint8_t mac[6], const SensorReport& r, int8_t rssi) {
+void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
+  SensorReport r;
+  CamPacketCheck check = camCheckPacket(mac, data, len, cfg_.espNowKey, r);
+  if (check == CAM_PACKET_INVALID) return;
   int id = findSlot(mac, r.input);
   if (id == 0) {
     noteUnknown(mac, r.input, rssi);
     return;
   }
   Health& h = health_[id - 1];
-  h.rssi = rssi;
-  // A resend repeats the counter. Only equality is rejected, so a sensor that restarts its count still works.
+  // A signed report must be newer than the last one, so a recorded report cannot be played back later.
+  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                                                        ? "wrong signature"
+                        : check == CAM_PACKET_UNSIGNED && !cfg_.espNowUnsigned                                     ? "not signed"
+                        : check == CAM_PACKET_SIGNED && h.counterSeen && (int32_t)(r.counter - h.counter) < 0 ? "old report number"
+                                                                                                                 : nullptr;
+  if (refusal) {
+    h.refused++;
+    h.refusal = refusal;
+    return;
+  }
+  noteSignal(id, rssi);
+  // A resend repeats the counter, and the hub ignores the repeat. An unsigned sensor that restarts its count still works.
   if (h.counterSeen && h.counter == r.counter) return;
   h.counterSeen = true;
   h.counter = r.counter;
   applyReport(id, r, millis_());
+}
+
+// Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
+void SensorCamServer::noteSignal(int id, int8_t rssi) {
+  Health& h = health_[id - 1];
+  h.rssi = rssi;
+  if (rssi == 0) return;  // not measured
+  h.rssiAvg8 = h.rssiCount ? (int16_t)(h.rssiAvg8 + (rssi * 8 - h.rssiAvg8) / 4) : (int16_t)(rssi * 8);
+  if (h.rssiCount < 255) h.rssiCount++;
+  if (!h.weak && h.rssiCount >= 3 && h.rssiAvg8 < WEAK_SIGNAL_DBM * 8) {
+    h.weak = true;
+    SensorReport r;
+    r.battery = h.battery;
+    logEvent(id, r, false, 4);
+    notifyHook(id, 4, false);
+  } else if (h.weak && h.rssiAvg8 > (WEAK_SIGNAL_DBM + 5) * 8) {
+    h.weak = false;
+  }
 }
 
 // Late alerts play back one at a time so each becomes its own NVR record.
@@ -145,8 +230,8 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
   delayedHead_ = (delayedHead_ + 1) % DELAYED_QUEUE_SIZE;
   delayedCount_--;
   int id = findSlot(d.mac, d.input);
-  if (id) sensors_.trigger(id, now, d.direction, true);  // it may have been deleted while waiting
-  nextDelayedAt_ = now + cfg_.holdMs + DELAYED_GAP_MS;
+  if (id) sensors_.trigger(id, now, d.direction, true, holdFor(id));  // it may have been deleted while waiting
+  nextDelayedAt_ = now + (id ? holdFor(id) : cfg_.holdMs) + DELAYED_GAP_MS;
   delayedGap_ = true;
 }
 
@@ -278,8 +363,11 @@ void SensorCamServer::rescan() {
       }
       if (id) {
         seen[id - 1] = true;
-        std::string name;
-        slots_[id - 1].name = storage_.readFile(s.name + "/" + e.name + "/name.txt", name, 64) ? name : std::string();
+        std::string folder = s.name + "/" + e.name, name, text;
+        slots_[id - 1].name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
+        CamSensorSettings settings;  // a damaged file means the defaults
+        if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
+        slots_[id - 1].settings = settings;
       }
     }
   }

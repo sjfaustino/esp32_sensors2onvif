@@ -45,12 +45,20 @@ struct CamSchedule {
   int minute = 0;  // minutes after midnight, local time
 };
 
+// Messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
+struct CamWebhook {
+  std::string url;        // http:// with an IPv4 address; empty sends nothing
+  bool text = false;      // plain text instead of JSON
+  bool alerts = true;     // sensor alerts
+  bool problems = true;   // silent nodes, low batteries and weak signals
+};
+
 struct CamAddress {
   bool dhcp = true;
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
 };
 
-// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo, onvifNetwork and the crash ones.
+// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo, onvifNetwork, localMinute and the crash ones.
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
@@ -86,6 +94,12 @@ struct CamConfig {
   std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<std::string()> espNowInfo;  // JSON members for the ESP-NOW page: the hub's mac and channel
+  std::string espNowKey;                    // signs version 2 ESP-NOW messages
+  bool espNowUnsigned = false;              // also accept unsigned version 1 messages
+  std::function<bool(bool)> espNowSave;     // stores espNowUnsigned
+  CamWebhook webhook;
+  std::function<bool(const CamWebhook&)> webhookSave;
+  std::function<int()> localMinute;         // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
   std::function<std::string()> addressJson;              // JSON for the Network page
@@ -109,17 +123,19 @@ class SensorCamServer {
   uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
   std::string debugLine();   // counters for the serial heartbeat
   void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }  // for the PC tests
-  void espNowInput(const uint8_t mac[6], const SensorReport& report, int8_t rssi = 0);  // call from the same task as poll()
+  void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow();  // writes any events not yet saved; call before a restart
 
  private:
   // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
-  // and web connections and event pushes share the other 7. Web connections stop at 6, so a push can always start.
+  // and web connections, event pushes and the webhook share the other 7. Web connections and the webhook together stop
+  // at 6, so a push can always start.
   static const int MAX_HTTP = 6;
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
   static const int EVENT_LOG_SIZE = 64;
   static const int DELAYED_QUEUE_SIZE = 16;
+  static const int HOOK_QUEUE = 8;
 
   struct Health {
     bool heard = false;
@@ -131,12 +147,18 @@ class SensorCamServer {
     uint32_t counter = 0;
     int8_t rssi = 0;  // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
     bool lowBattery = false;
+    int16_t rssiAvg8 = 0;  // smoothed signal, in eighths of a dBm
+    uint8_t rssiCount = 0;
+    bool weak = false;
+    uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
+    const char* refusal = "";
   };
   struct Slot {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
     std::string name;  // from name.txt in the sensor's folder
+    CamSensorSettings settings;  // from settings.txt
   };
   struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
     bool used = false;
@@ -151,7 +173,7 @@ class SensorCamServer {
     uint32_t age = 0;
     char sensor[22] = "";  // AA-BB-CC-DD-EE-FF/255
     char name[26] = "";
-    uint8_t kind = 0;      // 0 a report, 1 went silent, 2 low battery
+    uint8_t kind = 0;      // 0 a report, 1 went silent, 2 low battery, 3 an alert in quiet hours, 4 weak signal
     bool active = false;
     bool delayed = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
@@ -205,6 +227,7 @@ class SensorCamServer {
     std::string out;
     size_t outPos = 0;
     uint32_t deadline = 0;
+    bool hook = false;  // the webhook, rather than an ONVIF event push
   };
 
   int listenOn(uint16_t port);
@@ -266,7 +289,17 @@ class SensorCamServer {
   void flushRtsp(RtspConn& c, uint32_t now);
   void startNotify(int i, uint32_t now);
   void serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now);
-  void endNotify(NotifyIo& n);
+  void endNotify(NotifyIo& n, const char* result = "");
+  void noteSignal(int id, int8_t rssi);
+  uint32_t holdFor(int id) const;
+  bool quietNow(int id) const;
+  void notifyHook(int id, uint8_t kind, bool delayed);
+  void queueHook(const std::string& message, const std::string& json);
+  void startHook(uint32_t now);
+  std::string webhookJson();
+  void flushCsv();
+  static std::string csvLine(const CamEvent& e);
+  bool apiSensors(const ApiRequest& r);
   void serviceDiscovery();
   void pushFrames(uint32_t now);
 
@@ -318,4 +351,14 @@ class SensorCamServer {
   int delayedHead_ = 0;
   uint32_t nextDelayedAt_ = 0;
   bool delayedGap_ = false;
+  NotifyIo hook_;
+  std::string hookQueue_[HOOK_QUEUE];
+  int hookCount_ = 0;
+  int hookHead_ = 0;
+  uint32_t hookDropped_ = 0;
+  std::string hookResult_;  // how the last message went; empty before the first
+  time_t hookResultAt_ = 0;
+  std::string csvPending_;  // event history lines not yet added to events.csv
+  size_t csvOldBytes_ = 0;  // the older file's size when the latest download started
+  std::function<bool(size_t, char*, size_t)> csvRead_;  // reads the whole history for a download
 };

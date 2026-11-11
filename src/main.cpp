@@ -45,6 +45,9 @@ static DNSServer dnsServer;
 static bool setupOpen = false;
 static uint16_t onvifPort = ONVIF_PORT, webPort = WEB_PORT, rtspPort = RTSP_PORT;
 static String hubName = MDNS_NAME, webPassword = WEB_PASSWORD, sensorToken = SENSOR_TOKEN;
+static String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
+static bool espNowUnsigned = false;
+static CamWebhook webhook;
 static bool healthAlarm = false;
 // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
 static String staticFor, staticIp, staticMask, staticGateway, staticDns;
@@ -122,6 +125,19 @@ static void loadSettings() {
       sensorToken = made;
       p.putString("token", sensorToken);
     }
+    espNowKey = p.getString("enkey", "");
+    if (espNowKey.length() < 16) {  // made once and kept, and shown on the ESP-NOW page
+      char made[33];
+      snprintf(made, sizeof(made), "%08lx%08lx%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random(), (unsigned long)esp_random(),
+               (unsigned long)esp_random());
+      espNowKey = made;
+      p.putString("enkey", espNowKey);
+    }
+    espNowUnsigned = p.getBool("enuns", false);
+    webhook.url = p.getString("hook", "").c_str();
+    webhook.text = p.getBool("hooktx", false);
+    webhook.alerts = p.getBool("hookal", true);
+    webhook.problems = p.getBool("hookpr", true);
     healthAlarm = p.getBool("hlth", false);
     nvrIp = p.getString("nvrip", "").c_str();
     timeNtp = p.getBool("ntp", true);
@@ -335,7 +351,9 @@ static bool maintenance(const std::string& action) {
     return true;
   }
   bool ok = true;
+  String token = sensorToken, key = espNowKey;  // the sensors are kept, so the secrets they send with are kept too
   for (const char* space : {"wifi", "net"}) ok = withPrefs(space, [](Preferences& p) { return p.clear(); }) && ok;
+  ok = ok && withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key); });
   if (ok) requestRestart(RESTART_SETTINGS_RESET);
   return ok;
 }
@@ -388,6 +406,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "rtsp", 'u'},     {"net", "name", 's'},      {"net", "webpw", 's'},   {"net", "token", 's'},      {"net", "ipfor", 's'}, {"net", "ip", 's'},
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
+    {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},
 };
 
 static std::string backupText() {
@@ -544,6 +563,22 @@ static CamConfig makeConfig() {
   c.onvifPassword = webPassword.c_str();
   c.healthAlarm = healthAlarm;
   c.healthSave = [](bool on) { return withPrefs("net", [on](Preferences& p) { return p.putBool("hlth", on) == 1; }); };
+  c.espNowKey = espNowKey.c_str();
+  c.espNowUnsigned = espNowUnsigned;
+  c.espNowSave = [](bool on) { return withPrefs("net", [on](Preferences& p) { return p.putBool("enuns", on) == 1; }); };
+  c.webhook = webhook;
+  c.webhookSave = [](const CamWebhook& w) {
+    return withPrefs("net", [&w](Preferences& p) {
+      return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1;
+    });
+  };
+  c.localMinute = [] {
+    time_t now = time(nullptr);
+    if (now < CAM_CLOCK_VALID_AFTER) return -1;
+    struct tm local;
+    localtime_r(&now, &local);
+    return local.tm_hour * 60 + local.tm_min;
+  };
   c.firmwareBegin = [](size_t size) {
     confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
     return Update.begin(size, U_FLASH);
@@ -650,14 +685,17 @@ static bool wasConnected = false;
 struct SensorMessage {
   uint8_t mac[6];
   int8_t rssi;
-  SensorReport report;
+  uint8_t len;
+  uint8_t data[32];  // the longest message is 13 + 3 * 3 + 8 = 30 bytes
 };
 static QueueHandle_t sensorQueue;
 
 // Runs on the Wi-Fi task, so it only queues. loop() owns all sensor state.
 static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
   SensorMessage m;
-  if (!parseSensorPacket(data, len, m.report)) return;
+  if (len < 1 || len > (int)sizeof(m.data)) return;
+  memcpy(m.data, data, len);
+  m.len = (uint8_t)len;
   memcpy(m.mac, info->src_addr, 6);
   m.rssi = info->rx_ctrl ? info->rx_ctrl->rssi : 0;
   xQueueSend(sensorQueue, &m, 0);
@@ -857,6 +895,6 @@ void loop() {
   }
 
   SensorMessage m;
-  while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowInput(m.mac, m.report, m.rssi);
+  while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowPacket(m.mac, m.data, m.len, m.rssi);
   server->poll(20);
 }

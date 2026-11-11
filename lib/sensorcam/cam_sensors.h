@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <string>
 #include <vector>
 #include "cam_frames.h"
 
@@ -27,7 +28,28 @@ struct SensorReport {
   SensorTarget targets[CAM_MAX_TARGETS];
 };
 
+// Reads version 1 and 2 messages. It does not check a version 2 signature; camCheckPacket does.
 bool parseSensorPacket(const uint8_t* data, int len, SensorReport& out);
+
+// Version 2 is version 1 followed by an 8-byte signature: the first 8 bytes of HMAC-SHA1, keyed with the hub's
+// ESP-NOW key, over the sender's MAC address (6 bytes) and then the message before the signature.
+const int CAM_SIGNATURE_LEN = 8;
+enum CamPacketCheck { CAM_PACKET_INVALID, CAM_PACKET_UNSIGNED, CAM_PACKET_SIGNED, CAM_PACKET_BAD_SIGNATURE };
+CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, SensorReport& out);
+// The signature for a message of len bytes, without its own signature. For senders and tests.
+std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);
+
+// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
+// FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
+struct CamSensorSettings {
+  uint32_t holdS = 0;  // how long an alert stays active; 0 uses the hub's default
+  int quietFrom = -1;  // -1 for no quiet hours
+  int quietTo = -1;
+};
+const uint32_t CAM_MAX_HOLD_S = 3600;
+bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  // false for anything the page would refuse
+std::string camSensorSettingsText(const CamSensorSettings& s);
+bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, an unknown clock, is never quiet
 
 // Direction of the nearest target, which is the one shown in the picture.
 uint8_t reportDirection(const SensorReport& r);
@@ -37,8 +59,8 @@ class SensorBoard {
  public:
   SensorBoard(int count, uint32_t holdMs) : holdMs_(holdMs), sensors_(count) {}
 
-  // Starts or extends the hold. Returns false for an unknown id.
-  bool trigger(int id, uint32_t now, uint8_t direction = 0, bool delayed = false);
+  // Starts or extends the hold, for holdMs or else the default. Returns false for an unknown id.
+  bool trigger(int id, uint32_t now, uint8_t direction = 0, bool delayed = false, uint32_t holdMs = 0);
   bool clear(int id);
   void tick(uint32_t now);  // ends holds that have run out
   bool active(int id) const;

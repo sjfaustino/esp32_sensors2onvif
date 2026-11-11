@@ -77,7 +77,7 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() == 1) return CAM_PATH_NODE;
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
-  if (parts[2] == "text.json" || parts[2] == "name.txt") return CAM_PATH_TEXT;
+  if (parts[2] == "text.json" || parts[2] == "name.txt" || parts[2] == "settings.txt") return CAM_PATH_TEXT;
   if (validPreviewFile(parts[2])) return CAM_PATH_PREVIEW;
   return validStateFile(parts[2]) ? CAM_PATH_FILE : CAM_PATH_INVALID;
 }
@@ -271,6 +271,26 @@ bool CamStorage::writeWith(const std::string& path, const std::function<bool(FIL
   }
   if (!ok) remove(temp.c_str());
   return ok;
+}
+
+bool CamStorage::appendFile(const std::string& path, const char* data, size_t len) const {
+  FILE* f = fopen(full(path).c_str(), "ab");
+  if (!f) return false;
+  bool ok = fwrite(data, 1, len, f) == len;
+  return fclose(f) == 0 && ok;
+}
+
+bool CamStorage::readAt(const std::string& path, size_t offset, char* out, size_t len) const {
+  FILE* f = fopen(full(path).c_str(), "rb");
+  if (!f) return false;
+  bool ok = fseek(f, (long)offset, SEEK_SET) == 0 && fread(out, 1, len, f) == len;
+  fclose(f);
+  return ok;
+}
+
+bool CamStorage::renameFile(const std::string& from, const std::string& to) const {
+  remove(full(to).c_str());
+  return rename(full(from).c_str(), full(to).c_str()) == 0;
 }
 
 bool CamStorage::removeTree(const std::string& path) const {

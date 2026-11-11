@@ -16,6 +16,17 @@ static std::string padded(const std::string& data, bool bigEndian) {
   return m;
 }
 
+std::string camHmacSha1(const std::string& key, const std::string& data) {
+  std::string k = key.size() > 64 ? camSha1(key) : key;
+  k.resize(64, '\0');
+  std::string inner(64, '\0'), outer(64, '\0');
+  for (int i = 0; i < 64; i++) {
+    inner[i] = (char)(k[i] ^ 0x36);
+    outer[i] = (char)(k[i] ^ 0x5c);
+  }
+  return camSha1(outer + camSha1(inner + data));
+}
+
 std::string camSha1(const std::string& data) {
   uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
   std::string m = padded(data, true);

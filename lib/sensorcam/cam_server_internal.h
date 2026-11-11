@@ -28,6 +28,12 @@ static const uint32_t REPEAT_TRUE_MS = 1000;
 static const uint32_t DELAYED_AFTER_S = 30;       // older reports are shown as delayed
 static const uint32_t DELAYED_GAP_MS = 4000;      // lets the NVR close one record before the next
 static const uint32_t EVENT_SAVE_MS = 5000;  // a burst of events is written to storage once, not once per event
+static const char EVENTS_CSV[] = "events.csv";
+static const char EVENTS_CSV_OLD[] = "events-old.csv";
+static const size_t EVENTS_CSV_MAX = 256 * 1024;  // then it becomes the older file, so about 5000 events are kept
+static const char CSV_HEADER[] = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
+static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
+static const uint32_t HOOK_WAIT_MS = 5000;  // for the webhook to connect, and again for its reply
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
 

@@ -13,7 +13,18 @@
 
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
     : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(REPEAT_TRUE_MS),
-      storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {}
+      storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
+  csvRead_ = [this](size_t offset, char* out, size_t len) {  // the older file, then the current one
+    if (offset < csvOldBytes_) {
+      size_t n = len < csvOldBytes_ - offset ? len : csvOldBytes_ - offset;
+      if (!storage_.readAt(EVENTS_CSV_OLD, offset, out, n)) return false;
+      offset += n;
+      out += n;
+      len -= n;
+    }
+    return !len || storage_.readAt(EVENTS_CSV, offset - csvOldBytes_, out, len);
+  };
+}
 
 int SensorCamServer::listenOn(uint16_t port) {
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
@@ -137,7 +148,7 @@ int SensorCamServer::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;
   for (const NotifyIo& n : notify_) open += n.fd >= 0;
-  return open;
+  return open + (hook_.fd >= 0);
 }
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
@@ -728,7 +739,11 @@ void SensorCamServer::pushFrames(uint32_t now) {
 
 // ---- ONVIF event push ----
 
-void SensorCamServer::endNotify(NotifyIo& n) {
+void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
+  if (n.hook) {
+    hookResult_ = result;
+    hookResultAt_ = time(nullptr);
+  }
   if (n.fd >= 0) netClose(n.fd);
   n = NotifyIo();
 }
@@ -772,7 +787,7 @@ void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, u
     socklen_t len = sizeof(err);
     getsockopt(n.fd, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
     if (err) {
-      endNotify(n);
+      endNotify(n, "could not connect");
       return;
     }
     n.state = NotifyIo::SENDING;
@@ -780,25 +795,26 @@ void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, u
   if (n.state == NotifyIo::SENDING && writable) {
     int sent = (int)send(n.fd, n.out.data() + n.outPos, (int)(n.out.size() - n.outPos), 0);
     if (sent < 0 && !netWouldBlock()) {
-      endNotify(n);
+      endNotify(n, "the connection failed");
       return;
     }
     if (sent > 0) n.outPos += sent;
     if (n.outPos >= n.out.size()) {
-      // The NVR closes without an HTTP reply, so this only waits for that close.
+      // The NVR closes without an HTTP reply, so this only waits for that close. A webhook replies.
       n.state = NotifyIo::WAIT_CLOSE;
-      n.deadline = now + NOTIFY_CLOSE_MS;
+      n.deadline = now + (n.hook ? HOOK_WAIT_MS : NOTIFY_CLOSE_MS);
     }
   }
   if (n.state == NotifyIo::WAIT_CLOSE && readable) {
     char buf[256];
     int got = (int)recv(n.fd, buf, sizeof(buf), 0);
     if (got >= 0 || !netWouldBlock()) {
-      endNotify(n);
+      std::string result = got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0 ? "HTTP " + std::string(buf + 9, 3) : std::string("closed without a reply");
+      endNotify(n, result.c_str());
       return;
     }
   }
-  if ((int32_t)(now - n.deadline) >= 0) endNotify(n);
+  if ((int32_t)(now - n.deadline) >= 0) endNotify(n, n.state == NotifyIo::WAIT_CLOSE ? "no reply" : "could not connect");
 }
 
 // ---- WS-Discovery ----
@@ -839,6 +855,7 @@ void SensorCamServer::poll(int maxWaitMs) {
     CamSub& s = subs_.at(i);
     if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
+  if (hook_.state == NotifyIo::IDLE && hookCount_ && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
   pushFrames(now);
 
   fd_set rd, wr;
@@ -870,6 +887,7 @@ void SensorCamServer::poll(int maxWaitMs) {
     if (n.state == NotifyIo::WAIT_CLOSE) add(n.fd, rd);
     else add(n.fd, wr);
   }
+  if (hook_.state != NotifyIo::IDLE) add(hook_.fd, hook_.state == NotifyIo::WAIT_CLOSE ? rd : wr);
 
   int32_t untilFrame = (int32_t)(nextFrameAt_ - now);
   int wait = untilFrame < maxWaitMs ? (untilFrame < 0 ? 0 : untilFrame) : maxWaitMs;
@@ -893,4 +911,5 @@ void SensorCamServer::poll(int maxWaitMs) {
     if (c.fd >= 0) serviceRtsp(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
   for (NotifyIo& n : notify_)
     if (n.state != NotifyIo::IDLE) serviceNotify(n, FD_ISSET(n.fd, &rd), FD_ISSET(n.fd, &wr), now);
+  if (hook_.state != NotifyIo::IDLE) serviceNotify(hook_, FD_ISSET(hook_.fd, &rd), FD_ISSET(hook_.fd, &wr), now);
 }

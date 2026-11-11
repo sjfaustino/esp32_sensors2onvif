@@ -14,7 +14,8 @@
 
 const size_t CAM_MAX_FRAME = 32 * 1024;  // three buffers this size are in use with two viewers, on boards without PSRAM
 
-// CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set.
+// CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set, and a sensor's
+// name.txt and settings.txt.
 // CAM_PATH_PREVIEW is the JPEG beside a picture, made by the browser for ONVIF snapshots, because the hub cannot decode H.264.
 enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_NODE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT, CAM_PATH_PREVIEW };
 std::string camPreviewPath(const std::string& picturePath);
@@ -54,6 +55,9 @@ class CamStorage {
   bool removeTree(const std::string& path) const;
   // Writes a file through the callback without building it in RAM first. Creates parent folders.
   bool writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const;
+  bool appendFile(const std::string& path, const char* data, size_t len) const;
+  bool readAt(const std::string& path, size_t offset, char* out, size_t len) const;  // exactly len bytes, or false
+  bool renameFile(const std::string& from, const std::string& to) const;  // replaces to
 
  private:
   std::string full(const std::string& path) const;

@@ -39,9 +39,26 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 ## Events and alerts
 
 **Sensors Manager > Events** lists the last 64 events and keeps them across restarts. They are saved within 5 seconds, so a crash or
-power cut can lose the last few. A sensor can be given a name on the Sensors
-page, which then appears on the ESP-NOW and Events pages. A node that stays silent for 3 hours, counted from the last restart if it has not reported since, or reports 20% battery or less,
-is logged as an event. The ESP-NOW page can also raise an NVR alarm for these.
+power cut can lose the last few. **Download the full history (CSV)** gives every event the hub has kept, about the last 5000, in
+UTC. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and Events pages.
+
+A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
+less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
+silence and low battery.
+
+**Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
+quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
+NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
+`settings.txt` in the sensor's folder.
+
+## Notifications
+
+**Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a web address on your network, such as
+a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
+`{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
+or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal` and `test`.
+The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
+time; up to 8 wait, and the page shows how the last one went.
 
 ## ONVIF thumbnails
 
@@ -58,14 +75,21 @@ With no password, from `secrets.h` or after turning it off, anyone on the networ
 the web page then says so at the top.
 
 HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
-ESP-NOW reports do not use it.
+ESP-NOW reports are signed with a separate key instead; see below.
 
 ## System Manager
 
 **Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
-restores a settings backup (which holds the passwords in plain text), and resets the settings. A new firmware must stay on the network for a minute;
-if it crashes, stalls or loses the network first, or the power fails during that minute, the hub goes back to the previous firmware and Device Info says so. A reset erases the saved WiFi networks,
-ports, name, web password, fixed address and time settings, and keeps the pictures and sensor nodes.
+restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
+A new firmware must stay on the network for a minute; if it crashes, stalls or loses the network first, or the power fails
+during that minute, the hub goes back to the previous firmware and Device Info says so. A reset erases the saved WiFi
+networks, ports, name, web password, fixed address, time and notification settings, and keeps the pictures, the sensor nodes,
+and the ESP-NOW key and token that sensors use.
+
+A **full backup** is one `.tar` file with the settings, every picture and thumbnail, and each sensor's name and alert settings.
+Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
+pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the
+settings backup, it holds the passwords in plain text.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive
@@ -90,8 +114,9 @@ PATH. Use `--chip esp32s3` for an S3 board.
 
 ## ESP-NOW page
 
-**Network Manager > ESP-NOW** shows the hub's MAC address and WiFi channel, which sensor nodes need, and lists every sensor
-node with its state, last contact, battery, signal strength and last report number. Only nodes added under
+**Network Manager > ESP-NOW** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
+sensor node with its state, last contact, battery, signal strength, last report number and refused messages. A signal marked
+"weak" has averaged below -80 dBm over the last few messages; it is cleared above -75 dBm. Only nodes added under
 **Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Valid reports from anything
 else are ignored, and the eight most recent such senders appear under **Unknown senders** until the hub restarts or they are added.
 
@@ -113,6 +138,8 @@ clear.h264                         optional replacement for the built-in "all cl
 AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
+AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
+AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time and quiet hours, set on the Sensors page
 ```
 
 The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with a `-delayed` version such as
@@ -144,19 +171,20 @@ on LittleFS.
 ## Sensor input over ESP-NOW
 
 Each device sends this message unicast to the MAC address the serial console prints. It is little-endian and 13 bytes,
-plus 3 for each target.
+plus 3 for each target, plus the 8-byte signature in version 2.
 
 | Bytes | Field |
 |---|---|
-| 1 | Version, `1` |
+| 1 | Version: `2` signed, `1` unsigned |
 | 1 | Input number on the device, starting at `1` |
 | 1 | Active: `1` active, `0` inactive |
 | 1 | Battery percent, `0xFF` when unknown or mains powered. Other values above 100 also count as unknown. |
-| 4 | Event counter. A resend of the same event repeats it, and the hub ignores the repeat. |
+| 4 | Event counter. A resend of the same event repeats it, and the hub ignores the repeat. In version 2 each new event must have a higher number than the last. |
 | 4 | Age in seconds, `0` when live, `0xFFFFFFFF` when unknown |
 | 1 | Number of targets, `0` to `3` |
 | 2 per target | Distance in cm, `0xFFFF` when unknown |
 | 1 per target | Direction: `0` unknown, `1` approaching, `2` moving away, `3` left to right, `4` right to left |
+| 8 | Version 2 only: the first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key as text, over the sender's 6-byte MAC address followed by every byte above |
 
 The hub only accepts a device and input that have a folder on LittleFS.
 
@@ -171,8 +199,14 @@ without a message.
 Alerts older than 30 seconds, or of unknown age, show the delayed picture and play back one at a time so each gets
 its own NVR record. The NVR files them at arrival time. `GET /events` gives the true times.
 
-ESP-NOW messages are not authenticated, so anything within radio range that knows a listed MAC address could send a
-false alert.
+The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
+carried in backups. The hub refuses a version 2 message with a wrong signature, and one whose counter is lower than the last
+it accepted, so a recorded message cannot be played back later; the ESP-NOW page counts these. The counter must therefore
+survive the sensor's restarts and battery changes, for example kept in flash. The hub forgets counters when it restarts, so
+one recorded message could be played back once after a hub restart.
+
+Version 1 messages carry no signature, so anything within radio range that knows a listed MAC address could send a false
+alert. The hub refuses them unless **Also accept unsigned messages** is ticked on the ESP-NOW page.
 
 ## Sensor input over HTTP
 
@@ -185,7 +219,7 @@ settings over USB, which also erases its Wi-Fi networks.
 
 | Request | Effect |
 |---|---|
-| `GET /sensor?mac=AA-BB-CC-DD-EE-01&input=1` | That sensor is active for 10 s. Another alert restarts the 10 s. `input` defaults to 1. |
+| `GET /sensor?mac=AA-BB-CC-DD-EE-01&input=1` | That sensor is active for 10 s, or its own alert time. Another alert restarts it. `input` defaults to 1. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&state=clear` | That sensor ends now. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&direction=1&distance=250&age=100&battery=80` | Same as an ESP-NOW report. |
 | `GET /status` | Active sensors, subscribers, streams and each sensor's last contact, as JSON. |

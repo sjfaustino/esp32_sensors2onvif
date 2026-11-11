@@ -63,8 +63,11 @@ std::string SensorCamServer::treeJson() {
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
       int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
       if (!slot) continue;  // beyond the sensor limit, so it does nothing
-      if (!makeRoom(900)) return std::string();  // the longest possible entry, with all ten pictures
-      out += std::string(firstSensor ? "" : ",") + "{\"input\":" + n.name + ",\"name\":\"" + camJsonEscape(slots_[slot - 1].name) + "\",\"files\":[";
+      if (!makeRoom(960)) return std::string();  // the longest possible entry, with all ten pictures
+      const CamSensorSettings& set = slots_[slot - 1].settings;
+      out += std::string(firstSensor ? "" : ",") + "{\"input\":" + n.name + ",\"name\":\"" + camJsonEscape(slots_[slot - 1].name) +
+             "\",\"hold\":" + (set.holdS ? std::to_string(set.holdS) : std::string("null")) +
+             ",\"quiet\":" + (set.quietFrom >= 0 ? "[" + std::to_string(set.quietFrom) + "," + std::to_string(set.quietTo) + "]" : std::string("null")) + ",\"files\":[";
       firstSensor = false;
       std::vector<CamFsEntry> items;
       storage_.list(base, items);
@@ -154,12 +157,24 @@ static bool validToken(const std::string& s) {
   return ok;
 }
 
+// The same rule as an NVR's event address: http:// with an IPv4 host, because the hub has no name lookup or TLS for
+// these. Nothing that could end the request line early.
+static bool validHookUrl(const std::string& url) {
+  HttpUrl u;
+  bool ok = url.size() <= 200;
+  for (char ch : url) ok = ok && (unsigned char)ch > 0x20 && (unsigned char)ch < 0x7f;
+  return url.empty() || (ok && parseHttpUrl(url, u) && inet_addr(u.host.c_str()) != INADDR_NONE);
+}
+
 bool camBackupValueValid(const std::string& key, const std::string& value) {
   long long n = 0;
   bool number = wholeNumber(value, n);
   uint32_t ip;
   if (key == "net.onvif" || key == "net.web" || key == "net.rtsp") return number && n >= 1 && n <= 65535;
-  if (key == "net.ntp" || key == "net.rben" || key == "net.hlth") return value == "0" || value == "1";
+  if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.enuns" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
+    return value == "0" || value == "1";
+  if (key == "net.enkey") return value.size() >= 16 && validToken(value);
+  if (key == "net.hook") return validHookUrl(value);
   if (key == "net.tzoff") return number && validOffset(n);
   if (key == "net.tzdst") return number && n >= 0 && n <= 2;
   if (key == "net.rbday") return number && n >= -1 && n <= 6;
@@ -191,7 +206,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   const ApiRequest r{c, method, route, target, body, bodyLen};
   if (setupRoute) apiSetup(r);
-  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r)) apiFiles(r);
+  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r)) apiFiles(r);
 }
 
 void SensorCamServer::apiSetup(const ApiRequest& r) {
@@ -244,11 +259,12 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
 std::string SensorCamServer::espNowJson() {
   int known = 0;
   for (const Slot& s : slots_) known += s.used;
-  size_t room = (size_t)known * 260 + MAX_UNKNOWN * 120 + 128;  // the longest possible entries
+  size_t room = (size_t)known * 330 + MAX_UNKNOWN * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
-  out += "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"nodes\":[";
+  out += "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"key\":\"" + cfg_.espNowKey +
+         "\",\"unsigned\":" + (cfg_.espNowUnsigned ? "true" : "false") + ",\"nodes\":[";
   bool first = true;
   uint32_t now = millis_();
   auto optional = [](bool known, long long value) { return known ? std::to_string(value) : std::string("null"); };
@@ -260,7 +276,8 @@ std::string SensorCamServer::espNowJson() {
     out += std::string(first ? "" : ",") + "{\"low\":" + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + camJsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
              ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
              ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
-             ",\"counter\":" + optional(h.counterSeen, h.counter) + "}";
+             ",\"counter\":" + optional(h.counterSeen, h.counter) + ",\"weak\":" + (h.weak ? "true" : "false") +
+             ",\"refused\":" + std::to_string(h.refused) + ",\"refusal\":\"" + h.refusal + "\"}";
     first = false;
   }
   out += "],\"unknown\":[";
@@ -444,6 +461,68 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
   return true;
 }
 
+// ESP-NOW signing, per-sensor settings, the webhook and the full event history.
+bool SensorCamServer::apiSensors(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  if (r.is("POST", "/api/espnow")) {
+    bool on = queryParam(r.form(), "unsigned") == "1", ok = cfg_.espNowSave(on);
+    if (ok) cfg_.espNowUnsigned = on;
+    c.out = saved(ok, "could not save the setting");
+  } else if (r.is("POST", "/api/sensor-settings")) {
+    std::string path = queryParam(r.target, "path"), form = r.form();
+    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to");
+    uint8_t mac[6];
+    size_t slash = path.find('/');
+    bool sensor = camClassifyPath(path) == CAM_PATH_SENSOR && camParseMac(path.substr(0, slash), mac) && findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1));
+    CamSensorSettings s;
+    std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n");
+    if (!sensor) {
+      c.out = jsonFail(404, "no such sensor");
+    } else if (!camParseSensorSettings(text, s)) {
+      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, and quiet hours need a start and an end that differ");
+    } else {
+      std::string file = path + "/settings.txt", clean = camSensorSettingsText(s);
+      bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
+      rescan();
+      c.out = saved(ok, "could not save the settings; storage may be full");
+    }
+  } else if (r.is("GET", "/api/webhook")) {
+    c.out = jsonOk(webhookJson());
+  } else if (r.is("POST", "/api/webhook")) {
+    std::string form = r.form();
+    CamWebhook w;
+    w.url = percentDecode(queryParam(form, "url"));
+    w.text = queryParam(form, "text") == "1";
+    w.alerts = queryParam(form, "alerts") == "1";
+    w.problems = queryParam(form, "problems") == "1";
+    if (!validHookUrl(w.url)) {
+      c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
+    } else {
+      bool ok = cfg_.webhookSave(w);
+      if (ok) cfg_.webhook = w;
+      c.out = saved(ok, "could not save the notification settings");
+    }
+  } else if (r.is("POST", "/api/webhook/test")) {
+    if (cfg_.webhook.url.empty()) {
+      c.out = jsonFail(400, "save an address first");
+    } else {
+      std::string message = "Test from " + cfg_.hostName;
+      queueHook(message, "{\"event\":\"test\",\"hub\":\"" + cfg_.hostName + "\",\"message\":\"" + message + "\"}");
+      c.out = jsonOk(JSON_OK);
+    }
+  } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
+    flushCsv();
+    csvOldBytes_ = storage_.fileSize(EVENTS_CSV_OLD);
+    size_t total = csvOldBytes_ + storage_.fileSize(EVENTS_CSV);
+    c.out = httpHead(200, "text/csv; charset=utf-8", sizeof(CSV_HEADER) - 1 + total, "Content-Disposition: attachment; filename=\"hub-events.csv\"\r\n") + CSV_HEADER;
+    c.pull = &csvRead_;
+    c.staticLen = total;
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void SensorCamServer::apiFiles(const ApiRequest& r) {
   HttpConn& c = r.c;
   const std::string& method = r.method;
@@ -490,7 +569,7 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
       c.out = jsonFail(413, "text is too long");
     } else {
       c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");
-      if (path.size() > 9 && path.compare(path.size() - 9, 9, "/name.txt") == 0) rescan();
+      if (path.find('/') != std::string::npos && path.compare(path.size() - 10, 10, "/text.json") != 0) rescan();  // a name or settings
     }
   } else if (fileRoute && method == "PUT" && isFile) {
     CamNal nals[3];

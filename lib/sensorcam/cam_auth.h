@@ -3,6 +3,7 @@
 #include <string>
 
 std::string camSha1(const std::string& data);    // the raw 20 bytes
+std::string camHmacSha1(const std::string& key, const std::string& data);  // the raw 20 bytes
 std::string camMd5Hex(const std::string& data);  // lowercase hex
 std::string camBase64Decode(const std::string& text);
 

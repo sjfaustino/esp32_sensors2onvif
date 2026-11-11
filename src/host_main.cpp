@@ -3,7 +3,19 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
+#include <ctime>
 #include "cam_server.h"
+
+static const char ESPNOW_KEY[] = "test-espnow-key-0123456789";
+
+// Sends a report the way a sensor node would: version 2 signs it, version 1 does not.
+static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key) {
+  uint8_t mac[6] = {2, 0, 0, 0, 0, last};
+  uint8_t p[13 + 8] = {(uint8_t)version, 1, 0, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
+  if (version == 2) memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
+  hub->espNowPacket(mac, p, version == 2 ? 21 : 13, rssi);
+}
 
 static uint32_t nowMs() {
   using namespace std::chrono;
@@ -55,6 +67,10 @@ int main(int argc, char** argv) {
   };
   cfg.crashDelete = [] { crashLeft = 0; return true; };
   cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
+  cfg.espNowKey = ESPNOW_KEY;
+  cfg.espNowSave = [](bool) { return true; };
+  cfg.webhookSave = [](const CamWebhook&) { return true; };
+  cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   cfg.setupActive = [] { return setupOn; };
@@ -67,14 +83,16 @@ int main(int argc, char** argv) {
       hub->setOnvifPassword(ssid == "auth-on" ? "onvif-secret" : "");
       return true;
     }
-    if (ssid == "radio-known" || ssid == "radio-unknown" || ssid == "radio-low" || ssid == "radio-huge") {  // this build has no radio, so the test delivers a report this way
-      bool known = ssid != "radio-unknown";
-      uint8_t mac[6] = {2, 0, 0, 0, 0, (uint8_t)(known ? 1 : 0x99)};
+    if (ssid.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
       static uint32_t counter = 77;
-      SensorReport report;
-      report.counter = ssid == "radio-huge" ? 3000000000UL : counter++;
-      report.battery = ssid == "radio-low" ? 10 : 55;
-      hub->espNowInput(mac, report, -61);
+      uint8_t node = ssid == "radio-unknown" ? 0x99 : 1;
+      if (ssid == "radio-huge") radio(hub, node, 2147483700UL, 55, -61, 2, ESPNOW_KEY);  // above the largest signed 32-bit number
+      else if (ssid == "radio-unsigned") radio(hub, node, counter++, 55, -61, 1, "");
+      else if (ssid == "radio-forged") radio(hub, node, counter++, 55, -61, 2, "not-the-key");
+      else if (ssid == "radio-old") radio(hub, node, counter - 10, 55, -61, 2, ESPNOW_KEY);
+      else if (ssid == "radio-weak")
+        for (int i = 0; i < 10; i++) radio(hub, node, counter++, 55, -90, 2, ESPNOW_KEY);
+      else radio(hub, node, counter++, ssid == "radio-low" ? 10 : 55, -61, 2, ESPNOW_KEY);
       return true;
     }
     return password == "p%ss w+rd&ok";

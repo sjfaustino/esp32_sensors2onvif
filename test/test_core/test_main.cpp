@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <string.h>
 #include <string>
+#include "cam_auth.h"
 #include "cam_frames.h"
 #include "cam_rtp.h"
 #include "cam_server.h"
@@ -166,6 +167,15 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_TRUE(camBackupValueValid("net.name", "esp-alarmhub"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.name", "bad name"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.name", ""));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.enkey", "0123456789abcdef0123456789abcdef"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.enkey", "short"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.hook", ""));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.hook", "http://192.168.1.10:8123/api/webhook/hub"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.hook", "https://192.168.1.10/x"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.hook", "http://homeassistant.local/x"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.hook", "http://192.168.1.10/a b"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.hookal", "1"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.enuns", "yes"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.token", "0123abcd"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.token", "a\"b"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.ip", "192.168.8.192"));
@@ -176,6 +186,72 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_FALSE(camBackupValueValid("wifi.password", "short"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.ntp", "2"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.unknown", "1"));
+}
+
+static std::string hex(const std::string& raw) { return camHex((const uint8_t*)raw.data(), raw.size()); }
+
+static void hmac_sha1_matches_rfc_2202() {
+  TEST_ASSERT_EQUAL_STRING("b617318655057264e28bc0b6fb378c8ef146be00", hex(camHmacSha1(std::string(20, '\x0b'), "Hi There")).c_str());
+  TEST_ASSERT_EQUAL_STRING("effcdf6ae5eb2fa2d27416d5f184df9c259a7c79", hex(camHmacSha1("Jefe", "what do ya want for nothing?")).c_str());
+  TEST_ASSERT_EQUAL_STRING("aa4ae5e15272d00e95705637ce8a3b55ed402112", hex(camHmacSha1(std::string(80, '\xaa'), "Test Using Larger Than Block-Size Key - Hash Key First")).c_str());
+}
+
+static void signed_messages_are_checked() {
+  const uint8_t mac[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x62};
+  uint8_t p[13 + 8] = {2, 1, 1, 90, 4, 3, 2, 1, 0, 0, 0, 0, 0};
+  std::string sig = camPacketSignature(mac, p, 13, "key-1");
+  memcpy(p + 13, sig.data(), 8);
+  SensorReport r;
+  TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckPacket(mac, p, sizeof(p), "key-1", r));
+  TEST_ASSERT_EQUAL(0x01020304u, r.counter);
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "key-2", r));
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "", r));
+  const uint8_t other[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x63};
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(other, p, sizeof(p), "key-1", r));  // copied to another node
+  p[3] = 10;  // altered after signing
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "key-1", r));
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckPacket(mac, p, 13, "key-1", r));  // version 2 without its signature
+  p[0] = 1;
+  TEST_ASSERT_EQUAL(CAM_PACKET_UNSIGNED, camCheckPacket(mac, p, 13, "key-1", r));
+}
+
+static void sensor_settings_round_trip_and_refuse_bad_values() {
+  CamSensorSettings s;
+  TEST_ASSERT_TRUE(camParseSensorSettings("hold=30\nquiet=1320-420\n", s));
+  TEST_ASSERT_EQUAL(30, s.holdS);
+  TEST_ASSERT_EQUAL(1320, s.quietFrom);
+  TEST_ASSERT_EQUAL(420, s.quietTo);
+  TEST_ASSERT_EQUAL_STRING("hold=30\nquiet=1320-420\n", camSensorSettingsText(s).c_str());
+  TEST_ASSERT_TRUE(camParseSensorSettings("", s));
+  TEST_ASSERT_EQUAL(0, s.holdS);
+  TEST_ASSERT_EQUAL(-1, s.quietFrom);
+  TEST_ASSERT_EQUAL_STRING("", camSensorSettingsText(s).c_str());
+  const char* bad[] = {"hold=0\n", "hold=3601\n", "hold=-5\n", "hold=1x\n", "quiet=60-60\n", "quiet=1440-10\n", "quiet=10\n", "colour=red\n"};
+  for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseSensorSettings(text, s), text);
+}
+
+static void quiet_hours_cross_midnight() {
+  CamSensorSettings night, day, none;
+  night.quietFrom = 22 * 60, night.quietTo = 7 * 60;
+  day.quietFrom = 9 * 60, day.quietTo = 17 * 60;
+  TEST_ASSERT_TRUE(camQuiet(night, 23 * 60));
+  TEST_ASSERT_TRUE(camQuiet(night, 0));
+  TEST_ASSERT_TRUE(camQuiet(night, 6 * 60 + 59));
+  TEST_ASSERT_FALSE(camQuiet(night, 7 * 60));
+  TEST_ASSERT_FALSE(camQuiet(night, 12 * 60));
+  TEST_ASSERT_TRUE(camQuiet(day, 9 * 60));
+  TEST_ASSERT_FALSE(camQuiet(day, 17 * 60));
+  TEST_ASSERT_FALSE(camQuiet(night, -1));  // clock not set: alerts still go through
+  TEST_ASSERT_FALSE(camQuiet(none, 0));
+}
+
+static void a_sensor_can_have_its_own_hold() {
+  SensorBoard b(2, 10000);
+  b.trigger(1, 0, 0, false, 30000);
+  b.trigger(2, 0);
+  b.tick(20000);
+  TEST_ASSERT_TRUE(b.active(1));
+  TEST_ASSERT_FALSE(b.active(2));
 }
 
 static void long_names_are_cut_between_characters() {
@@ -460,6 +536,11 @@ int main() {
   RUN_TEST(battery_outside_0_to_100_is_unknown);
   RUN_TEST(backup_values_follow_the_page_rules);
   RUN_TEST(long_names_are_cut_between_characters);
+  RUN_TEST(hmac_sha1_matches_rfc_2202);
+  RUN_TEST(signed_messages_are_checked);
+  RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
+  RUN_TEST(quiet_hours_cross_midnight);
+  RUN_TEST(a_sensor_can_have_its_own_hold);
   RUN_TEST(rtp_time_follows_the_clock_when_frames_are_skipped);
   return UNITY_END();
 }

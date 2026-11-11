@@ -1,5 +1,7 @@
 #include "cam_sensors.h"
+#include <stdlib.h>
 #include <string.h>
+#include "cam_auth.h"
 
 static const uint32_t CYCLE_MS = 2000;
 static const int HEADER_LEN = 13;
@@ -8,7 +10,9 @@ static const int TARGET_LEN = 3;
 static uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
 
 bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
-  if (len < HEADER_LEN || d[0] != 1 || d[1] == 0 || d[2] > 1 || d[12] > CAM_MAX_TARGETS) return false;
+  if (len < 1 || (d[0] != 1 && d[0] != 2)) return false;
+  if (d[0] == 2) len -= CAM_SIGNATURE_LEN;
+  if (len < HEADER_LEN || d[1] == 0 || d[2] > 1 || d[12] > CAM_MAX_TARGETS) return false;
   if (len != HEADER_LEN + d[12] * TARGET_LEN) return false;
   SensorReport r;
   r.input = d[1];
@@ -27,6 +31,67 @@ bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
   return true;
 }
 
+std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
+  return camHmacSha1(key, std::string((const char*)mac, 6) + std::string((const char*)d, len)).substr(0, CAM_SIGNATURE_LEN);
+}
+
+CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
+  if (!parseSensorPacket(d, len, out)) return CAM_PACKET_INVALID;
+  if (d[0] == 1) return CAM_PACKET_UNSIGNED;
+  std::string expected = camPacketSignature(mac, d, len - CAM_SIGNATURE_LEN, key);
+  uint8_t differ = 0;  // every byte is compared, so the time taken does not reveal how much matched
+  for (int i = 0; i < CAM_SIGNATURE_LEN; i++) differ |= (uint8_t)expected[i] ^ d[len - CAM_SIGNATURE_LEN + i];
+  return differ || key.empty() ? CAM_PACKET_BAD_SIGNATURE : CAM_PACKET_SIGNED;
+}
+
+static bool smallNumber(const std::string& s, int& out) {  // digits only, up to 9999
+  if (s.empty() || s.size() > 4) return false;
+  for (char ch : s)
+    if (ch < '0' || ch > '9') return false;
+  out = atoi(s.c_str());
+  return true;
+}
+
+static bool minuteOfDay(const std::string& s, int& out) { return smallNumber(s, out) && out < 1440; }
+
+bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
+  CamSensorSettings s;
+  for (size_t at = 0; at < text.size();) {
+    size_t end = text.find('\n', at);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(at, end - at);
+    at = end + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    size_t eq = line.find('=');
+    std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
+    size_t dash = value.find('-');
+    int hold = 0;
+    if (key == "hold" && smallNumber(value, hold) && hold >= 1 && (uint32_t)hold <= CAM_MAX_HOLD_S) {
+      s.holdS = (uint32_t)hold;
+    } else if (key == "quiet" && dash != std::string::npos && minuteOfDay(value.substr(0, dash), s.quietFrom) &&
+               minuteOfDay(value.substr(dash + 1), s.quietTo) && s.quietFrom != s.quietTo) {
+    } else {
+      return false;
+    }
+  }
+  out = s;
+  return true;
+}
+
+std::string camSensorSettingsText(const CamSensorSettings& s) {
+  std::string out;
+  if (s.holdS) out += "hold=" + std::to_string(s.holdS) + "\n";
+  if (s.quietFrom >= 0) out += "quiet=" + std::to_string(s.quietFrom) + "-" + std::to_string(s.quietTo) + "\n";
+  return out;
+}
+
+bool camQuiet(const CamSensorSettings& s, int minute) {
+  if (minute < 0 || s.quietFrom < 0) return false;
+  if (s.quietFrom < s.quietTo) return minute >= s.quietFrom && minute < s.quietTo;
+  return minute >= s.quietFrom || minute < s.quietTo;  // across midnight
+}
+
 uint8_t reportDirection(const SensorReport& r) {
   if (r.targetCount == 0) return 0;
   int best = 0;
@@ -35,11 +100,11 @@ uint8_t reportDirection(const SensorReport& r) {
   return r.targets[best].direction;
 }
 
-bool SensorBoard::trigger(int id, uint32_t now, uint8_t direction, bool delayed) {
+bool SensorBoard::trigger(int id, uint32_t now, uint8_t direction, bool delayed, uint32_t holdMs) {
   if (id < 1 || id > count()) return false;
   Entry& s = sensors_[id - 1];
   s.on = true;
-  s.until = now + holdMs_;
+  s.until = now + (holdMs ? holdMs : holdMs_);
   s.direction = direction;
   s.delayed = delayed;
   return true;

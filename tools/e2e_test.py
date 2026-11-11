@@ -9,7 +9,7 @@ E2E_WEB_PASSWORD to it and E2E_SENSOR_TOKEN to the token on its HTTP page. It cr
 has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
 if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
-import base64, datetime, hashlib, http.client, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
+import base64, datetime, hashlib, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_frames
@@ -563,7 +563,7 @@ def main():
                 check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
                 check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])
                 api('POST', '/api/wifi', 'ssid=radio-huge')
-                check('a report number above 2 billion stays positive', node_entry(radio())['counter'] == 3000000000, node_entry(radio()))
+                check('a report number above 2 billion stays positive', node_entry(radio())['counter'] == 2147483700, node_entry(radio()))
                 get(f'/sensor?{sid(1)}&state=clear')
                 api('POST', '/api/wifi', 'ssid=radio-unknown')
                 api('POST', '/api/wifi', 'ssid=radio-unknown')
@@ -574,6 +574,33 @@ def main():
                 api('POST', '/api/mkdir?path=02-00-00-00-00-99/1')
                 check('adding the sender removes it from the unknown list', radio()['unknown'] == [], radio()['unknown'])
                 api('DELETE', '/api/file?path=02-00-00-00-00-99')
+
+                # Signed messages.
+                info = radio()
+                check('the ESP-NOW page shows the key, and that unsigned messages are refused', info['key'] == 'test-espnow-key-0123456789' and info['unsigned'] is False, info)
+                before = node_entry(radio())
+                api('POST', '/api/wifi', 'ssid=radio-unsigned')
+                after = node_entry(radio())
+                check('an unsigned message is refused', after['refused'] == before['refused'] + 1 and after['refusal'] == 'not signed' and after['counter'] == before['counter'], after)
+                check('unsigned messages can be allowed', api('POST', '/api/espnow', 'unsigned=1')[0] == 200 and radio()['unsigned'] is True)
+                api('POST', '/api/wifi', 'ssid=radio-unsigned')
+                check('an unsigned message is accepted when allowed', node_entry(radio())['counter'] != after['counter'] and node_entry(radio())['refused'] == after['refused'], node_entry(radio()))
+                api('POST', '/api/espnow', 'unsigned=0')
+                api('POST', '/api/wifi', 'ssid=radio-forged')
+                check('a message signed with another key is refused', node_entry(radio())['refusal'] == 'wrong signature', node_entry(radio()))
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                refused = node_entry(radio())['refused']
+                api('POST', '/api/wifi', 'ssid=radio-old')
+                check('an older signed message is refused, so a recording cannot be played back', node_entry(radio())['refused'] == refused + 1 and node_entry(radio())['refusal'] == 'old report number', node_entry(radio()))
+
+                # Weak signal.
+                api('POST', '/api/wifi', 'ssid=radio-weak')
+                check('a weak signal is flagged', node_entry(radio())['weak'] is True, node_entry(radio()))
+                check('a weak signal is in the event history', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 4)
+                for _ in range(6):
+                    api('POST', '/api/wifi', 'ssid=radio-known')
+                check('a good signal clears the flag', node_entry(radio())['weak'] is False, node_entry(radio()))
+                get(f'/sensor?{sid(1)}&state=clear')
 
                 # Sensor names.
                 label = 'Front "gate"'.encode()
@@ -598,6 +625,95 @@ def main():
                 get(f'/sensor?{sid(1)}&state=clear')
                 api('POST', '/api/wifi', 'ssid=radio-known')
                 api('POST', '/api/alerts', 'alarm=0')
+
+                # Per-sensor settings.
+                path = name(1)
+
+                def tree_entry():
+                    return [n for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]
+
+                check('a sensor can have its own hold', api('POST', f'/api/sensor-settings?path={path}', 'hold=2')[0] == 200)
+                check('the Sensors page data shows the hold', tree_entry()['hold'] == 2 and tree_entry()['quiet'] is None, tree_entry())
+                get(f'/sensor?{sid(1)}')
+                time.sleep(0.5)
+                active_soon = path in status()['active']
+                time.sleep(2.5)
+                check("the alert ends after the sensor's own hold", active_soon and path not in status()['active'])
+                check('a bad hold is refused', api('POST', f'/api/sensor-settings?path={path}', 'hold=0')[0] == 400)
+                check('quiet hours need two different times', api('POST', f'/api/sensor-settings?path={path}', 'from=60&to=60')[0] == 400)
+                check('settings for a sensor that does not exist are refused', api('POST', '/api/sensor-settings?path=02-00-00-00-00-77/1', 'hold=5')[0] == 404)
+                minute = int(time.time() // 60 % 1440)
+                api('POST', f'/api/sensor-settings?path={path}', f'from={(minute - 2) % 1440}&to={(minute + 3) % 1440}')
+                check('the Sensors page data shows the quiet hours', tree_entry()['quiet'] == [(minute - 2) % 1440, (minute + 3) % 1440], tree_entry())
+                get(f'/sensor?{sid(1)}')
+                time.sleep(0.3)
+                check('an alert in quiet hours does not reach the NVR', path not in status()['active'])
+                check('an alert in quiet hours is still logged', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 3)
+                code, text = api('GET', f'/api/file?path={path}/settings.txt')
+                check("the settings are kept in the sensor's folder", code == 200 and text.startswith(b'quiet='), text)
+                check('clearing the settings removes the file', api('POST', f'/api/sensor-settings?path={path}', '')[0] == 200 and api('GET', f'/api/file?path={path}/settings.txt')[0] == 404)
+                api('PUT', f'/api/file?path={path}/settings.txt', b'hold=3\n')
+                check('settings.txt restored as a file is read too', tree_entry()['hold'] == 3, tree_entry())
+                api('POST', f'/api/sensor-settings?path={path}', '')
+                get(f'/sensor?{sid(1)}')
+                time.sleep(0.3)
+                check('without quiet hours alerts reach the NVR again', path in status()['active'])
+                get(f'/sensor?{sid(1)}&state=clear')
+
+                # The full event history.
+                code, csv = api('GET', '/api/events.csv')
+                lines = csv.decode().splitlines()
+                check('the full history downloads as CSV', code == 200 and lines[0].startswith('received_utc,') and any(f',{path},' in l and ',alert in quiet hours,' in l for l in lines), lines[:3])
+                check('a name with quotes stays one CSV field', any('"Front ""gate"""' in l for l in lines), [l for l in lines if path in l][:2])
+                check('the full history needs the web password', api('GET', '/api/events.csv', auth=False)[0] == 401)
+
+                # Webhook.
+                received = []
+
+                class Hook(http.server.BaseHTTPRequestHandler):
+                    def do_POST(self):
+                        received.append((self.headers.get('Content-Type'), self.rfile.read(int(self.headers['Content-Length']))))
+                        self.send_response(200)
+                        self.send_header('Content-Length', '0')
+                        self.end_headers()
+
+                    def log_message(self, *args):
+                        pass
+
+                catcher = http.server.HTTPServer(('127.0.0.1', 0), Hook)
+                threading.Thread(target=catcher.serve_forever, daemon=True).start()
+                hook_url = urllib.parse.quote(f'http://127.0.0.1:{catcher.server_port}/hub', safe='')
+
+                def hooks(count):
+                    for _ in range(50):
+                        if len(received) >= count:
+                            return True
+                        time.sleep(0.1)
+                    return False
+
+                check('a webhook address with a name is refused', api('POST', '/api/webhook', 'url=' + urllib.parse.quote('http://example.com/x', safe='') + '&alerts=1')[0] == 400)
+                check('an https webhook is refused', api('POST', '/api/webhook', 'url=' + urllib.parse.quote('https://192.168.1.2/x', safe='') + '&alerts=1')[0] == 400)
+                check('the webhook is saved', api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1')[0] == 200)
+                api('POST', '/api/webhook/test', 'x=1')
+                check('a test message arrives', hooks(1) and json.loads(received[0][1])['event'] == 'test', received)
+                get(f'/sensor?{sid(1)}')
+                alert = json.loads(received[1][1]) if hooks(2) else {}
+                check('an alert is sent to the webhook', alert.get('event') == 'alert' and alert.get('sensor') == path and alert.get('name') == 'Front "gate"', received[1:])
+                get(f'/sensor?{sid(1)}&state=clear')
+                time.sleep(0.5)
+                hook_state = json.loads(api('GET', '/api/webhook')[1])
+                check('the page shows how the last message went', hook_state['last'] == 'HTTP 200' and hook_state['waiting'] == 0, hook_state)
+                api('POST', '/api/webhook', f'url={hook_url}&text=1&alerts=1&problems=0')
+                get(f'/sensor?{sid(1)}')
+                check('plain text is sent when chosen', hooks(3) and received[2][0].startswith('text/plain') and received[2][1].decode().endswith(': alert'), received[2:])
+                get(f'/sensor?{sid(1)}&state=clear')
+                api('POST', '/api/wifi', 'ssid=radio-low')
+                time.sleep(0.5)
+                check('node problems are not sent when turned off', len(received) == 3, received[3:])
+                api('POST', '/api/wifi', 'ssid=radio-known')
+                check('the webhook settings need the web password', api('GET', '/api/webhook', auth=False)[0] == 401)
+                api('POST', '/api/webhook', 'url=&alerts=1&problems=1')
+                catcher.shutdown()
                 check('the event history needs the web password', api('GET', '/api/events', auth=False)[0] == 401)
                 check('/status needs the web password', http_status('/status') == 401)
 
