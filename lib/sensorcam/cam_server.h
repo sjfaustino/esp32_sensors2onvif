@@ -12,6 +12,10 @@
 #include "cam_subs.h"
 
 const int CAM_MAX_SENSORS = 32;
+const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means the clock has not been set
+
+// Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
+bool camBackupValueValid(const std::string& key, const std::string& value);
 
 std::string camJsonEscape(const std::string& text);
 
@@ -100,6 +104,7 @@ class SensorCamServer {
   std::string debugLine();   // counters for the serial heartbeat
   void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }  // for the PC tests
   void espNowInput(const uint8_t mac[6], const SensorReport& report, int8_t rssi = 0);  // call from the same task as poll()
+  void saveNow();  // writes any events not yet saved; call before a restart
 
  private:
   // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
@@ -147,8 +152,9 @@ class SensorCamServer {
     uint8_t targetCount = 0;
     SensorTarget targets[CAM_MAX_TARGETS];
   };
-  struct DelayedAlert {
-    uint8_t sensor = 0;
+  struct DelayedAlert {  // by device and input, because a deleted sensor's table position can pass to a new one
+    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+    uint8_t input = 0;
     uint8_t direction = 0;
   };
 
@@ -297,6 +303,9 @@ class SensorCamServer {
   CamEvent events_[EVENT_LOG_SIZE];
   int eventCount_ = 0;
   int eventNext_ = 0;
+  bool eventsDirty_ = false;  // events logged since the file was last written
+  bool eventsSaveFailed_ = false;
+  uint32_t eventsSavedAt_ = 0;
   DelayedAlert delayed_[DELAYED_QUEUE_SIZE];
   int delayedCount_ = 0;
   int delayedHead_ = 0;

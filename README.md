@@ -65,8 +65,8 @@ if it crashes, stalls or loses the network first, or the power fails during that
 ports, name, web password, fixed address and time settings, and keeps the pictures and sensor nodes.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
-receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time is lost when
-the hub loses power.
+receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive
+a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
 **Device Info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
 

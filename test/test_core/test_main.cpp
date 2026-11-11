@@ -3,6 +3,7 @@
 #include <string>
 #include "cam_frames.h"
 #include "cam_rtp.h"
+#include "cam_server.h"
 #include "cam_sensors.h"
 #include "cam_soap.h"
 #include "cam_storage.h"
@@ -151,6 +152,30 @@ static void builtin_pictures_are_valid() {
     TEST_ASSERT_EQUAL(5, CAM_FRAMES[f].nals[2].data[0] & 31);
   }
   TEST_ASSERT_TRUE(camSameNal(CAM_FRAMES[0].nals[0], CAM_FRAMES[1].nals[0]));
+}
+
+static void backup_values_follow_the_page_rules() {
+  TEST_ASSERT_TRUE(camBackupValueValid("net.web", "80"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.web", "0"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.tzoff", "-180"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.tzoff", "99999"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.tzoff", "10"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.tzdst", "7"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.rbday", "-1"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.rbmin", "1440"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.name", "esp-alarmhub"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.name", "bad name"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.name", ""));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.token", "0123abcd"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.token", "a\"b"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.ip", "192.168.8.192"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.ip", "192.168.8"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.nvrip", ""));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.webpw", ""));
+  TEST_ASSERT_TRUE(camBackupValueValid("wifi.password2", ""));
+  TEST_ASSERT_FALSE(camBackupValueValid("wifi.password", "short"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.ntp", "2"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.unknown", "1"));
 }
 
 static void battery_outside_0_to_100_is_unknown() {
@@ -402,5 +427,6 @@ int main() {
   RUN_TEST(rtp_reassembles_to_the_original_nals);
   RUN_TEST(base64_matches_known_values);
   RUN_TEST(battery_outside_0_to_100_is_unknown);
+  RUN_TEST(backup_values_follow_the_page_rules);
   return UNITY_END();
 }

@@ -19,6 +19,7 @@
 #include "cam_server.h"
 #include "config.h"
 
+static SensorCamServer* server;
 static std::string localIp() { return WiFi.localIP().toString().c_str(); }
 static uint32_t nowMs() { return millis(); }
 
@@ -278,9 +279,12 @@ static String posixTz() {
   return tz;
 }
 
+static bool clockSet() { return time(nullptr) > CAM_CLOCK_VALID_AFTER; }
+
+// A manual time does not survive a power cut, so until it is set again NTP is asked, and stopped by loop() once it answers.
 static void applyTime() {
   String tz = posixTz();
-  if (timeNtp) {
+  if (timeNtp || !clockSet()) {
     configTzTime(tz.c_str(), ntpServer.c_str());
   } else {
     esp_sntp_stop();  // otherwise NTP would overwrite the time that was set by hand
@@ -296,7 +300,7 @@ static std::string timeJson() {
   char shown[24];
   strftime(shown, sizeof(shown), "%Y-%m-%d %H:%M:%S", &local);
   return std::string("{\"ntp\":") + (timeNtp ? "true" : "false") + ",\"server\":\"" + jsonText(ntpServer) + "\",\"offset\":" + std::to_string(tzOffset) + ",\"dst\":" + std::to_string(tzDst) +
-         ",\"synced\":" + (now > 1577836800 ? "true" : "false") + ",\"local\":\"" + shown + "\"}\n";
+         ",\"synced\":" + (clockSet() ? "true" : "false") + ",\"local\":\"" + shown + "\"}\n";
 }
 
 static bool saveTime(const CamTime& t) {
@@ -307,11 +311,11 @@ static bool saveTime(const CamTime& t) {
   ntpServer = server;
   tzOffset = t.offsetMinutes;
   tzDst = t.dst;
-  applyTime();
-  if (!t.ntp && t.epoch) {
+  if (!t.ntp && t.epoch) {  // before applyTime, so NTP is not started for a clock that is about to be set
     timeval now = {(time_t)t.epoch, 0};
     settimeofday(&now, nullptr);
   }
+  applyTime();
   return true;
 }
 
@@ -402,14 +406,6 @@ static std::string backupText() {
   return out;
 }
 
-static bool validBackupValue(char type, const std::string& value) {
-  if (type == 's') return true;
-  if (type == 'b') return value == "0" || value == "1";
-  char* end = nullptr;
-  long number = strtol(value.c_str(), &end, 10);
-  return !value.empty() && *end == 0 && (type != 'u' || (number >= 1 && number <= 65535));  // 'u' is always a port
-}
-
 struct BackupLine {
   const BackupKey* key;
   std::string value;
@@ -436,7 +432,7 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
       if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
       value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
     }
-    if (!validBackupValue(found->type, value)) return false;
+    if (!camBackupValueValid(std::string(found->space) + "." + found->key, value)) return false;
     lines.push_back({found, value});
   }
   return !lines.empty();
@@ -549,6 +545,7 @@ static volatile uint8_t wifiDropReason = 0;
 RTC_NOINIT_ATTR static uint32_t restartCause;
 static uint32_t lastRestartCause = 0;
 static void restartFor(RestartCause cause) {
+  if (server) server->saveNow();
   restartCause = cause;
   ESP.restart();
 }
@@ -607,7 +604,6 @@ static bool routerAnswersArp() {
   return esp_netif_tcpip_exec(findInArpTable, &q) != ESP_OK || q.found;  // unable to ask is not evidence of a bad address
 }
 
-static SensorCamServer* server;
 static bool wasConnected = false;
 
 struct SensorMessage {
@@ -763,6 +759,7 @@ void loop() {
     if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
   }
   if (setupOpen) dnsServer.processNextRequest();
+  if (!timeNtp && esp_sntp_enabled() && clockSet()) applyTime();  // the one-off NTP reading after a power cut has arrived
   if (restartPending && millis() - restartRequestedAt > 1500) {
     confirmFirmware();  // someone used this firmware's pages to ask for this restart, so it must not count as a failure
     restartFor(restartRequested);
@@ -787,7 +784,7 @@ void loop() {
     time_t now = time(nullptr);
     struct tm local;
     localtime_r(&now, &local);
-    if (now > 1577836800 && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(RESTART_SCHEDULED);
+    if (clockSet() && (schedule.day < 0 || schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == schedule.minute) restartFor(RESTART_SCHEDULED);
   }
   // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
   if (connected && usingStatic && !staticChecked && millis() - connectedAt > STATIC_CHECK_MS) {

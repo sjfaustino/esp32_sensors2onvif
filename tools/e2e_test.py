@@ -773,6 +773,24 @@ def main():
             api('DELETE', f'/api/file?path={extra}')
             check('the limit frees up when sensors are deleted', status()['sensors'] == 32 - free, status())
 
+            # A delayed alert belongs to its device. A new sensor that takes a deleted one's place must not play it.
+            gone, newcomer = '02-00-00-00-44-01', '02-00-00-00-44-02'
+            api('POST', f'/api/mkdir?path={gone}/1')
+            get(f'/sensor?{sid(1)}')
+            get(f'/sensor?mac={gone}&input=1&age=unknown')
+            check('a delayed alert waits while another sensor is active', status()['delayed_waiting'] == 1, status())
+            api('DELETE', f'/api/file?path={gone}')
+            api('POST', f'/api/mkdir?path={newcomer}/1')
+            get(f'/sensor?{sid(1)}&state=clear')
+            shown = set()
+            end = time.time() + HOLD_MS / 1000 + 3
+            while time.time() < end:
+                shown.update(status()['active'])
+                time.sleep(0.2)
+            check('a deleted sensor\'s delayed alert does not play as another sensor', f'{newcomer}/1' not in shown and status()['delayed_waiting'] == 0, shown)
+            api('DELETE', f'/api/file?path={newcomer}')
+            check('the page is served with a query string', get('/?x=1')[0] == 200)
+
             # Deleting folders removes the sensors, without a reboot.
             count = status()['sensors']
             check('sensor folder can be deleted', api('DELETE', f'/api/file?path={name(6)}')[0] == 200)
