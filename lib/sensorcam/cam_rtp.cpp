@@ -28,7 +28,12 @@ static void appendPacket(std::string& out, RtpState& st, int channel, bool marke
   out.append((const char*)body, bodyLen);
 }
 
-void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, int fps, std::string& out) {
+void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, uint32_t nowMs, std::string& out) {
+  if (!st.started) {
+    st.started = true;
+    st.startMs = nowMs;
+  }
+  st.ts = (nowMs - st.startMs) * 90u;  // the 90 kHz video clock; it wraps smoothly, as RTP expects
   for (int i = 0; i < frame.count; i++) {
     const CamNal& n = frame.nals[i];
     bool lastNal = i == frame.count - 1;
@@ -52,7 +57,6 @@ void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, int fps, s
       first = false;
     }
   }
-  st.ts += 90000 / fps;
 }
 
 std::string base64(const uint8_t* d, size_t len) {

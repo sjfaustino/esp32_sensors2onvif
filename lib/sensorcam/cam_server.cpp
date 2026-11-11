@@ -721,7 +721,7 @@ void SensorCamServer::pushFrames(uint32_t now) {
   for (RtspConn& c : rtsp_) {
     // Every frame is independently decodable, so a slow client just skips one.
     if (c.fd < 0 || !c.playing || !c.out.empty()) continue;
-    rtpAppendFrame(frame, c.rtp, c.channel, CAM_FPS, c.out);
+    rtpAppendFrame(frame, c.rtp, c.channel, now, c.out);
     flushRtsp(c, now);
   }
 }

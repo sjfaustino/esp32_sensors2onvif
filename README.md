@@ -78,7 +78,8 @@ means it was built with changes that were not committed.
 After a crash, Device Info names the task and address where it happened and offers the crash report the chip saved,
 until it is deleted or the next crash replaces it. The report holds a copy of the hub's memory, which can include
 passwords. Reading it needs the `firmware.elf` of the exact build that crashed, because two builds of the same commit
-differ, so keep a copy of `.pio/build/esp32_16mb/firmware.elf` with each firmware you install. Then:
+differ. Each build keeps a copy in `builds/`, named after the board and version, such as
+`builds/esp32_16mb-0adf209.elf`, and the newest 10 per board are kept. Then:
 
 ```
 python -m esp_coredump --chip esp32 info_corefile -t raw -c hub-crash.bin firmware.elf

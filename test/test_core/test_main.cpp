@@ -369,12 +369,27 @@ static void notify_carries_both_topics() {
 
 // ---- RTP ----
 
+static uint32_t rtpTime(const std::string& wire) {
+  const uint8_t* p = (const uint8_t*)wire.data() + 4 + 4;
+  return ((uint32_t)p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+}
+
+static void rtp_time_follows_the_clock_when_frames_are_skipped() {
+  RtpState st;
+  std::string wire;
+  rtpAppendFrame(CAM_FRAMES[0], st, 0, 0xFFFFFF00u, wire);  // the millisecond count is about to wrap
+  TEST_ASSERT_EQUAL_UINT32(0, rtpTime(wire));
+  wire.clear();
+  rtpAppendFrame(CAM_FRAMES[0], st, 0, 0xFFFFFF00u + 1500, wire);  // two frames were skipped
+  TEST_ASSERT_EQUAL_UINT32(1500 * 90, rtpTime(wire));
+}
+
 static void rtp_reassembles_to_the_original_nals() {
   const CamFrame& f = CAM_FRAMES[1];
   RtpState st;
   st.seq = 0xFFFE;  // wraps during the frame
   std::string wire;
-  rtpAppendFrame(f, st, 4, CAM_FPS, wire);
+  rtpAppendFrame(f, st, 4, 1000, wire);
 
   std::string nals, expect;
   for (int i = 0; i < f.count; i++) expect.append((const char*)f.nals[i].data, f.nals[i].len);
@@ -402,7 +417,7 @@ static void rtp_reassembles_to_the_original_nals() {
   }
   TEST_ASSERT_EQUAL(1, markers);
   TEST_ASSERT_TRUE(nals == expect);
-  TEST_ASSERT_EQUAL_UINT32(90000 / CAM_FPS, st.ts);
+  TEST_ASSERT_EQUAL_UINT32(0, st.ts);  // the first frame starts the clock
 }
 
 static void base64_matches_known_values() {
@@ -445,5 +460,6 @@ int main() {
   RUN_TEST(battery_outside_0_to_100_is_unknown);
   RUN_TEST(backup_values_follow_the_page_rules);
   RUN_TEST(long_names_are_cut_between_characters);
+  RUN_TEST(rtp_time_follows_the_clock_when_frames_are_skipped);
   return UNITY_END();
 }
