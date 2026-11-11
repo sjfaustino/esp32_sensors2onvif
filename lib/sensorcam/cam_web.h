@@ -136,7 +136,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
 <div class="portMsg" id="tmMsg"></div>
 <p style="margin:0;font-size:14px;color:#5a636d">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
-<div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table></div>
+<div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
@@ -438,7 +438,12 @@ send(m,"/api/schedule","on="+($("rbOn").checked?1:0)+"&day="+$("rbDay").value+"&
 async function sysAction(url,body,done,after){if(await send($("sysMsg"),url,body,done)&&after)setTimeout(after,12000)}
 $("rebootNow").onclick=()=>{if(confirm("Restart the hub now? The video stops for a few seconds."))sysAction("/api/reboot","","The hub is restarting.",()=>location.reload())};
 $("resetAll").onclick=()=>{if(confirm("Erase the saved WiFi networks, ports, name, web password, fixed address and time settings? The hub will restart and may move to another address."))sysAction("/api/reset","confirm=yes","Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network.")};
-async function loadDevice(){try{const j=await(await fetch("/api/device")).json();fill("devInfo",j.rows)}catch(e){}}
+async function loadDevice(){try{const j=await(await fetch("/api/device")).json();fill("devInfo",j.rows);
+  if(!j.crash){$("crashActs").replaceChildren();return}
+  if($("crashActs").childElementCount)return;  // refreshed every 5 s; leave the buttons alone
+  $("crashActs").replaceChildren(el("a",{className:"btn",href:"/api/crash",download:"hub-crash.bin",textContent:"Download crash report"})," ",
+    el("button",{className:"del",textContent:"Delete crash report",onclick:()=>{if(confirm("Delete the crash report?"))act(()=>call("POST","/api/crash/delete","x=1"),"Deleted the crash report").then(loadDevice)}}),
+    el("br"),"For diagnosis with the firmware it came from. It holds a copy of the hub's memory, which can include passwords.")}catch(e){}}
 function setSys(view){clearInterval(sysTimer);
 if(view=="maintenance")loadSchedule();
 if(view=="events"){loadEvents();sysTimer=setInterval(loadEvents,3000)}

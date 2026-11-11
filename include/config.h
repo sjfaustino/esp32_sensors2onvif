@@ -11,7 +11,13 @@
 #define WEB_PASSWORD ""
 #endif
 
-#define FIRMWARE_VERSION "1.0.0"
+// tools/version.py writes version.h with the git commit or tag before each firmware build.
+#if __has_include("version.h")
+#include "version.h"
+#endif
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "unknown"
+#endif
 
 #define ONVIF_PORT 8899  // ONVIF only. Its usual default is 80, which the web interface uses here.
 #define WEB_PORT 80      // the file manager, sensor input, status and events

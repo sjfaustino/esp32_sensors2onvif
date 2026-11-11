@@ -69,6 +69,20 @@ receives UTC, so these only change the time shown on the page and the scheduled 
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
 **Device Info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
+The firmware version is the git commit it was built from, such as `c336d03`, or the tag on that commit; `-modified`
+means it was built with changes that were not committed.
+
+After a crash, Device Info names the task and address where it happened and offers the crash report the chip saved,
+until it is deleted or the next crash replaces it. The report holds a copy of the hub's memory, which can include
+passwords. Reading it needs the `firmware.elf` of the exact build that crashed, because two builds of the same commit
+differ, so keep a copy of `.pio/build/esp32_16mb/firmware.elf` with each firmware you install. Then:
+
+```
+python -m esp_coredump --chip esp32 info_corefile -t raw -c hub-crash.bin firmware.elf
+```
+
+using the Python that comes with PlatformIO, with `tool-xtensa-esp-elf-gdb\bin` from the PlatformIO packages on the
+PATH. Use `--chip esp32s3` for an S3 board.
 
 ## ESP-NOW page
 

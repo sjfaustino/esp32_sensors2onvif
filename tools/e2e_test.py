@@ -236,6 +236,14 @@ def file_manager_tests(files, hub_files_free):
     check('restart schedule is served', code == 200 and 'minute' in json.loads(sched), code)
     check('device info needs the web password', not PASSWORD or api('GET', '/api/device', auth=False)[0] == 401)
 
+    if not DEVICE:  # the PC build has a pretend crash report; a board's real one is not deleted
+        check('device info says a crash report is saved', json.loads(device).get('crash') == 3000, json.loads(device).get('crash'))
+        code, dump = api('GET', '/api/crash')
+        check('the crash report downloads whole, read in pieces', code == 200 and dump == bytes(i % 251 for i in range(3000)), (code, len(dump)))
+        check('the crash report needs the web password', not PASSWORD or api('GET', '/api/crash', auth=False)[0] == 401)
+        check('the crash report can be deleted', api('POST', '/api/crash/delete', 'x=1')[0] == 200 and json.loads(api('GET', '/api/device')[1]).get('crash') == 0)
+        check('no crash report to download after deleting', api('GET', '/api/crash')[0] == 404)
+
     if not DEVICE:  # saving Wi-Fi on a real board would move it to another network
         zone = 'offset=60&dst=1'
         for good in (f'mode=ntp&server=pool.ntp.org&{zone}', f'mode=manual&epoch=1790000000&{zone}', f'mode=manual&{zone}', 'mode=ntp&server=time.local&offset=345&dst=0', 'mode=ntp&server=a.b&offset=-720&dst=2'):

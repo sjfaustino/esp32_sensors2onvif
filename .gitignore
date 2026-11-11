@@ -11,6 +11,9 @@ data/
 
 # Local secrets
 secrets.h
+
+# Written by tools/version.py on every build
+include/version.h
 *.local
 
 # Python

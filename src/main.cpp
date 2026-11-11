@@ -5,11 +5,14 @@
 #include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <esp_app_desc.h>
+#include <esp_core_dump.h>
 #include <esp_heap_caps.h>
 #include <esp_netif.h>
 #include <esp_netif_net_stack.h>
 #include <esp_now.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_sntp.h>
 #include <lwip/etharp.h>
 #include <nvs.h>
@@ -463,6 +466,41 @@ static bool restoreText(const std::string& text) {
   return true;
 }
 
+// ---- Crash reports: after a crash the chip saves one to flash, kept until deleted or replaced by the next ----
+static size_t crashBytes = 0;  // checked once at start, because checking reads the whole report
+static String crashSummary = "None saved";
+
+static void loadCrash() {
+  size_t addr = 0;
+  if (esp_core_dump_image_check() != ESP_OK || esp_core_dump_image_get(&addr, &crashBytes) != ESP_OK) {
+    crashBytes = 0;
+    return;
+  }
+  esp_core_dump_summary_t* s = new esp_core_dump_summary_t();
+  if (esp_core_dump_get_summary(s) == ESP_OK) {
+    char running[APP_ELF_SHA256_SZ] = "", at[12];
+    esp_app_get_elf_sha256(running, sizeof(running));
+    snprintf(at, sizeof(at), "0x%08lx", (unsigned long)s->exc_pc);
+    bool same = strncmp(running, (const char*)s->app_elf_sha256, sizeof(running) - 1) == 0;
+    crashSummary = String("In task ") + s->exc_task + " at " + at + (same ? ", in this firmware" : ", in an earlier firmware");
+  } else {
+    crashSummary = "Saved, but it could not be read";
+  }
+  delete s;
+}
+
+static bool readCrash(size_t offset, char* out, size_t len) {
+  const esp_partition_t* p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, nullptr);
+  return p && offset + len <= crashBytes && esp_partition_read(p, offset, out, len) == ESP_OK;
+}
+
+static bool deleteCrash() {
+  if (esp_core_dump_image_erase() != ESP_OK) return false;
+  crashBytes = 0;
+  crashSummary = "None saved";
+  return true;
+}
+
 static CamConfig makeConfig() {
   CamConfig c;
   c.onvifPort = onvifPort;
@@ -486,6 +524,9 @@ static CamConfig makeConfig() {
   c.schedule = schedule;
   c.scheduleSave = saveSchedule;
   c.deviceRows = deviceRows;
+  c.crashSize = [] { return crashBytes; };
+  c.crashRead = readCrash;
+  c.crashDelete = deleteCrash;
   c.maintenance = maintenance;
   c.nvrIp = nvrIp;
   c.nvrSave = saveNvr;
@@ -662,6 +703,7 @@ static std::string deviceRows() {
   add("ESP-IDF", esp_get_idf_version());
   add("Uptime", uptimeText());
   add("Last restart", lastRestartText());
+  add("Last crash", crashSummary);
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
   add("Largest free block", String(largestBlock() / 1024) + " KB");
@@ -676,6 +718,7 @@ static std::string deviceRows() {
 
 void setup() {
   programBytes = ESP.getSketchSize();  // verifies the whole firmware, which stalls the hub for 0.4 s, so only once
+  loadCrash();
   esp_ota_img_states_t firmwareState;
   firmwareUnproven = esp_ota_get_state_partition(esp_ota_get_running_partition(), &firmwareState) == ESP_OK && firmwareState == ESP_OTA_IMG_PENDING_VERIFY;
   lastRestartCause = esp_reset_reason() == ESP_RST_SW ? restartCause : 0;

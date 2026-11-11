@@ -986,7 +986,19 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
     if (cfg_.fsUsage) cfg_.fsUsage(used, total);
     c.out = jsonOk("{\"rows\":[" + rows + (rows.empty() ? "" : ",") + "[\"Picture storage\",\"" + std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB\"]," +
                    "[\"Sensors\",\"" + std::to_string(known) + "\"],[\"Video streams open\",\"" + std::to_string(streamCount()) + "\"],[\"Event subscribers\",\"" + std::to_string(subs_.count()) + "\"]" +
-                   (eventsSaveFailed_ ? ",[\"Event history\",\"Could not be saved; storage may be full\"]" : "") + "]}\n");
+                   (eventsSaveFailed_ ? ",[\"Event history\",\"Could not be saved; storage may be full\"]" : "") + "],\"crash\":" +
+                   std::to_string(cfg_.crashSize ? cfg_.crashSize() : 0) + "}\n");
+  } else if (r.is("GET", "/api/crash")) {  // read from flash 1 KB at a time, because it can be larger than any free block
+    size_t size = cfg_.crashSize && cfg_.crashRead ? cfg_.crashSize() : 0;
+    if (!size) {
+      c.out = jsonFail(404, "no crash report is saved");
+    } else {
+      c.out = httpHead(200, "application/octet-stream", size, "Content-Disposition: attachment; filename=\"hub-crash.bin\"\r\n");
+      c.pull = &cfg_.crashRead;
+      c.staticLen = size;
+    }
+  } else if (r.is("POST", "/api/crash/delete")) {
+    c.out = saved(cfg_.crashDelete && cfg_.crashDelete(), "could not delete the crash report");
   } else if (r.is("GET", "/api/events")) {
     c.out = jsonOk(eventsJson());
   } else if (r.is("GET", "/api/espnow")) {
@@ -1397,6 +1409,15 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
     bool inHeader = c.outPos < c.out.size();
     const char* data = inHeader ? c.out.data() + c.outPos : c.staticBody + (c.outPos - c.out.size());
     size_t left = inHeader ? c.out.size() - c.outPos : c.staticLen - (c.outPos - c.out.size());
+    char piece[1024];
+    if (!inHeader && c.pull && left) {  // read again from the same place if the last piece was only partly sent
+      left = left < sizeof(piece) ? left : sizeof(piece);
+      if (!(*c.pull)(c.outPos - c.out.size(), piece, left)) {
+        closeHttp(c);
+        return;
+      }
+      data = piece;
+    }
     int n = left ? (int)send(c.fd, data, (int)left, 0) : 0;
     if (n < 0 && !netWouldBlock()) {
       closeHttp(c);

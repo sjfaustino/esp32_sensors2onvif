@@ -50,7 +50,7 @@ struct CamAddress {
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
 };
 
-// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo and onvifNetwork.
+// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo, onvifNetwork and the crash ones.
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
@@ -81,6 +81,9 @@ struct CamConfig {
   CamSchedule schedule;
   std::function<bool(const CamSchedule&)> scheduleSave;
   std::function<std::string()> deviceRows;     // JSON ["label","value"] pairs for the Device Info page
+  std::function<size_t()> crashSize;           // bytes of the crash report the chip saved to flash; 0 when there is none
+  std::function<bool(size_t offset, char* out, size_t len)> crashRead;
+  std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<std::string()> espNowInfo;  // JSON members for the ESP-NOW page: the hub's mac and channel
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
@@ -181,6 +184,7 @@ class SensorCamServer {
     std::string pollHost;
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
     size_t firmwareLeft = 0;
+    const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
   };
   struct RtspConn {
     int fd = -1;

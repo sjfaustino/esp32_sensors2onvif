@@ -46,6 +46,14 @@ int main(int argc, char** argv) {
   cfg.timeSave = [](const CamTime&) { return true; };
   cfg.scheduleSave = [](const CamSchedule&) { return true; };
   cfg.deviceRows = [] { return std::string("[\"Firmware version\",\"test\"]"); };
+  // A pretend 3000-byte crash report, byte i being i % 251, so the test can check a download read in pieces.
+  static size_t crashLeft = 3000;
+  cfg.crashSize = [] { return crashLeft; };
+  cfg.crashRead = [](size_t offset, char* out, size_t len) {
+    for (size_t i = 0; i < len; i++) out[i] = (char)((offset + i) % 251);
+    return offset + len <= crashLeft;
+  };
+  cfg.crashDelete = [] { crashLeft = 0; return true; };
   cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
