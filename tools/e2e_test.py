@@ -124,13 +124,65 @@ def status():
     return json.loads(get('/status')[1])
 
 
+HUB = None  # the PC build's process, while it runs
+
+
+def wait_until(condition, timeout=10, step=0.05):
+    """Polls condition until it is true or the time is up, and returns its last value. For waiting on the hub;
+    a fixed sleep is used only where the time itself is being tested, or to give the hub a chance to do something wrong."""
+    end = time.time() + timeout
+    while True:
+        value = condition()
+        if value or time.time() >= end:
+            return value
+        time.sleep(step)
+
+
+def poll(fetch, test, timeout=10, step=0.05):
+    """Fetches a value until test(value) is true or the time is up, and returns the last value fetched."""
+    end = time.time() + timeout
+    while True:
+        value = fetch()
+        if test(value) or time.time() >= end:
+            return value
+        time.sleep(step)
+
+
+def event_list():
+    return json.loads(api('GET', '/api/events')[1])
+
+
+def live():
+    return json.loads(api('GET', '/api/live')[1])
+
+
+def control(command):
+    """Sends one of the PC build's test commands and returns once it has taken effect."""
+    HUB.stdin.write(command + '\n')
+    HUB.stdin.flush()
+    while True:
+        line = HUB.stdout.readline()
+        if not line:
+            sys.exit(f'the PC build stopped while running {command!r}')
+        if line.strip() in (f'done {command}', f'unknown {command}'):
+            if line.startswith('unknown'):
+                sys.exit(f'the PC build has no command {command!r}')
+            return
+
+
+def start_hub(*args):
+    global HUB
+    HUB = subprocess.Popen([EXE, str(HOLD_MS), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    return HUB
+
+
 def clear(n):
-    """Reports sensor n clear and ends its alert. A clear report alone does not, so the PC build has a switch for it and a board waits out the hold."""
+    """Reports sensor n clear and ends its alert. A clear report alone does not, so the PC build has a command for it and a board waits out the hold."""
     get(f'/sensor?{sid(n)}&state=clear')
     if DEVICE:
         time.sleep(HOLD_MS / 1000 + 0.5)
     else:
-        api('POST', '/api/wifi', 'ssid=end-alerts')
+        control('end-alerts')
 
 
 class FakeNvrListener:
@@ -282,7 +334,8 @@ def file_manager_tests(files, hub_files_free):
         secret = 'password=p%25ss%20w%2Brd%26ok'
         check('backup network is saved as the backup', api('POST', '/api/wifi', f'ssid=want-backup&role=backup&{secret}')[0] == 200)
         check('main network is not saved as the backup', api('POST', '/api/wifi', f'ssid=want-backup&role=main&{secret}')[0] == 507)
-        check('Wi-Fi password is decoded exactly', api('POST', '/api/wifi', f'ssid=setup-on&{secret}')[0] == 200)
+        check('Wi-Fi password is decoded exactly', api('POST', '/api/wifi', f'ssid=test-net&{secret}')[0] == 200)
+        control('setup-on')
         code, page = api('GET', '/', auth=False)
         check('setup network opens the setup page without a login', code == 200 and b'Hub Wi-Fi setup' in page, code)
         c = http.client.HTTPConnection(HOST, 18081, timeout=5)
@@ -299,7 +352,7 @@ def file_manager_tests(files, hub_files_free):
         c.close()
         check('phone connectivity check is sent to the setup page', r.status == 302 and r.getheader('Location') == f'http://{HOST}:{WEB}/setup', r.status)
         check('ONVIF still answers in setup mode', soap('GetDeviceInformation', '/onvif/device_service')[0] == 200)
-        check('leaving setup mode works', api('POST', '/api/wifi', f'ssid=setup-off&{secret}')[0] == 200)
+        control('setup-off')
         check('file manager is back after setup', b'SensorCam files' in api('GET', '/')[1])
         try:
             c = http.client.HTTPConnection(HOST, 18081, timeout=5)
@@ -394,10 +447,8 @@ def file_manager_tests(files, hub_files_free):
     check('tree says a picture has a thumbnail', any(f['preview'] for f in listed), listed)
     check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
     get(f'/sensor?{sid(4)}&direction=1')
-    time.sleep(1)
-    check('snapshot shows the picture being sent', snapshot(ONVIF)[2] == tiny)
+    check('snapshot shows the picture being sent', wait_until(lambda: snapshot(ONVIF)[2] == tiny))
     clear(4)
-    time.sleep(0.7)
     check('replacing a picture removes its old thumbnail', api('PUT', f'/api/file?path={path}', good)[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)
     api('PUT', f'/api/file?path={jpg}', tiny)
     check('deleting a picture removes its thumbnail', api('DELETE', f'/api/file?path={path}')[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)
@@ -440,10 +491,10 @@ def main():
     print('making test pictures', flush=True)
     files = make_frames.sensor_files('TEST')
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as storage:
-        proc = None if DEVICE else subprocess.Popen([EXE, str(HOLD_MS), storage, PASSWORD], stdout=subprocess.PIPE, text=True)
+        proc = None if DEVICE else start_hub(storage, PASSWORD)
         try:
             if proc:
-                check('server starts', proc.stdout.readline().strip() == 'ready')
+                check('server starts', HUB.stdout.readline().strip() == 'ready')
             codes = [api('GET', f'/api/file?path={p}')[0] for p in ('clear.h264', 'text.json')]
             if any(c not in (200, 404) for c in codes):
                 sys.exit(f'stopping: cannot tell whether the board has its own files (HTTP {codes})')
@@ -470,7 +521,7 @@ def main():
                 code, data = soap('Subscribe', device, inner)
                 check('Subscribe accepted on device_service', code == 200 and 'SubscribeResponse' in data, data[:200])
             check('two identical Subscribes make one subscriber', status()['subscribers'] == 1)
-            time.sleep(0.7)
+            wait_until(lambda: len(nvr.events) >= 2)
             check('initial state is pushed as false', nvr.states()[:1] == ['false'], nvr.states())
             check('initial push is marked Initialized', 'PropertyOperation="Initialized"' in nvr.events[0][1])
             check('each Subscribe gets its initial state', len(nvr.events) == 2, len(nvr.events))
@@ -486,7 +537,7 @@ def main():
                 if PASSWORD:
                     half = socket.create_connection((HOST, WEB), timeout=5)
                     half.sendall(b'PUT /api/file?path=clear.h264 HTTP/1.1\r\nHost: x\r\nContent-Length: 30000\r\n\r\nabc')
-                    time.sleep(1.2)
+                    time.sleep(1.2)  # time for the hub to wrongly accept it
                     check('an upload with no login leaves the picture alone', json.loads(api('GET', '/api/live')[1])['file'] == 'clear.h264')
                     half.close()
                 check('clear.h264 can be deleted', api('DELETE', '/api/file?path=clear.h264')[0] == 200)
@@ -499,7 +550,7 @@ def main():
             started = time.time()
             code, data = get(f'/sensor?{sid(3)}')
             check('sensor alert accepted', code == 200 and '"ok":true' in data, data)
-            time.sleep(0.6)
+            wait_until(lambda: len(nvr.states()) > before, timeout=1)
             check('alert reaches the NVR quickly', nvr.states()[before:before + 1] == ['true'], nvr.states())
             check('one notification per event despite two Subscribes', len(nvr.events) == before + 1, len(nvr.events) - before)
             pushed = nvr.events[before][1] if len(nvr.events) > before else ''
@@ -524,13 +575,12 @@ def main():
             before = len(nvr.events)
             started = time.time()
             get(f'/sensor?{sid(2)}')
-            time.sleep(0.5)
+            time.sleep(0.5)  # the clear comes a moment after the activation, as from a real sensor
             check('a clear report is accepted', get(f'/sensor?{sid(2)}&state=clear')[0] == 200)
-            time.sleep(1)
+            time.sleep(1)  # time for a clear report to wrongly end the alert
             check('a clear report does not end the alert', name(2) in status()['active'] and 'false' not in nvr.states()[before:], nvr.states()[before:])
             get(f'/sensor?{sid(2)}')
-            time.sleep(0.5)
-            history = json.loads(api('GET', '/api/events')[1])
+            history = poll(event_list, lambda h: [e['active'] for e in h[:3]] == [True, False, True])
             check('each activation is in the event history', [e['active'] for e in history[:3]] == [True, False, True], history[:3])
             time.sleep(max(HOLD_MS / 1000 * 0.8 - (time.time() - started), 0))
             check('a second activation within the hold extends the same alert', name(2) in status()['active'] and 'false' not in nvr.states()[before:], nvr.states()[before:])
@@ -538,18 +588,15 @@ def main():
             check('the alert ends when the hold after the last activation runs out', nvr.states()[before:][-1:] == ['false'] and nvr.states()[before:].count('false') == 1, nvr.states()[before:])
 
             # The Live page shows the picture being sent.
-            time.sleep(0.7)
             idle = json.loads(api('GET', '/api/live')[1])
             code, idle_frame = api('GET', '/api/live/frame')
             check('Live sends a whole picture', code == 200 and idle_frame.startswith(b'\0\0\0\1') and idle_frame[4] & 0x1F == 7, code)
             get(f'/sensor?{sid(2)}')
-            time.sleep(1)
-            firing = json.loads(api('GET', '/api/live')[1])
+            firing = poll(live, lambda j: j['seq'] != idle['seq'])
             check('Live reports a new picture when a sensor fires', firing['seq'] != idle['seq'], firing)
             check('Live picture changes when a sensor fires', api('GET', '/api/live/frame')[1] != idle_frame)
             clear(2)
-            time.sleep(1)
-            cleared = json.loads(api('GET', '/api/live')[1])
+            cleared = poll(live, lambda j: j['seq'] != firing['seq'])
             check('Live reports the picture going back', cleared['seq'] != firing['seq'], cleared)
             check('Live picture goes back', api('GET', '/api/live/frame')[1] == idle_frame)
             check('Live needs the web password', not PASSWORD or api('GET', '/api/live', auth=False)[0] == 401)
@@ -561,7 +608,7 @@ def main():
             quiet = [n for n in node_list['nodes'] if n['node'] == SENSORS[6][0] and n['input'] == SENSORS[6][1]]
             check('ESP-NOW page shows the state of each sensor', len(quiet) == 1 and quiet[0]['state'] in ('never', 'idle'), node_list)
             get(f'/sensor?{sid(2)}')
-            time.sleep(0.3)
+            wait_until(lambda: name(2) in status()['active'])
             firing = [n for n in json.loads(api('GET', '/api/espnow')[1])['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
             check('ESP-NOW page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
             clear(2)
@@ -574,17 +621,17 @@ def main():
                 def node_entry(d):
                     return [n for n in d['nodes'] if n['node'] == SENSORS[1][0] and n['input'] == SENSORS[1][1]][0]
 
-                api('POST', '/api/wifi', 'ssid=radio-known')
+                control('radio-known')
                 seen = node_entry(radio())
                 check('radio report shows signal, battery and report number', (seen['rssi'], seen['battery'], seen['counter']) == (-61, 55, 77), seen)
                 clear(1)
                 check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
                 check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])
-                api('POST', '/api/wifi', 'ssid=radio-huge')
+                control('radio-huge')
                 check('a report number above 2 billion stays positive', node_entry(radio())['counter'] == 2147483700, node_entry(radio()))
                 clear(1)
-                api('POST', '/api/wifi', 'ssid=radio-unknown')
-                api('POST', '/api/wifi', 'ssid=radio-unknown')
+                control('radio-unknown')
+                control('radio-unknown')
                 stranger = radio()['unknown']
                 check('unknown sender is listed', len(stranger) == 1 and stranger[0]['mac'] == '02-00-00-00-00-99' and stranger[0]['input'] == 1 and stranger[0]['rssi'] == -61, stranger)
                 check('unknown sender messages are counted', stranger and stranger[0]['messages'] == 2, stranger)
@@ -597,36 +644,36 @@ def main():
                 info = radio()
                 check('the ESP-NOW page shows the key, and that unsigned messages are refused', info['key'] == 'test-espnow-key-0123456789' and info['unsigned'] is False, info)
                 before = node_entry(radio())
-                api('POST', '/api/wifi', 'ssid=radio-unsigned')
+                control('radio-unsigned')
                 after = node_entry(radio())
                 check('an unsigned message is refused', after['refused'] == before['refused'] + 1 and after['refusal'] == 'not signed' and after['counter'] == before['counter'], after)
                 check('unsigned messages can be allowed', api('POST', '/api/espnow', 'unsigned=1')[0] == 200 and radio()['unsigned'] is True)
-                api('POST', '/api/wifi', 'ssid=radio-unsigned')
+                control('radio-unsigned')
                 check('an unsigned message is accepted when allowed', node_entry(radio())['counter'] != after['counter'] and node_entry(radio())['refused'] == after['refused'], node_entry(radio()))
                 api('POST', '/api/espnow', 'unsigned=0')
-                api('POST', '/api/wifi', 'ssid=radio-forged')
+                control('radio-forged')
                 check('a message signed with another key is refused', node_entry(radio())['refusal'] == 'wrong signature', node_entry(radio()))
-                api('POST', '/api/wifi', 'ssid=radio-known')
+                control('radio-known')
                 before = node_entry(radio())
-                api('POST', '/api/wifi', 'ssid=radio-old')
+                control('radio-old')
                 after = node_entry(radio())
                 check('a signed message with a lower number is still accepted, so no alert is lost', after['refused'] == before['refused'] and after['counter'] == before['counter'] - 9, (before, after))
                 events = len(json.loads(api('GET', '/api/events')[1]))
-                api('POST', '/api/wifi', 'ssid=radio-restart-alert')
+                control('radio-restart-alert')
                 after = node_entry(radio())
                 history = json.loads(api('GET', '/api/events')[1])
                 check('a sensor that restarts its count at 1 is heard', after['counter'] == 1 and after['refused'] == before['refused'], after)
                 check("a restarted sensor's alert reaches the NVR", name(1) in status()['active'] and history[0]['active'] is True and len(history) > events, history[:1])
-                api('POST', '/api/wifi', 'ssid=radio-restart-alert')
+                control('radio-restart-alert')
                 check('the same report again a moment later is a resend and ignored', len(json.loads(api('GET', '/api/events')[1])) == len(history))
                 clear(1)
 
                 # Weak signal.
-                api('POST', '/api/wifi', 'ssid=radio-weak')
+                control('radio-weak')
                 check('a weak signal is flagged', node_entry(radio())['weak'] is True, node_entry(radio()))
                 check('a weak signal is in the event history', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 4)
                 for _ in range(6):
-                    api('POST', '/api/wifi', 'ssid=radio-known')
+                    control('radio-known')
                 check('a good signal clears the flag', node_entry(radio())['weak'] is False, node_entry(radio()))
                 clear(1)
 
@@ -637,21 +684,21 @@ def main():
                 check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors']))
 
                 # Battery and silence alerts.
-                api('POST', '/api/wifi', 'ssid=radio-low')
+                control('radio-low')
                 check('low battery is flagged', node_entry(radio())['low'] is True, node_entry(radio()))
                 history = json.loads(api('GET', '/api/events')[1])
                 check('low battery is in the event history', history and history[0]['kind'] == 2 and history[0]['name'] == label.decode(), history[:1])
                 before_again = len(json.loads(api('GET', '/api/events')[1]))
-                api('POST', '/api/wifi', 'ssid=radio-low')
+                control('radio-low')
                 check('low battery alerts only once', len(json.loads(api('GET', '/api/events')[1])) == before_again)
-                api('POST', '/api/wifi', 'ssid=radio-known')
+                control('radio-known')
                 check('a good battery clears the flag', node_entry(radio())['low'] is False, node_entry(radio()))
                 check('the alarm setting is saved', api('POST', '/api/alerts', 'alarm=1')[0] == 200 and json.loads(api('GET', '/api/alerts')[1])['alarm'] is True)
-                api('POST', '/api/wifi', 'ssid=radio-low')
-                time.sleep(0.2)
+                control('radio-low')
+                wait_until(lambda: node_entry(radio())['state'] == 'active')
                 check('a low battery can raise the alarm', node_entry(radio())['state'] == 'active', node_entry(radio()))
                 clear(1)
-                api('POST', '/api/wifi', 'ssid=radio-known')
+                control('radio-known')
                 api('POST', '/api/alerts', 'alarm=0')
 
                 # Per-sensor settings.
@@ -663,7 +710,7 @@ def main():
                 check('a sensor can have its own hold', api('POST', f'/api/sensor-settings?path={path}', 'hold=2')[0] == 200)
                 check('the Sensors page data shows the hold', tree_entry()['hold'] == 2 and tree_entry()['quiet'] is None, tree_entry())
                 get(f'/sensor?{sid(1)}')
-                time.sleep(0.5)
+                time.sleep(0.5)  # timing the 2-second hold: still on at 0.5 s, off by 3 s
                 active_soon = path in status()['active']
                 time.sleep(2.5)
                 check("the alert ends after the sensor's own hold", active_soon and path not in status()['active'])
@@ -674,7 +721,7 @@ def main():
                 api('POST', f'/api/sensor-settings?path={path}', f'from={(minute - 2) % 1440}&to={(minute + 3) % 1440}')
                 check('the Sensors page data shows the quiet hours', tree_entry()['quiet'] == [(minute - 2) % 1440, (minute + 3) % 1440], tree_entry())
                 get(f'/sensor?{sid(1)}')
-                time.sleep(0.3)
+                wait_until(lambda: event_list()[0]['kind'] == 3)  # logged, so the hub has decided
                 check('an alert in quiet hours does not reach the NVR', path not in status()['active'])
                 check('an alert in quiet hours is still logged', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 3)
                 code, text = api('GET', f'/api/file?path={path}/settings.txt')
@@ -684,7 +731,7 @@ def main():
                 check('settings.txt restored as a file is read too', tree_entry()['hold'] == 3, tree_entry())
                 api('POST', f'/api/sensor-settings?path={path}', '')
                 get(f'/sensor?{sid(1)}')
-                time.sleep(0.3)
+                wait_until(lambda: path in status()['active'])
                 check('without quiet hours alerts reach the NVR again', path in status()['active'])
                 clear(1)
 
@@ -728,17 +775,16 @@ def main():
                 alert = json.loads(received[1][1]) if hooks(2) else {}
                 check('an alert is sent to the webhook', alert.get('event') == 'alert' and alert.get('sensor') == path and alert.get('name') == 'Front "gate"', received[1:])
                 clear(1)
-                time.sleep(0.5)
-                hook_state = json.loads(api('GET', '/api/webhook')[1])
+                hook_state = poll(lambda: json.loads(api('GET', '/api/webhook')[1]), lambda h: h['waiting'] == 0 and h['last'])
                 check('the page shows how the last message went', hook_state['last'] == 'HTTP 200' and hook_state['waiting'] == 0, hook_state)
                 api('POST', '/api/webhook', f'url={hook_url}&text=1&alerts=1&problems=0')
                 get(f'/sensor?{sid(1)}')
                 check('plain text is sent when chosen', hooks(3) and received[2][0].startswith('text/plain') and received[2][1].decode().endswith(': alert'), received[2:])
                 clear(1)
-                api('POST', '/api/wifi', 'ssid=radio-low')
-                time.sleep(0.5)
+                control('radio-low')
+                time.sleep(0.5)  # time for a message to be wrongly sent
                 check('node problems are not sent when turned off', len(received) == 3, received[3:])
-                api('POST', '/api/wifi', 'ssid=radio-known')
+                control('radio-known')
                 check('the webhook settings need the web password', api('GET', '/api/webhook', auth=False)[0] == 401)
                 api('POST', '/api/webhook', 'url=&alerts=1&problems=1')
                 catcher.shutdown()
@@ -758,7 +804,7 @@ def main():
                 check('restore needs the web password', api('POST', '/api/restore', backup, auth=False)[0] == 401)
 
                 # ONVIF and RTSP login.
-                api('POST', '/api/wifi', 'ssid=auth-on')
+                control('auth-on')
                 check('ONVIF needs a login', soap('GetProfiles')[0] == 400 and 'NotAuthorized' in soap('GetProfiles')[1])
                 check('the clock is open before login', soap('GetSystemDateAndTime', '/onvif/device_service')[0] == 200)
                 check('ONVIF accepts a digest login', soap_login('GetProfiles', 'onvif-secret')[0] == 200)
@@ -796,7 +842,7 @@ def main():
                 r.read()
                 c.close()
                 check('the snapshot address from a login works', r.status == 200 and 'token=' in uri, (r.status, uri))
-                api('POST', '/api/wifi', 'ssid=auth-off')
+                control('auth-off')
                 check('ONVIF is open again without a password', soap('GetProfiles')[0] == 200)
 
             # Other clients may poll instead.
@@ -816,12 +862,11 @@ def main():
                 held['took'] = time.time() - begun
             waiter = threading.Thread(target=hold)
             waiter.start()
-            time.sleep(0.5)
+            time.sleep(0.5)  # so the poll is already being held when the alert comes
             get(f'/sensor?{sid(3)}')
             waiter.join(9)
             check('a held poll is answered when something changes', held.get('took', 99) < 3 and 'Value="true"' in held['reply'][1], held.get('took'))
             clear(3)
-            time.sleep(0.3)
             soap('PullMessages', address)
 
             # WS-Discovery, sent directly.
@@ -844,17 +889,14 @@ def main():
             before = len(nvr.events)
             get(f'/sensor?{sid(4)}&age=100&direction=1&distance=250&battery=80')
             get(f'/sensor?{sid(5)}&age=unknown')
-            time.sleep(0.5)
-            now = status()
+            now = poll(status, lambda st: st['active'] == [name(4)] and st['delayed_waiting'] == 1)
             check('first cached alert plays, second waits', now['active'] == [name(4)] and now['delayed_waiting'] == 1, now)
             check('delayed alert still reaches the NVR', 'true' in nvr.states()[before:], nvr.states()[before:])
             colour = grab_colour()
             check('missing direction picture falls back to the delayed one', colour == 'amber', colour)
-            played = time.time()
-            while status()['active'] != [name(5)] and time.time() - played < 20:
-                time.sleep(0.2)
+            wait_until(lambda: status()['active'] == [name(5)], timeout=20)
             check('second cached alert plays after the first', status()['active'] == [name(5)])
-            time.sleep(1)  # the push for the second alert goes out just after it becomes active
+            wait_until(lambda: 'false' in nvr.states()[before:] and 'true' in nvr.states()[before:][nvr.states()[before:].index('false'):], timeout=3)
             seen = nvr.states()[before:]
             first_false = seen.index('false') if 'false' in seen else -1
             check('NVR sees the first event end before the second starts', first_false >= 0 and 'true' in seen[first_false:], seen)
@@ -873,9 +915,7 @@ def main():
             get(f'/sensor?{sid(4)}&state=clear&battery=300')
             heard = {h['sensor']: h for h in status()['heard']}
             check('an impossible battery reading does not replace the last good one', heard[name(4)]['battery'] == 80, heard)
-            played = time.time()
-            while status()['active'] and time.time() - played < 15:
-                time.sleep(0.2)
+            wait_until(lambda: not status()['active'], timeout=15)
 
             # Each node sets how old an alert must be to count as a past event. Sensor 3 has no pictures.
             node3 = SENSORS[3][0]
@@ -883,13 +923,13 @@ def main():
             check('the Sensors page data shows it', [s for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == node3][0]['late'] == 300)
             check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\n'))
             get(f'/sensor?{sid(3)}&age=100')
-            time.sleep(0.3)
+            wait_until(lambda: status()['active'] == [name(3)])
             check('an alert younger than the node\'s time is live', status()['active'] == [name(3)] and json.loads(get('/events')[1])[0]['delayed'] is False, json.loads(get('/events')[1])[0])
             colour = grab_colour()
             check('a live alert with no pictures shows the built-in alert', colour == 'red', colour)
             clear(3)
             get(f'/sensor?{sid(3)}&age=400')
-            time.sleep(0.5)
+            wait_until(lambda: status()['active'] == [name(3)])
             check('an alert older than the node\'s time is a past event', json.loads(get('/events')[1])[0]['delayed'] is True and status()['active'] == [name(3)], json.loads(get('/events')[1])[0])
             colour = grab_colour()
             check('a past event with no pictures shows the built-in past-event picture', colour == 'amber', colour)
@@ -898,10 +938,9 @@ def main():
             check('settings for a node that does not exist are refused', api('POST', '/api/node-settings?path=02-00-00-00-00-77', 'late=60')[0] == 404)
             check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
             get(f'/sensor?{sid(3)}&age=100')
-            time.sleep(0.3)
+            wait_until(lambda: event_list()[0]['active'])
             check('without the setting, 100 seconds is a past event again', json.loads(get('/events')[1])[0]['delayed'] is True)
             clear(3)
-            time.sleep(HOLD_MS / 1000 + 5)  # the gap after a past event, so later checks start with nothing waiting
 
             # A listener that accepts and never answers must not stall the camera or the good subscriber.
             hung = socket.socket()
@@ -923,17 +962,15 @@ def main():
 
             # Web connections and pushes share a few sockets, so a push may have to wait for one. It must still go out.
             if proc:
-                played = time.time()
-                while status()['active'] and time.time() - played < 15:
-                    time.sleep(0.2)
+                wait_until(lambda: not status()['active'], timeout=15)
                 time.sleep(3)  # the hung listener's socket is given up
                 second = FakeNvrListener()
                 soap('Subscribe', device, f'<ConsumerReference><Address>http://{LOCAL}:{second.port}/x</Address></ConsumerReference>')
                 first_seen, second_seen = len(nvr.events), len(second.events)
                 idle = [socket.create_connection((HOST, WEB), timeout=5) for _ in range(5)]
-                time.sleep(0.2)
+                time.sleep(0.2)  # the hub accepts the idle connections, so they hold sockets
                 get(f'/sensor?{sid(1)}')
-                time.sleep(2)
+                time.sleep(2)  # the push must get out while the sockets stay taken
                 for c in idle:
                     c.close()
                 check('pushes that wait for a socket still go out', len(nvr.events) > first_seen and len(second.events) > second_seen, (len(nvr.events), first_seen, len(second.events), second_seen))
@@ -961,9 +998,18 @@ def main():
             api('POST', f'/api/mkdir?path={newcomer}/1')
             clear(1)
             shown = set()
-            end = time.time() + HOLD_MS / 1000 + 3
+
+            def watched():
+                st = status()
+                shown.update(st['active'])
+                return st
+
+            # Until the queue is empty, which may first wait out an earlier past event's gap, then through the time it
+            # would have played for, since it must not appear.
+            poll(watched, lambda st: st['delayed_waiting'] == 0, timeout=2 * (HOLD_MS / 1000 + 4) + 5, step=0.2)
+            end = time.time() + HOLD_MS / 1000 + 1
             while time.time() < end:
-                shown.update(status()['active'])
+                watched()
                 time.sleep(0.2)
             check('a deleted sensor\'s delayed alert does not play as another sensor', f'{newcomer}/1' not in shown and status()['delayed_waiting'] == 0, shown)
             api('DELETE', f'/api/file?path={newcomer}')
@@ -977,8 +1023,7 @@ def main():
             check('a late alert further apart makes its own record', status()['delayed_waiting'] == 2, status())
             clear(1)
             end = time.time() + 2 * (HOLD_MS / 1000 + 4) + 5
-            while status()['delayed_waiting'] and time.time() < end:
-                time.sleep(0.3)
+            wait_until(lambda: not status()['delayed_waiting'], timeout=end - time.time())
             check('both late records play', status()['delayed_waiting'] == 0, status())
             check('the page is served with a query string', get('/?x=1')[0] == 200)
 
@@ -992,12 +1037,11 @@ def main():
             if proc:
                 proc.kill()
                 proc.wait()
-                proc = subprocess.Popen([EXE, str(HOLD_MS), storage, PASSWORD, '1500'], stdout=subprocess.PIPE, text=True)
-                proc.stdout.readline()
+                proc = start_hub(storage, PASSWORD, '1500')
+                HUB.stdout.readline()
                 check('folders are still sensors after a restart', status()['sensors'] == count - 4, status())
                 check('stored pictures survive a restart', api('GET', f'/api/file?path={name(4)}/active.h264')[1] == files['active.h264'])
-                time.sleep(2.5)
-                quiet_nodes = json.loads(api('GET', '/api/espnow')[1])['nodes']
+                quiet_nodes = poll(lambda: json.loads(api('GET', '/api/espnow')[1])['nodes'], lambda n: n and all(x['state'] == 'silent' for x in n))
                 check('a node quiet since the restart is reported silent', quiet_nodes and all(n['state'] == 'silent' for n in quiet_nodes), quiet_nodes)
                 check('going silent after a restart is logged', any(e['kind'] == 1 for e in json.loads(api('GET', '/api/events')[1])))
             api('DELETE', f'/api/file?path={B}')
