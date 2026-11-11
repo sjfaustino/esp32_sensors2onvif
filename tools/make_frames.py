@@ -11,7 +11,9 @@ BUILTIN = os.path.join(ROOT, 'lib', 'sensorcam', 'cam_frames_data.cpp')
 SNAPSHOTS = os.path.join(ROOT, 'lib', 'sensorcam', 'cam_snapshots_data.cpp')
 DATA = os.path.join(ROOT, 'data')
 WIDTH, HEIGHT, FPS = 640, 360, 2
-MAX_LABEL = 16
+MAX_LABEL = 24  # the same limit as the name field on the Sensors page
+FULL_SIZE_CHARS = 16  # longer lines get smaller text so they still fit, as on the page
+MAX_FILE = 32768  # the largest picture the hub accepts
 LINE_HEIGHT = 70
 CRF = 38  # picture quality: higher is smaller. Large text stays sharp at this level, and every picture passes through the ESP32's RAM.
 GREEN, RED, AMBER = '0x004000', '0xB00000', '0xB06000'
@@ -44,7 +46,8 @@ def text_filters(lines, workdir):
         name = f'line{i}.txt'
         with open(os.path.join(workdir, name), 'w', encoding='utf8') as f:
             f.write(text)
-        filters.append(f"drawtext=fontfile='{font()}':textfile={name}:fontcolor=white:fontsize=48:x=(w-text_w)/2:y={top + LINE_HEIGHT * i}")
+        size = min(48, 48 * FULL_SIZE_CHARS // len(text))
+        filters.append(f"drawtext=fontfile='{font()}':textfile={name}:fontcolor=white:fontsize={size}:x=(w-text_w)/2:y={top + LINE_HEIGHT * i}")
     return filters
 
 
@@ -99,6 +102,9 @@ def sensor_files(label):
         for key, text in STATES:
             files[f'{key}.h264'] = annexb(encode(RED, [label, text], tmp))
             files[f'{key}-delayed.h264'] = annexb(encode(AMBER, [label, text, 'DELAYED'], tmp))
+    for name, data in files.items():
+        if len(data) > MAX_FILE:
+            sys.exit(f'{label!r} {name} is {len(data)} bytes, more than the hub accepts ({MAX_FILE}); raise CRF')
     return files
 
 

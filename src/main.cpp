@@ -726,6 +726,7 @@ void setup() {
   Serial.begin(115200);
   loadWifi();
   loadSettings();
+  if (!webPassword.length()) Serial.println("No hub password is set: the web page, ONVIF and RTSP are open to anyone on the network.");
   WiFi.persistent(false);  // the settings are kept in one place only, by loadWifi and saveWifi
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // power save loses multicast and adds latency

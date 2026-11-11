@@ -78,6 +78,7 @@ input[type=number]{font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-
 <div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device Info</div></div>
 </nav>
 <main>
+<p id="openWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
 <div class="view" id="view-network" hidden><h1>Network</h1>
 <label class="netRow"><span>Connection</span><input id="netType" disabled></label>
 <label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
@@ -518,6 +519,7 @@ firsts.forEach(f=>f.onclick=()=>{const on=!f.classList.contains("open");firsts.f
 items.forEach(i=>i.onclick=()=>{location.hash=i.dataset.view});
 addEventListener("hashchange",()=>show(location.hash.slice(1)));
 show(location.hash.slice(1));
+fetch("/api/info").then(r=>r.json()).then(i=>{$("openWarn").hidden=i.password}).catch(()=>{});
 })();
 </script></body></html>
 )HTML";

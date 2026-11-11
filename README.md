@@ -38,7 +38,8 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 
 ## Events and alerts
 
-**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. A sensor can be given a name on the Sensors
+**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. They are saved within 5 seconds, so a crash or
+power cut can lose the last few. A sensor can be given a name on the Sensors
 page, which then appears on the ESP-NOW and Events pages. A node that stays silent for 3 hours, counted from the last restart if it has not reported since, or reports 20% battery or less,
 is logged as an event. The ESP-NOW page can also raise an NVR alarm for these.
 
@@ -53,6 +54,8 @@ that have none. A picture without a thumbnail shows the built-in All Clear or Al
 One hub password, with the user name `admin`, protects the web page, ONVIF and RTSP. It comes from `WEB_PASSWORD`, or from
 `SETUP_AP_PASSWORD` when that is empty, and can be changed or turned off under **Network Manager > HTTP**. An NVR needs the same
 user and password on its channel. ONVIF clients may ask for the clock and capabilities before logging in, as ONVIF requires.
+With no password, from `secrets.h` or after turning it off, anyone on the network can change the hub and watch its video;
+the web page then says so at the top.
 
 HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
 ESP-NOW reports do not use it.
