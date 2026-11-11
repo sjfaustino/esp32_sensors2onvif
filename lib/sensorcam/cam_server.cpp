@@ -417,7 +417,7 @@ void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint
   e.received = time(nullptr);
   e.age = r.age;
   snprintf(e.sensor, sizeof(e.sensor), "%s", slotName(id).c_str());
-  snprintf(e.name, sizeof(e.name), "%s", slots_[id - 1].name.c_str());
+  camCopyText(e.name, sizeof(e.name), slots_[id - 1].name);
   e.kind = kind;
   e.active = r.active;
   e.delayed = delayed;
@@ -575,6 +575,15 @@ std::string camJsonEscape(const std::string& s) {
     if ((unsigned char)ch >= 0x20) out += ch;
   }
   return out;
+}
+
+void camCopyText(char* out, size_t size, const std::string& text) {
+  if (!size) return;
+  size_t n = text.size() < size - 1 ? text.size() : size - 1;
+  if (n < text.size())
+    while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80) n--;  // text[n] continues a character, so stop before that character starts
+  memcpy(out, text.data(), n);
+  out[n] = 0;
 }
 
 std::string SensorCamServer::eventsJson() {

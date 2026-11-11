@@ -700,6 +700,11 @@ void setup() {
 
   server = new SensorCamServer(makeConfig(), localIp, nowMs);
   if (!server->begin()) {
+    if (firmwareUnproven) {  // the previous firmware opened these ports, so it comes back with them unchanged
+      Serial.println("The new firmware could not open its ports; going back to the previous firmware.");
+      delay(2000);
+      esp_ota_mark_app_invalid_rollback_and_reboot();
+    }
     Serial.println("Could not open the ONVIF, web or RTSP port; going back to the default ports and restarting.");
     forgetPorts();  // saved ports that cannot open must not keep the hub in a restart loop
     delay(2000);

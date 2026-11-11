@@ -172,11 +172,13 @@ async function showPicture(path,name){
   const dlg=el("dialog",null,el("h2",{textContent:name}),status,img,el("p",null,el("button",{textContent:"Close",onclick:()=>dlg.close()})));
   dlg.onclose=()=>{if(img.src)URL.revokeObjectURL(img.src);dlg.remove()};
   document.body.append(dlg);dlg.showModal();
-  try{const r=await fetch("/api/file?path="+path);if(!r.ok)throw new Error("The hub could not send this picture.");
+  try{const r=await fetch("/api/file?path="+path).catch(()=>{throw new Error("Could not reach the hub.")});
+    if(!r.ok)throw new Error("The hub could not send this picture.");
     const pic=new Uint8Array(await r.arrayBuffer());
     status.textContent="Getting the decoder ready. The first time, this downloads about 30 MB.";
-    img.src=await decoded(pic);img.style.display="block";status.remove()}
-  catch(e){status.textContent="Could not show this picture. The preview needs internet access the first time. "+(e.message||"")}}
+    img.src=await decoded(pic).catch(()=>{throw new Error("The decoder could not load or could not read this picture. It needs internet access the first time.")});
+    img.style.display="block";status.remove()}
+  catch(e){status.textContent="Could not show this picture. "+e.message}}
 function fileRow(path,name,size){
   const acts=el("td",{className:"acts"});
   acts.append(el("button",{textContent:size==null?"Upload":"Replace",onclick:()=>pick(path)})," ",el("button",{textContent:"Use an image",onclick:()=>imageDialog(path)}));

@@ -19,6 +19,9 @@ bool camBackupValueValid(const std::string& key, const std::string& value);
 
 std::string camJsonEscape(const std::string& text);
 
+// Copies text into a fixed buffer, shortened if needed without splitting a UTF-8 character.
+void camCopyText(char* out, size_t size, const std::string& text);
+
 struct CamSettings {
   uint16_t onvifPort = 0;
   uint16_t webPort = 0;

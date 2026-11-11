@@ -65,15 +65,18 @@ bool SensorBoard::anyActive() const {
 }
 
 bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed) const {
-  std::vector<int> on;
-  for (int i = 0; i < count(); i++)
-    if (sensors_[i].on) on.push_back(i);
-  if (on.empty()) return false;
-  int i = on[(now / CYCLE_MS) % on.size()];
-  id = i + 1;
-  direction = sensors_[i].direction;
-  delayed = sensors_[i].delayed;
-  return true;
+  int on = 0;
+  for (const Entry& s : sensors_) on += s.on;
+  if (!on) return false;
+  int skip = (int)((now / CYCLE_MS) % (uint32_t)on);  // which of the active sensors has its turn
+  for (int i = 0; i < count(); i++) {
+    if (!sensors_[i].on || skip-- > 0) continue;
+    id = i + 1;
+    direction = sensors_[i].direction;
+    delayed = sensors_[i].delayed;
+    return true;
+  }
+  return false;
 }
 
 bool MotionSignal::update(bool active, uint32_t now) {

@@ -178,6 +178,22 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_FALSE(camBackupValueValid("net.unknown", "1"));
 }
 
+static void long_names_are_cut_between_characters() {
+  char out[6];
+  camCopyText(out, sizeof(out), "abc");
+  TEST_ASSERT_EQUAL_STRING("abc", out);
+  camCopyText(out, sizeof(out), "abcde");
+  TEST_ASSERT_EQUAL_STRING("abcde", out);
+  camCopyText(out, sizeof(out), "abcdef");
+  TEST_ASSERT_EQUAL_STRING("abcde", out);
+  camCopyText(out, sizeof(out), "abcd\xC3\xA3");  // "abcdã" needs 6 bytes, so the whole letter goes
+  TEST_ASSERT_EQUAL_STRING("abcd", out);
+  camCopyText(out, sizeof(out), "abc\xC3\xA3x");  // "abcãx": the letter fits, the x does not
+  TEST_ASSERT_EQUAL_STRING("abc\xC3\xA3", out);
+  camCopyText(out, sizeof(out), "ab\xE2\x82\xAC\xE2\x82\xAC");  // "ab€€": one 3-byte euro sign fits
+  TEST_ASSERT_EQUAL_STRING("ab\xE2\x82\xAC", out);
+}
+
 static void battery_outside_0_to_100_is_unknown() {
   uint8_t p[] = {1, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0};
   SensorReport r;
@@ -428,5 +444,6 @@ int main() {
   RUN_TEST(base64_matches_known_values);
   RUN_TEST(battery_outside_0_to_100_is_unknown);
   RUN_TEST(backup_values_follow_the_page_rules);
+  RUN_TEST(long_names_are_cut_between_characters);
   return UNITY_END();
 }
