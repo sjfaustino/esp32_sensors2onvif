@@ -152,16 +152,16 @@ int SensorCamServer::sharedSockets() const {
 }
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
+  // Short of RAM or sockets: left waiting in the queue, to be taken once existing traffic has drained.
+  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP) {
+    refused_++;  // counts the passes it had to wait, for the heartbeat
+    return;
+  }
   sockaddr_in a{};
   socklen_t len = sizeof(a);
   int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
   if (listenFd == captiveListen_ && !camCall(cfg_.setupActive)) {
-    netClose(fd);
-    return;
-  }
-  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP) {  // short of RAM or sockets: the client will retry once existing traffic has drained
-    refused_++;
     netClose(fd);
     return;
   }
@@ -592,6 +592,30 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   return true;
 }
 
+// A streamed body in HTTP chunks, so a download cut short shows as failed instead of looking complete. Every chunk but
+// the last carries CHUNK bytes, framed as "3e8\r\n" + bytes + "\r\n"; then "0\r\n\r\n" ends it. With every framed chunk
+// the same size, where any byte already sent falls is known without keeping count, and a piece sent only in part is
+// simply asked for again. Gives the next bytes after sent, at most room, and 0 once the end has gone.
+static size_t chunkedPiece(const std::function<size_t(size_t, char*, size_t)>& stream, size_t sent, char* out, size_t room) {
+  static const size_t CHUNK = 1000, FRAMED = 3 + 2 + CHUNK + 2;  // "3e8", CRLF, the bytes, CRLF
+  size_t index = sent / FRAMED, within = sent % FRAMED;
+  char data[CHUNK];
+  size_t n = stream(index * CHUNK, data, CHUNK);
+  std::string framed;
+  if (n) {
+    char head[8];
+    snprintf(head, sizeof(head), "%x\r\n", (unsigned)n);
+    framed = head;
+    framed.append(data, n);
+    framed += "\r\n";
+  }
+  if (n < CHUNK) framed += "0\r\n\r\n";
+  if (within >= framed.size()) return 0;
+  size_t take = framed.size() - within < room ? framed.size() - within : room;
+  memcpy(out, framed.data() + within, take);
+  return take;
+}
+
 void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now) {
   if (readable && (!c.answered || c.discardLeft)) {
     char buf[1024];
@@ -629,8 +653,8 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
         return;
       }
       data = piece;
-    } else if (!inHeader && c.stream) {  // a body of unknown length: it ends where the stream does, with the connection
-      left = (*c.stream)(c.outPos - c.out.size(), piece, sizeof(piece));
+    } else if (!inHeader && c.stream) {  // a body of unknown length, sent in HTTP chunks
+      left = chunkedPiece(*c.stream, c.outPos - c.out.size(), piece, sizeof(piece));
       if (!left) {
         closeHttp(c);
         return;
@@ -936,9 +960,12 @@ void SensorCamServer::poll(int maxWaitMs) {
     if (fd > maxFd) maxFd = fd;
   };
 
-  if (onvifListen_ >= 0) add(onvifListen_, rd);
-  if (webListen_ >= 0) add(webListen_, rd);
-  if (captiveListen_ >= 0) add(captiveListen_, rd);
+  // While every web connection is busy, or memory is short, new ones are left waiting in the network stack's queue rather
+  // than accepted and closed, so a sensor's report waits a moment instead of being lost. Each is taken once room frees.
+  bool room = sharedSockets() < MAX_HTTP && hasHeadroom();
+  if (onvifListen_ >= 0 && room) add(onvifListen_, rd);
+  if (webListen_ >= 0 && room) add(webListen_, rd);
+  if (captiveListen_ >= 0 && room) add(captiveListen_, rd);
   if (rtspListen_ >= 0) add(rtspListen_, rd);
   if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {

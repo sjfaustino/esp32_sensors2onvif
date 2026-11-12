@@ -163,7 +163,9 @@ void SensorCamServer::healthAlert(int id, CamEventKind kind, uint32_t now) {
   r.battery = health_[id - 1].battery;
   logEvent(id, r, false, kind);
   notifyHook(id, kind, false);
-  if (cfg_.healthAlarm) sensors_.trigger(id, now, 0, false, holdFor(id));
+  if (!cfg_.healthAlarm) return;
+  interruptPastEvent(now);
+  sensors_.trigger(id, now, 0, false, holdFor(id));
 }
 
 void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamEventKind kind) { addEvent(slotName(id), slots_[id - 1].name, r, delayed, kind); }
@@ -224,6 +226,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   if (r.active && late && !quiet) {
     queueDelayed(id, r, now);
   } else if (r.active && !quiet) {
+    interruptPastEvent(now);
     // Starts the alert, or extends it, so activations closer together than the hold make one NVR record.
     sensors_.trigger(id, now, reportDirection(r), false, holdFor(id));
     if (!wasActive) startAlert(id, false, now);
@@ -236,6 +239,18 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   if (r.active && !quiet && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
   if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
   return true;
+}
+
+// A live alert must not share its NVR record with a past event, which would weave a stale picture into the recording of
+// something happening now. The past event stops and goes back in the queue, to play in full once the live one is over.
+void SensorCamServer::interruptPastEvent(uint32_t now) {
+  int id = playingId_;
+  playingId_ = 0;
+  if (!id || !sensors_.pastEvent(id)) return;
+  sensors_.clear(id);
+  delivery_.forget(id);  // it never finished, so it is not checked; it plays again instead
+  delayed_.add(playing_.mac, playing_.input, playing_.direction, false, now, holdFor(id), playing_.several, playing_.replay);
+  waitingDirty_ = true;
 }
 
 // A late alert waits for its own NVR record; CamDelayedQueue decides which alerts share one.
@@ -341,6 +356,8 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
   int id = findSlot(d.mac, d.input);
   if (id) {  // it may have been deleted while waiting
     sensors_.trigger(id, now, d.direction, true, holdFor(id), d.several);
+    playingId_ = id;
+    playing_ = d;
     startAlert(id, true, now, d.replay);
   }
   nextDelayedAt_ = now + (id ? holdFor(id) : cfg_.holdMs) + CAM_PAST_GAP_MS;

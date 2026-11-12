@@ -306,6 +306,7 @@ class SensorCamServer {
   void noteSignal(int id, int8_t rssi);
   uint32_t holdFor(int id) const;
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
+  void interruptPastEvent(uint32_t now);
   bool quietNow(int id) const;
   void notifyHook(int id, CamEventKind kind, bool delayed);
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message);
@@ -358,6 +359,8 @@ class SensorCamServer {
   bool waitingDirty_ = false;  // the alerts waiting for an NVR record changed since they were saved
   bool waitingSaveFailed_ = false;
   CamDelayedQueue delayed_;
+  int playingId_ = 0;   // the sensor whose past event is playing, and that past event
+  CamDelayed playing_;
   CamDeliveryWatch delivery_;  // whether each alert reached the NVR, and those it missed
   bool pendingChanged_ = false;  // a new alert awaits its check; saved with the report that started it
   uint32_t nextDelayedAt_ = 0;

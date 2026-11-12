@@ -143,6 +143,8 @@ bool SensorBoard::trigger(int id, uint32_t now, uint8_t direction, bool delayed,
   return true;
 }
 
+bool SensorBoard::pastEvent(int id) const { return id >= 1 && id <= count() && sensors_[id - 1].on && sensors_[id - 1].delayed; }
+
 bool SensorBoard::several(int id) const { return id >= 1 && id <= count() && sensors_[id - 1].on && sensors_[id - 1].several; }
 
 bool SensorBoard::clear(int id) {

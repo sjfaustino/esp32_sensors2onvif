@@ -90,6 +90,7 @@ class SensorBoard {
   // The active sensor to show, cycling when several are active. False when none is.
   bool shown(uint32_t now, int& id, uint8_t& direction, bool& delayed) const;
   bool several(int id) const;
+  bool pastEvent(int id) const;  // active, as a past event
 
  private:
   struct Entry {

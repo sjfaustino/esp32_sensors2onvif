@@ -549,7 +549,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     log_.save(downloadingHistory());
     log_.csvBegin();  // made from the log as it is sent, piece by piece, so its size is not known in advance
     c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/csv; charset=utf-8\r\nContent-Disposition: attachment; filename=\"hub-events.csv\"\r\n"
-            "Connection: close\r\n\r\n";
+            "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
     c.stream = &csvRead_;
   } else {
     return false;

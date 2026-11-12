@@ -22,8 +22,12 @@ a false replay, never a missed one.
 `events.log` holds every event as a 96-byte record: little-endian, the same on every machine, with a checksum, added to
 and never rewritten (`lib/sensorcam/cam_events.cpp`). A record cut short by a power cut is found and written over. At
 256 KB the log becomes `events-old.log`, so about 5400 events are kept. At start only the newest 64 are read, for the
-Events page. The CSV download is made from the log as it is sent, so its length is not known in advance and the
-connection's close ends it. Firmware before this log kept its newest events in `events.bin`, which is converted once,
+Events page. The CSV download is made from the log as it is sent, so its length is not known in advance; it goes in
+HTTP chunks, so a download cut short is seen as failed rather than taken for the whole history.
+
+While every web connection is busy, or memory is short, the hub does not accept new connections, so they wait in the
+network stack's queue and are served once room frees, rather than being accepted and closed. A sensor's report waits
+a moment instead of being lost. Firmware before this log kept its newest events in `events.bin`, which is converted once,
 and possibly `events.csv` files, which are served first in the download and never written again.
 
 ## Checking delivery, and replaying what the NVR missed
@@ -38,7 +42,8 @@ without a second entry. Delivered is all the hub can know: whether the NVR recor
 ## Past events
 
 Late alerts wait in `CamDelayedQueue` (`lib/sensorcam/cam_sensors.h`) and play one at a time, a few seconds apart, so
-each gets its own NVR record. Late alerts from one sensor within its hold of each other share a record, as they would
+each gets its own NVR record. A live alert never shares a record with one: a past event that is playing stops when a live
+alert starts, and goes back in the queue to play in full afterwards. Late alerts from one sensor within its hold of each other share a record, as they would
 have live. Up to 16 records wait; beyond that a late alert joins a waiting one from the same sensor, or else the newest
 waiting record, which then stands for several sensors and shows the built-in "PAST EVENT, CHECK LOGS".
 

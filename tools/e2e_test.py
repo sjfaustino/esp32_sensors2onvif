@@ -67,13 +67,14 @@ def soap(action, path='/onvif/media', inner=''):
 
 def body_of(r):
     """The reply's body, unzipped if the hub sent it gzipped, as it does the web pages. Notes how it came."""
-    global last_encoding
+    global last_encoding, last_transfer
     last_encoding = r.getheader('Content-Encoding')
+    last_transfer = r.getheader('Transfer-Encoding')
     data = r.read()
     return gzip.decompress(data) if last_encoding == 'gzip' else data
 
 
-last_encoding = None
+last_encoding = last_transfer = None
 
 
 def get(path):
@@ -82,19 +83,12 @@ def get(path):
         headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
     if TOKEN and path.startswith('/sensor'):
         path += f'&token={TOKEN}'
-    for attempt in range(2):
-        try:
-            c = http.client.HTTPConnection(HOST, WEB, timeout=5)
-            c.request('GET', path, headers=headers)
-            r = c.getresponse()
-            data = body_of(r).decode()
-            c.close()
-            return r.status, data
-        except (ConnectionAbortedError, ConnectionResetError, http.client.RemoteDisconnected):
-            # The hub closes a new connection at once while all of its connections are busy, and a sensor tries again.
-            if attempt:
-                raise
-            time.sleep(0.5)
+    c = http.client.HTTPConnection(HOST, WEB, timeout=15)  # a busy hub leaves it waiting, up to its 10 s stall limit
+    c.request('GET', path, headers=headers)
+    r = c.getresponse()
+    data = body_of(r).decode()
+    c.close()
+    return r.status, data
 
 
 def http_status(path):
@@ -834,6 +828,7 @@ def main():
                 code, csv = api('GET', '/api/events.csv')
                 lines = csv.decode().splitlines()
                 check('the full history downloads as CSV', code == 200 and lines[0].startswith('received_utc,') and any(f',{path},' in l and ',alert in quiet hours,' in l for l in lines), lines[:3])
+                check('the history is sent in chunks, so a download cut short shows as failed', last_transfer == 'chunked', last_transfer)
                 check('a name with quotes stays one CSV field', any('"Front ""gate"""' in l for l in lines), [l for l in lines if path in l][:2])
                 check('the full history needs the web password', api('GET', '/api/events.csv', auth=False)[0] == 401)
 
@@ -916,6 +911,30 @@ def main():
                 clear(1)
                 control('nvr-gone-normal')
                 api('POST', '/api/nvr', 'ip=')
+
+                # A report that arrives while every web connection is busy waits for one, instead of being turned away.
+                idle = [socket.create_connection((HOST, WEB)) for _ in range(6)]
+                time.sleep(0.3)  # time for the hub to take them all
+                result = {}
+                sender = threading.Thread(target=lambda: result.update(code=get(f'/sensor?{sid(1)}')[0]))
+                sender.start()
+                time.sleep(1)  # the report waits meanwhile
+                idle.pop().close()
+                sender.join(15)
+                for s in idle:
+                    s.close()
+                check('a report sent while every connection is busy waits, and arrives', result.get('code') == 200, result)
+                clear(1)
+
+                # A live alert never shares its NVR record with a past event: the past event stops and plays again later.
+                get(f'/sensor?{sid(2)}&age=500')
+                playing = wait_until(lambda: name(2) in status()['active'], timeout=20)
+                get(f'/sensor?{sid(1)}')
+                now_on = status()
+                check('a live alert stops a past event that was playing', playing and now_on['active'] == [name(1)] and now_on['delayed_waiting'] >= 1, now_on)
+                control('end-alerts')
+                check('and the past event plays again once the live one is over', wait_until(lambda: name(2) in status()['active'], timeout=20), status())
+                control('end-alerts')
 
                 # Being kept off the network is logged when the hub is back.
                 control('network-lost')
@@ -1131,7 +1150,8 @@ def main():
             # A delayed alert belongs to its device. A new sensor that takes a deleted one's place must not play it.
             gone, newcomer = '02-00-00-00-44-01', '02-00-00-00-44-02'
             api('POST', f'/api/mkdir?path={gone}/1')
-            wait_until(lambda: status()['delayed_waiting'] == 0, timeout=60)  # past events from earlier checks play out first
+            # Past events from earlier checks play out first, so none is playing: a live alert would send it back to the queue.
+            wait_until(lambda: status()['delayed_waiting'] == 0 and not status()['active'], timeout=60)
             get(f'/sensor?{sid(1)}')
             get(f'/sensor?mac={gone}&input=1&age=unknown')
             check('a delayed alert waits while another sensor is active', status()['delayed_waiting'] == 1, status())
