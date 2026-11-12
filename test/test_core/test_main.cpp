@@ -678,18 +678,19 @@ static void an_event_record_reads_back_and_damage_is_found() {
 
 // Reads the download the way the web server does: in pieces, some sent only in part and asked for again.
 static std::string download(CamEventLog& log) {
-  size_t total = log.csvBegin(), at = 0;
+  log.csvBegin();
+  size_t at = 0;
   std::string out;
   char piece[700];
-  while (at < total) {
-    size_t n = total - at < sizeof(piece) ? total - at : sizeof(piece);
-    if (!log.csvRead(at, piece, n)) return "read failed";
+  for (;;) {
+    size_t n = log.csvRead(at, piece, sizeof(piece));
+    if (!n) break;
     size_t sent = n > 100 && (at / 700) % 2 ? n / 3 : n;  // every other piece only partly sent
     out.append(piece, sent);
     at += sent;
   }
   char extra;
-  return log.csvRead(total, &extra, 1) ? "read past the end" : out;
+  return log.csvRead(at, &extra, 1) ? "read past the end" : out;
 }
 
 static void the_event_log_survives_restarts_and_downloads_whole() {
@@ -795,8 +796,47 @@ static void a_replay_stays_one_only_while_nothing_new_joins_it() {
   TEST_ASSERT_FALSE(d.replay);  // so it is logged if the NVR misses it
 }
 
+static void delivery_is_checked_and_missed_alerts_kept_once() {
+  CamDeliveryWatch w;
+  uint8_t a[6] = {2, 0, 0, 0, 0, 1};
+  bool on = true;
+  auto active = [&](int) { return on; };
+  std::vector<CamDeliveryWatch::Missed> missed;
+  w.started(3, a, 1, false, true, false, 8000, 1000);
+  w.check(1000 + CamDeliveryWatch::CHECK_AFTER_MS - 1, false, active, missed);
+  TEST_ASSERT_EQUAL(0, (int)missed.size());  // too early, and still on
+  on = false;
+  w.check(1500, false, active, missed);  // it ended: checked at once
+  TEST_ASSERT_EQUAL(1, (int)missed.size());
+  TEST_ASSERT_TRUE(missed[0].log);
+  TEST_ASSERT_EQUAL(3, missed[0].id);
+  CamDelayed d;
+  TEST_ASSERT_TRUE(w.takeMissed(d));
+  TEST_ASSERT_TRUE(d.several);  // kept from the start, although the alert had ended
+  TEST_ASSERT_TRUE(d.replay);
+  missed.clear();
+  w.started(3, a, 1, true, false, true, 8000, 2000);  // its replay, missed too
+  w.check(9000, false, active, missed);
+  TEST_ASSERT_EQUAL(1, (int)missed.size());
+  TEST_ASSERT_FALSE(missed[0].log);  // not logged a second time
+  missed.clear();
+  w.started(4, a, 2, false, false, false, 8000, 3000);
+  w.check(9000, true, active, missed);  // the NVR was listening
+  TEST_ASSERT_EQUAL(0, (int)missed.size());
+}
+
+static void each_notification_has_one_wording() {
+  TEST_ASSERT_EQUAL_STRING("Gate (X/1): alert", camEventMessage(CAM_EVENT_REPORT, "Gate (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("Gate (X/1): delayed alert not delivered, because the NVR is not listening",
+                           camEventMessage(CAM_EVENT_NOT_DELIVERED, "Gate (X/1)", "", CAM_AGE_UNKNOWN, true).c_str());
+  TEST_ASSERT_EQUAL_STRING("hub.local started (Power on), after being off for up to 2 h 0 min",
+                           camEventMessage(CAM_EVENT_HUB_STARTED, "hub.local", "Power on", 7200, false).c_str());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(delivery_is_checked_and_missed_alerts_kept_once);
+  RUN_TEST(each_notification_has_one_wording);
   RUN_TEST(a_replay_stays_one_only_while_nothing_new_joins_it);
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);

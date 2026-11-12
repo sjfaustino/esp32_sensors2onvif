@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "cam_auth.h"
+#include "cam_delivery.h"
 #include "cam_events.h"
 #include "cam_json.h"
 #include "cam_rtp.h"
@@ -14,7 +15,6 @@
 #include "cam_storage.h"
 #include "cam_subs.h"
 
-const int CAM_MAX_SENSORS = 32;
 
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
@@ -166,11 +166,6 @@ class SensorCamServer {
     bool weak = false;
     uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
     const char* refusal = "";
-    bool recordPending = false;  // an alert started, and whether the NVR was listening is still to be checked
-    bool alertDelayed = false;
-    bool alertSeveral = false;  // noted at the start, because the check may come after the alert has ended
-    bool alertReplay = false;   // a replay of one the NVR missed, already logged and sent once
-    uint32_t alertAt = 0;
   };
   struct Slot {
     bool used = false;
@@ -209,6 +204,8 @@ class SensorCamServer {
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
     size_t firmwareLeft = 0;
     const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
+    // A body of unknown length, read piece by piece until it gives nothing, then ended by closing the connection.
+    const std::function<size_t(size_t, char*, size_t)>* stream = nullptr;
   };
   struct RtspConn {
     int fd = -1;
@@ -359,7 +356,8 @@ class SensorCamServer {
   bool waitingDirty_ = false;  // the alerts waiting for an NVR record changed since they were saved
   bool waitingSaveFailed_ = false;
   CamDelayedQueue delayed_;
-  CamDelayedQueue undelivered_;  // alerts the NVR did not get, played as past events once it listens again
+  CamDeliveryWatch delivery_;  // whether each alert reached the NVR, and those it missed
+  bool pendingChanged_ = false;  // a new alert awaits its check; saved with the report that started it
   uint32_t nextDelayedAt_ = 0;
   bool delayedGap_ = false;
   NotifyIo hook_;
@@ -369,7 +367,7 @@ class SensorCamServer {
   uint32_t hookDropped_ = 0;
   std::string hookResult_;  // how the last message went; empty before the first
   time_t hookResultAt_ = 0;
-  std::function<bool(size_t, char*, size_t)> csvRead_;  // reads the whole history for a download
+  std::function<size_t(size_t, char*, size_t)> csvRead_;  // streams the whole history for a download
   uint32_t nvrSeenAt_ = 0;  // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;
   uint32_t nvrGoneMs_ = 3 * 60 * 1000;  // not listening for this long is logged once, as the NVR having stopped

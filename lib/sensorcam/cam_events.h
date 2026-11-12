@@ -26,6 +26,10 @@ enum CamEventKind : uint8_t {
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
 const char* camEventName(uint8_t kind, bool active, bool delayed);
 
+// The one wording of each event's notification. who is the sensor, as "Gate (AA-BB-CC-DD-EE-01/1)", or for the hub's own
+// events the hub's name. detail and offS are those of a hub event.
+std::string camEventMessage(uint8_t kind, const std::string& who, const std::string& detail, uint32_t offS, bool delayed);
+
 // A length of time as people say it: "7 min", "2 h 13 min", "3 days 4 h". Rounded up to the minute.
 std::string camDurationText(uint32_t seconds);
 
@@ -57,7 +61,7 @@ class CamEventLog {
   static const size_t FILE_MAX = 256 * 1024;  // then the log becomes the older log, so about 5400 events are kept
 
   explicit CamEventLog(const CamStorage& storage) : storage_(storage) {}
-  // Reads the newest events and measures the log. Converts the history of firmware from before this log, once.
+  // Reads the newest events. Converts the history of firmware from before this log, once.
   void load();
   void add(const CamEvent& e);  // kept in memory until save()
   // Adds what is waiting to the log. Starting a new log is put off while a download reads the old one. False when
@@ -69,10 +73,10 @@ class CamEventLog {
   const CamEvent& recent(int n) const { return ring_[(next_ - 1 - n + 2 * RECENT) % RECENT]; }  // 0 is the newest
   size_t bytesOnStorage() const { return oldBytes_ + curBytes_; }
 
-  // The whole history as CSV: csvBegin gives its size in bytes, then csvRead hands it out piece by piece, in order or
-  // repeating a piece. Events added meanwhile are left for the next download.
-  size_t csvBegin();
-  bool csvRead(size_t offset, char* out, size_t len);
+  // The whole history as CSV: after csvBegin, csvRead hands it out piece by piece, in order or repeating a piece, and
+  // gives fewer bytes than asked only at the end. Events added meanwhile are left for the next download.
+  void csvBegin();
+  size_t csvRead(size_t offset, char* out, size_t len);
 
  private:
   bool recordAt(size_t index, CamEvent& e);  // index over the older log, then the current one
@@ -83,7 +87,6 @@ class CamEventLog {
   std::string pending_;  // encoded records not yet on storage
   bool saveFailed_ = false;
   size_t oldBytes_ = 0, curBytes_ = 0;        // whole records in each log; a cut-off record after them is written over
-  size_t oldCsvBytes_ = 0, curCsvBytes_ = 0;  // what each log is as CSV, kept up to date so a download starts at once
   // The download in progress: a snapshot of the sizes, and where it has got to.
   size_t legacyOld_ = 0, legacyCur_ = 0, oldRecords_ = 0, allRecords_ = 0;
   size_t lineStart_ = 0, lineIndex_ = 0;  // the line being handed out, and the record after it

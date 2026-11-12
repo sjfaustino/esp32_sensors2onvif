@@ -13,7 +13,7 @@
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
     : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(REPEAT_TRUE_MS),
       storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
-  csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };
+  csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
 }
 
 int SensorCamServer::listenOn(uint16_t port) {
@@ -282,6 +282,7 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
     reply = soapPullPointReply(ctx, subs_.addPull(c.peer, now).id);
   } else if (action == "PullMessages") {
     CamSub* sub = subs_.find(subIdFromPath(path));
+    if (sub) sub->pulledAt = now;
     int state = sensors_.anyActive() ? 1 : 0;
     bool changed = sub && sub->lastPull != state;
     uint32_t wait = pollWaitMs(xmlFirstText(body, "Timeout"));
@@ -619,11 +620,18 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
   if (c.answered && !c.discardLeft && (writable || c.outPos == 0)) {
     bool inHeader = c.outPos < c.out.size();
     const char* data = inHeader ? c.out.data() + c.outPos : c.staticBody + (c.outPos - c.out.size());
-    size_t left = inHeader ? c.out.size() - c.outPos : c.staticLen - (c.outPos - c.out.size());
+    size_t left = inHeader ? c.out.size() - c.outPos : c.stream ? 0 : c.staticLen - (c.outPos - c.out.size());
     char piece[1024];
     if (!inHeader && c.pull && left) {  // read again from the same place if the last piece was only partly sent
       left = left < sizeof(piece) ? left : sizeof(piece);
       if (!(*c.pull)(c.outPos - c.out.size(), piece, left)) {
+        closeHttp(c);
+        return;
+      }
+      data = piece;
+    } else if (!inHeader && c.stream) {  // a body of unknown length: it ends where the stream does, with the connection
+      left = (*c.stream)(c.outPos - c.out.size(), piece, sizeof(piece));
+      if (!left) {
         closeHttp(c);
         return;
       }
@@ -634,8 +642,11 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       closeHttp(c);
       return;
     }
-    if (n > 0) c.outPos += n;
-    if (c.outPos >= c.out.size() + c.staticLen) {
+    if (n > 0) {
+      c.outPos += n;
+      c.openedAt = now;  // the time limit is for a stalled reply, so a long download is not cut off part way
+    }
+    if (!c.stream && c.outPos >= c.out.size() + c.staticLen) {
       closeHttp(c);
       return;
     }

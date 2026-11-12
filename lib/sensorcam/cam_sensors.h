@@ -5,6 +5,7 @@
 #include "cam_frames.h"
 
 const int CAM_MAX_TARGETS = 3;
+const int CAM_MAX_SENSORS = 32;  // the hub's sensor table
 const uint32_t CAM_AGE_UNKNOWN = 0xFFFFFFFFu;
 const uint16_t CAM_DISTANCE_UNKNOWN = 0xFFFF;
 const uint8_t CAM_BATTERY_UNKNOWN = 0xFF;

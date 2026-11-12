@@ -14,7 +14,7 @@
 
 bool SensorCamServer::downloadingHistory() const {
   for (const HttpConn& c : http_)
-    if (c.fd >= 0 && c.pull == &csvRead_) return true;
+    if (c.fd >= 0 && c.stream == &csvRead_) return true;
   return false;
 }
 
@@ -26,7 +26,7 @@ void SensorCamServer::saveNow() {
 // Called before reports are confirmed, so a confirmed alert survives a power cut. True when everything is on storage.
 bool SensorCamServer::persist() {
   bool events = log_.save(downloadingHistory());  // a failed save is tried again, since confirmations wait on it
-  if (waitingDirty_ || waitingSaveFailed_) saveWaiting();
+  if (waitingDirty_ || pendingChanged_ || waitingSaveFailed_) saveWaiting();
   return events && !waitingSaveFailed_;
 }
 
@@ -46,12 +46,15 @@ void SensorCamServer::saveWaiting() {
   out += (char)1;
   out += (char)0;  // the count, filled in below
   for (int n = 0; n < delayed_.count(); n++) add(delayed_.at(n).mac, delayed_.at(n).input, delayed_.at(n).direction, delayed_.at(n).several, false, delayed_.at(n).replay);
-  for (int n = 0; n < undelivered_.count(); n++) add(undelivered_.at(n).mac, undelivered_.at(n).input, 0, undelivered_.at(n).several, true, true);
-  for (int id = 1; id <= sensors_.count(); id++)
-    if (slots_[id - 1].used && health_[id - 1].recordPending) add(slots_[id - 1].mac, slots_[id - 1].input, 0, health_[id - 1].alertSeveral, false, health_[id - 1].alertReplay);
+  const CamDelayedQueue& missed = delivery_.missed();
+  for (int n = 0; n < missed.count(); n++) add(missed.at(n).mac, missed.at(n).input, 0, missed.at(n).several, true, true);
+  for (int id = 1; id <= sensors_.count(); id++) {
+    const CamPendingCheck& p = delivery_.pending(id);
+    if (slots_[id - 1].used && p.on) add(p.mac, p.input, 0, p.several, false, p.replay);
+  }
   out[5] = (char)((out.size() - 6) / 9);
   waitingSaveFailed_ = !storage_.writeFile(WAITING_FILE, out.data(), out.size());
-  waitingDirty_ = false;
+  waitingDirty_ = pendingChanged_ = false;
 }
 
 void SensorCamServer::loadWaiting() {
@@ -63,7 +66,9 @@ void SensorCamServer::loadWaiting() {
   for (size_t i = 0; i < count; i++) {
     const uint8_t* p = (const uint8_t*)in.data() + 6 + i * 9;
     int id = findSlot(p, p[6]);
-    if (id) (p[8] & 2 ? undelivered_ : delayed_).add(p, p[6], p[7], false, now, holdFor(id), p[8] & 1, (p[8] & 4) != 0);  // old times mean nothing on a new millis() clock
+    if (!id) continue;  // deleted since
+    if (p[8] & 2) delivery_.keepMissed(p, p[6], p[8] & 1, holdFor(id), now);
+    else delayed_.add(p, p[6], p[7], false, now, holdFor(id), p[8] & 1, (p[8] & 4) != 0);  // old times mean nothing on a new millis() clock
   }
   waitingDirty_ = count > 0;
 }
@@ -80,8 +85,7 @@ void SensorCamServer::writeAlive(uint32_t now) {
 
 // While the hub is off its network, nothing reaches the NVR. Someone may be keeping it off on purpose.
 void SensorCamServer::networkLost(uint32_t seconds) {
-  hubEvent(CAM_EVENT_NETWORK_LOST, "", seconds, cfg_.hostName + " was off its Wi-Fi network for up to " + camDurationText(seconds) +
-                                                    "; alerts in that time reach the NVR as past events once it is back");
+  hubEvent(CAM_EVENT_NETWORK_LOST, "", seconds, camEventMessage(CAM_EVENT_NETWORK_LOST, cfg_.hostName, "", seconds, false));
 }
 
 // Logged once the network is up, and once the clock is set or has had long enough to be.
@@ -93,19 +97,17 @@ void SensorCamServer::noteHubStart(uint32_t now) {
   bool offKnown = clockOk && lastAlive_ >= CAM_CLOCK_VALID_AFTER && t >= lastAlive_ && (int64_t)(t - lastAlive_) < (int64_t)CAM_AGE_UNKNOWN;
   uint32_t off = offKnown ? (uint32_t)(t - lastAlive_) : CAM_AGE_UNKNOWN;
   std::string reason = cfg_.startReason.empty() ? std::string("unknown") : cfg_.startReason;
-  std::string message = cfg_.hostName + " started (" + reason + ")";
-  if (offKnown) message += ", after being off for up to " + camDurationText(off);
-  hubEvent(CAM_EVENT_HUB_STARTED, reason, off, message);
+  hubEvent(CAM_EVENT_HUB_STARTED, reason, off, camEventMessage(CAM_EVENT_HUB_STARTED, cfg_.hostName, reason, off, false));
 }
 
 // The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
-// pulls events, it asked within the last minute. With no NVR address set, any subscriber counts.
+// pulls events, it asked for events within the last minute. With no NVR address set, any subscriber counts.
 bool SensorCamServer::nvrListening(uint32_t now) const {
   uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
   for (int i = 0; i < SubTable::SIZE; i++) {
     const CamSub& s = subs_.at(i);
     if (!s.used || (nvr && s.peer != nvr)) continue;
-    if (s.push ? !s.pushFailed : now - s.heardAt < PULL_ALIVE_MS) return true;
+    if (s.push ? !s.pushFailed : now - s.pulledAt < PULL_ALIVE_MS) return true;  // other requests from it do not count
   }
   return false;
 }
@@ -118,49 +120,41 @@ void SensorCamServer::setNvrGoneMs(uint32_t ms) {
 }
 #endif
 
+// A pending check is saved with the report that started its alert, not on its own, so an alert costs one write. One
+// cleared since is still in the file; after a power cut it replays, which is a false alert rather than a missed one.
 void SensorCamServer::startAlert(int id, bool delayed, uint32_t now, bool replay) {
-  Health& h = health_[id - 1];
   if (!cfg_.watchNvr) return;  // nothing would check it
-  h.recordPending = true;
-  waitingDirty_ = true;
-  h.alertDelayed = delayed;
-  h.alertSeveral = sensors_.several(id);
-  h.alertReplay = replay;
-  h.alertAt = now;
+  delivery_.started(id, slots_[id - 1].mac, slots_[id - 1].input, delayed, sensors_.several(id), replay, holdFor(id), now);
+  pendingChanged_ = true;
 }
 
-// Each new alert is checked a few seconds after it starts, when its event push has had time to arrive, or when it ends
-// if that is sooner. One the NVR did not get is logged and sent, because nothing else would show it is missing.
+// See CamDeliveryWatch. One the NVR did not get is logged and sent, because nothing else would show it is missing.
 void SensorCamServer::checkNvr(uint32_t now) {
   bool listening = nvrListening(now);
   CamDelayed missed;
-  while (listening && undelivered_.take(missed)) {  // what the NVR missed plays now, as past events
+  while (listening && delivery_.takeMissed(missed)) {  // what the NVR missed plays now, as past events
     int id = findSlot(missed.mac, missed.input);
     if (id) delayed_.add(missed.mac, missed.input, missed.direction, false, now, holdFor(id), missed.several, true);
     waitingDirty_ = true;
   }
   if (listening) {
     nvrSeenAt_ = now;
-    if (nvrGone_) hubEvent(CAM_EVENT_NVR_BACK, "", CAM_AGE_UNKNOWN, "The NVR is listening to " + cfg_.hostName + " again");
+    if (nvrGone_) hubEvent(CAM_EVENT_NVR_BACK, "", CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_NVR_BACK, cfg_.hostName, "", CAM_AGE_UNKNOWN, false));
     nvrGone_ = false;
   } else if (!nvrGone_ && now - nvrSeenAt_ >= nvrGoneMs_) {
     nvrGone_ = true;
-    hubEvent(CAM_EVENT_NVR_GONE, "", CAM_AGE_UNKNOWN, "The NVR is not listening to " + cfg_.hostName + ": alerts are not reaching it");
+    hubEvent(CAM_EVENT_NVR_GONE, "", CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_NVR_GONE, cfg_.hostName, "", CAM_AGE_UNKNOWN, false));
   }
-  for (int id = 1; id <= sensors_.count(); id++) {
-    Health& h = health_[id - 1];
-    if (!slots_[id - 1].used || !h.recordPending || (now - h.alertAt < RECORD_CHECK_MS && sensors_.active(id))) continue;
-    h.recordPending = false;
+  std::vector<CamDeliveryWatch::Missed> notGot;
+  delivery_.check(now, listening, [&](int id) { return slots_[id - 1].used && sensors_.active(id); }, notGot);
+  for (const CamDeliveryWatch::Missed& m : notGot) {
     waitingDirty_ = true;
-    if (listening) continue;
-    if (!h.alertReplay) {  // a replay that fails again waits again, without logging and sending it a second time
-      SensorReport r;
-      r.battery = h.battery;
-      r.active = true;
-      logEvent(id, r, h.alertDelayed, CAM_EVENT_NOT_DELIVERED);
-      notifyHook(id, CAM_EVENT_NOT_DELIVERED, h.alertDelayed);
-    }
-    undelivered_.add(slots_[id - 1].mac, slots_[id - 1].input, 0, false, now, holdFor(id), h.alertSeveral);
+    if (!m.log || !slots_[m.id - 1].used) continue;  // a replay that failed again waits again, without a second entry
+    SensorReport r;
+    r.battery = health_[m.id - 1].battery;
+    r.active = true;
+    logEvent(m.id, r, m.delayed, CAM_EVENT_NOT_DELIVERED);
+    notifyHook(m.id, CAM_EVENT_NOT_DELIVERED, m.delayed);
   }
 }
 
@@ -502,6 +496,7 @@ void SensorCamServer::rescan() {
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {
     if (!slots_[i].used || seen[i]) continue;
     sensors_.clear(i + 1);
+    delivery_.forget(i + 1);
     slots_[i] = Slot();
     health_[i] = Health();
   }

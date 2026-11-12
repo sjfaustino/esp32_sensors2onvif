@@ -27,6 +27,21 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
   }
 }
 
+std::string camEventMessage(uint8_t kind, const std::string& who, const std::string& detail, uint32_t offS, bool delayed) {
+  bool known = offS != CAM_AGE_UNKNOWN;
+  switch (kind) {
+    case CAM_EVENT_NOT_DELIVERED: return who + ": " + camEventName(kind, true, delayed) + ", because the NVR is not listening";
+    case CAM_EVENT_NVR_GONE: return "The NVR is not listening to " + who + ": alerts are not reaching it";
+    case CAM_EVENT_NVR_BACK: return "The NVR is listening to " + who + " again";
+    case CAM_EVENT_HUB_STARTED:
+      return who + " started (" + (detail.empty() ? std::string("unknown") : detail) + ")" + (known ? ", after being off for up to " + camDurationText(offS) : "");
+    case CAM_EVENT_NETWORK_LOST:
+      return who + " was off its Wi-Fi network for up to " + (known ? camDurationText(offS) : std::string("an unknown time")) +
+             "; alerts in that time reach the NVR as past events once it is back";
+    default: return who + ": " + camEventName(kind, true, delayed);
+  }
+}
+
 std::string camDurationText(uint32_t seconds) {
   uint32_t m = (seconds + 59) / 60;
   if (m < 60) return std::to_string(m) + " min";
@@ -166,27 +181,18 @@ static void convertLegacy(const CamStorage& storage) {
 
 void CamEventLog::load() {
   if (!storage_.exists(LOG) && !storage_.exists(LOG_OLD) && storage_.exists(LEGACY_BIN)) convertLegacy(storage_);
-  // One pass over both logs, oldest first: the newest events stay in the ring, and each log's CSV size is measured.
-  const char* const files[2] = {LOG_OLD, LOG};
-  size_t* bytes[2] = {&oldBytes_, &curBytes_};
-  size_t* csv[2] = {&oldCsvBytes_, &curCsvBytes_};
-  std::string buf;
-  for (int f = 0; f < 2; f++) {
-    size_t size = storage_.fileSize(files[f]);
-    *bytes[f] = size - size % CAM_EVENT_RECORD;  // a record cut short at the end is written over by the next one
-    *csv[f] = 0;
-    for (size_t at = 0; at < *bytes[f]; at += buf.size()) {
-      size_t n = *bytes[f] - at < 32 * CAM_EVENT_RECORD ? *bytes[f] - at : 32 * CAM_EVENT_RECORD;
-      buf.resize(n);
-      if (!storage_.readAt(files[f], at, &buf[0], n)) break;
-      for (size_t i = 0; i < n; i += CAM_EVENT_RECORD) {
-        CamEvent e;
-        if (!camEventDecode((const uint8_t*)buf.data() + i, e)) continue;
-        remember(e);
-        *csv[f] += camEventCsvLine(e).size();
-      }
-    }
+  size_t oldSize = storage_.fileSize(LOG_OLD), curSize = storage_.fileSize(LOG);
+  oldBytes_ = oldSize - oldSize % CAM_EVENT_RECORD;  // a record cut short at the end is written over by the next one
+  curBytes_ = curSize - curSize % CAM_EVENT_RECORD;
+  // Only the newest are read, for the Events page. The rest stays on storage until someone downloads it.
+  oldRecords_ = oldBytes_ / CAM_EVENT_RECORD;
+  allRecords_ = oldRecords_ + curBytes_ / CAM_EVENT_RECORD;
+  chunk_.clear();
+  for (size_t i = allRecords_ > (size_t)RECENT ? allRecords_ - RECENT : 0; i < allRecords_; i++) {
+    CamEvent e;
+    if (recordAt(i, e)) remember(e);
   }
+  chunk_.clear();
 }
 
 void CamEventLog::add(const CamEvent& e) {
@@ -201,21 +207,16 @@ bool CamEventLog::save(bool downloading) {
   if (pending_.empty()) return true;
   if (!downloading && curBytes_ + pending_.size() > FILE_MAX && storage_.renameFile(LOG, LOG_OLD)) {
     oldBytes_ = curBytes_;
-    oldCsvBytes_ = curCsvBytes_;
-    curBytes_ = curCsvBytes_ = 0;
+    curBytes_ = 0;
   }
   saveFailed_ = !storage_.writeAt(LOG, curBytes_, pending_.data(), pending_.size());
   if (saveFailed_) return false;
-  for (size_t i = 0; i < pending_.size(); i += CAM_EVENT_RECORD) {
-    CamEvent e;
-    if (camEventDecode((const uint8_t*)pending_.data() + i, e)) curCsvBytes_ += camEventCsvLine(e).size();
-  }
   curBytes_ += pending_.size();
   pending_.clear();
   return true;
 }
 
-size_t CamEventLog::csvBegin() {
+void CamEventLog::csvBegin() {
   legacyOld_ = storage_.fileSize(LEGACY_CSV_OLD);
   legacyCur_ = storage_.fileSize(LEGACY_CSV);
   oldRecords_ = oldBytes_ / CAM_EVENT_RECORD;
@@ -224,7 +225,6 @@ size_t CamEventLog::csvBegin() {
   line_.clear();
   chunk_.clear();
   hasMark_ = false;
-  return sizeof(CSV_HEADER) - 1 + legacyOld_ + legacyCur_ + oldCsvBytes_ + curCsvBytes_;
 }
 
 bool CamEventLog::recordAt(size_t index, CamEvent& e) {
@@ -243,20 +243,21 @@ bool CamEventLog::recordAt(size_t index, CamEvent& e) {
   return camEventDecode((const uint8_t*)chunk_.data() + (index - chunkFirst_) * CAM_EVENT_RECORD, e);
 }
 
-bool CamEventLog::csvRead(size_t offset, char* out, size_t len) {
+size_t CamEventLog::csvRead(size_t offset, char* out, size_t len) {
   const size_t head = sizeof(CSV_HEADER) - 1, generated = head + legacyOld_ + legacyCur_;
   bool marked = false;
-  for (size_t done = 0; done < len;) {
+  size_t done = 0;
+  while (done < len) {
     size_t at = offset + done, n;
     if (at < head) {
       n = len - done < head - at ? len - done : head - at;
       memcpy(out + done, CSV_HEADER + at, n);
     } else if (at < head + legacyOld_) {
       n = len - done < head + legacyOld_ - at ? len - done : head + legacyOld_ - at;
-      if (!storage_.readAt(LEGACY_CSV_OLD, at - head, out + done, n)) return false;
+      if (!storage_.readAt(LEGACY_CSV_OLD, at - head, out + done, n)) return done;
     } else if (at < generated) {
       n = len - done < generated - at ? len - done : generated - at;
-      if (!storage_.readAt(LEGACY_CSV, at - head - legacyOld_, out + done, n)) return false;
+      if (!storage_.readAt(LEGACY_CSV, at - head - legacyOld_, out + done, n)) return done;
     } else {
       size_t g = at - generated;
       // A send cut short asks again from part way through the last piece, so each piece notes where it began.
@@ -273,7 +274,7 @@ bool CamEventLog::csvRead(size_t offset, char* out, size_t len) {
       while (g >= lineStart_ + line_.size()) {
         lineStart_ += line_.size();
         line_.clear();
-        if (lineIndex_ >= allRecords_) return false;  // asked for more than csvBegin said there was
+        if (lineIndex_ >= allRecords_) return done;  // the end of the history
         CamEvent e;
         if (recordAt(lineIndex_++, e)) line_ = camEventCsvLine(e);
       }
@@ -288,5 +289,5 @@ bool CamEventLog::csvRead(size_t offset, char* out, size_t len) {
     }
     done += n;
   }
-  return true;
+  return done;
 }

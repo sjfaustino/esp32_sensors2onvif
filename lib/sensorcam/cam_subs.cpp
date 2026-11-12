@@ -36,6 +36,7 @@ CamSub& SubTable::addPull(uint32_t peer, uint32_t now) {
   s.id = nextId_++;
   s.peer = peer;
   s.heardAt = now;
+  s.pulledAt = now;
   return s;
 }
 

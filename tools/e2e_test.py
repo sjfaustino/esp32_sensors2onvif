@@ -212,6 +212,30 @@ def clear(n):
         control('end-alerts')
 
 
+class PullingNvr:
+    """An NVR that pulls events: subscribes, then asks for events every few seconds, as a real one does. The hub counts
+    it as listening only while it keeps asking, so stop() is how a test takes it away."""
+
+    def __init__(self):
+        reply = soap('CreatePullPointSubscription', '/onvif/events')[1]
+        self.address = re.search(r'<wsa:Address>http://[^/]+([^<]+)</wsa:Address>', reply).group(1)
+        self.stopping = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def run(self):
+        while not self.stopping.is_set():
+            try:
+                soap('PullMessages', self.address)
+            except OSError:
+                pass  # the hub restarting under a test
+            self.stopping.wait(5)
+
+    def stop(self):
+        self.stopping.set()
+        self.thread.join()
+
+
 class FakeNvrListener:
     """Records each Notify and, like the real NVR, closes without an HTTP reply."""
 
@@ -547,8 +571,7 @@ def main():
             if proc:
                 check('server starts', HUB.stdout.readline().strip() == 'ready')
             # An NVR is listening before any alert, as in use. Without one, the hub would keep every alert for a replay.
-            # This one pulls events, and counts as listening while this test keeps talking to the hub.
-            soap('CreatePullPointSubscription', '/onvif/events')
+            puller = PullingNvr()
             codes = [api('GET', f'/api/file?path={p}')[0] for p in ('clear.h264', 'text.json')]
             if any(c not in (200, 404) for c in codes):
                 sys.exit(f'stopping: cannot tell whether the board has its own files (HTTP {codes})')
@@ -1154,6 +1177,8 @@ def main():
                 proc.wait()
                 proc = start_hub(storage, PASSWORD, '1500')
                 HUB.stdout.readline()
+                puller.stop()  # its subscription was in the hub that stopped
+                puller = PullingNvr()
                 check('folders are still sensors after a restart', status()['sensors'] == count - 4, status())
                 check('stored pictures survive a restart', api('GET', f'/api/file?path={name(4)}/active.h264')[1] == files['active.h264'])
                 check('a past event waiting at the restart still plays', wait_until(lambda: name(5) in status()['active']), status())

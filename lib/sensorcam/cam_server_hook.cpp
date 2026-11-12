@@ -14,8 +14,7 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   if (w.url.empty() || !wanted) return;
   std::string event = camEventName(kind, true, delayed);
   std::string sensor = slotName(id), name = slots_[id - 1].name;
-  std::string message = (name.empty() ? sensor : name + " (" + sensor + ")") + ": " + event;
-  if (kind == CAM_EVENT_NOT_DELIVERED) message += ", because the NVR is not listening";
+  std::string message = camEventMessage(kind, name.empty() ? sensor : name + " (" + sensor + ")", "", CAM_AGE_UNKNOWN, delayed);
   uint8_t battery = health_[id - 1].battery;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;

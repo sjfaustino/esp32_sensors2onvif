@@ -547,10 +547,10 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
     log_.save(downloadingHistory());
-    size_t total = log_.csvBegin();  // made from the log as it is sent, piece by piece
-    c.out = httpHead(200, "text/csv; charset=utf-8", total, "Content-Disposition: attachment; filename=\"hub-events.csv\"\r\n");
-    c.pull = &csvRead_;
-    c.staticLen = total;
+    log_.csvBegin();  // made from the log as it is sent, piece by piece, so its size is not known in advance
+    c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/csv; charset=utf-8\r\nContent-Disposition: attachment; filename=\"hub-events.csv\"\r\n"
+            "Connection: close\r\n\r\n";
+    c.stream = &csvRead_;
   } else {
     return false;
   }
