@@ -109,6 +109,7 @@ struct CamDelayed {
   uint8_t input = 0;
   uint8_t direction = 0;
   bool several = false;     // other sensors' alerts have joined it, because the queue was full
+  bool replay = false;      // only alerts the NVR already missed once, which were logged and sent then
   bool timeKnown = false;   // the report gave its age, so when it happened is known
   uint32_t happenedAt = 0;  // on the millis() clock; the latest of the alerts merged into this one
 };
@@ -119,7 +120,8 @@ class CamDelayedQueue {
   // A late alert from one sensor within holdMs of a waiting one from that sensor joins it, as it would have live.
   // When the queue is full it joins a waiting one from that sensor, or else the newest waiting record, which then
   // stands for several sensors. So every alert gets a record, and the count never passes SIZE.
-  void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several = false);
+  void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several = false,
+           bool replay = false);
   bool take(CamDelayed& out);  // the oldest; false when none is waiting
   int count() const { return count_; }
   const CamDelayed& at(int n) const { return items_[(head_ + n) % SIZE]; }  // n from 0, the oldest, to count() - 1

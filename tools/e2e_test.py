@@ -293,6 +293,7 @@ def file_manager_tests(files, hub_files_free):
         # Another site pointing its own name at the hub is refused; the hub's own names are not.
         check('a page under another site\'s name is refused', raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)
         check('a look-alike name is refused', raw_get('/api/info', host='hub.local.attacker.example', password=PASSWORD) == 421)
+        check('a sensor report under any name is never refused for its name', raw_get('/sensor?mac=02-00-00-00-00-77', host='sensor.made.up.name') == 404)
         for own in ('127.0.0.1:18080', 'hub.local', 'HUB.local:18080', 'hub.lan', 'hub'):
             check(f'the hub\'s own name {own} is served', raw_get('/api/info', host=own, password=PASSWORD) == 200)
         # Ten wrong passwords from one address shut it out, even with the right one, and only that address.
@@ -869,6 +870,14 @@ def main():
                 back = poll(event_list, lambda l: l and any(e['kind'] == 7 for e in l[:2]))
                 check('the NVR listening again is logged', back and any(e['kind'] == 7 and e['sensor'] == 'hub' for e in back[:2]), back[:2])
                 check('the alert the NVR missed plays once it listens again, as a past event', wait_until(lambda: name(1) in status()['active'], timeout=15), status())
+                # The NVR goes again during the replay: the replay waits again, without a second entry or message.
+                missed_before = sum(e['kind'] == 5 for e in event_list())
+                api('POST', '/api/nvr', 'ip=192.0.2.8')
+                control('end-alerts')
+                time.sleep(0.5)  # time for the check to run and wrongly log it again
+                check('a replay the NVR misses again is not logged a second time', sum(e['kind'] == 5 for e in event_list()) == missed_before, event_list()[:3])
+                api('POST', '/api/nvr', 'ip=127.0.0.1')
+                check('and it plays again when the NVR is back', wait_until(lambda: name(1) in status()['active'], timeout=15), status())
                 control('end-alerts')
                 flagged = sum(e['kind'] == 5 for e in event_list())
                 get(f'/sensor?{sid(1)}')

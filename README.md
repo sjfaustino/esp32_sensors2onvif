@@ -60,7 +60,8 @@ Notifications sends it. With the NVR's address set on the NVR page only that NVR
 and the page warns about that at the top. When the NVR has not been listening for 3 minutes,
 the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back. An alert the NVR did not get is
 kept, and once the NVR listens again it plays as a past event, so the NVR still records that something happened, with the
-past-event picture. A failed event push is tried again every 30 seconds.
+past-event picture. If the NVR misses the replay too, it waits again, without being logged or sent a second time. A failed
+event push is tried again every 30 seconds.
 
 When the hub rejoins its Wi-Fi network after losing it, without restarting, it logs **network lost** with how long it was
 off, because someone may be keeping it off on purpose.
@@ -113,7 +114,8 @@ until the right password is given, so slow guessing gets no further than quick g
 without a password, as a browser or NVR first does, does not count. The web port answers only to the hub's own IP
 address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or `.internal`, the setup address,
 and the **Other names** on the HTTP page, such as the name your router gives the hub. So a website cannot point its own
-name at the hub and use your browser to reach it. A name it refuses gets a reply saying where to add it.
+name at the hub and use your browser to reach it. A name it refuses gets a reply saying where to add it. Sensor reports
+are never refused for the name they use, because their token guards them and an alert must not be lost.
 The ONVIF snapshot address carries a token made from the password and a secret that never leaves the hub, so the address
 cannot be used to guess the password. The picture encoder the page downloads is checked against the published files
 before it runs, because it runs with your login.

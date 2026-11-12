@@ -8,6 +8,8 @@
 #include "cam_sensors.h"
 #include "cam_storage.h"
 
+const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means the clock has not been set
+
 // What an event is. The numbers are stored in the log and sent as "kind", so they never change.
 enum CamEventKind : uint8_t {
   CAM_EVENT_REPORT = 0,  // an alert or a clear report

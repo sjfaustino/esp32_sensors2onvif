@@ -497,7 +497,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   }
   // A page from another site can point its own name at the hub (DNS rebinding) and then use it as if it were that site.
   // Its requests carry that name, so only the hub's own names and addresses are served.
-  if (c.web && !knownHost(headerValue(headers, "host"))) return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network Manager > HTTP > Other names");
+  // Sensor reports are left out: their token already guards them, and a sensor set up with any name for the hub must
+  // never have an alert refused.
+  bool sensorReport = isGet && target.compare(0, 8, "/sensor?") == 0;
+  if (c.web && !sensorReport && !knownHost(headerValue(headers, "host"))) return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network Manager > HTTP > Other names");
   if (isApi && !isGet) {  // a browser names the site a request came from, so another site cannot use this browser's login
     std::string origin = headerValue(headers, "origin");
     if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");

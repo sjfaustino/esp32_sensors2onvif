@@ -15,7 +15,6 @@
 #include "cam_subs.h"
 
 const int CAM_MAX_SENSORS = 32;
-const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means the clock has not been set
 
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
@@ -169,6 +168,8 @@ class SensorCamServer {
     const char* refusal = "";
     bool recordPending = false;  // an alert started, and whether the NVR was listening is still to be checked
     bool alertDelayed = false;
+    bool alertSeveral = false;  // noted at the start, because the check may come after the alert has ended
+    bool alertReplay = false;   // a replay of one the NVR missed, already logged and sent once
     uint32_t alertAt = 0;
   };
   struct Slot {
@@ -284,7 +285,7 @@ class SensorCamServer {
   size_t historyRoom() const;                  // the storage the event history may still need
   void checkNvr(uint32_t now);
   void noteHubStart(uint32_t now);
-  void startAlert(int id, bool delayed, uint32_t now);  // an alert that is a new NVR record, to be checked as delivered
+  void startAlert(int id, bool delayed, uint32_t now, bool replay = false);  // an alert that is a new NVR record, to be checked as delivered
   void healthAlert(int id, CamEventKind kind, uint32_t now);
   bool persist();
   bool downloadingHistory() const;

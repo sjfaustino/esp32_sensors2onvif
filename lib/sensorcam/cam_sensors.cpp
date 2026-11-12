@@ -179,7 +179,7 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
   return false;
 }
 
-void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several) {
+void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several, bool replay) {
   CamDelayed* same = nullptr;
   for (int n = 0; n < count_; n++) {
     CamDelayed& d = slot(n);
@@ -198,13 +198,16 @@ void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction
     same->input = input;
     same->timeKnown = timeKnown;
     same->happenedAt = happenedAt;
+    same->replay = true;  // until an alert not yet tried joins it
   }
   if (!same) {  // full of other sensors' alerts
     slot(count_ - 1).several = true;
+    slot(count_ - 1).replay = slot(count_ - 1).replay && replay;
     return;
   }
   same->direction = direction;
   same->several = same->several || several;
+  same->replay = same->replay && replay;
   if (timeKnown && same->timeKnown && (int32_t)(happenedAt - same->happenedAt) > 0) same->happenedAt = happenedAt;
 }
 

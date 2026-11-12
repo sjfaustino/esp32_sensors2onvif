@@ -460,7 +460,7 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
   if (xQueueSend(sensorQueue, &m, 0) != pdTRUE) espNowDropped = espNowDropped + 1;
 }
 
-// ESP-NOW sends only to registered peers, and holds at most 20, so the one registered longest ago makes room.
+// ESP-NOW sends only to registered peers, and holds at most 20, so when it is full the first in its list makes room.
 static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len) {
   if (!esp_now_is_peer_exist(mac)) {
     esp_now_peer_info_t peer = {};

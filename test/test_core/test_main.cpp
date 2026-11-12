@@ -782,8 +782,22 @@ static void only_the_hubs_own_names_are_served() {
   TEST_ASSERT_FALSE(camHostListValid("x/y"));
 }
 
+static void a_replay_stays_one_only_while_nothing_new_joins_it() {
+  CamDelayedQueue q;
+  uint8_t a[6] = {2, 0, 0, 0, 0, 1}, b[6] = {2, 0, 0, 0, 0, 2};
+  q.add(a, 1, 0, true, 100000, 8000, false, true);  // a replay of one the NVR missed
+  q.add(b, 1, 0, true, 100000, 8000, false, true);
+  q.add(b, 1, 0, true, 103000, 8000);  // a new alert from that sensor joins the second
+  CamDelayed d;
+  TEST_ASSERT_TRUE(q.take(d));
+  TEST_ASSERT_TRUE(d.replay);
+  TEST_ASSERT_TRUE(q.take(d));
+  TEST_ASSERT_FALSE(d.replay);  // so it is logged if the NVR misses it
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(a_replay_stays_one_only_while_nothing_new_joins_it);
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);
   RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);

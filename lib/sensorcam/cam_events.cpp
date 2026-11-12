@@ -110,7 +110,7 @@ static std::string csvText(const std::string& s) {
 
 std::string camEventCsvLine(const CamEvent& e) {
   static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
-  bool clockOk = e.received >= 1577836800, ageKnown = e.age != CAM_AGE_UNKNOWN;
+  bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
   std::string what = camEventName(e.kind, e.active, e.delayed);
   if (e.offS != CAM_AGE_UNKNOWN && (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST)) what += " for up to " + camDurationText(e.offS);
   int nearest = -1;
@@ -158,9 +158,10 @@ static void convertLegacy(const CamStorage& storage) {
       camEventEncode(e, r);
       records.append((const char*)r, sizeof(r));
     }
-    if (ok && !storage.writeFile(LOG, records.data(), records.size())) return;  // tried again at the next start
+    // Removed only once converted. An unreadable file is left alone: it is the user's data, and is tried again at
+    // the next start, until the log exists.
+    if (ok && storage.writeFile(LOG, records.data(), records.size())) storage.removeTree(LEGACY_BIN);
   }
-  storage.removeTree(LEGACY_BIN);
 }
 
 void CamEventLog::load() {
