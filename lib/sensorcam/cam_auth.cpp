@@ -134,12 +134,20 @@ std::string camBase64Decode(const std::string& text) {
   return out;
 }
 
+// Takes the same time however much of the two matches, so the time taken says nothing about a secret.
+bool camSameText(const std::string& a, const std::string& b) {
+  uint8_t differ = a.size() != b.size();
+  for (size_t i = 0; i < a.size(); i++) differ |= (uint8_t)a[i] ^ (uint8_t)(i < b.size() ? b[i] : 0);
+  return !differ;
+}
+
 bool camWsseValid(const std::string& body, const std::string& user, const std::string& password) {
   if (xmlFirstText(body, "Username") != user) return false;
   std::string sent = xmlFirstText(body, "Password");
   if (sent.empty()) return false;
   std::string digest = camSha1(camBase64Decode(xmlFirstText(body, "Nonce")) + xmlFirstText(body, "Created") + password);
-  return sent == base64((const uint8_t*)digest.data(), digest.size()) || sent == password;
+  bool asDigest = camSameText(sent, base64((const uint8_t*)digest.data(), digest.size())), asText = camSameText(sent, password);
+  return asDigest || asText;
 }
 
 std::string camAuthParam(const std::string& header, const char* name) {
@@ -168,10 +176,12 @@ bool camDigestValid(const std::string& auth, const std::string& method, const st
 }
 
 bool camBasicValid(const std::string& auth, const std::string& user, const std::string& password) {
-  return auth.compare(0, 6, "Basic ") == 0 && camBase64Decode(auth.substr(6)) == user + ":" + password;
+  return auth.compare(0, 6, "Basic ") == 0 && camSameText(camBase64Decode(auth.substr(6)), user + ":" + password);
 }
 
-std::string camSnapshotToken(const std::string& password) {
-  std::string digest = camSha1("snapshot:" + password);
+// Keyed with a secret that stays on the hub, so a snapshot link seen in an NVR's settings cannot be used to guess the
+// password offline. A new password, or a new secret, gives a new link.
+std::string camSnapshotToken(const std::string& secret, const std::string& password) {
+  std::string digest = camHmacSha1(secret, "snapshot:" + password);
   return camHex((const uint8_t*)digest.data(), 8);
 }

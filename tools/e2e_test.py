@@ -131,6 +131,21 @@ def api(method, path, body=None, auth=True, origin=None):
     return r.status, data
 
 
+def raw_get(path, host=None, source=None, password=None):
+    """A GET with a chosen Host header, from a chosen local address, with a chosen password. Returns the status."""
+    c = http.client.HTTPConnection(HOST, WEB, timeout=5, source_address=(source, 0) if source else None)
+    c.putrequest('GET', path, skip_host=host is not None)
+    if host is not None:
+        c.putheader('Host', host)
+    if password is not None:
+        c.putheader('Authorization', 'Basic ' + base64.b64encode(f'admin:{password}'.encode()).decode())
+    c.endheaders()
+    r = c.getresponse()
+    r.read()
+    c.close()
+    return r.status
+
+
 def status():
     return json.loads(get('/status')[1])
 
@@ -274,6 +289,17 @@ def file_manager_tests(files, hub_files_free):
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page is sent gzipped', last_encoding == 'gzip', last_encoding)
+    if not DEVICE:
+        # Another site pointing its own name at the hub is refused; the hub's own names are not.
+        check('a page under another site\'s name is refused', raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)
+        check('a look-alike name is refused', raw_get('/api/info', host='hub.local.attacker.example', password=PASSWORD) == 421)
+        for own in ('127.0.0.1:18080', 'hub.local', 'HUB.local:18080', 'hub.lan', 'hub'):
+            check(f'the hub\'s own name {own} is served', raw_get('/api/info', host=own, password=PASSWORD) == 200)
+        # Ten wrong passwords from one address shut it out, even with the right one, and only that address.
+        for _ in range(10):
+            raw_get('/api/info', source='127.0.0.2', password='wrong')
+        check('ten wrong passwords shut that address out', raw_get('/api/info', source='127.0.0.2', password=PASSWORD) == 401)
+        check('other addresses are not shut out', raw_get('/api/info', password=PASSWORD) == 200)
     check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES = ' in page and b'src="index.js"' not in page)
     check('page offers a picture preview', b'title: "Preview"' in page)
     check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
@@ -421,6 +447,11 @@ def file_manager_tests(files, hub_files_free):
     good = files['approaching.h264']
     path = f'{name(4)}/approaching.h264'
     check('valid picture is accepted', api('PUT', f'/api/file?path={path}', good)[0] == 200)
+    if not DEVICE:
+        control('disk-nearly-full')
+        check('a picture that would take the event history\'s room is refused', api('PUT', f'/api/file?path={path}', good)[0] == 507)
+        check('the Sensors page says how much is kept for the history', json.loads(api('GET', '/api/tree')[1])['kept'] > 512 * 1024 - 1)
+        control('disk-normal')
     code, back = api('GET', f'/api/file?path={path}')
     check('picture downloads unchanged', code == 200 and back == good, code)
 
@@ -444,7 +475,9 @@ def file_manager_tests(files, hub_files_free):
 
     def snapshot(port):
         c = http.client.HTTPConnection(HOST, port, timeout=5)
-        c.request('GET', '/onvif/snapshot' + (f"?token={hashlib.sha1(f'snapshot:{BOARD_LOGIN}'.encode()).digest()[:8].hex()}" if BOARD_LOGIN else ''))
+        # With a login, the address carries a token only the hub can make, so it comes from the hub, as an NVR's does.
+        given = re.search(r'<tt:Uri>http://[^/]+([^<]+)</tt:Uri>', soap('GetSnapshotUri')[1]).group(1) if BOARD_LOGIN else '/onvif/snapshot'
+        c.request('GET', given)
         r = c.getresponse()
         data = r.read()
         c.close()
@@ -983,6 +1016,10 @@ def main():
             check('a past event with no pictures shows the built-in past-event picture', colour == 'amber', colour)
             clear(3)
             check('a bad past-event time is refused', api('POST', f'/api/node-settings?path={node3}', 'late=0')[0] == 400)
+            check('a node can have its own silent time', api('POST', f'/api/node-settings?path={node3}', 'late=300&silent=600')[0] == 200
+                  and api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\nsilent=600\n'))
+            check('the Sensors page data shows it', [s for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == node3][0]['silent'] == 600)
+            check('a silent time under a minute is refused', api('POST', f'/api/node-settings?path={node3}', 'silent=30')[0] == 400)
             check('settings for a node that does not exist are refused', api('POST', '/api/node-settings?path=02-00-00-00-00-77', 'late=60')[0] == 404)
             check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
             get(f'/sensor?{sid(3)}&age=100')

@@ -10,6 +10,7 @@ struct HubSettings {
   uint16_t onvifPort = 0, webPort = 0, rtspPort = 0;
   String hubName, webPassword, sensorToken;
   String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
+  String snapshotKey;  // keys the snapshot address's token; never shown, and not in backups
   bool espNowUnsigned = false;
   CamWebhook webhook;
   bool healthAlarm = false;

@@ -60,12 +60,15 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  /
 std::string camSensorSettingsText(const CamSensorSettings& s);
 bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, an unknown clock, is never quiet
 
-// Per-node settings, kept as settings.txt in the node's folder: a "late=SECONDS" line. An alert the node reports as
-// having happened longer ago than this is a past event: it gets the past-event picture and its own NVR record.
+// Per-node settings, kept as settings.txt in the node's folder, as "late=SECONDS" and "silent=SECONDS" lines.
+// An alert the node reports as having happened longer ago than late is a past event: it gets the past-event picture and
+// its own NVR record. A node not heard from for silent is reported silent, which may mean it was disabled.
 struct CamNodeSettings {
-  uint32_t lateS = 0;  // 0 uses the hub's default
+  uint32_t lateS = 0;    // 0 uses the hub's default
+  uint32_t silentS = 0;  // 0 uses the hub's default, 3 hours
 };
 const uint32_t CAM_MAX_LATE_S = 86400;
+const uint32_t CAM_MIN_SILENT_S = 60, CAM_MAX_SILENT_S = 7 * 86400;
 bool camParseNodeSettings(const std::string& text, CamNodeSettings& out);  // false for anything the page would refuse
 std::string camNodeSettingsText(const CamNodeSettings& s);
 

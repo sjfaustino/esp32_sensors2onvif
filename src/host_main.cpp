@@ -22,6 +22,7 @@ static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t 
 }
 
 static bool setupOn = false;
+static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
 static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
 
 // The test's controls, which only this build has: one command per line on standard input, each answered with
@@ -36,6 +37,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
   } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or "done last-sent" when nothing was sent
     reply = lastSent;
     lastSent.clear();
+  } else if (command == "disk-nearly-full" || command == "disk-normal") {  // the storage left over beside what is stored
+    diskTotal = command == "disk-normal" ? 10u * 1024 * 1024 : 300u * 1024;
   } else if (command == "nvr-watch-on" || command == "nvr-watch-off") {  // off by default, so its events stay out of other checks
     hub.setNvrWatch(command == "nvr-watch-on", 3000);
   } else if (command == "auth-on" || command == "auth-off") {
@@ -137,6 +140,11 @@ int main(int argc, char** argv) {
     }
   };
   cfg.startReason = "PC build started";
+  cfg.snapshotSecret = "test-snapshot-secret";
+  cfg.fsUsage = [](uint32_t& used, uint32_t& total) {
+    used = 0;
+    total = diskTotal;
+  };
   cfg.watchNvr = false;  // turned on by its own checks, so its events stay out of the others
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };

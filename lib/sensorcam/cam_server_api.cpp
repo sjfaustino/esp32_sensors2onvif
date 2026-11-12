@@ -12,6 +12,21 @@
 #include "cam_web.h"
 #include "cam_server_internal.h"
 
+// Pictures may use the storage only up to what the event history still needs: its full size, both CSV files, and room
+// to rewrite the saved files. Without that room no report could be saved, and so none could be confirmed.
+size_t SensorCamServer::historyRoom() const {
+  size_t csv = storage_.fileSize(EVENTS_CSV) + storage_.fileSize(EVENTS_CSV_OLD);
+  return HISTORY_ROOM + (csv < 2 * EVENTS_CSV_MAX ? 2 * EVENTS_CSV_MAX - csv : 0);
+}
+
+bool SensorCamServer::roomBesideHistory(size_t bytes) const {
+  if (!cfg_.fsUsage) return true;
+  uint32_t used = 0, total = 0;
+  cfg_.fsUsage(used, total);
+  size_t needed = (bytes + 4095) / 4096 * 4096 + 2 * 4096 + historyRoom();  // whole blocks, the new copy beside the old, and its folder
+  return total > used && total - used >= needed;
+}
+
 static bool hasFile(const std::vector<CamFsEntry>& items, const std::string& name) {
   for (const CamFsEntry& e : items)
     if (!e.dir && e.name == name) return true;
@@ -42,14 +57,14 @@ std::string SensorCamServer::treeJson() {
     clearSize = s.size;
   }
   CamJson j(out);
-  j.object().num("used", used).num("total", total).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
+  j.object().num("used", used).num("total", total).num("kept", historyRoom()).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
     if (!makeRoom(80)) return std::string();
     CamNodeSettings node;
     std::string nodeText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
-    j.object().str("mac", s.name).num("late", node.lateS != 0, node.lateS).array("sensors");
+    j.object().str("mac", s.name).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS).array("sensors");
     uint8_t mac[6];
     camParseMac(s.name, mac);
     std::vector<CamFsEntry> inputs;
@@ -194,7 +209,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
   bool inSetup = cfg_.setupActive();
   bool setupRoute = route == "/setup" || route == "/api/wifi" || route == "/api/wifi/scan" || (inSetup && route == "/");
-  if (!(inSetup && setupRoute) && !authorized(headers)) {
+  if (!(inSetup && setupRoute) && !authorized(c, headers)) {
     c.out = UNAUTHORIZED;
     return;
   }
@@ -409,7 +424,10 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       c.out = jsonFail(400, "check the IP address");
     } else {
       bool ok = cfg_.nvrSave(ip);
-      if (ok) cfg_.nvrIp = ip;
+      if (ok) {
+        cfg_.nvrIp = ip;
+        subs_.protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
+      }
       c.out = saved(ok, "could not save the NVR address");
     }
   } else if (r.is("GET", "/api/network")) {
@@ -483,12 +501,13 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the settings; storage may be full");
     }
   } else if (r.is("POST", "/api/node-settings")) {
-    std::string path = queryParam(r.target, "path"), late = queryParam(r.form(), "late");
+    std::string path = queryParam(r.target, "path"), form = r.form(), late = queryParam(form, "late"), silent = queryParam(form, "silent");
     CamNodeSettings s;
+    std::string text = (late.empty() ? "" : "late=" + late + "\n") + (silent.empty() ? "" : "silent=" + silent + "\n");
     if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path)) {
       c.out = jsonFail(404, "no such node");
-    } else if (!camParseNodeSettings(late.empty() ? "" : "late=" + late + "\n", s)) {
-      c.out = jsonFail(400, "the time must be 1 to 86400 seconds");
+    } else if (!camParseNodeSettings(text, s)) {
+      c.out = jsonFail(400, "the past-event time must be 1 to 86400 seconds, and the silent time 60 to 604800");
     } else {
       std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
@@ -553,6 +572,10 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
   }
   if (method != "GET" && method != "DELETE" && !sensorFits(path)) {  // it would be stored and then never do anything
     c.out = jsonFail(409, "the hub already has its limit of " + std::to_string(CAM_MAX_SENSORS) + " sensors; delete one first");
+    return;
+  }
+  if (fileRoute && method == "PUT" && (isFile || isPreview) && !roomBesideHistory(bodyLen)) {
+    c.out = jsonFail(507, "storage is nearly full, and the rest is kept for the event history; delete some pictures first");
     return;
   }
   if (mkdirRoute && method == "POST" && !isFile && !isText && !isPreview) {

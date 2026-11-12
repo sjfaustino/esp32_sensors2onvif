@@ -44,7 +44,13 @@ UTC. A sensor can be given a name on the Sensors page, which then appears on the
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
-silence and low battery.
+silence and low battery. A sensor that is unplugged, smashed or taken is only noticed once it has been silent that long,
+so set **Report this node silent after** under its Node settings to a little over the time between its regular reports,
+from 1 minute to 7 days, and have the node report that often.
+
+The hub cannot report its own death: while it has no power or no Wi-Fi, nothing reaches the NVR, and the hub logs how long
+it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
+hub from a small UPS.
 
 The hub also checks that each alert reached the NVR. Five seconds after an alert starts, or when it ends if that is sooner,
 the NVR must hold an event subscription and the last event pushed to it must have arrived, or, for an NVR that pulls
@@ -90,6 +96,20 @@ the web page then says so at the top.
 
 HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
 ESP-NOW reports are signed with a separate key instead; see below.
+
+Ten wrong passwords in a row from one address, on the web page, ONVIF or RTSP, shut that address out for a minute, even
+with the right password. Asking without a password, as a browser or NVR first does, does not count. The web port answers
+only to the hub's own IP address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or
+`.internal`, and the setup address, so a website cannot point its own name at the hub and use your browser to reach it.
+The ONVIF snapshot address carries a token made from the password and a secret that never leaves the hub, so the address
+cannot be used to guess the password. The picture encoder the page downloads is checked against the published files
+before it runs, because it runs with your login.
+
+Passwords travel over the network unencrypted, as HTTP, ONVIF and RTSP between local devices usually do, and are kept on
+the hub's flash unencrypted, so someone who takes the hub can read the Wi-Fi password, the hub password and the ESP-NOW key.
+Keep the hub out of reach. ONVIF logins are not checked for their time or reused nonces, because NVRs differ in how they
+send them and refusing your NVR's login would stop recording; every ONVIF request only reads, so a replayed one can at most
+subscribe, and a subscription from the NVR's address is never pushed out by other clients.
 
 ## System Manager
 
@@ -150,7 +170,7 @@ Pictures are stored on LittleFS, and the folders are also the list of known sens
 ```
 clear.h264                         optional replacement for the built-in "all clear"
 AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
-AA-BB-CC-DD-EE-01/settings.txt     optional past-event time for the node, set on the Sensors page
+AA-BB-CC-DD-EE-01/settings.txt     optional past-event and silent times for the node, set on the Sensors page
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
@@ -163,7 +183,9 @@ finally to the built-in red "ALERT" or amber "PAST EVENT, CHECK LOGS", so a sens
 records. A past event never falls back to a live picture.
 
 The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
-without a reboot. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
+without a reboot. Pictures cannot fill the storage: the room the event history may still need, up to about 600 KB, is
+kept free, and the Sensors page shows how much that is. Without it the hub could not save reports, and so could not
+confirm them to the sensors. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 
 To change the words, open **Change the text** under a sensor, or beside `clear.h264`, and save. Your browser makes the

@@ -241,7 +241,10 @@ static void node_settings_round_trip_and_refuse_bad_values() {
   TEST_ASSERT_TRUE(camParseNodeSettings("", s));
   TEST_ASSERT_EQUAL(0, s.lateS);
   TEST_ASSERT_EQUAL_STRING("", camNodeSettingsText(s).c_str());
-  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n"};
+  TEST_ASSERT_TRUE(camParseNodeSettings("silent=600\nlate=45\n", s));
+  TEST_ASSERT_EQUAL(600, s.silentS);
+  TEST_ASSERT_EQUAL_STRING("late=45\nsilent=600\n", camNodeSettingsText(s).c_str());
+  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n", "silent=59\n", "silent=604801\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseNodeSettings(text, s), text);
 }
 
@@ -379,6 +382,15 @@ static void full_table_replaces_oldest() {
   TEST_ASSERT_EQUAL(SubTable::SIZE, t.count());
   TEST_ASSERT_NULL(t.find(oldest));
   TEST_ASSERT_NOT_NULL(t.find(fresh));
+}
+
+static void other_clients_cannot_push_out_the_nvr() {
+  SubTable t;
+  t.protect(9);
+  uint32_t nvr = t.addPush("http://9/a", 9, 0).id;  // the oldest of all
+  for (int i = 0; i < 50; i++) t.addPull(5, 100 + i);  // another client subscribing again and again
+  TEST_ASSERT_NOT_NULL(t.find(nvr));
+  TEST_ASSERT_EQUAL(SubTable::SIZE, t.count());
 }
 
 // ---- parsing ----
@@ -587,8 +599,19 @@ static void durations_read_as_people_say_them() {
   TEST_ASSERT_EQUAL_STRING("3 days 4 h", camDurationText(3 * 86400 + 4 * 3600).c_str());
 }
 
+static void xml_text_is_unescaped_and_secrets_compared_whole() {
+  TEST_ASSERT_EQUAL_STRING("p&ss<w>\"'A", xmlFirstText("<a:Password> p&amp;ss&lt;w&gt;&quot;&apos;&#65;</a:Password>", "Password").c_str());
+  TEST_ASSERT_EQUAL_STRING("a&b;c&zz;", xmlFirstText("<x>a&b;c&zz;</x>", "x").c_str());  // not entities, so kept
+  TEST_ASSERT_TRUE(camSameText("secret", "secret"));
+  TEST_ASSERT_FALSE(camSameText("secret", "secreT"));
+  TEST_ASSERT_FALSE(camSameText("secret", "secrets"));
+  TEST_ASSERT_FALSE(camSameText("", "x"));
+  TEST_ASSERT_FALSE(camSnapshotToken("one", "pw") == camSnapshotToken("two", "pw"));  // depends on the hub's secret
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
   RUN_TEST(confirmation_is_signed_for_that_sensor);
@@ -613,6 +636,7 @@ int main() {
   RUN_TEST(same_consumer_is_one_subscription);
   RUN_TEST(subscription_lives_while_peer_talks);
   RUN_TEST(full_table_replaces_oldest);
+  RUN_TEST(other_clients_cannot_push_out_the_nvr);
   RUN_TEST(parses_action_after_security_header);
   RUN_TEST(parses_action_without_prefix);
   RUN_TEST(parses_consumer_address);

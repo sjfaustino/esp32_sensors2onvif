@@ -33,6 +33,7 @@ class SubTable {
   void expire(uint32_t now);
   void markAllPending();
   int count() const;
+  void protect(uint32_t peer) { keep_ = peer; }  // the NVR's address, whose subscriptions are pushed out last; 0 for none
   CamSub& at(int i) { return subs_[i]; }
   const CamSub& at(int i) const { return subs_[i]; }
 
@@ -40,4 +41,5 @@ class SubTable {
   CamSub& slot(uint32_t now);
   CamSub subs_[SIZE];
   uint32_t nextId_ = 1;
+  uint32_t keep_ = 0;
 };

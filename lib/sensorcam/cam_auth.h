@@ -15,5 +15,9 @@ std::string camAuthParam(const std::string& header, const char* name);
 bool camDigestValid(const std::string& authorization, const std::string& method, const std::string& user, const std::string& password, const std::string& realm, const std::string& nonce);
 bool camBasicValid(const std::string& authorization, const std::string& user, const std::string& password);
 
-// A value derived from the password, for a snapshot address that a client can fetch without logging in again.
-std::string camSnapshotToken(const std::string& password);
+// A value derived from the password and a secret kept on the hub, for a snapshot address that a client can fetch
+// without logging in again.
+std::string camSnapshotToken(const std::string& secret, const std::string& password);
+
+// Whether two texts are equal, in a time that does not depend on where they differ.
+bool camSameText(const std::string& a, const std::string& b);

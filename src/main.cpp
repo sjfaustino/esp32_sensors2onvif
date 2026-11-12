@@ -324,6 +324,7 @@ static CamConfig makeConfig() {
   c.espNowKey = settings.espNowKey.c_str();
   c.espNowSend = sendToNode;
   c.startReason = lastRestartText();
+  c.snapshotSecret = settings.snapshotKey.c_str();
   c.espNowUnsigned = settings.espNowUnsigned;
   c.espNowSave = storeEspNowUnsigned;
   c.webhook = settings.webhook;
@@ -445,6 +446,7 @@ struct SensorMessage {
   uint8_t data[32];  // the longest message is 13 + 3 * 3 + 8 = 30 bytes
 };
 static QueueHandle_t sensorQueue;
+static volatile uint32_t espNowDropped = 0;  // arrived while the queue was full; their senders resend, since nothing confirmed them
 
 // Runs on the Wi-Fi task, so it only queues. loop() owns all sensor state.
 static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
@@ -454,7 +456,7 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
   m.len = (uint8_t)len;
   memcpy(m.mac, info->src_addr, 6);
   m.rssi = info->rx_ctrl ? info->rx_ctrl->rssi : 0;
-  xQueueSend(sensorQueue, &m, 0);
+  if (xQueueSend(sensorQueue, &m, 0) != pdTRUE) espNowDropped = espNowDropped + 1;
 }
 
 // ESP-NOW sends only to registered peers, and holds at most 20, so the one registered longest ago makes room.
@@ -517,6 +519,7 @@ static void deviceRows(CamJson& j) {
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
   add("Largest free block", String(largestBlock() / 1024) + " KB");
+  add("ESP-NOW messages dropped while busy", String((unsigned)espNowDropped) + (espNowDropped ? ", which their sensors resend" : ""));
   nvs_stats_t nvs;
   if (nvs_get_stats(nullptr, &nvs) == ESP_OK) add("Settings storage", String(nvs.used_entries) + " of " + nvs.total_entries + " entries used");
   add("WiFi network", WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("Not connected"));

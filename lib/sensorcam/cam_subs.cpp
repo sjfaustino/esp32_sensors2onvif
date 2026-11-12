@@ -1,12 +1,16 @@
 #include "cam_subs.h"
 
+// A free entry, or else the oldest one not from the NVR, so other clients subscribing again and again cannot push the
+// NVR's subscription out. Only when every entry is the NVR's does its oldest go.
 CamSub& SubTable::slot(uint32_t now) {
-  CamSub* oldest = &subs_[0];
+  CamSub* oldest = nullptr;
+  CamSub* oldestNvr = nullptr;
   for (CamSub& s : subs_) {
     if (!s.used) return s;
-    if (now - s.heardAt > now - oldest->heardAt) oldest = &s;
+    CamSub*& pick = keep_ && s.peer == keep_ ? oldestNvr : oldest;
+    if (!pick || now - s.heardAt > now - pick->heardAt) pick = &s;
   }
-  return *oldest;
+  return oldest ? *oldest : *oldestNvr;
 }
 
 CamSub& SubTable::addPush(const std::string& consumer, uint32_t peer, uint32_t now) {

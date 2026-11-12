@@ -51,9 +51,28 @@ std::string trim(const std::string& s) {
   return s.substr(a, b - a);
 }
 
+// XML writes & < > " ' as entities, so a password or address holding them arrives as &amp; and the like.
+std::string unescapeXml(const std::string& s) {
+  std::string out;
+  for (size_t i = 0; i < s.size(); i++) {
+    size_t semi = s[i] == '&' ? s.find(';', i) : std::string::npos;
+    std::string name = semi != std::string::npos && semi - i <= 8 ? s.substr(i + 1, semi - i - 1) : std::string();
+    long code = name.size() > 1 && name[0] == '#' ? (name[1] == 'x' ? strtol(name.c_str() + 2, nullptr, 16) : strtol(name.c_str() + 1, nullptr, 10)) : 0;
+    const char* named = name == "amp" ? "&" : name == "lt" ? "<" : name == "gt" ? ">" : name == "quot" ? "\"" : name == "apos" ? "'" : nullptr;
+    if (named) out += named;
+    else if (code > 0 && code < 128) out += (char)code;  // ASCII only, which is all a password or address here can need
+    else {
+      out += s[i];
+      continue;
+    }
+    i = semi;
+  }
+  return out;
+}
+
 std::string textAfter(const std::string& s, const Tag& tag) {
   size_t stop = s.find('<', tag.end + 1);
-  return stop == std::string::npos ? "" : trim(s.substr(tag.end + 1, stop - tag.end - 1));
+  return stop == std::string::npos ? "" : unescapeXml(trim(s.substr(tag.end + 1, stop - tag.end - 1)));
 }
 }  // namespace
 

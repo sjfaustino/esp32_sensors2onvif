@@ -66,6 +66,11 @@ void loadSettings() {
       s.espNowKey = randomHex(4);
       p.putString("enkey", s.espNowKey);
     }
+    s.snapshotKey = p.getString("snapkey", "");
+    if (s.snapshotKey.length() < 16) {  // made once and kept; a settings reset makes a new one
+      s.snapshotKey = randomHex(4);
+      p.putString("snapkey", s.snapshotKey);
+    }
     s.espNowUnsigned = p.getBool("enuns", false);
     s.webhook.url = p.getString("hook", "").c_str();
     s.webhook.text = p.getBool("hooktx", false);

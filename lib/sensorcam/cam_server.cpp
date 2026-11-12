@@ -87,6 +87,7 @@ bool SensorCamServer::begin() {
     lastAlive_ = (time_t)t;
   }
   beganAt_ = nvrSeenAt_ = millis_();
+  subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
   return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
 
@@ -252,19 +253,25 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
 
   SoapContext ctx;
   ctx.host = headerValue(headers, "host");
-  if (ctx.host.empty()) ctx.host = localIp_() + ":" + std::to_string(cfg_.onvifPort);
+  // Written into the replies' addresses, so anything but a plain name or address and port is replaced.
+  bool plain = !ctx.host.empty() && ctx.host.size() <= 64;
+  for (char ch : ctx.host) plain = plain && (isalnum((unsigned char)ch) || ch == '.' || ch == '-' || ch == ':');
+  if (!plain) ctx.host = localIp_() + ":" + std::to_string(cfg_.onvifPort);
   ctx.rtspPort = cfg_.rtspPort;
   ctx.serial = cfg_.serial;
   ctx.onvifPort = cfg_.onvifPort;
   if (cfg_.onvifNetwork) cfg_.onvifNetwork(ctx);
   ctx.now = time(nullptr);
   if (!cfg_.onvifPassword.empty()) {
-    ctx.snapshotToken = camSnapshotToken(cfg_.onvifPassword);
+    ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword);
     // ONVIF allows these before logging in. A client needs the clock to build its login.
     static const char* const OPEN[] = {"GetSystemDateAndTime", "GetCapabilities", "GetServices", "GetServiceCapabilities", "GetHostname", "GetEndpointReference", "GetWsdlUrl"};
     bool open = false;
     for (const char* name : OPEN) open = open || action == name;
-    if (!open && !camWsseValid(body, HUB_USER, cfg_.onvifPassword)) {
+    bool presented = !open && !xmlFirstText(body, "Password").empty(), allowed = loginAllowed(c.peer, now);
+    bool ok = open || (presented && allowed && camWsseValid(body, HUB_USER, cfg_.onvifPassword));
+    if (presented && allowed) noteLogin(c.peer, ok, now);
+    if (!ok) {
       status = 400;
       return soapNotAuthorized();
     }
@@ -413,8 +420,60 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
 
 // ---- file manager ----
 
-bool SensorCamServer::authorized(const std::string& headers) const {
-  return cfg_.webPassword.empty() || camBasicValid(headerValue(headers, "authorization"), HUB_USER, cfg_.webPassword);
+// The hub's address, its name with .local or a home router's suffix, or the setup address. No Host header at all is
+// accepted, for simple HTTP sensors; a browser always sends one.
+bool SensorCamServer::knownHost(const std::string& header) const {
+  if (header.empty()) return true;
+  std::string host = header.substr(0, header.find(':'));
+  for (char& ch : host) ch = (char)tolower((unsigned char)ch);
+  while (!host.empty() && host.back() == '.') host.pop_back();
+  std::string name = cfg_.hostName.substr(0, cfg_.hostName.find('.'));
+  for (char& ch : name) ch = (char)tolower((unsigned char)ch);
+  if (host == localIp_() || host == cfg_.setupAddress.substr(0, cfg_.setupAddress.find(':')) || (!name.empty() && host == name)) return true;
+  static const char* const SUFFIXES[] = {".local", ".lan", ".home", ".home.arpa", ".localdomain", ".internal"};  // none can be bought
+  for (const char* suffix : SUFFIXES)
+    if (!name.empty() && host == name + suffix) return true;
+  return false;
+}
+
+// Ten wrong passwords in a row from one address shut it out for a minute, even with the right one, so a password cannot
+// be guessed quickly. Asking without a password, as a browser first does, does not count.
+bool SensorCamServer::loginAllowed(uint32_t peer, uint32_t now) const {
+  for (const LoginTries& t : tries_)
+    if (t.peer == peer && t.failures >= LOGIN_FAILURES && now - t.lastAt < LOGIN_LOCK_MS) return false;
+  return true;
+}
+
+void SensorCamServer::noteLogin(uint32_t peer, bool ok, uint32_t now) {
+  LoginTries* entry = nullptr;
+  LoginTries* oldest = &tries_[0];
+  for (LoginTries& t : tries_) {
+    if (t.peer == peer) entry = &t;
+    if (now - t.lastAt > now - oldest->lastAt) oldest = &t;
+  }
+  if (ok) {
+    if (entry) *entry = LoginTries();
+    return;
+  }
+  if (!entry) {
+    entry = oldest;
+    *entry = LoginTries();
+    entry->peer = peer;
+  }
+  if (now - entry->lastAt >= LOGIN_LOCK_MS) entry->failures = 0;  // a lock, or a run of failures, runs out
+  if (entry->failures < 255) entry->failures++;
+  entry->lastAt = now;
+}
+
+// Checks the login and keeps count of wrong ones.
+bool SensorCamServer::authorized(const HttpConn& c, const std::string& headers) {
+  if (cfg_.webPassword.empty()) return true;
+  std::string auth = headerValue(headers, "authorization");
+  uint32_t now = millis_();
+  if (auth.empty() || !loginAllowed(c.peer, now)) return false;
+  bool ok = camBasicValid(auth, HUB_USER, cfg_.webPassword);
+  noteLogin(c.peer, ok, now);
+  return ok;
 }
 
 void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
@@ -484,12 +543,15 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.answered = true;
     return true;
   }
+  // A page from another site can point its own name at the hub (DNS rebinding) and then use it as if it were that site.
+  // Its requests carry that name, so only the hub's own names and addresses are served.
+  if (c.web && !knownHost(headerValue(headers, "host"))) return refuse(421, "open the hub by its IP address or its name, such as esp-alarmhub.local");
   if (isApi && !isGet) {  // a browser names the site a request came from, so another site cannot use this browser's login
     std::string origin = headerValue(headers, "origin");
     if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");
   }
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
-    if (!authorized(headers)) return needLogin(MAX_FIRMWARE);
+    if (!authorized(c, headers)) return needLogin(MAX_FIRMWARE);
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware");
     if (firmwareOwner_ || !cfg_.firmwareBegin(contentLength)) return refuse(507, "could not start the update");
     firmwareOwner_ = &c;
@@ -516,7 +578,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   // Only pictures may be large, and they arrive in a buffer reserved at boot, so nothing here asks for a picture-sized block.
   if (isApi && !borrowsFrame && contentLength > (target == "/api/restore" ? 8192 : 2048)) return refuse(413, "request is too large");
   if (borrowsFrame && !c.toFrameBuffer) {
-    if (!authorized(headers)) return needLogin(CAM_MAX_FRAME);  // before taking the picture buffer, which changes what the NVR sees
+    if (!authorized(c, headers)) return needLogin(CAM_MAX_FRAME);  // before taking the picture buffer, which changes what the NVR sees
     if (uploading_) return refuse(507, "the hub is busy with another upload; try again");
     uploading_ = &c;
     c.toFrameBuffer = true;
@@ -547,9 +609,9 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
       frameKey_.clear();
     }
   } else if (isSnapshot) {
-    if (!cfg_.onvifPassword.empty() && queryParam(target, "token") != camSnapshotToken(cfg_.onvifPassword)) c.out = httpResponse(403, "text/plain", "not authorized\n");
+    if (!cfg_.onvifPassword.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword))) c.out = httpResponse(403, "text/plain", "not authorized\n");
     else serveSnapshot(c);
-  } else if (isGet && (target.compare(0, 7, "/status") == 0 || target.compare(0, 7, "/events") == 0) && !authorized(headers)) {
+  } else if (isGet && (target.compare(0, 7, "/status") == 0 || target.compare(0, 7, "/events") == 0) && !authorized(c, headers)) {
     c.out = UNAUTHORIZED;
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
     std::string body = handleSensor(target, status);
@@ -657,7 +719,10 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
   if (!cfg_.onvifPassword.empty() && method != "OPTIONS" && !c.authed) {
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
     std::string auth = headerValue(text, "authorization");
-    if (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword)) {
+    bool allowed = loginAllowed(c.peer, now);
+    bool ok = allowed && (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword));
+    if (!auth.empty() && allowed) noteLogin(c.peer, ok, now);
+    if (ok) {
       c.authed = true;
     } else {
       c.out += "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + RTSP_REALM + "\", nonce=\"" + c.nonce + "\"\r\nWWW-Authenticate: Basic realm=\"" + RTSP_REALM + "\"\r\n\r\n";
@@ -863,7 +928,8 @@ void SensorCamServer::poll(int maxWaitMs) {
   // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {
     Health& h = health_[i];
-    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= cfg_.silentMs) continue;
+    uint32_t silentMs = slots_[i].node.silentS ? slots_[i].node.silentS * 1000 : cfg_.silentMs;
+    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= silentMs) continue;
     h.silent = true;
     healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }

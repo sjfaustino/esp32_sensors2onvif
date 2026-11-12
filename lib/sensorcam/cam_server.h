@@ -131,6 +131,7 @@ struct CamConfig {
   std::string sensorToken;  // when set, /sensor requires token=<value>
   std::string serial = "000000000000";
   std::string startReason;  // why the hub last started, for the "hub started" event
+  std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
   bool watchNvr = true;     // log and send alerts the NVR was not listening for
 };
 
@@ -274,7 +275,16 @@ class SensorCamServer {
   std::string slotName(int id) const;
   const CamFrame& frameToShow(uint32_t now);
   bool loadFrame(const std::string& path);
-  bool authorized(const std::string& headers) const;
+  bool authorized(const HttpConn& c, const std::string& headers);
+  bool knownHost(const std::string& hostHeader) const;
+  bool loginAllowed(uint32_t peer, uint32_t now) const;
+  void noteLogin(uint32_t peer, bool ok, uint32_t now);
+  struct LoginTries {  // wrong passwords from one address
+    uint32_t peer = 0;
+    uint8_t failures = 0;
+    uint32_t lastAt = 0;
+  };
+  LoginTries tries_[8];
   void handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen);
   struct ApiRequest {
     HttpConn& c;
@@ -303,6 +313,8 @@ class SensorCamServer {
   void addEvent(const std::string& sensor, const std::string& text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
   void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message);
   bool nvrListening(uint32_t now) const;
+  bool roomBesideHistory(size_t bytes) const;  // whether a picture of this size still leaves the event history its room
+  size_t historyRoom() const;                  // the storage the event history may still need
   void checkNvr(uint32_t now);
   void noteHubStart(uint32_t now);
   void startAlert(int id, bool delayed, uint32_t now);  // an alert that is a new NVR record, to be checked as recorded

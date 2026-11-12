@@ -123,10 +123,96 @@ function fileRow(path, name, size) {
 // The hub has no encoder, so this browser makes each picture with ffmpeg.wasm and uploads the result.
 // These settings must stay in step with tools/make_frames.py. The hub refuses anything else.
 const CDN = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/";
+// The encoder runs with this page's login, so it is checked before it runs: a changed file is refused. These are the
+// published files of version 0.12.6, the same on jsDelivr and unpkg. A new version needs new values here.
+const CORE_SHA256 = {
+  "ffmpeg-core.js": "a34873964b0f62aec516bac75e3aa9086ec3535d4d07f0269aa94ea748b6cb71",
+  "ffmpeg-core.wasm": "2390efa7fb66e7e42dbae15427571a5ffc96b829480904c30f471f0a78967f61",
+};
+// The browser's own SHA-256 needs https, which the hub does not have, so it is done here.
+function sha256Hex(bytes) {
+  const K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
+    0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8,
+    0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+    0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+    0xc67178f2,
+  ]);
+  const h = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const tail = new Uint8Array((bytes.length % 64 < 56 ? 64 : 128) - (bytes.length % 64));
+  tail[0] = 0x80;
+  const bits = bytes.length * 8;
+  for (let i = 0; i < 8; i++) tail[tail.length - 1 - i] = Math.floor(bits / 2 ** (8 * i)) & 0xff;
+  const w = new Uint32Array(64);
+  const block = (data, at) => {
+    for (let i = 0; i < 16; i++)
+      w[i] =
+        (data[at + 4 * i] << 24) | (data[at + 4 * i + 1] << 16) | (data[at + 4 * i + 2] << 8) | data[at + 4 * i + 3];
+    for (let i = 16; i < 64; i++) {
+      const a = w[i - 15],
+        b = w[i - 2];
+      const s0 = ((a >>> 7) | (a << 25)) ^ ((a >>> 18) | (a << 14)) ^ (a >>> 3);
+      const s1 = ((b >>> 17) | (b << 15)) ^ ((b >>> 19) | (b << 13)) ^ (b >>> 10);
+      w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+    let [a, b, c, d, e, f, g, k] = h;
+    for (let i = 0; i < 64; i++) {
+      const t1 =
+        (k +
+          (((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7))) +
+          ((e & f) ^ (~e & g)) +
+          K[i] +
+          w[i]) |
+        0;
+      const t2 =
+        ((((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))) +
+          ((a & b) ^ (a & c) ^ (b & c))) |
+        0;
+      k = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h[0] += a;
+    h[1] += b;
+    h[2] += c;
+    h[3] += d;
+    h[4] += e;
+    h[5] += f;
+    h[6] += g;
+    h[7] += k;
+  };
+  const whole = bytes.length - (bytes.length % 64);
+  for (let at = 0; at < whole; at += 64) block(bytes, at);
+  const last = new Uint8Array(bytes.length - whole + tail.length);
+  last.set(bytes.subarray(whole));
+  last.set(tail, bytes.length - whole);
+  for (let at = 0; at < last.length; at += 64) block(last, at);
+  return Array.from(h, (v) => v.toString(16).padStart(8, "0")).join("");
+}
+// Fetches one encoder file, refuses it unless it is the published one, and hands back a local address for it.
+async function checkedCoreFile(name) {
+  const r = await fetch(CDN + name);
+  if (!r.ok) throw new Error("HTTP " + r.status + " for " + name);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (sha256Hex(bytes) !== CORE_SHA256[name]) throw new Error(name + " is not the published file, so it was not run");
+  return URL.createObjectURL(
+    new Blob([bytes], { type: name.endsWith(".wasm") ? "application/wasm" : "text/javascript" }),
+  );
+}
 const WORKER = `let core;
 self.onmessage=async e=>{const m=e.data;try{
-if(m.load){importScripts(m.load+"ffmpeg-core.js");
-core=await self.createFFmpegCore({mainScriptUrlOrBlob:m.load+"ffmpeg-core.js#"+btoa(JSON.stringify({wasmURL:m.load+"ffmpeg-core.wasm"}))});
+if(m.load){importScripts(m.load.js);
+core=await self.createFFmpegCore({mainScriptUrlOrBlob:m.load.js+"#"+btoa(JSON.stringify({wasmURL:m.load.wasm}))});
 postMessage({id:m.id});return}
 if(m.decode){core.FS.writeFile("in.h264",m.decode);core.setTimeout(-1);
 core.exec("-y","-i","in.h264","-frames:v","1","out.png");
@@ -180,7 +266,8 @@ function getEncoder() {
         if (e.data.error) j.bad(new Error(e.data.error));
         else j.ok(e.data);
       };
-      await talk(w, { load: CDN });
+      const [js, wasm] = await Promise.all([checkedCoreFile("ffmpeg-core.js"), checkedCoreFile("ffmpeg-core.wasm")]);
+      await talk(w, { load: { js, wasm } });
       return w;
     })().catch((e) => {
       encoder = null;
@@ -545,10 +632,19 @@ function nodePanel(s) {
     placeholder: "30",
     style: "width:7em",
   });
+  const silent = el("input", {
+    type: "number",
+    min: 1,
+    max: 10080,
+    value: s.silent ? Math.round(s.silent / 60) : "",
+    placeholder: "180",
+    style: "width:7em",
+  });
+  const seconds = () => (silent.value ? String(Math.round(silent.value * 60)) : "");
   return el(
     "details",
     null,
-    el("summary", { textContent: "Node settings" + (s.late ? " (changed)" : "") }),
+    el("summary", { textContent: "Node settings" + (s.late || s.silent ? " (changed)" : "") }),
     el(
       "p",
       null,
@@ -556,10 +652,20 @@ function nodePanel(s) {
       late,
       ' seconds ago is a past event: it shows the sensor\'s past-event picture, or the built-in "PAST EVENT, CHECK LOGS", and gets its own NVR record. Its true time is in the Events list. Empty uses 30 seconds. Set it to how long this node can take to deliver an alert in real time, including retries.',
     ),
+    el(
+      "p",
+      null,
+      "Report this node silent after ",
+      silent,
+      " minutes without a message. A disabled or stolen sensor is noticed only then, so keep it short: a little over the time between the node's regular reports. Empty uses 180 minutes.",
+    ),
     el("button", {
       textContent: "Save node settings",
       onclick: () =>
-        act(() => call("POST", "/api/node-settings?path=" + s.mac, "late=" + late.value), "Saved the node settings"),
+        act(
+          () => call("POST", "/api/node-settings?path=" + s.mac, "late=" + late.value + "&silent=" + seconds()),
+          "Saved the node settings",
+        ),
     }),
   );
 }
@@ -592,7 +698,12 @@ function clearPanel() {
 }
 function render(t) {
   $("usage").textContent = t.total
-    ? (t.used / 1024).toFixed(0) + " KB of " + (t.total / 1024).toFixed(0) + " KB used"
+    ? (t.used / 1024).toFixed(0) +
+      " KB of " +
+      (t.total / 1024).toFixed(0) +
+      " KB used. " +
+      (t.kept / 1024).toFixed(0) +
+      " KB of what is left is kept for the event history, so pictures cannot use it."
     : "";
   $("fill").style.width = t.total ? (100 * t.used) / t.total + "%" : "0";
   const c = $("clear");

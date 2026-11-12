@@ -35,9 +35,12 @@ static const uint32_t EVENT_SAVE_MS = 5000;  // a burst of events is written to 
 static const char EVENTS_CSV[] = "events.csv";
 static const char EVENTS_CSV_OLD[] = "events-old.csv";
 static const size_t EVENTS_CSV_MAX = 256 * 1024;  // then it becomes the older file, so about 5000 events are kept
+static const size_t HISTORY_ROOM = 64 * 1024;  // beyond the CSV files: the saved events, waiting alerts and settings files
 static const char CSV_HEADER[] = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
 static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
 static const uint32_t HOOK_WAIT_MS = 5000;  // for the webhook to connect, and again for its reply
+static const int LOGIN_FAILURES = 10;           // wrong passwords in a row from one address before it is shut out
+static const uint32_t LOGIN_LOCK_MS = 60000;
 static const uint32_t PULL_ALIVE_MS = 60000;      // an NVR that pulls events and has not asked for this long is not listening
 static const uint32_t RECORD_CHECK_MS = 5000;     // after an alert starts, time for its event push to reach the NVR
 static const uint32_t ALIVE_EVERY_MS = 10UL * 60UL * 1000UL;  // how often the time is saved, so a restart can tell how long the hub was off
@@ -54,6 +57,7 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
                      : status == 403 ? "Forbidden"
                      : status == 409 ? "Conflict"
                      : status == 413 ? "Payload Too Large"
+                     : status == 421 ? "Misdirected Request"
                      : status == 422 ? "Unprocessable Entity"
                      : status == 507 ? "Insufficient Storage"
                                      : "Not Found";
