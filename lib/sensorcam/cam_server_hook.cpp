@@ -6,19 +6,16 @@
 #include "cam_soap.h"
 #include "cam_server_internal.h"
 
-// Kinds follow the event history: 0 an alert, 1 went silent, 2 low battery, 4 weak signal, 5 an alert the NVR missed.
-// That last one is sent if either alerts or problems are, because it means a recording is missing.
-void SensorCamServer::notifyHook(int id, uint8_t kind, bool delayed) {
+// Alerts are sent when alerts are chosen, node problems when problems are. An alert the NVR missed is sent if either is,
+// because it means a recording is missing.
+void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
-  if (w.url.empty() || (kind == 0 ? !w.alerts : kind == 5 ? !w.alerts && !w.problems : !w.problems)) return;
-  std::string event = kind == 0   ? (delayed ? "delayed alert" : "alert")
-                      : kind == 1 ? "went silent"
-                      : kind == 2 ? "low battery"
-                      : kind == 5 ? (delayed ? "delayed alert not recorded" : "alert not recorded")
-                                  : "weak signal";
+  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_RECORDED ? w.alerts || w.problems : w.problems;
+  if (w.url.empty() || !wanted) return;
+  std::string event = camEventName(kind, true, delayed);
   std::string sensor = slotName(id), name = slots_[id - 1].name;
   std::string message = (name.empty() ? sensor : name + " (" + sensor + ")") + ": " + event;
-  if (kind == 5) message += ", because the NVR is not listening";
+  if (kind == CAM_EVENT_NOT_RECORDED) message += ", because the NVR is not listening";
   uint8_t battery = health_[id - 1].battery;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
@@ -28,15 +25,14 @@ void SensorCamServer::notifyHook(int id, uint8_t kind, bool delayed) {
             }));
 }
 
-// The hub's own events, sent as problems: 6 the NVR stopped listening, 7 it is back, 8 the hub started.
-void SensorCamServer::notifyHubHook(uint8_t kind, const std::string& detail, const std::string& message) {
+// The hub's own events, sent with node problems, in the same shape as the event history.
+void SensorCamServer::notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) {
   const CamWebhook& w = cfg_.webhook;
   if (w.url.empty() || !w.problems) return;
-  const char* event = kind == 6 ? "NVR not listening" : kind == 7 ? "NVR listening again" : "hub started";
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
   queueHook(message, jsonObject([&](CamJson& j) {
-              j.str("event", event).str("sensor", "hub").str("name", detail).null("battery");
+              j.str("event", camEventName(kind, true, false)).str("sensor", "hub").str("name", "").str("detail", detail).null("battery");
               j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
             }));
 }

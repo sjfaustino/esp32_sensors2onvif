@@ -79,6 +79,7 @@ bool SensorCamServer::begin() {
   for (std::string& spare : spareOut_) spare.reserve(STREAM_BUFFER);
   rescan();
   loadEvents();
+  loadWaiting();
   std::string alive;
   if (storage_.readFile(ALIVE_FILE, alive, 16) && alive.size() == sizeof(int64_t)) {
     int64_t t;
@@ -758,10 +759,9 @@ void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
     hookResult_ = result;
     hookResultAt_ = time(nullptr);
   } else if (&n >= notify_ && &n < notify_ + SubTable::SIZE && n.state != NotifyIo::IDLE) {
-    // A failure before the message was sent means the NVR did not get it. The NVR closes without replying, so the
-    // other endings are deliveries.
-    std::string r = result;
-    subs_.at((int)(&n - notify_)).pushFailed = r == "could not connect" || r == "the connection failed";
+    // Ending before the whole message was sent means the NVR did not get it. Once it was sent, waiting for the NVR to
+    // close is all that is left, so any ending then is a delivery.
+    subs_.at((int)(&n - notify_)).pushFailed = n.state != NotifyIo::WAIT_CLOSE;
   }
   if (n.fd >= 0) netClose(n.fd);
   n = NotifyIo();
@@ -865,9 +865,10 @@ void SensorCamServer::poll(int maxWaitMs) {
     Health& h = health_[i];
     if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= cfg_.silentMs) continue;
     h.silent = true;
-    healthAlert(i + 1, 1, now);
+    healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }
   if (eventsDirty_ && now - eventsSavedAt_ >= EVENT_SAVE_MS) saveEvents();
+  if (waitingDirty_) saveWaiting();  // small, and it is what a restart would replay
   if (!startNoted_) noteHubStart(now);
   if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
   if (cfg_.watchNvr) checkNvr(now);

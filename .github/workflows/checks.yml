@@ -34,6 +34,7 @@ jobs:
         run: |
           node --check web/index.js
           node --check web/setup.js
+          npx --yes prettier@3.3.3 --print-width 120 --end-of-line lf --check web/*.js web/*.css
 
       - name: Unit tests
         run: pio test -e native

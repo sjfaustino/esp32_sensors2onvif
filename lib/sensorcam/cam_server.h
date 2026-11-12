@@ -18,6 +18,21 @@ const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means t
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
 
+// What an event in the history is. The numbers are kept in the saved history and sent as "kind", so they never change.
+enum CamEventKind : uint8_t {
+  CAM_EVENT_REPORT = 0,  // an alert or a clear report
+  CAM_EVENT_SILENT = 1,
+  CAM_EVENT_LOW_BATTERY = 2,
+  CAM_EVENT_QUIET_ALERT = 3,  // an alert in quiet hours: logged, not sent to the NVR
+  CAM_EVENT_WEAK_SIGNAL = 4,
+  CAM_EVENT_NOT_RECORDED = 5,  // an alert the NVR was not listening for
+  CAM_EVENT_NVR_GONE = 6,      // the hub's own events from here on
+  CAM_EVENT_NVR_BACK = 7,
+  CAM_EVENT_HUB_STARTED = 8,
+};
+// The one name for each event, used by the history, the CSV file, the web page and the webhook.
+const char* camEventName(uint8_t kind, bool active, bool delayed);
+
 // A length of time as people say it: "7 min", "2 h 13 min", "3 days 4 h". Rounded up to the minute.
 std::string camDurationText(uint32_t seconds);
 
@@ -184,17 +199,17 @@ class SensorCamServer {
   };
   struct CamEvent {
     time_t received = 0;
-    uint32_t age = 0;
+    uint32_t age = 0;      // how long ago it happened, as the sensor said
     char sensor[22] = "";  // AA-BB-CC-DD-EE-FF/255, or "hub" for the hub's own events
-    char name[26] = "";    // the sensor's name; for "hub started", why it started
-    // 0 a report, 1 went silent, 2 low battery, 3 an alert in quiet hours, 4 weak signal, 5 an alert the NVR was not
-    // listening for, 6 the NVR stopped listening, 7 it is listening again, 8 the hub started (age: how long it was off at most)
-    uint8_t kind = 0;
+    // A sensor event's sensor name, or a hub event's detail, such as why the hub started. Sent as "name" or "detail".
+    char text[26] = "";
+    uint8_t kind = CAM_EVENT_REPORT;  // a CamEventKind
     bool active = false;
     bool delayed = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     uint8_t targetCount = 0;
     SensorTarget targets[CAM_MAX_TARGETS];
+    uint32_t offS = CAM_AGE_UNKNOWN;  // CAM_EVENT_HUB_STARTED: how long the hub was off, at most. Added last, see loadEvents.
   };
 
   struct HttpConn {
@@ -284,15 +299,18 @@ class SensorCamServer {
   bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
-  void logEvent(int id, const SensorReport& report, bool delayed, uint8_t kind = 0);
-  void addEvent(const std::string& sensor, const std::string& name, const SensorReport& report, bool delayed, uint8_t kind);
-  void hubEvent(uint8_t kind, const std::string& detail, uint32_t age, const std::string& message);
-  bool nvrListening() const;
+  void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
+  void addEvent(const std::string& sensor, const std::string& text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
+  void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message);
+  bool nvrListening(uint32_t now) const;
   void checkNvr(uint32_t now);
   void noteHubStart(uint32_t now);
   void startAlert(int id, bool delayed, uint32_t now);  // an alert that is a new NVR record, to be checked as recorded
-  void healthAlert(int id, uint8_t kind, uint32_t now);
+  void healthAlert(int id, CamEventKind kind, uint32_t now);
   void saveEvents();
+  bool persist();
+  void saveWaiting();
+  void loadWaiting();
   void loadEvents();
   void servicePolls(uint32_t now);
   void feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now);
@@ -311,8 +329,8 @@ class SensorCamServer {
   uint32_t holdFor(int id) const;
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
   bool quietNow(int id) const;
-  void notifyHook(int id, uint8_t kind, bool delayed);
-  void notifyHubHook(uint8_t kind, const std::string& detail, const std::string& message);
+  void notifyHook(int id, CamEventKind kind, bool delayed);
+  void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message);
   void queueHook(const std::string& message, const std::string& json);
   void startHook(uint32_t now);
   std::string webhookJson();
@@ -364,6 +382,8 @@ class SensorCamServer {
   int eventNext_ = 0;
   bool eventsDirty_ = false;  // events logged since the file was last written
   bool eventsSaveFailed_ = false;
+  bool waitingDirty_ = false;  // the alerts waiting for an NVR record changed since they were saved
+  bool waitingSaveFailed_ = false;
   uint32_t eventsSavedAt_ = 0;
   CamDelayedQueue delayed_;
   uint32_t nextDelayedAt_ = 0;

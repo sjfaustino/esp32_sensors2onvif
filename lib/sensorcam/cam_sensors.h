@@ -118,9 +118,10 @@ class CamDelayedQueue {
   void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs);
   bool take(CamDelayed& out);  // the oldest; false when none is waiting
   int count() const { return count_; }
+  const CamDelayed& at(int n) const { return items_[(head_ + n) % SIZE]; }  // n from 0, the oldest, to count() - 1
 
  private:
-  CamDelayed& at(int n) { return items_[(head_ + n) % SIZE]; }
+  CamDelayed& slot(int n) { return items_[(head_ + n) % SIZE]; }
   CamDelayed items_[SIZE];
   int head_ = 0, count_ = 0;
 };

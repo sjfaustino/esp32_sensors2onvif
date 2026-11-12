@@ -1,6 +1,7 @@
 // SensorCamServer: sensor reports, node health, the event history and the sensor table.
 #include "cam_server.h"
 #include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,8 +22,50 @@ void SensorCamServer::saveEvents() {
 }
 
 void SensorCamServer::saveNow() {
-  if (eventsDirty_) saveEvents();
+  persist();
   writeAlive(millis_());  // a planned restart then knows exactly when the hub stopped
+}
+
+// Called before a report is confirmed, so a confirmed alert survives a power cut. True when everything is on storage.
+bool SensorCamServer::persist() {
+  if (eventsDirty_ || eventsSaveFailed_) saveEvents();  // a failed save is tried again, since a confirmation waits on it
+  if (waitingDirty_ || waitingSaveFailed_) saveWaiting();
+  return !eventsSaveFailed_ && !waitingSaveFailed_;
+}
+
+// Alerts that still need an NVR record: the past events waiting their turn, then the alerts whose recording has not yet
+// been checked. After a restart they all play back as past events, because the NVR may never have got them.
+void SensorCamServer::saveWaiting() {
+  std::vector<CamDelayed> list;
+  for (int n = 0; n < delayed_.count(); n++) list.push_back(delayed_.at(n));
+  for (int id = 1; id <= sensors_.count(); id++) {
+    if (!slots_[id - 1].used || !health_[id - 1].recordPending) continue;
+    CamDelayed d;
+    memcpy(d.mac, slots_[id - 1].mac, 6);
+    d.input = slots_[id - 1].input;
+    list.push_back(d);
+  }
+  uint32_t header[3] = {0x54494157, (uint32_t)sizeof(CamDelayed), (uint32_t)list.size()};
+  waitingSaveFailed_ = !storage_.writeWith(WAITING_FILE, [&](FILE* f) {
+    return fwrite(header, 1, sizeof(header), f) == sizeof(header) && (list.empty() || fwrite(list.data(), sizeof(CamDelayed), list.size(), f) == list.size());
+  });
+  waitingDirty_ = false;
+}
+
+void SensorCamServer::loadWaiting() {
+  std::string blob;
+  uint32_t header[3];
+  if (!storage_.readFile(WAITING_FILE, blob, sizeof(header) + 64 * sizeof(CamDelayed)) || blob.size() < sizeof(header)) return;
+  memcpy(header, blob.data(), sizeof(header));
+  if (header[0] != 0x54494157 || header[1] != sizeof(CamDelayed) || blob.size() != sizeof(header) + header[2] * sizeof(CamDelayed)) return;
+  uint32_t now = millis_();
+  for (uint32_t i = 0; i < header[2]; i++) {
+    CamDelayed d;
+    memcpy((void*)&d, blob.data() + sizeof(header) + i * sizeof(CamDelayed), sizeof(d));
+    int id = findSlot(d.mac, d.input);
+    if (id) delayed_.add(d.mac, d.input, d.direction, false, now, holdFor(id));  // the old times mean nothing on a new millis() clock
+  }
+  waitingDirty_ = header[2] > 0;
 }
 
 // Rewritten every 10 minutes while the clock is set, so after a power cut the hub can say how long it was off.
@@ -44,7 +87,7 @@ void SensorCamServer::noteHubStart(uint32_t now) {
   std::string reason = cfg_.startReason.empty() ? std::string("unknown") : cfg_.startReason;
   std::string message = cfg_.hostName + " started (" + reason + ")";
   if (offKnown) message += ", after being off for up to " + camDurationText(off);
-  hubEvent(8, reason, off, message);
+  hubEvent(CAM_EVENT_HUB_STARTED, reason, off, message);
 }
 
 std::string camDurationText(uint32_t seconds) {
@@ -54,13 +97,14 @@ std::string camDurationText(uint32_t seconds) {
   return std::to_string(m / 1440) + " days " + std::to_string(m / 60 % 24) + " h";
 }
 
-// The NVR is listening when it holds a subscription and the last event pushed to it arrived. With no NVR address set,
-// any subscriber counts.
-bool SensorCamServer::nvrListening() const {
+// The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
+// pulls events, it asked within the last minute. With no NVR address set, any subscriber counts.
+bool SensorCamServer::nvrListening(uint32_t now) const {
   uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
   for (int i = 0; i < SubTable::SIZE; i++) {
     const CamSub& s = subs_.at(i);
-    if (s.used && (!nvr || s.peer == nvr) && !(s.push && s.pushFailed)) return true;
+    if (!s.used || (nvr && s.peer != nvr)) continue;
+    if (s.push ? !s.pushFailed : now - s.heardAt < PULL_ALIVE_MS) return true;
   }
   return false;
 }
@@ -71,11 +115,14 @@ void SensorCamServer::setNvrWatch(bool on, uint32_t goneMs) {
   nvrSeenAt_ = millis_();
   nvrGone_ = false;
   for (Health& h : health_) h.recordPending = false;  // alerts from before the change are not checked
+  waitingDirty_ = true;
 }
 
 void SensorCamServer::startAlert(int id, bool delayed, uint32_t now) {
   Health& h = health_[id - 1];
+  if (!cfg_.watchNvr) return;  // nothing would check it
   h.recordPending = true;
+  waitingDirty_ = true;
   h.alertDelayed = delayed;
   h.alertAt = now;
 }
@@ -83,40 +130,50 @@ void SensorCamServer::startAlert(int id, bool delayed, uint32_t now) {
 // Each new alert is checked a few seconds after it starts, when its event push has had time to arrive, or when it ends
 // if that is sooner. One the NVR did not get is logged and sent, because nothing else would show it is missing.
 void SensorCamServer::checkNvr(uint32_t now) {
-  bool listening = nvrListening();
+  bool listening = nvrListening(now);
   if (listening) {
     nvrSeenAt_ = now;
-    if (nvrGone_) hubEvent(7, "", 0, "The NVR is listening to " + cfg_.hostName + " again");
+    if (nvrGone_) hubEvent(CAM_EVENT_NVR_BACK, "", CAM_AGE_UNKNOWN, "The NVR is listening to " + cfg_.hostName + " again");
     nvrGone_ = false;
   } else if (!nvrGone_ && now - nvrSeenAt_ >= nvrGoneMs_) {
     nvrGone_ = true;
-    hubEvent(6, "", 0, "The NVR is not listening to " + cfg_.hostName + ": alerts are not being recorded");
+    hubEvent(CAM_EVENT_NVR_GONE, "", CAM_AGE_UNKNOWN, "The NVR is not listening to " + cfg_.hostName + ": alerts are not being recorded");
   }
   for (int id = 1; id <= sensors_.count(); id++) {
     Health& h = health_[id - 1];
     if (!slots_[id - 1].used || !h.recordPending || (now - h.alertAt < RECORD_CHECK_MS && sensors_.active(id))) continue;
     h.recordPending = false;
+    waitingDirty_ = true;
     if (listening) continue;
     SensorReport r;
     r.battery = h.battery;
     r.active = true;
-    logEvent(id, r, h.alertDelayed, 5);
-    notifyHook(id, 5, h.alertDelayed);
+    logEvent(id, r, h.alertDelayed, CAM_EVENT_NOT_RECORDED);
+    notifyHook(id, CAM_EVENT_NOT_RECORDED, h.alertDelayed);
   }
 }
 
 void SensorCamServer::loadEvents() {
+  // Firmware before offS saved shorter events. offS was added last, so each old record is the start of a new one.
+  static const size_t OLD_SIZE = (offsetof(CamEvent, offS) + alignof(CamEvent) - 1) / alignof(CamEvent) * alignof(CamEvent);
+  static_assert(OLD_SIZE != sizeof(CamEvent), "the saved size must tell old and new events apart");
   std::string blob;
   uint32_t header[4];
-  if (!storage_.readFile(EVENTS_FILE, blob, sizeof(header) + sizeof(events_)) || blob.size() != sizeof(header) + sizeof(events_)) return;
+  if (!storage_.readFile(EVENTS_FILE, blob, sizeof(header) + sizeof(events_)) || blob.size() < sizeof(header)) return;
   memcpy(header, blob.data(), sizeof(header));
-  if (header[0] != 0x31564543 || header[1] != sizeof(CamEvent) || header[2] > (uint32_t)EVENT_LOG_SIZE || header[3] >= (uint32_t)EVENT_LOG_SIZE) return;
-  memcpy((void*)events_, blob.data() + sizeof(header), sizeof(events_));
+  size_t size = header[1];
+  if (header[0] != 0x31564543 || (size != sizeof(CamEvent) && size != OLD_SIZE) || blob.size() != sizeof(header) + size * EVENT_LOG_SIZE ||
+      header[2] > (uint32_t)EVENT_LOG_SIZE || header[3] >= (uint32_t)EVENT_LOG_SIZE)
+    return;
+  for (int i = 0; i < EVENT_LOG_SIZE; i++) {
+    events_[i] = CamEvent();
+    memcpy((void*)&events_[i], blob.data() + sizeof(header) + i * size, size == sizeof(CamEvent) ? size : offsetof(CamEvent, offS));
+  }
   eventCount_ = (int)header[2];
   eventNext_ = (int)header[3];
 }
 
-void SensorCamServer::healthAlert(int id, uint8_t kind, uint32_t now) {
+void SensorCamServer::healthAlert(int id, CamEventKind kind, uint32_t now) {
   SensorReport r;
   r.battery = health_[id - 1].battery;
   logEvent(id, r, false, kind);
@@ -124,23 +181,23 @@ void SensorCamServer::healthAlert(int id, uint8_t kind, uint32_t now) {
   if (cfg_.healthAlarm) sensors_.trigger(id, now, 0, false, holdFor(id));
 }
 
-void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint8_t kind) { addEvent(slotName(id), slots_[id - 1].name, r, delayed, kind); }
+void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamEventKind kind) { addEvent(slotName(id), slots_[id - 1].name, r, delayed, kind); }
 
 // The hub's own events: in the history as sensor "hub", and sent as node problems.
-void SensorCamServer::hubEvent(uint8_t kind, const std::string& detail, uint32_t age, const std::string& message) {
-  SensorReport r;
-  r.age = age;
-  addEvent("hub", detail, r, false, kind);
+void SensorCamServer::hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message) {
+  SensorReport r;  // age 0: it happened when it was logged
+  addEvent("hub", detail, r, false, kind, offS);
   notifyHubHook(kind, detail, message);
 }
 
-void SensorCamServer::addEvent(const std::string& sensor, const std::string& name, const SensorReport& r, bool delayed, uint8_t kind) {
+void SensorCamServer::addEvent(const std::string& sensor, const std::string& text, const SensorReport& r, bool delayed, CamEventKind kind, uint32_t offS) {
   CamEvent& e = events_[eventNext_];
   e = CamEvent();
   e.received = time(nullptr);
   e.age = r.age;
   snprintf(e.sensor, sizeof(e.sensor), "%s", sensor.c_str());
-  camCopyText(e.name, sizeof(e.name), name);
+  camCopyText(e.text, sizeof(e.text), text);
+  e.offS = offS;
   e.kind = kind;
   e.active = r.active;
   e.delayed = delayed;
@@ -166,16 +223,16 @@ static std::string csvText(const std::string& s) {
   return quoted + "\"";
 }
 
-static const char* camEventText(uint8_t kind, bool active, bool delayed) {
+const char* camEventName(uint8_t kind, bool active, bool delayed) {
   switch (kind) {
-    case 1: return "went silent";
-    case 2: return "low battery";
-    case 3: return "alert in quiet hours";
-    case 4: return "weak signal";
-    case 5: return delayed ? "delayed alert not recorded: NVR not listening" : "alert not recorded: NVR not listening";
-    case 6: return "NVR not listening";
-    case 7: return "NVR listening again";
-    case 8: return "hub started";
+    case CAM_EVENT_SILENT: return "went silent";
+    case CAM_EVENT_LOW_BATTERY: return "low battery";
+    case CAM_EVENT_QUIET_ALERT: return "alert in quiet hours";
+    case CAM_EVENT_WEAK_SIGNAL: return "weak signal";
+    case CAM_EVENT_NOT_RECORDED: return delayed ? "delayed alert not recorded" : "alert not recorded";
+    case CAM_EVENT_NVR_GONE: return "NVR not listening";
+    case CAM_EVENT_NVR_BACK: return "NVR listening again";
+    case CAM_EVENT_HUB_STARTED: return "hub started";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -183,9 +240,8 @@ static const char* camEventText(uint8_t kind, bool active, bool delayed) {
 std::string SensorCamServer::csvLine(const CamEvent& e) {
   static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
-  std::string what = camEventText(e.kind, e.active, e.delayed);
-  if (e.kind == 8 && e.age != CAM_AGE_UNKNOWN) what += " after being off for up to " + camDurationText(e.age);
-  if (e.kind == 8) ageKnown = false;  // its age is how long the hub was off, not when it happened
+  std::string what = camEventName(e.kind, e.active, e.delayed);
+  if (e.kind == CAM_EVENT_HUB_STARTED && e.offS != CAM_AGE_UNKNOWN) what += " after being off for up to " + camDurationText(e.offS);
   int nearest = -1;
   for (int i = 0; i < e.targetCount; i++)
     if (nearest < 0 || e.targets[i].distanceCm < e.targets[nearest].distanceCm) nearest = i;
@@ -198,7 +254,7 @@ std::string SensorCamServer::csvLine(const CamEvent& e) {
     if (t.direction < CAM_DIRECTIONS) direction = DIRECTIONS[t.direction];
   }
   return (clockOk ? iso(e.received) : std::string()) + "," + (clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string()) + "," + e.sensor + "," +
-         csvText(e.name) + "," + what + "," + (e.battery == CAM_BATTERY_UNKNOWN ? std::string() : std::to_string(e.battery)) + "," + distance + "," + direction + "\n";
+         csvText(e.text) + "," + what + "," + (e.battery == CAM_BATTERY_UNKNOWN ? std::string() : std::to_string(e.battery)) + "," + distance + "," + direction + "\n";
 }
 
 // Added to rather than rewritten, so the history can grow far beyond the events kept in memory.
@@ -252,9 +308,9 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   // Repeats and heartbeats that change nothing would push real events out of the log.
   // An activation is logged unless it only repeats one whose alert is still running; a sensor that never reports clear
   // still has each new alert logged.
-  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? 3 : 0);
-  if (r.active && !quiet && (late || !wasActive)) notifyHook(id, 0, late);
-  if (batteryWentLow) healthAlert(id, 2, now);
+  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : CAM_EVENT_REPORT);
+  if (r.active && !quiet && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
+  if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
   return true;
 }
 
@@ -263,6 +319,7 @@ void SensorCamServer::queueDelayed(int id, const SensorReport& r, uint32_t now) 
   const Slot& s = slots_[id - 1];
   bool known = r.age != CAM_AGE_UNKNOWN && r.age < 1000000;  // the millisecond clock covers 49 days
   delayed_.add(s.mac, s.input, reportDirection(r), known, known ? now - r.age * 1000 : now, holdFor(id));
+  waitingDirty_ = true;
 }
 
 void SensorCamServer::endAlerts() {
@@ -325,8 +382,10 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
     h.counterActive = r.active;
     applyReport(id, r, now);
   }
-  // Confirmed once it is logged, and again for a resend, whose sender evidently missed the first confirmation.
-  if (cfg_.espNowSend) {
+  // Confirmed once it is on storage, so a power cut cannot lose an alert its sensor has stopped resending. Again for a
+  // resend, whose sender evidently missed the first confirmation. Unconfirmed, the sensor keeps trying, and each
+  // resend tries the save again.
+  if (persist() && cfg_.espNowSend) {
     std::string confirmation = camConfirmation(mac, r, cfg_.espNowKey);
     cfg_.espNowSend(mac, (const uint8_t*)confirmation.data(), (int)confirmation.size());
   }
@@ -343,8 +402,8 @@ void SensorCamServer::noteSignal(int id, int8_t rssi) {
     h.weak = true;
     SensorReport r;
     r.battery = h.battery;
-    logEvent(id, r, false, 4);
-    notifyHook(id, 4, false);
+    logEvent(id, r, false, CAM_EVENT_WEAK_SIGNAL);
+    notifyHook(id, CAM_EVENT_WEAK_SIGNAL, false);
   } else if (h.weak && h.rssiAvg8 > (WEAK_SIGNAL_DBM + 5) * 8) {
     h.weak = false;
   }
@@ -356,6 +415,7 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
   if (delayedGap_ && (int32_t)(now - nextDelayedAt_) >= 0) delayedGap_ = false;
   CamDelayed d;
   if (sensors_.anyActive() || delayedGap_ || !delayed_.take(d)) return;
+  waitingDirty_ = true;
   int id = findSlot(d.mac, d.input);
   if (id) {  // it may have been deleted while waiting
     sensors_.trigger(id, now, d.direction, true, holdFor(id));
@@ -387,9 +447,17 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
     if (!distance.empty()) r.targets[0].distanceCm = (uint16_t)atoi(distance.c_str());
     r.targets[0].direction = (uint8_t)(d >= 0 && d < CAM_DIRECTIONS ? d : 0);
   }
-  bool ok = applyReport(id, r, millis_());
-  status = ok ? 200 : 404;
-  return ok ? std::string(JSON_OK) : camJsonError("unknown sensor");
+  if (!applyReport(id, r, millis_())) {
+    status = 404;
+    return camJsonError("unknown sensor");
+  }
+  // The reply is the confirmation, so it waits for storage as an ESP-NOW confirmation does.
+  if (!persist()) {
+    status = 507;
+    return camJsonError("the alert was received but could not be saved; send it again");
+  }
+  status = 200;
+  return JSON_OK;
 }
 
 std::string SensorCamServer::statusJson(uint32_t now) {
@@ -429,12 +497,15 @@ std::string SensorCamServer::eventsJson() {
   for (int n = 0; n < count; n++) {
     const CamEvent& e = events_[(eventNext_ - 1 - n + 2 * EVENT_LOG_SIZE) % EVENT_LOG_SIZE];
     bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
-    bool ageKnown = e.age != CAM_AGE_UNKNOWN && e.kind != 8;  // a start's age is how long the hub was off
-    j.object().str("sensor", e.sensor).str("name", e.name).num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
+    bool ageKnown = e.age != CAM_AGE_UNKNOWN;
+    bool hub = strcmp(e.sensor, "hub") == 0;
+    j.object().str("sensor", e.sensor).str("name", hub ? "" : e.text).str("event", camEventName(e.kind, e.active, e.delayed));
+    if (hub) j.str("detail", e.text);
+    j.num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
     j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
     j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
     j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery);
-    if (e.kind == 8) j.num("off_s", e.age != CAM_AGE_UNKNOWN, e.age);
+    if (e.kind == CAM_EVENT_HUB_STARTED) j.num("off_s", e.offS != CAM_AGE_UNKNOWN, e.offS);
     j.array("targets");
     for (int i = 0; i < e.targetCount; i++)
       j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();

@@ -173,7 +173,7 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
 void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs) {
   CamDelayed* same = nullptr;
   for (int n = 0; n < count_; n++) {
-    CamDelayed& d = at(n);
+    CamDelayed& d = slot(n);
     if (d.input != input || memcmp(d.mac, mac, 6) != 0) continue;
     int32_t apart = (int32_t)(happenedAt - d.happenedAt);
     if (timeKnown && d.timeKnown && (uint32_t)(apart < 0 ? -apart : apart) <= holdMs) {
@@ -183,7 +183,7 @@ void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction
     if (count_ == SIZE) same = &d;
   }
   if (!same && count_ < SIZE) {
-    same = &at(count_++);
+    same = &slot(count_++);
     *same = CamDelayed();
     memcpy(same->mac, mac, 6);
     same->input = input;
@@ -191,7 +191,7 @@ void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction
     same->happenedAt = happenedAt;
   }
   if (!same) {  // full of other sensors' alerts
-    at(count_ - 1).direction = CAM_DIRECTION_SEVERAL;
+    slot(count_ - 1).direction = CAM_DIRECTION_SEVERAL;
     return;
   }
   if (same->direction != CAM_DIRECTION_SEVERAL) same->direction = direction;

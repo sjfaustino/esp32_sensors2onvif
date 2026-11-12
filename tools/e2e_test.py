@@ -274,8 +274,8 @@ def file_manager_tests(files, hub_files_free):
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page is sent gzipped', last_encoding == 'gzip', last_encoding)
-    check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES=' in page and b'src="index.js"' not in page)
-    check('page offers a picture preview', b'title:"Preview"' in page)
+    check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES = ' in page and b'src="index.js"' not in page)
+    check('page offers a picture preview', b'title: "Preview"' in page)
     check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
                                                   b'data-view="espnow"', b'data-view="events"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
     code, info = api('GET', '/api/info')
@@ -823,7 +823,7 @@ def main():
                 control('nvr-watch-on')  # the NVR counts as gone after 3 s here, instead of 3 minutes
                 get(f'/sensor?{sid(1)}')
                 missed = poll(event_list, lambda l: l and any(e['kind'] == 5 for e in l[:2]))
-                check('an alert the NVR is not listening for is logged as not recorded', missed and any(e['kind'] == 5 and e['sensor'] == path for e in missed[:2]), missed[:3])
+                check('an alert the NVR is not listening for is logged as not recorded', missed and any(e['kind'] == 5 and e['sensor'] == path and e['event'] == 'alert not recorded' for e in missed[:2]), missed[:3])
                 gone = poll(event_list, lambda l: any(e['kind'] == 6 for e in l[:3]))
                 check('the NVR not listening is logged as a hub event', [e['sensor'] for e in gone[:3] if e['kind'] == 6] == ['hub'], gone[:3])
                 clear(1)
@@ -1084,18 +1084,24 @@ def main():
             check('all its sensors are gone', get(f'/sensor?{sid(1)}')[0] == 404 and status()['sensors'] == count - 4)
 
             if proc:
+                # A past event still waiting when the power goes must play after the restart: its sensor was told it was received.
+                get(f'/sensor?{sid(4)}')  # keeps it waiting
+                get(f'/sensor?{sid(5)}&age=500')
+                check('a past event waits while another alert is on', status()['delayed_waiting'] >= 1, status())
                 proc.kill()
                 proc.wait()
                 proc = start_hub(storage, PASSWORD, '1500')
                 HUB.stdout.readline()
                 check('folders are still sensors after a restart', status()['sensors'] == count - 4, status())
                 check('stored pictures survive a restart', api('GET', f'/api/file?path={name(4)}/active.h264')[1] == files['active.h264'])
+                check('a past event waiting at the restart still plays', wait_until(lambda: name(5) in status()['active']), status())
+                control('end-alerts')
                 quiet_nodes = poll(lambda: json.loads(api('GET', '/api/espnow')[1])['nodes'], lambda n: n and all(x['state'] == 'silent' for x in n))
                 check('a node quiet since the restart is reported silent', quiet_nodes and all(n['state'] == 'silent' for n in quiet_nodes), quiet_nodes)
                 check('going silent after a restart is logged', any(e['kind'] == 1 for e in json.loads(api('GET', '/api/events')[1])))
                 starts = [e for e in event_list() if e['kind'] == 8]
-                check('the start is logged with its reason and how long the hub was off', starts and starts[0]['sensor'] == 'hub' and starts[0]['name'] == 'PC build started'
-                      and starts[0]['off_s'] is not None and starts[0]['off_s'] < 3600, starts[:2])
+                check('the start is logged with its reason and how long the hub was off', starts and starts[0]['sensor'] == 'hub' and starts[0]['detail'] == 'PC build started'
+                      and starts[0]['event'] == 'hub started' and starts[0]['off_s'] is not None and starts[0]['off_s'] < 3600, starts[:2])
             api('DELETE', f'/api/file?path={B}')
         finally:
             if proc:

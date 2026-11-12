@@ -47,9 +47,10 @@ less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ES
 silence and low battery.
 
 The hub also checks that each alert reached the NVR. Five seconds after an alert starts, or when it ends if that is sooner,
-the NVR must hold an event subscription and the last event pushed to it must have arrived. If not, the history gets
-**Alert NOT recorded: the NVR was not listening** for that sensor, and Notifications sends it. With the NVR's address set on
-the NVR page only that NVR counts; without it, any subscriber does. When the NVR has not been listening for 3 minutes,
+the NVR must hold an event subscription and the last event pushed to it must have arrived, or, for an NVR that pulls
+events, it must have asked within the last minute. If not, the history gets **Alert not recorded** for that sensor, and
+Notifications sends it. With the NVR's address set on the NVR page only that NVR counts; without it, any subscriber does,
+and the page warns about that at the top. When the NVR has not been listening for 3 minutes,
 the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back.
 
 Each time the hub starts it logs **Hub started** with the reason, such as a power cut or a firmware update, and how long
@@ -68,7 +69,7 @@ a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts J
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
 or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
 `alert not recorded`, `delayed alert not recorded`, `NVR not listening`, `NVR listening again`, `hub started` and `test`.
-The hub's own events have `"sensor":"hub"`, and for `hub started` the name is the reason. An alert not recorded is sent
+The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not recorded is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
@@ -207,8 +208,11 @@ ESP-NOW has to use the same radio channel as the Wi-Fi network, so the channel i
 Sensors should try channels 1 to 13 until a send reports delivery, keep that channel, and search again if
 sends start failing, because a router on automatic channel selection can move.
 
-Once it has accepted and logged a report, the hub sends a **confirmation** back to that MAC address, usually within
-100 ms; wait at least 300 ms before resending. A sensor should resend a report, with the same number, until the confirmation arrives: delivery by ESP-NOW only
+Once it has accepted a report and saved it to storage, the hub sends a **confirmation** back to that MAC address, usually
+within 100 ms; wait at least 300 ms before resending. The save comes first, so a power cut cannot lose an alert its
+sensor has stopped sending: the event history, the past events waiting for their NVR record, and the alerts whose
+recording has not yet been checked are all on storage, and after a restart those last two play as past events. If the
+save fails, no confirmation is sent and the next resend tries again. A sensor should resend a report, with the same number, until the confirmation arrives: delivery by ESP-NOW only
 means the radio got it. A resend is confirmed again. Messages that are refused, malformed or from a device without a
 folder get no confirmation. The confirmation is 15 bytes:
 
@@ -270,7 +274,8 @@ settings over USB, which also erases its Wi-Fi networks.
 | `GET /events` | The last 64 events, newest first, with true event times. Kept across restarts. |
 
 Sensor reports need `&token=<value>`, using the token shown on the HTTP page. `/status` and `/events` need the hub login.
-Unknown sensors get a 404.
+Unknown sensors get a 404. The 200 reply is the confirmation and comes only once the report is saved; if it could
+not be saved the reply is 507, and the sensor should send it again.
 When several sensors are active, the picture alternates between them every 2 s.
 
 ## Adding it to the NVR
@@ -298,4 +303,5 @@ The pages are ordinary files in `web/`: `index` is the main page and `setup` the
 `.html`, `.css` and `.js`. Opening `web/index.html` in a browser shows the layout, though nothing loads without a hub.
 Every build runs `tools/embed_web.py`, which puts each page's stylesheet and script inside it, gzips it and builds it
 into the firmware. The hub sends the pages gzipped, which every browser accepts. `node --check web/index.js` finds
-script mistakes before a build.
+script mistakes before a build. The scripts and styles are laid out by Prettier, and the checks on GitHub refuse them
+otherwise; after an edit, run `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`.

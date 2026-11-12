@@ -33,7 +33,7 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     setupOn = command == "setup-on";
   } else if (command == "end-alerts") {  // so the test need not wait out each hold
     hub.endAlerts();
-  } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or nothing after the colon
+  } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or "done last-sent" when nothing was sent
     reply = lastSent;
     lastSent.clear();
   } else if (command == "nvr-watch-on" || command == "nvr-watch-off") {  // off by default, so its events stay out of other checks
@@ -181,8 +181,7 @@ int main(int argc, char** argv) {
     for (const std::string& command : waiting) {
       std::string reply;
       bool known = control(server, command, reply);
-      if (command == "last-sent") reply = ": " + reply;
-      printf("%s %s%s\n", known ? "done" : "unknown", command.c_str(), reply.c_str());
+      printf("%s %s%s\n", known ? "done" : "unknown", command.c_str(), reply.empty() ? "" : (": " + reply).c_str());
       fflush(stdout);
     }
   }
