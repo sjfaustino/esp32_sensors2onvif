@@ -37,6 +37,10 @@ static const size_t EVENTS_CSV_MAX = 256 * 1024;  // then it becomes the older f
 static const char CSV_HEADER[] = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
 static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
 static const uint32_t HOOK_WAIT_MS = 5000;  // for the webhook to connect, and again for its reply
+static const uint32_t RECORD_CHECK_MS = 5000;     // after an alert starts, time for its event push to reach the NVR
+static const uint32_t ALIVE_EVERY_MS = 10UL * 60UL * 1000UL;  // how often the time is saved, so a restart can tell how long the hub was off
+static const uint32_t START_CLOCK_WAIT_MS = 120000;  // "hub started" waits this long for the clock, to say how long it was off
+static const char ALIVE_FILE[] = "alive.bin";
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
 

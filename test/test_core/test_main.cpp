@@ -535,8 +535,64 @@ static void json_writer_escapes_any_text() {
   TEST_ASSERT_EQUAL_STRING("{\"ok\":false,\"error\":\"can't \\\"x\\\"\"}\n", camJsonError("can't \"x\"").c_str());
 }
 
+static void past_events_share_records_only_as_they_would_live() {
+  CamDelayedQueue q;
+  uint8_t a[6] = {2, 0, 0, 0, 0, 1}, b[6] = {2, 0, 0, 0, 0, 2};
+  q.add(a, 1, 1, true, 100000, 8000);
+  q.add(a, 1, 2, true, 105000, 8000);  // within the hold: one record, with the latest direction
+  q.add(a, 1, 0, true, 200000, 8000);  // later than the hold: its own record
+  q.add(b, 1, 0, true, 100000, 8000);  // another sensor: its own record
+  TEST_ASSERT_EQUAL(3, q.count());
+  CamDelayed d;
+  TEST_ASSERT_TRUE(q.take(d));
+  TEST_ASSERT_EQUAL(2, d.direction);
+  TEST_ASSERT_EQUAL_UINT32(105000, d.happenedAt);
+}
+
+static void a_full_past_event_queue_still_records_every_sensor() {
+  CamDelayedQueue q;
+  uint8_t a[6] = {2, 0, 0, 0, 0, 1}, b[6] = {2, 0, 0, 0, 0, 2}, c[6] = {2, 0, 0, 0, 0, 3};
+  for (int i = 0; i < CamDelayedQueue::SIZE; i++) q.add(a, 1, 1, true, 100000u * (i + 1), 8000);
+  q.add(a, 1, 3, false, 0, 8000);  // the same sensor joins one of its own records
+  q.add(b, 1, 1, true, 50000, 8000);  // another sensor joins the newest record, which then stands for several
+  q.add(c, 1, 2, true, 60000, 8000);  // and stays standing for several
+  TEST_ASSERT_EQUAL(CamDelayedQueue::SIZE, q.count());
+  CamDelayed d;
+  for (int i = 0; i < CamDelayedQueue::SIZE - 1; i++) {
+    TEST_ASSERT_TRUE(q.take(d));
+    TEST_ASSERT_NOT_EQUAL(CAM_DIRECTION_SEVERAL, d.direction);
+  }
+  TEST_ASSERT_TRUE(q.take(d));
+  TEST_ASSERT_EQUAL(CAM_DIRECTION_SEVERAL, d.direction);
+  TEST_ASSERT_FALSE(q.take(d));
+}
+
+static void confirmation_is_signed_for_that_sensor() {
+  uint8_t mac[6] = {2, 0, 0, 0, 0, 1}, other[6] = {2, 0, 0, 0, 0, 2};
+  SensorReport r;
+  r.input = 2;
+  r.active = true;
+  r.counter = 0x01020304;
+  std::string c = camConfirmation(mac, r, "key");
+  TEST_ASSERT_EQUAL(CAM_CONFIRMATION_LEN, (int)c.size());
+  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01", c.data(), 7);
+  TEST_ASSERT_TRUE(c.substr(7) == camPacketSignature(mac, (const uint8_t*)c.data(), 7, "key"));
+  TEST_ASSERT_FALSE(c.substr(7) == camPacketSignature(other, (const uint8_t*)c.data(), 7, "key"));
+}
+
+static void durations_read_as_people_say_them() {
+  TEST_ASSERT_EQUAL_STRING("1 min", camDurationText(1).c_str());
+  TEST_ASSERT_EQUAL_STRING("59 min", camDurationText(59 * 60).c_str());
+  TEST_ASSERT_EQUAL_STRING("2 h 13 min", camDurationText(2 * 3600 + 13 * 60).c_str());
+  TEST_ASSERT_EQUAL_STRING("3 days 4 h", camDurationText(3 * 86400 + 4 * 3600).c_str());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(past_events_share_records_only_as_they_would_live);
+  RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
+  RUN_TEST(confirmation_is_signed_for_that_sensor);
+  RUN_TEST(durations_read_as_people_say_them);
   RUN_TEST(json_writer_places_commas_and_brackets);
   RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(hold_expires_and_retrigger_extends);

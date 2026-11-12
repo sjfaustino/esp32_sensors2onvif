@@ -18,6 +18,9 @@ const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means t
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
 
+// A length of time as people say it: "7 min", "2 h 13 min", "3 days 4 h". Rounded up to the minute.
+std::string camDurationText(uint32_t seconds);
+
 // Copies text into a fixed buffer, shortened if needed without splitting a UTF-8 character.
 void camCopyText(char* out, size_t size, const std::string& text);
 
@@ -94,6 +97,8 @@ struct CamConfig {
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
   std::string espNowKey;                    // signs version 2 ESP-NOW messages
+  // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
+  std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
   bool espNowUnsigned = false;              // also accept unsigned version 1 messages
   std::function<bool(bool)> espNowSave;     // stores espNowUnsigned
   CamWebhook webhook;
@@ -110,6 +115,8 @@ struct CamConfig {
   uint32_t silentMs = 3UL * 3600UL * 1000UL;  // a known sensor quiet for this long is reported as silent
   std::string sensorToken;  // when set, /sensor requires token=<value>
   std::string serial = "000000000000";
+  std::string startReason;  // why the hub last started, for the "hub started" event
+  bool watchNvr = true;     // log and send alerts the NVR was not listening for
 };
 
 class SensorCamServer {
@@ -125,6 +132,7 @@ class SensorCamServer {
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow();  // writes any events not yet saved; call before a restart
   void endAlerts();  // ends every alert now, without waiting for its hold; for tests
+  void setNvrWatch(bool on, uint32_t goneMs);  // for tests: turns the NVR checks on or off, and how soon it counts as gone
 
  private:
   // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
@@ -134,7 +142,6 @@ class SensorCamServer {
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
   static const int EVENT_LOG_SIZE = 64;
-  static const int DELAYED_QUEUE_SIZE = 16;
   static const int HOOK_QUEUE = 8;
 
   struct Health {
@@ -155,6 +162,9 @@ class SensorCamServer {
     bool weak = false;
     uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
     const char* refusal = "";
+    bool recordPending = false;  // an alert started, and whether the NVR was listening is still to be checked
+    bool alertDelayed = false;
+    uint32_t alertAt = 0;
   };
   struct Slot {
     bool used = false;
@@ -175,21 +185,16 @@ class SensorCamServer {
   struct CamEvent {
     time_t received = 0;
     uint32_t age = 0;
-    char sensor[22] = "";  // AA-BB-CC-DD-EE-FF/255
-    char name[26] = "";
-    uint8_t kind = 0;      // 0 a report, 1 went silent, 2 low battery, 3 an alert in quiet hours, 4 weak signal
+    char sensor[22] = "";  // AA-BB-CC-DD-EE-FF/255, or "hub" for the hub's own events
+    char name[26] = "";    // the sensor's name; for "hub started", why it started
+    // 0 a report, 1 went silent, 2 low battery, 3 an alert in quiet hours, 4 weak signal, 5 an alert the NVR was not
+    // listening for, 6 the NVR stopped listening, 7 it is listening again, 8 the hub started (age: how long it was off at most)
+    uint8_t kind = 0;
     bool active = false;
     bool delayed = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     uint8_t targetCount = 0;
     SensorTarget targets[CAM_MAX_TARGETS];
-  };
-  struct DelayedAlert {  // by device and input, because a deleted sensor's table position can pass to a new one
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    uint8_t input = 0;
-    uint8_t direction = 0;
-    bool timeKnown = false;  // the report gave its age, so when it happened is known
-    uint32_t happenedAt = 0;  // on the millis() clock; the latest of the alerts merged into this one
   };
 
   struct HttpConn {
@@ -280,6 +285,12 @@ class SensorCamServer {
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed, uint8_t kind = 0);
+  void addEvent(const std::string& sensor, const std::string& name, const SensorReport& report, bool delayed, uint8_t kind);
+  void hubEvent(uint8_t kind, const std::string& detail, uint32_t age, const std::string& message);
+  bool nvrListening() const;
+  void checkNvr(uint32_t now);
+  void noteHubStart(uint32_t now);
+  void startAlert(int id, bool delayed, uint32_t now);  // an alert that is a new NVR record, to be checked as recorded
   void healthAlert(int id, uint8_t kind, uint32_t now);
   void saveEvents();
   void loadEvents();
@@ -301,6 +312,7 @@ class SensorCamServer {
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
   bool quietNow(int id) const;
   void notifyHook(int id, uint8_t kind, bool delayed);
+  void notifyHubHook(uint8_t kind, const std::string& detail, const std::string& message);
   void queueHook(const std::string& message, const std::string& json);
   void startHook(uint32_t now);
   std::string webhookJson();
@@ -353,9 +365,7 @@ class SensorCamServer {
   bool eventsDirty_ = false;  // events logged since the file was last written
   bool eventsSaveFailed_ = false;
   uint32_t eventsSavedAt_ = 0;
-  DelayedAlert delayed_[DELAYED_QUEUE_SIZE];
-  int delayedCount_ = 0;
-  int delayedHead_ = 0;
+  CamDelayedQueue delayed_;
   uint32_t nextDelayedAt_ = 0;
   bool delayedGap_ = false;
   NotifyIo hook_;
@@ -368,4 +378,14 @@ class SensorCamServer {
   std::string csvPending_;  // event history lines not yet added to events.csv
   size_t csvOldBytes_ = 0;  // the older file's size when the latest download started
   std::function<bool(size_t, char*, size_t)> csvRead_;  // reads the whole history for a download
+  uint32_t nvrSeenAt_ = 0;  // when the NVR was last listening, or the hub started
+  bool nvrGone_ = false;
+  uint32_t nvrGoneMs_ = 3 * 60 * 1000;  // not listening for this long is logged once, as the NVR having stopped
+  uint32_t beganAt_ = 0;
+  bool networkSeen_ = false;
+  bool startNoted_ = false;
+  time_t lastAlive_ = 0;  // the last time the previous run knew it was running, from storage; 0 when unknown
+  uint32_t aliveAt_ = 0;
+  bool aliveWritten_ = false;
+  void writeAlive(uint32_t now);
 };

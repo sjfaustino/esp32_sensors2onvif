@@ -6,18 +6,37 @@
 #include "cam_soap.h"
 #include "cam_server_internal.h"
 
-// Kinds follow the event history: 0 an alert, 1 went silent, 2 low battery, 4 weak signal.
+// Kinds follow the event history: 0 an alert, 1 went silent, 2 low battery, 4 weak signal, 5 an alert the NVR missed.
+// That last one is sent if either alerts or problems are, because it means a recording is missing.
 void SensorCamServer::notifyHook(int id, uint8_t kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
-  if (w.url.empty() || (kind == 0 ? !w.alerts : !w.problems)) return;
-  std::string event = kind == 0 ? (delayed ? "delayed alert" : "alert") : kind == 1 ? "went silent" : kind == 2 ? "low battery" : "weak signal";
+  if (w.url.empty() || (kind == 0 ? !w.alerts : kind == 5 ? !w.alerts && !w.problems : !w.problems)) return;
+  std::string event = kind == 0   ? (delayed ? "delayed alert" : "alert")
+                      : kind == 1 ? "went silent"
+                      : kind == 2 ? "low battery"
+                      : kind == 5 ? (delayed ? "delayed alert not recorded" : "alert not recorded")
+                                  : "weak signal";
   std::string sensor = slotName(id), name = slots_[id - 1].name;
   std::string message = (name.empty() ? sensor : name + " (" + sensor + ")") + ": " + event;
+  if (kind == 5) message += ", because the NVR is not listening";
   uint8_t battery = health_[id - 1].battery;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
   queueHook(message, jsonObject([&](CamJson& j) {
               j.str("event", event).str("sensor", sensor).str("name", name).num("battery", battery != CAM_BATTERY_UNKNOWN, battery);
+              j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
+            }));
+}
+
+// The hub's own events, sent as problems: 6 the NVR stopped listening, 7 it is back, 8 the hub started.
+void SensorCamServer::notifyHubHook(uint8_t kind, const std::string& detail, const std::string& message) {
+  const CamWebhook& w = cfg_.webhook;
+  if (w.url.empty() || !w.problems) return;
+  const char* event = kind == 6 ? "NVR not listening" : kind == 7 ? "NVR listening again" : "hub started";
+  time_t now = time(nullptr);
+  bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
+  queueHook(message, jsonObject([&](CamJson& j) {
+              j.str("event", event).str("sensor", "hub").str("name", detail).null("battery");
               j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
             }));
 }

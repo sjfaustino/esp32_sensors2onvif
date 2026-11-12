@@ -223,6 +223,8 @@ static bool saveAddress(const CamAddress& a) {
 }
 
 static void deviceRows(CamJson& j);
+static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len);
+static const char* lastRestartText();
 
 // The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
 extern "C" bool verifyRollbackLater() { return true; }
@@ -320,6 +322,8 @@ static CamConfig makeConfig() {
   c.healthAlarm = settings.healthAlarm;
   c.healthSave = storeHealthAlarm;
   c.espNowKey = settings.espNowKey.c_str();
+  c.espNowSend = sendToNode;
+  c.startReason = lastRestartText();
   c.espNowUnsigned = settings.espNowUnsigned;
   c.espNowSave = storeEspNowUnsigned;
   c.webhook = settings.webhook;
@@ -451,6 +455,23 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
   memcpy(m.mac, info->src_addr, 6);
   m.rssi = info->rx_ctrl ? info->rx_ctrl->rssi : 0;
   xQueueSend(sensorQueue, &m, 0);
+}
+
+// ESP-NOW sends only to registered peers, and holds at most 20, so the one registered longest ago makes room.
+static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len) {
+  if (!esp_now_is_peer_exist(mac)) {
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, mac, 6);
+    peer.channel = 0;  // the channel Wi-Fi is on
+    peer.ifidx = WIFI_IF_STA;
+    peer.encrypt = false;
+    if (esp_now_add_peer(&peer) == ESP_ERR_ESPNOW_FULL) {
+      esp_now_peer_info_t oldest;
+      if (esp_now_fetch_peer(true, &oldest) == ESP_OK) esp_now_del_peer(oldest.peer_addr);
+      esp_now_add_peer(&peer);
+    }
+  }
+  esp_now_send(mac, data, len);
 }
 
 static String uptimeText() {

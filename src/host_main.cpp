@@ -22,15 +22,22 @@ static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t 
 }
 
 static bool setupOn = false;
+static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
 
 // The test's controls, which only this build has: one command per line on standard input, each answered with
-// "done COMMAND" on standard output once it has taken effect, or "unknown COMMAND".
-static bool control(SensorCamServer& hub, const std::string& command) {
+// "done COMMAND" on standard output once it has taken effect, or "unknown COMMAND". A command with an answer gives it
+// after a colon: "done COMMAND: ANSWER".
+static bool control(SensorCamServer& hub, const std::string& command, std::string& reply) {
   static uint32_t counter = 77;
   if (command == "setup-on" || command == "setup-off") {  // stands in for the board opening and closing its setup network
     setupOn = command == "setup-on";
   } else if (command == "end-alerts") {  // so the test need not wait out each hold
     hub.endAlerts();
+  } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or nothing after the colon
+    reply = lastSent;
+    lastSent.clear();
+  } else if (command == "nvr-watch-on" || command == "nvr-watch-off") {  // off by default, so its events stay out of other checks
+    hub.setNvrWatch(command == "nvr-watch-on", 3000);
   } else if (command == "auth-on" || command == "auth-off") {
     hub.setOnvifPassword(command == "auth-on" ? "onvif-secret" : "");
   } else if (command.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
@@ -116,6 +123,21 @@ int main(int argc, char** argv) {
   cfg.crashDelete = [] { crashLeft = 0; return true; };
   cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
   cfg.espNowKey = ESPNOW_KEY;
+  cfg.espNowSend = [](const uint8_t mac[6], const uint8_t* data, int len) {
+    char hex[3];
+    lastSent.clear();
+    for (int i = 0; i < 6; i++) {
+      snprintf(hex, sizeof(hex), "%02x", mac[i]);
+      lastSent += hex;
+    }
+    lastSent += ' ';
+    for (int i = 0; i < len; i++) {
+      snprintf(hex, sizeof(hex), "%02x", data[i]);
+      lastSent += hex;
+    }
+  };
+  cfg.startReason = "PC build started";
+  cfg.watchNvr = false;  // turned on by its own checks, so its events stay out of the others
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
   cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
@@ -157,7 +179,10 @@ int main(int argc, char** argv) {
       waiting.swap(commands);
     }
     for (const std::string& command : waiting) {
-      printf("%s %s\n", control(server, command) ? "done" : "unknown", command.c_str());
+      std::string reply;
+      bool known = control(server, command, reply);
+      if (command == "last-sent") reply = ": " + reply;
+      printf("%s %s%s\n", known ? "done" : "unknown", command.c_str(), reply.c_str());
       fflush(stdout);
     }
   }

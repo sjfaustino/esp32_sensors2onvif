@@ -46,6 +46,16 @@ A node that stays silent for 3 hours, counted from the last restart if it has no
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
 silence and low battery.
 
+The hub also checks that each alert reached the NVR. Five seconds after an alert starts, or when it ends if that is sooner,
+the NVR must hold an event subscription and the last event pushed to it must have arrived. If not, the history gets
+**Alert NOT recorded: the NVR was not listening** for that sensor, and Notifications sends it. With the NVR's address set on
+the NVR page only that NVR counts; without it, any subscriber does. When the NVR has not been listening for 3 minutes,
+the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back.
+
+Each time the hub starts it logs **Hub started** with the reason, such as a power cut or a firmware update, and how long
+it was off. It saves the time every 10 minutes and before a planned restart, so after a power cut the time off is an upper
+bound, at most 10 minutes too long. It is unknown until the clock has been set once.
+
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
 NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
@@ -56,7 +66,10 @@ NVR or to Notifications. Quiet hours need the clock to be set; until it is, aler
 **Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a web address on your network, such as
 a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
-or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal` and `test`.
+or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
+`alert not recorded`, `delayed alert not recorded`, `NVR not listening`, `NVR listening again`, `hub started` and `test`.
+The hub's own events have `"sensor":"hub"`, and for `hub started` the name is the reason. An alert not recorded is sent
+whenever alerts or node problems are; the hub's own events are sent with node problems.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
 
@@ -194,7 +207,23 @@ ESP-NOW has to use the same radio channel as the Wi-Fi network, so the channel i
 Sensors should try channels 1 to 13 until a send reports delivery, keep that channel, and search again if
 sends start failing, because a router on automatic channel selection can move.
 
-Devices that cache alerts should send them oldest first and keep resending until ESP-NOW reports delivery.
+Once it has accepted and logged a report, the hub sends a **confirmation** back to that MAC address, usually within
+100 ms; wait at least 300 ms before resending. A sensor should resend a report, with the same number, until the confirmation arrives: delivery by ESP-NOW only
+means the radio got it. A resend is confirmed again. Messages that are refused, malformed or from a device without a
+folder get no confirmation. The confirmation is 15 bytes:
+
+| Bytes | Field |
+|---|---|
+| 1 | `3`, a confirmation |
+| 1 | The report's input number |
+| 1 | The report's active value |
+| 4 | The report's event counter |
+| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 7 bytes above |
+
+A sensor should check the signature, so that nothing else in radio range can stop it resending. The confirmation means
+the hub has the alert, not that the NVR recorded it; the hub reports that separately (see Events and alerts).
+
+Devices that cache alerts should send them oldest first and keep resending each until it is confirmed.
 They should also resend their current state about hourly, because `/status` marks a sensor silent after 3 hours
 without a message.
 
@@ -210,7 +239,8 @@ event shows the sensor's `-delayed` picture, or else the built-in amber "PAST EV
 so whoever watches the recording can tell it did not happen at that moment. Past events play back one at a time so each
 gets its own NVR record. Late alerts from one sensor that happened within its hold of each other make one record, as they would
 have live. Up to 16 records can wait; beyond that a late alert joins a waiting one from the same sensor, or, if there is
-none, is only logged. The NVR files them at arrival time. `GET /events` gives the true times.
+none, the newest waiting record, which then shows the built-in "PAST EVENT, CHECK LOGS" because it stands for several
+sensors. So every past event gets an NVR record, and the history says which sensors they were. The NVR files them at arrival time. `GET /events` gives the true times.
 
 The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
 carried in backups. The hub refuses a version 2 message with a wrong signature; the ESP-NOW page counts these. The report

@@ -39,6 +39,15 @@ CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len
 // The signature for a message of len bytes, without its own signature. For senders and tests.
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);
 
+// What the hub sends back once it has accepted a report, so the sensor can stop resending. 15 bytes: 3, the input, active
+// (0/1), the report number (u32), then the signature over the sensor's own MAC address and those 7 bytes.
+const uint8_t CAM_CONFIRMATION = 3;
+const int CAM_CONFIRMATION_LEN = 7 + CAM_SIGNATURE_LEN;
+std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key);
+
+// A past-event record standing for alerts from more than one sensor, shown with the built-in past-event picture.
+const uint8_t CAM_DIRECTION_SEVERAL = 0xFE;
+
 // Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
 // FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
 struct CamSensorSettings {
@@ -88,6 +97,32 @@ class SensorBoard {
   };
   uint32_t holdMs_;
   std::vector<Entry> sensors_;
+};
+
+// Past events waiting for their own NVR records, oldest first. Kept by device and input, because a deleted sensor's
+// table position can pass to a new one.
+struct CamDelayed {
+  uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+  uint8_t input = 0;
+  uint8_t direction = 0;    // CAM_DIRECTION_SEVERAL once other sensors' alerts have joined it
+  bool timeKnown = false;   // the report gave its age, so when it happened is known
+  uint32_t happenedAt = 0;  // on the millis() clock; the latest of the alerts merged into this one
+};
+
+class CamDelayedQueue {
+ public:
+  static const int SIZE = 16;
+  // A late alert from one sensor within holdMs of a waiting one from that sensor joins it, as it would have live.
+  // When the queue is full it joins a waiting one from that sensor, or else the newest waiting record, which then
+  // stands for several sensors. So every alert gets a record, and the count never passes SIZE.
+  void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs);
+  bool take(CamDelayed& out);  // the oldest; false when none is waiting
+  int count() const { return count_; }
+
+ private:
+  CamDelayed& at(int n) { return items_[(head_ + n) % SIZE]; }
+  CamDelayed items_[SIZE];
+  int head_ = 0, count_ = 0;
 };
 
 // Decides when a motion notification goes out: on every change, and repeatedly while active.

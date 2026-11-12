@@ -9,7 +9,7 @@ E2E_WEB_PASSWORD to it and E2E_SENSOR_TOKEN to the token on its HTTP page. It cr
 has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
 if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
-import base64, datetime, gzip, hashlib, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
+import base64, datetime, gzip, hashlib, hmac, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_frames
@@ -168,17 +168,18 @@ def live():
 
 
 def control(command):
-    """Sends one of the PC build's test commands and returns once it has taken effect."""
+    """Sends one of the PC build's test commands and returns once it has taken effect, with its answer if it has one."""
     HUB.stdin.write(command + '\n')
     HUB.stdin.flush()
     while True:
         line = HUB.stdout.readline()
         if not line:
             sys.exit(f'the PC build stopped while running {command!r}')
-        if line.strip() in (f'done {command}', f'unknown {command}'):
-            if line.startswith('unknown'):
-                sys.exit(f'the PC build has no command {command!r}')
-            return
+        line = line.strip()
+        if line == f'unknown {command}':
+            sys.exit(f'the PC build has no command {command!r}')
+        if line == f'done {command}' or line.startswith(f'done {command}: ') or line == f'done {command}:':
+            return line[len(f'done {command}:'):].strip()
 
 
 def start_hub(*args):
@@ -640,13 +641,21 @@ def main():
                 control('radio-known')
                 seen = node_entry(radio())
                 check('radio report shows signal, battery and report number', (seen['rssi'], seen['battery'], seen['counter']) == (-61, 55, 77), seen)
+                to, _, sent = control('last-sent').partition(' ')
+                expect = bytes([3, 1, 0]) + (77).to_bytes(4, 'little')
+                signature = hmac.new(b'test-espnow-key-0123456789', bytes.fromhex(to) + expect, hashlib.sha1).digest()[:8]
+                check('the hub confirms a report to its sensor, signed for that sensor', to == '020000000001' and sent == (expect + signature).hex(), (to, sent))
                 clear(1)
                 check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
                 check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])
                 control('radio-huge')
                 check('a report number above 2 billion stays positive', node_entry(radio())['counter'] == 2147483700, node_entry(radio()))
+                control('last-sent')
+                control('radio-huge')
+                check('a resend is confirmed again, because its sensor missed the first confirmation', control('last-sent') != '')
                 clear(1)
                 control('radio-unknown')
+                check('an unknown sender gets no confirmation', control('last-sent') == '')
                 control('radio-unknown')
                 stranger = radio()['unknown']
                 check('unknown sender is listed', len(stranger) == 1 and stranger[0]['mac'] == '02-00-00-00-00-99' and stranger[0]['input'] == 1 and stranger[0]['rssi'] == -61, stranger)
@@ -667,8 +676,10 @@ def main():
                 control('radio-unsigned')
                 check('an unsigned message is accepted when allowed', node_entry(radio())['counter'] != after['counter'] and node_entry(radio())['refused'] == after['refused'], node_entry(radio()))
                 api('POST', '/api/espnow', 'unsigned=0')
+                control('last-sent')
                 control('radio-forged')
                 check('a message signed with another key is refused', node_entry(radio())['refusal'] == 'wrong signature', node_entry(radio()))
+                check('a refused message gets no confirmation', control('last-sent') == '')
                 control('radio-known')
                 before = node_entry(radio())
                 control('radio-old')
@@ -806,6 +817,27 @@ def main():
                 catcher.shutdown()
                 check('the event history needs the web password', api('GET', '/api/events', auth=False)[0] == 401)
                 check('/status needs the web password', http_status('/status') == 401)
+
+                # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
+                api('POST', '/api/nvr', 'ip=192.0.2.8')
+                control('nvr-watch-on')  # the NVR counts as gone after 3 s here, instead of 3 minutes
+                get(f'/sensor?{sid(1)}')
+                missed = poll(event_list, lambda l: l and any(e['kind'] == 5 for e in l[:2]))
+                check('an alert the NVR is not listening for is logged as not recorded', missed and any(e['kind'] == 5 and e['sensor'] == path for e in missed[:2]), missed[:3])
+                gone = poll(event_list, lambda l: any(e['kind'] == 6 for e in l[:3]))
+                check('the NVR not listening is logged as a hub event', [e['sensor'] for e in gone[:3] if e['kind'] == 6] == ['hub'], gone[:3])
+                clear(1)
+                soap('CreatePullPointSubscription', '/onvif/events')  # this PC now listens, as an NVR that pulls events would
+                api('POST', '/api/nvr', 'ip=127.0.0.1')
+                back = poll(event_list, lambda l: l and l[0]['kind'] == 7)
+                check('the NVR listening again is logged', back and back[0]['kind'] == 7 and back[0]['sensor'] == 'hub', back[:2])
+                flagged = sum(e['kind'] == 5 for e in event_list())
+                get(f'/sensor?{sid(1)}')
+                time.sleep(6)  # past the check, which comes 5 s after an alert starts
+                check('an alert the NVR is listening for is not flagged', sum(e['kind'] == 5 for e in event_list()) == flagged, event_list()[:3])
+                clear(1)
+                control('nvr-watch-off')
+                api('POST', '/api/nvr', 'ip=')
 
                 # Firmware and backup.
                 check('firmware update needs the web password', api('PUT', '/api/firmware', b'\xe9' * 100, auth=False)[0] == 401)
@@ -1061,6 +1093,9 @@ def main():
                 quiet_nodes = poll(lambda: json.loads(api('GET', '/api/espnow')[1])['nodes'], lambda n: n and all(x['state'] == 'silent' for x in n))
                 check('a node quiet since the restart is reported silent', quiet_nodes and all(n['state'] == 'silent' for n in quiet_nodes), quiet_nodes)
                 check('going silent after a restart is logged', any(e['kind'] == 1 for e in json.loads(api('GET', '/api/events')[1])))
+                starts = [e for e in event_list() if e['kind'] == 8]
+                check('the start is logged with its reason and how long the hub was off', starts and starts[0]['sensor'] == 'hub' and starts[0]['name'] == 'PC build started'
+                      and starts[0]['off_s'] is not None and starts[0]['off_s'] < 3600, starts[:2])
             api('DELETE', f'/api/file?path={B}')
         finally:
             if proc:

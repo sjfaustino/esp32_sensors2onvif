@@ -44,6 +44,11 @@ CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, c
   return differ || key.empty() ? CAM_PACKET_BAD_SIGNATURE : CAM_PACKET_SIGNED;
 }
 
+std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key) {
+  uint8_t d[7] = {CAM_CONFIRMATION, r.input, (uint8_t)r.active, (uint8_t)r.counter, (uint8_t)(r.counter >> 8), (uint8_t)(r.counter >> 16), (uint8_t)(r.counter >> 24)};
+  return std::string((const char*)d, sizeof(d)) + camPacketSignature(sensorMac, d, sizeof(d), key);
+}
+
 static bool smallNumber(const std::string& s, int& out) {  // digits only, up to 9999
   if (s.empty() || s.size() > 4) return false;
   for (char ch : s)
@@ -163,6 +168,42 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
     return true;
   }
   return false;
+}
+
+void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs) {
+  CamDelayed* same = nullptr;
+  for (int n = 0; n < count_; n++) {
+    CamDelayed& d = at(n);
+    if (d.input != input || memcmp(d.mac, mac, 6) != 0) continue;
+    int32_t apart = (int32_t)(happenedAt - d.happenedAt);
+    if (timeKnown && d.timeKnown && (uint32_t)(apart < 0 ? -apart : apart) <= holdMs) {
+      same = &d;
+      break;
+    }
+    if (count_ == SIZE) same = &d;
+  }
+  if (!same && count_ < SIZE) {
+    same = &at(count_++);
+    *same = CamDelayed();
+    memcpy(same->mac, mac, 6);
+    same->input = input;
+    same->timeKnown = timeKnown;
+    same->happenedAt = happenedAt;
+  }
+  if (!same) {  // full of other sensors' alerts
+    at(count_ - 1).direction = CAM_DIRECTION_SEVERAL;
+    return;
+  }
+  if (same->direction != CAM_DIRECTION_SEVERAL) same->direction = direction;
+  if (timeKnown && same->timeKnown && (int32_t)(happenedAt - same->happenedAt) > 0) same->happenedAt = happenedAt;
+}
+
+bool CamDelayedQueue::take(CamDelayed& out) {
+  if (!count_) return false;
+  out = items_[head_];
+  head_ = (head_ + 1) % SIZE;
+  count_--;
+  return true;
 }
 
 bool MotionSignal::update(bool active, uint32_t now) {

@@ -22,6 +22,87 @@ void SensorCamServer::saveEvents() {
 
 void SensorCamServer::saveNow() {
   if (eventsDirty_) saveEvents();
+  writeAlive(millis_());  // a planned restart then knows exactly when the hub stopped
+}
+
+// Rewritten every 10 minutes while the clock is set, so after a power cut the hub can say how long it was off.
+void SensorCamServer::writeAlive(uint32_t now) {
+  aliveAt_ = now;
+  aliveWritten_ = true;
+  int64_t t = (int64_t)time(nullptr);
+  if (t >= (int64_t)CAM_CLOCK_VALID_AFTER) storage_.writeFile(ALIVE_FILE, (const char*)&t, sizeof(t));
+}
+
+// Logged once the network is up, and once the clock is set or has had long enough to be.
+void SensorCamServer::noteHubStart(uint32_t now) {
+  time_t t = time(nullptr);
+  bool clockOk = t >= CAM_CLOCK_VALID_AFTER;
+  if (startNoted_ || !networkSeen_ || (!clockOk && now - beganAt_ < START_CLOCK_WAIT_MS)) return;
+  startNoted_ = true;
+  bool offKnown = clockOk && lastAlive_ >= CAM_CLOCK_VALID_AFTER && t >= lastAlive_ && (int64_t)(t - lastAlive_) < (int64_t)CAM_AGE_UNKNOWN;
+  uint32_t off = offKnown ? (uint32_t)(t - lastAlive_) : CAM_AGE_UNKNOWN;
+  std::string reason = cfg_.startReason.empty() ? std::string("unknown") : cfg_.startReason;
+  std::string message = cfg_.hostName + " started (" + reason + ")";
+  if (offKnown) message += ", after being off for up to " + camDurationText(off);
+  hubEvent(8, reason, off, message);
+}
+
+std::string camDurationText(uint32_t seconds) {
+  uint32_t m = (seconds + 59) / 60;
+  if (m < 60) return std::to_string(m) + " min";
+  if (m < 48 * 60) return std::to_string(m / 60) + " h " + std::to_string(m % 60) + " min";
+  return std::to_string(m / 1440) + " days " + std::to_string(m / 60 % 24) + " h";
+}
+
+// The NVR is listening when it holds a subscription and the last event pushed to it arrived. With no NVR address set,
+// any subscriber counts.
+bool SensorCamServer::nvrListening() const {
+  uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
+  for (int i = 0; i < SubTable::SIZE; i++) {
+    const CamSub& s = subs_.at(i);
+    if (s.used && (!nvr || s.peer == nvr) && !(s.push && s.pushFailed)) return true;
+  }
+  return false;
+}
+
+void SensorCamServer::setNvrWatch(bool on, uint32_t goneMs) {
+  cfg_.watchNvr = on;
+  nvrGoneMs_ = goneMs;
+  nvrSeenAt_ = millis_();
+  nvrGone_ = false;
+  for (Health& h : health_) h.recordPending = false;  // alerts from before the change are not checked
+}
+
+void SensorCamServer::startAlert(int id, bool delayed, uint32_t now) {
+  Health& h = health_[id - 1];
+  h.recordPending = true;
+  h.alertDelayed = delayed;
+  h.alertAt = now;
+}
+
+// Each new alert is checked a few seconds after it starts, when its event push has had time to arrive, or when it ends
+// if that is sooner. One the NVR did not get is logged and sent, because nothing else would show it is missing.
+void SensorCamServer::checkNvr(uint32_t now) {
+  bool listening = nvrListening();
+  if (listening) {
+    nvrSeenAt_ = now;
+    if (nvrGone_) hubEvent(7, "", 0, "The NVR is listening to " + cfg_.hostName + " again");
+    nvrGone_ = false;
+  } else if (!nvrGone_ && now - nvrSeenAt_ >= nvrGoneMs_) {
+    nvrGone_ = true;
+    hubEvent(6, "", 0, "The NVR is not listening to " + cfg_.hostName + ": alerts are not being recorded");
+  }
+  for (int id = 1; id <= sensors_.count(); id++) {
+    Health& h = health_[id - 1];
+    if (!slots_[id - 1].used || !h.recordPending || (now - h.alertAt < RECORD_CHECK_MS && sensors_.active(id))) continue;
+    h.recordPending = false;
+    if (listening) continue;
+    SensorReport r;
+    r.battery = h.battery;
+    r.active = true;
+    logEvent(id, r, h.alertDelayed, 5);
+    notifyHook(id, 5, h.alertDelayed);
+  }
 }
 
 void SensorCamServer::loadEvents() {
@@ -43,12 +124,23 @@ void SensorCamServer::healthAlert(int id, uint8_t kind, uint32_t now) {
   if (cfg_.healthAlarm) sensors_.trigger(id, now, 0, false, holdFor(id));
 }
 
-void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint8_t kind) {
+void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, uint8_t kind) { addEvent(slotName(id), slots_[id - 1].name, r, delayed, kind); }
+
+// The hub's own events: in the history as sensor "hub", and sent as node problems.
+void SensorCamServer::hubEvent(uint8_t kind, const std::string& detail, uint32_t age, const std::string& message) {
+  SensorReport r;
+  r.age = age;
+  addEvent("hub", detail, r, false, kind);
+  notifyHubHook(kind, detail, message);
+}
+
+void SensorCamServer::addEvent(const std::string& sensor, const std::string& name, const SensorReport& r, bool delayed, uint8_t kind) {
   CamEvent& e = events_[eventNext_];
+  e = CamEvent();
   e.received = time(nullptr);
   e.age = r.age;
-  snprintf(e.sensor, sizeof(e.sensor), "%s", slotName(id).c_str());
-  camCopyText(e.name, sizeof(e.name), slots_[id - 1].name);
+  snprintf(e.sensor, sizeof(e.sensor), "%s", sensor.c_str());
+  camCopyText(e.name, sizeof(e.name), name);
   e.kind = kind;
   e.active = r.active;
   e.delayed = delayed;
@@ -74,10 +166,26 @@ static std::string csvText(const std::string& s) {
   return quoted + "\"";
 }
 
+static const char* camEventText(uint8_t kind, bool active, bool delayed) {
+  switch (kind) {
+    case 1: return "went silent";
+    case 2: return "low battery";
+    case 3: return "alert in quiet hours";
+    case 4: return "weak signal";
+    case 5: return delayed ? "delayed alert not recorded: NVR not listening" : "alert not recorded: NVR not listening";
+    case 6: return "NVR not listening";
+    case 7: return "NVR listening again";
+    case 8: return "hub started";
+    default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
+  }
+}
+
 std::string SensorCamServer::csvLine(const CamEvent& e) {
   static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
-  const char* what = e.kind == 1 ? "went silent" : e.kind == 2 ? "low battery" : e.kind == 3 ? "alert in quiet hours" : e.kind == 4 ? "weak signal" : !e.active ? "clear" : e.delayed ? "delayed alert" : "alert";
+  std::string what = camEventText(e.kind, e.active, e.delayed);
+  if (e.kind == 8 && e.age != CAM_AGE_UNKNOWN) what += " after being off for up to " + camDurationText(e.age);
+  if (e.kind == 8) ageKnown = false;  // its age is how long the hub was off, not when it happened
   int nearest = -1;
   for (int i = 0; i < e.targetCount; i++)
     if (nearest < 0 || e.targets[i].distanceCm < e.targets[nearest].distanceCm) nearest = i;
@@ -138,6 +246,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   } else if (r.active && !quiet) {
     // Starts the alert, or extends it, so activations closer together than the hold make one NVR record.
     sensors_.trigger(id, now, reportDirection(r), false, holdFor(id));
+    if (!wasActive) startAlert(id, false, now);
   }
   // A clear report does not end the alert early, for the same reason: the alert ends when its hold runs out.
   // Repeats and heartbeats that change nothing would push real events out of the log.
@@ -149,35 +258,11 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   return true;
 }
 
-// A late alert waits for its own NVR record. One from the same sensor within the hold of a waiting one joins it, as it
-// would have live. When the queue is full, it joins any waiting alert from that sensor rather than being lost.
+// A late alert waits for its own NVR record; CamDelayedQueue decides which alerts share one.
 void SensorCamServer::queueDelayed(int id, const SensorReport& r, uint32_t now) {
   const Slot& s = slots_[id - 1];
   bool known = r.age != CAM_AGE_UNKNOWN && r.age < 1000000;  // the millisecond clock covers 49 days
-  uint32_t happened = known ? now - r.age * 1000 : now;
-  DelayedAlert* same = nullptr;
-  for (int n = 0; n < delayedCount_; n++) {
-    DelayedAlert& d = delayed_[(delayedHead_ + n) % DELAYED_QUEUE_SIZE];
-    if (d.input != s.input || memcmp(d.mac, s.mac, 6) != 0) continue;
-    int32_t apart = (int32_t)(happened - d.happenedAt);
-    if (known && d.timeKnown && (uint32_t)(apart < 0 ? -apart : apart) <= holdFor(id)) {
-      same = &d;
-      break;
-    }
-    if (delayedCount_ == DELAYED_QUEUE_SIZE) same = &d;
-  }
-  if (!same && delayedCount_ < DELAYED_QUEUE_SIZE) {
-    same = &delayed_[(delayedHead_ + delayedCount_) % DELAYED_QUEUE_SIZE];
-    *same = DelayedAlert();
-    memcpy(same->mac, s.mac, 6);
-    same->input = s.input;
-    same->timeKnown = known;
-    same->happenedAt = happened;
-    delayedCount_++;
-  }
-  if (!same) return;  // the queue is full of other sensors' alerts; this one is still in the event history
-  same->direction = reportDirection(r);
-  if (known && same->timeKnown && (int32_t)(happened - same->happenedAt) > 0) same->happenedAt = happened;
+  delayed_.add(s.mac, s.input, reportDirection(r), known, known ? now - r.age * 1000 : now, holdFor(id));
 }
 
 void SensorCamServer::endAlerts() {
@@ -232,12 +317,19 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
   // A resend repeats the report a moment later, and the hub ignores it. Only a short while, so a restarted sensor that
   // happens to reuse the last number is still heard.
   uint32_t now = millis_();
-  if (h.counterSeen && h.counter == r.counter && h.counterActive == r.active && now - h.counterAt < RESEND_WINDOW_MS) return;
-  h.counterSeen = true;
-  h.counter = r.counter;
-  h.counterAt = now;
-  h.counterActive = r.active;
-  applyReport(id, r, now);
+  bool resend = h.counterSeen && h.counter == r.counter && h.counterActive == r.active && now - h.counterAt < RESEND_WINDOW_MS;
+  if (!resend) {
+    h.counterSeen = true;
+    h.counter = r.counter;
+    h.counterAt = now;
+    h.counterActive = r.active;
+    applyReport(id, r, now);
+  }
+  // Confirmed once it is logged, and again for a resend, whose sender evidently missed the first confirmation.
+  if (cfg_.espNowSend) {
+    std::string confirmation = camConfirmation(mac, r, cfg_.espNowKey);
+    cfg_.espNowSend(mac, (const uint8_t*)confirmation.data(), (int)confirmation.size());
+  }
 }
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
@@ -262,12 +354,13 @@ void SensorCamServer::noteSignal(int id, int8_t rssi) {
 void SensorCamServer::serviceDelayed(uint32_t now) {
   // The flag keeps the comparison valid: an old timestamp alone would look like the future after 24.8 days.
   if (delayedGap_ && (int32_t)(now - nextDelayedAt_) >= 0) delayedGap_ = false;
-  if (delayedCount_ == 0 || sensors_.anyActive() || delayedGap_) return;
-  DelayedAlert d = delayed_[delayedHead_];
-  delayedHead_ = (delayedHead_ + 1) % DELAYED_QUEUE_SIZE;
-  delayedCount_--;
+  CamDelayed d;
+  if (sensors_.anyActive() || delayedGap_ || !delayed_.take(d)) return;
   int id = findSlot(d.mac, d.input);
-  if (id) sensors_.trigger(id, now, d.direction, true, holdFor(id));  // it may have been deleted while waiting
+  if (id) {  // it may have been deleted while waiting
+    sensors_.trigger(id, now, d.direction, true, holdFor(id));
+    startAlert(id, true, now);
+  }
   nextDelayedAt_ = now + (id ? holdFor(id) : cfg_.holdMs) + DELAYED_GAP_MS;
   delayedGap_ = true;
 }
@@ -306,7 +399,7 @@ std::string SensorCamServer::statusJson(uint32_t now) {
     j.num("sensors", known).array("active");
     for (int id = 1; id <= sensors_.count(); id++)
       if (sensors_.active(id)) j.str(slotName(id));
-    j.end().num("subscribers", subs_.count()).num("streams", streamCount()).num("delayed_waiting", delayedCount_).array("heard");
+    j.end().num("subscribers", subs_.count()).num("streams", streamCount()).num("delayed_waiting", delayed_.count()).array("heard");
     for (int id = 1; id <= sensors_.count(); id++) {
       const Health& h = health_[id - 1];
       if (!h.heard) continue;
@@ -336,11 +429,13 @@ std::string SensorCamServer::eventsJson() {
   for (int n = 0; n < count; n++) {
     const CamEvent& e = events_[(eventNext_ - 1 - n + 2 * EVENT_LOG_SIZE) % EVENT_LOG_SIZE];
     bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
-    bool ageKnown = e.age != CAM_AGE_UNKNOWN;
+    bool ageKnown = e.age != CAM_AGE_UNKNOWN && e.kind != 8;  // a start's age is how long the hub was off
     j.object().str("sensor", e.sensor).str("name", e.name).num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
     j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
     j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
-    j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery).array("targets");
+    j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery);
+    if (e.kind == 8) j.num("off_s", e.age != CAM_AGE_UNKNOWN, e.age);
+    j.array("targets");
     for (int i = 0; i < e.targetCount; i++)
       j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();
     j.end().end();

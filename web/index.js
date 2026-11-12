@@ -382,11 +382,15 @@ function setEsp(on){clearInterval(espTimer);if(on){loadEsp();call("GET","/api/al
 $("espAlarm").onchange=e=>{call("POST","/api/alerts","alarm="+(e.target.checked?1:0)).catch(()=>{})};
 $("espUnsigned").onchange=e=>{call("POST","/api/espnow","unsigned="+(e.target.checked?1:0)).catch(()=>{})};
 const DIRECTIONS=["","approaching","moving away","left to right","right to left"];
+const EVENT_KINDS={1:"Went silent",2:"Low battery",3:"Alert in quiet hours",4:"Weak signal",5:"Alert NOT recorded: the NVR was not listening",6:"NVR stopped listening",7:"NVR listening again",8:"Hub started"};
+// The same wording as the hub's own messages: "7 min", "2 h 13 min", "3 days 4 h".
+function duration(s){const m=Math.ceil(s/60);return m<60?m+" min":m<2880?Math.floor(m/60)+" h "+m%60+" min":Math.floor(m/1440)+" days "+Math.floor(m/60)%24+" h"}
 async function loadEvents(){try{const list=await call("GET","/api/events");
 $("evTable").replaceChildren(...(list.length?[headRow(["Time","Sensor","Event","Details","Battery"])]:[]),
-...list.map(e=>{const when=e.happened||e.received,what=e.kind==1?"Went silent":e.kind==2?"Low battery":e.kind==3?"Alert in quiet hours":e.kind==4?"Weak signal":e.active?"Active":"Clear";
-const details=[e.delayed?"delayed":""].concat(e.targets.map(t=>[t.distance_cm==null?"":(t.distance_cm/100).toFixed(2)+" m",DIRECTIONS[t.direction]||""].filter(Boolean).join(" "))).filter(Boolean).join(", ");
-return el("tr",null,...[when?new Date(when).toLocaleString():"Clock not set",e.name||e.sensor,what,details||"-",e.battery==null?"-":e.battery+"%"].map(v=>el("td",{textContent:v})))}));
+...list.map(e=>{const when=e.happened||e.received,what=EVENT_KINDS[e.kind]||(e.active?"Active":"Clear");
+const off=e.kind==8&&e.off_s!=null?"off for up to "+duration(e.off_s):"";
+const details=[e.delayed?"delayed":"",e.sensor=="hub"?e.name:"",off].concat(e.targets.map(t=>[t.distance_cm==null?"":(t.distance_cm/100).toFixed(2)+" m",DIRECTIONS[t.direction]||""].filter(Boolean).join(" "))).filter(Boolean).join(", ");
+return el("tr",null,...[when?new Date(when).toLocaleString():"Clock not set",e.sensor=="hub"?"Hub":e.name||e.sensor,what,details||"-",e.battery==null?"-":e.battery+"%"].map(v=>el("td",{textContent:v})))}));
 $("evNone").textContent=list.length?"":"No events yet."}catch(e){}}
 $("fwSend").onclick=async()=>{const m=$("fwMsg"),f=$("fwFile").files[0];m.className="portMsg";
 if(!f){m.className="portMsg err";m.textContent="Choose a firmware .bin file first.";return}

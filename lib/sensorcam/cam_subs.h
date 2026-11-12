@@ -16,6 +16,7 @@ struct CamSub {
   bool pending = false;       // push: a notification should be sent
   bool initialized = false;   // push: first message (PropertyOperation "Initialized") was sent
   int lastPull = -1;          // pull: last state delivered, -1 for none
+  bool pushFailed = false;    // push: the last notification could not be delivered
 };
 
 class SubTable {
@@ -33,6 +34,7 @@ class SubTable {
   void markAllPending();
   int count() const;
   CamSub& at(int i) { return subs_[i]; }
+  const CamSub& at(int i) const { return subs_[i]; }
 
  private:
   CamSub& slot(uint32_t now);

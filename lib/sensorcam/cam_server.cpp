@@ -79,6 +79,13 @@ bool SensorCamServer::begin() {
   for (std::string& spare : spareOut_) spare.reserve(STREAM_BUFFER);
   rescan();
   loadEvents();
+  std::string alive;
+  if (storage_.readFile(ALIVE_FILE, alive, 16) && alive.size() == sizeof(int64_t)) {
+    int64_t t;
+    memcpy(&t, alive.data(), sizeof(t));
+    lastAlive_ = (time_t)t;
+  }
+  beganAt_ = nvrSeenAt_ = millis_();
   return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
 
@@ -92,6 +99,7 @@ std::string SensorCamServer::debugLine() {
 }
 
 void SensorCamServer::networkUp() {
+  networkSeen_ = true;
   openDiscovery();
   if (cfg_.loopbackOnly || udp_ < 0) return;
   std::string hello = discoveryHello(localIp_(), cfg_.onvifPort, cfg_.serial, messageNo_++);
@@ -382,7 +390,9 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
   liveSeq_++;
 
   std::vector<std::string> candidates;
-  if (on) {
+  if (on && direction == CAM_DIRECTION_SEVERAL) {
+    // Stands for several sensors' past events, so no one sensor's picture fits: the built-in one says to check the logs.
+  } else if (on) {
     // A past event never borrows the live picture, which would make it look like it is happening now.
     std::string base = slotName(id) + "/";
     candidates = {base + camStateFile(direction, delayed), base + camStateFile(0, delayed)};
@@ -747,6 +757,11 @@ void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
   if (n.hook) {
     hookResult_ = result;
     hookResultAt_ = time(nullptr);
+  } else if (&n >= notify_ && &n < notify_ + SubTable::SIZE && n.state != NotifyIo::IDLE) {
+    // A failure before the message was sent means the NVR did not get it. The NVR closes without replying, so the
+    // other endings are deliveries.
+    std::string r = result;
+    subs_.at((int)(&n - notify_)).pushFailed = r == "could not connect" || r == "the connection failed";
   }
   if (n.fd >= 0) netClose(n.fd);
   n = NotifyIo();
@@ -770,6 +785,7 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
   to.sin_addr.s_addr = inet_addr(url.host.c_str());
   if (connect(fd, (sockaddr*)&to, sizeof(to)) != 0 && !netWouldBlock()) {
     netClose(fd);
+    sub.pushFailed = true;
     return;
   }
   bool active = sensors_.anyActive();
@@ -852,6 +868,9 @@ void SensorCamServer::poll(int maxWaitMs) {
     healthAlert(i + 1, 1, now);
   }
   if (eventsDirty_ && now - eventsSavedAt_ >= EVENT_SAVE_MS) saveEvents();
+  if (!startNoted_) noteHubStart(now);
+  if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
+  if (cfg_.watchNvr) checkNvr(now);
   subs_.expire(now);
   servicePolls(now);
   if (signal_.update(sensors_.anyActive(), now)) subs_.markAllPending();
