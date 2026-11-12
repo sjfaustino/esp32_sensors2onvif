@@ -208,7 +208,7 @@ static std::string peerText(uint32_t peer) {
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
-  bool inSetup = cfg_.setupActive();
+  bool inSetup = camCall(cfg_.setupActive);
   bool setupRoute = route == "/setup" || route == "/api/wifi" || route == "/api/wifi/scan" || (inSetup && route == "/");
   if (!(inSetup && setupRoute) && !authorized(c, headers)) {
     c.out = UNAUTHORIZED;
@@ -224,12 +224,12 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
     sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, GZIPPED);
   } else if (r.is("GET", "/api/wifi/scan")) {
-    c.out = jsonOk(jsonObject(cfg_.wifiNetworks));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.wifiNetworks, j); }));
   } else if (r.is("POST", "/api/wifi")) {
     std::string form = r.form();
     std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
     if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63))) c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
-    else c.out = saved(cfg_.wifiSave(ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
+    else c.out = saved(camCall(cfg_.wifiSave, ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
   } else {
     c.out = jsonFail(404, "not found");
   }
@@ -306,7 +306,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
     if (cfg_.fsUsage) cfg_.fsUsage(used, total);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.array("rows");
-      cfg_.deviceRows(j);
+      camCall(cfg_.deviceRows, j);
       auto row = [&](const char* label, const std::string& value) { j.array().str(label).str(value).end(); };
       row("Picture storage", std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB");
       row("Sensors", std::to_string(known));
@@ -350,7 +350,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
 bool SensorCamServer::apiSystem(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/time")) {
-    c.out = jsonOk(jsonObject(cfg_.timeInfo));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.timeInfo, j); }));
   } else if (r.is("POST", "/api/time")) {
     std::string form = r.form(), epochText = queryParam(form, "epoch");
     CamTime t;
@@ -366,7 +366,7 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       t.offsetMinutes = (int)offset;
       t.dst = (int)dst;
       t.epoch = epoch;
-      c.out = saved(cfg_.timeSave(t), "could not save the time settings");
+      c.out = saved(camCall(cfg_.timeSave, t), "could not save the time settings");
     }
   } else if (r.is("GET", "/api/schedule")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", cfg_.schedule.on).num("day", cfg_.schedule.day).num("minute", cfg_.schedule.minute); }));
@@ -380,25 +380,25 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       s.on = queryParam(form, "on") == "1";
       s.day = (int)day;
       s.minute = (int)minute;
-      bool ok = cfg_.scheduleSave(s);
+      bool ok = camCall(cfg_.scheduleSave, s);
       if (ok) cfg_.schedule = s;
       c.out = saved(ok, "could not save the schedule");
     }
   } else if (r.is("POST", "/api/reboot")) {
-    c.out = saved(cfg_.maintenance("reboot"), "could not do that");
+    c.out = saved(camCall(cfg_.maintenance, "reboot"), "could not do that");
   } else if (r.is("POST", "/api/reset")) {
     if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
-    else c.out = saved(cfg_.maintenance("reset"), "could not do that");
+    else c.out = saved(camCall(cfg_.maintenance, "reset"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
   } else if (r.is("POST", "/api/alerts")) {
-    bool on = queryParam(r.form(), "alarm") == "1", ok = cfg_.healthSave(on);
+    bool on = queryParam(r.form(), "alarm") == "1", ok = camCall(cfg_.healthSave, on);
     if (ok) cfg_.healthAlarm = on;
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("GET", "/api/backup")) {
-    c.out = httpResponse(200, "text/plain", cfg_.backupText());
+    c.out = httpResponse(200, "text/plain", camCall(cfg_.backupText));
   } else if (r.is("POST", "/api/restore")) {
-    c.out = cfg_.restoreText(std::string(r.body, r.bodyLen)) ? jsonOk(JSON_OK) : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
+    c.out = camCall(cfg_.restoreText, std::string(r.body, r.bodyLen)) ? jsonOk(JSON_OK) : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
   } else {
     return false;
   }
@@ -424,7 +424,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     if (!ip.empty() && !parseIpv4(ip, parsed)) {
       c.out = jsonFail(400, "check the IP address");
     } else {
-      bool ok = cfg_.nvrSave(ip);
+      bool ok = camCall(cfg_.nvrSave, ip);
       if (ok) {
         cfg_.nvrIp = ip;
         subs_.protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
@@ -432,7 +432,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       c.out = saved(ok, "could not save the NVR address");
     }
   } else if (r.is("GET", "/api/network")) {
-    c.out = jsonOk(jsonObject(cfg_.addressInfo));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.addressInfo, j); }));
   } else if (r.is("POST", "/api/network")) {
     std::string form = r.form();
     CamAddress a;
@@ -442,7 +442,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     a.gateway = queryParam(form, "gateway");
     a.dns = queryParam(form, "dns");
     if (!a.dhcp && !validAddress(a)) c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
-    else c.out = saved(cfg_.addressSave(a), "could not save the address");
+    else c.out = saved(camCall(cfg_.addressSave, a), "could not save the address");
   } else if (r.is("POST", "/api/settings")) {
     std::string form = r.form();
     auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
@@ -474,7 +474,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       s.password = password;
       s.hostsGiven = hostsGiven;
       s.hosts = hosts;
-      c.out = saved(cfg_.settingsSave(s), "could not save the settings");
+      c.out = saved(camCall(cfg_.settingsSave, s), "could not save the settings");
     }
   } else {
     return false;
@@ -486,7 +486,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
 bool SensorCamServer::apiSensors(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("POST", "/api/espnow")) {
-    bool on = queryParam(r.form(), "unsigned") == "1", ok = cfg_.espNowSave(on);
+    bool on = queryParam(r.form(), "unsigned") == "1", ok = camCall(cfg_.espNowSave, on);
     if (ok) cfg_.espNowUnsigned = on;
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("POST", "/api/sensor-settings")) {
@@ -533,7 +533,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     if (!validHookUrl(w.url)) {
       c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
     } else {
-      bool ok = cfg_.webhookSave(w);
+      bool ok = camCall(cfg_.webhookSave, w);
       if (ok) cfg_.webhook = w;
       c.out = saved(ok, "could not save the notification settings");
     }

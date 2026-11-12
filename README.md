@@ -38,10 +38,9 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 
 ## Events and alerts
 
-**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. Every event is added to one log on
-storage, `events.log`, and never rewritten; a report is in it before its sensor gets a confirmation. **Download the full
-history (CSV)** makes a CSV file from that log as it is sent, about the last 5400 events, in UTC. History from firmware before
-this log is kept: its newest events are moved into the log once, and its old CSV files come first in the download. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and Events pages.
+**Sensors Manager > Events** lists the last 64 events, kept across restarts. **Download the full history (CSV)** gives
+about the last 5400, in UTC. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and
+Events pages. Updating from older firmware keeps its history.
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
@@ -53,26 +52,19 @@ The hub cannot report its own death: while it has no power or no Wi-Fi, nothing 
 it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
 hub from a small UPS.
 
-The hub also checks that each alert reached the NVR. Five seconds after an alert starts, or when it ends if that is sooner,
-the NVR must hold an event subscription and the last event pushed to it must have arrived, or, for an NVR that pulls
-events, it must have asked within the last minute. If not, the history gets **Alert not delivered** for that sensor, and
-Notifications sends it. With the NVR's address set on the NVR page only that NVR counts; without it, any subscriber does,
-and the page warns about that at the top. When the NVR has not been listening for 3 minutes,
-the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back. An alert the NVR did not get is
-kept, and once the NVR listens again it plays as a past event, so the NVR still records that something happened, with the
-past-event picture. If the NVR misses the replay too, it waits again, without being logged or sent a second time. A failed
-event push is tried again every 30 seconds.
-
-When the hub rejoins its Wi-Fi network after losing it, without restarting, it logs **network lost** with how long it was
-off, because someone may be keeping it off on purpose.
+The hub checks that each alert reached the NVR. If the NVR was not listening, the history gets **Alert not delivered**
+and Notifications sends it; the alert is kept, and once the NVR listens again it plays as a past event, so the NVR
+still records that something happened. Set the NVR's address on the NVR page, or any device subscribed to the hub's
+events counts as the NVR; the page warns at the top until you do. When the NVR has not been listening for 3 minutes,
+the hub logs **NVR stopped listening**, and **NVR listening again** when it is back. If the hub rejoins its Wi-Fi after
+losing it, it logs **network lost** with how long, because someone may be keeping it off on purpose.
 
 Delivered is all the hub can see. Whether the NVR then records depends on its own settings for the hub's channel: motion
-detection on, and recording and logging on motion. An NVR with those off gets every alert and records none, and the hub
-cannot tell. Check them when adding the hub, and check a recording after any NVR update or reset.
+detection on, and recording and logging on motion. Check them when adding the hub, and check a recording after any NVR
+update or reset.
 
 Each time the hub starts it logs **Hub started** with the reason, such as a power cut or a firmware update, and how long
-it was off. It saves the time every 10 minutes and before a planned restart, so after a power cut the time off is an upper
-bound, at most 10 minutes too long. It is unknown until the clock has been set once.
+it was off, to within 10 minutes after a power cut.
 
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
@@ -108,23 +100,14 @@ the web page then says so at the top.
 HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
 ESP-NOW reports are signed with a separate key instead; see below.
 
-Ten wrong passwords in a row from one address, on the web page, ONVIF or RTSP, shut that address out for a minute, even
-with the right password. Each wrong one after that doubles the time, up to 15 minutes, and the count is kept for a day or
-until the right password is given, so slow guessing gets no further than quick guessing: about 100 tries a day. Asking
-without a password, as a browser or NVR first does, does not count. The web port answers only to the hub's own IP
-address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or `.internal`, the setup address,
-and the **Other names** on the HTTP page, such as the name your router gives the hub. So a website cannot point its own
-name at the hub and use your browser to reach it. A name it refuses gets a reply saying where to add it. Sensor reports
-are never refused for the name they use, because their token guards them and an alert must not be lost.
-The ONVIF snapshot address carries a token made from the password and a secret that never leaves the hub, so the address
-cannot be used to guess the password. The picture encoder the page downloads is checked against the published files
-before it runs, because it runs with your login.
+Ten wrong passwords in a row from one address lock it out for a minute, then longer for each further one, up to 15
+minutes. The web page answers only to the hub's address, its own name with `.local` or a home router's usual ending,
+and the **Other names** on the HTTP page: add the name your router gives the hub there if you use it. A refused name
+gets a reply saying so. Details are in [docs/how-it-works.md](docs/how-it-works.md).
 
 Passwords travel over the network unencrypted, as HTTP, ONVIF and RTSP between local devices usually do, and are kept on
 the hub's flash unencrypted, so someone who takes the hub can read the Wi-Fi password, the hub password and the ESP-NOW key.
-Keep the hub out of reach. ONVIF logins are not checked for their time or reused nonces, because NVRs differ in how they
-send them and refusing your NVR's login would stop recording; every ONVIF request only reads, so a replayed one can at most
-subscribe, and a subscription from the NVR's address is never pushed out by other clients.
+Keep the hub out of reach.
 
 ## System Manager
 
@@ -198,9 +181,8 @@ finally to the built-in red "ALERT" or amber "PAST EVENT, CHECK LOGS", so a sens
 records. A past event never falls back to a live picture.
 
 The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
-without a reboot. Pictures cannot fill the storage: the room the event history may still need, up to about 600 KB, is
-kept free, and the Sensors page shows how much that is. Without it the hub could not save reports, and so could not
-confirm them to the sensors. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
+without a reboot. Pictures cannot use the last of the storage, which is kept for the event history; the Sensors page
+shows how much. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 
 To change the words, open **Change the text** under a sensor, or beside `clear.h264`, and save. Your browser makes the
@@ -245,13 +227,10 @@ ESP-NOW has to use the same radio channel as the Wi-Fi network, so the channel i
 Sensors should try channels 1 to 13 until a send reports delivery, keep that channel, and search again if
 sends start failing, because a router on automatic channel selection can move.
 
-Once it has accepted a report and saved it to storage, the hub sends a **confirmation** back to that MAC address, usually
-within 100 ms; wait at least 300 ms before resending. The save comes first, so a power cut cannot lose an alert its
-sensor has stopped sending: the event history, the past events waiting for their NVR record, and the alerts whose
-recording has not yet been checked are all on storage, and after a restart those last two play as past events. If the
-save fails, no confirmation is sent and the next resend tries again. A sensor should resend a report, with the same number, until the confirmation arrives: delivery by ESP-NOW only
-means the radio got it. A resend is confirmed again. Messages that are refused, malformed or from a device without a
-folder get no confirmation. The confirmation is 15 bytes:
+Once it has accepted a report and saved it, the hub sends a **confirmation** back to that MAC address, usually within
+100 ms; wait at least 300 ms before resending. A sensor should resend a report, with the same number, until the
+confirmation arrives: delivery by ESP-NOW only means the radio got it. A resend is confirmed again. Messages that are
+refused, malformed or from a device without a folder get no confirmation. The confirmation is 15 bytes:
 
 | Bytes | Field |
 |---|---|
@@ -265,8 +244,8 @@ A sensor should check the signature, so that nothing else in radio range can sto
 the hub has the alert, not that the NVR got it or recorded it; the hub reports delivery separately (see Events and alerts).
 
 Devices that cache alerts should send them oldest first and keep resending each until it is confirmed.
-They should also resend their current state about hourly, because `/status` marks a sensor silent after 3 hours
-without a message.
+They should also report their current state regularly, a little more often than their node's **Report this node silent
+after** time, 3 hours unless set, so that a sensor that stops reporting is noticed.
 
 An alert lasts its hold time, 10 seconds or the sensor's own alert time, from the sensor's latest activation. Another
 activation before then extends it, so a person moving about makes one NVR record rather than several. A clear report is
@@ -277,11 +256,8 @@ A node has no clock, so it sends how many seconds ago the event happened, and th
 than 30 seconds, or of unknown age, is a **past event**. The time can be set for each node under **Node settings** on the
 Sensors page, from 1 to 86400 seconds; set it to how long that node can take to deliver an alert, retries included. A past
 event shows the sensor's `-delayed` picture, or else the built-in amber "PAST EVENT, CHECK LOGS", never the live picture,
-so whoever watches the recording can tell it did not happen at that moment. Past events play back one at a time so each
-gets its own NVR record. Late alerts from one sensor that happened within its hold of each other make one record, as they would
-have live. Up to 16 records can wait; beyond that a late alert joins a waiting one from the same sensor, or, if there is
-none, the newest waiting record, which then shows the built-in "PAST EVENT, CHECK LOGS" because it stands for several
-sensors. So every past event gets an NVR record, and the history says which sensors they were. The NVR files them at arrival time. `GET /events` gives the true times.
+so whoever watches the recording can tell it did not happen at that moment. Each past event gets its own NVR record,
+filed at its arrival time; `GET /events` gives the true times.
 
 The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
 carried in backups. The hub refuses a version 2 message with a wrong signature; the ESP-NOW page counts these. The report
@@ -334,13 +310,7 @@ python tools/e2e_test.py
 
 `tools/e2e_test.py` can also test a flashed board. Its header explains how.
 
-## Changing the web pages
+## How it works
 
-The pages are ordinary files in `web/`: `index.html` is the main page and `setup.html` the Wi-Fi setup page. The main
-page's scripts are `sensors.js` (the Sensors page, and the helpers the others use), `pictures.js` (making pictures),
-`sha256.js` (checking the downloaded encoder), `encoder-worker.js` (the encoder's worker, carried in the page as text) and
-`index.js` (the menu and every other page). Opening `web/index.html` in a browser shows the layout, though nothing loads
-without a hub. Every build runs `tools/embed_web.py`, which puts each stylesheet and script a page links inside it, gzips
-it and builds it into the firmware. The hub sends the pages gzipped, which every browser accepts. `node --check` finds
-script mistakes before a build. The scripts and styles are laid out by Prettier, and the checks on GitHub refuse them
-otherwise; after an edit, run `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`.
+[docs/how-it-works.md](docs/how-it-works.md) explains how the hub keeps these promises, for whoever changes the
+code, including how to change the web pages.

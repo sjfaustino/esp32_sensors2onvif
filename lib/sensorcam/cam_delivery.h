@@ -8,6 +8,7 @@
 #include <functional>
 #include <vector>
 #include "cam_sensors.h"
+#include "cam_timing.h"
 
 struct CamPendingCheck {
   bool on = false;
@@ -22,7 +23,7 @@ struct CamPendingCheck {
 
 class CamDeliveryWatch {
  public:
-  static const uint32_t CHECK_AFTER_MS = 5000;
+  static const uint32_t CHECK_AFTER_MS = CAM_DELIVERY_CHECK_MS;
   struct Missed {  // an alert the NVR did not get
     int id;
     bool delayed;

@@ -499,6 +499,9 @@ static const char* lastRestartText() {
 }
 
 static uint32_t programBytes = 0;
+// The worst the free memory has been cut up, which decides whether a large reply can be built. Free memory alone does
+// not show it.
+static uint32_t smallestBlock = UINT32_MAX;
 
 static void deviceRows(CamJson& j) {
   auto add = [&](const char* label, const String& value) { j.array().str(label).str(value.c_str()).end(); };
@@ -520,6 +523,7 @@ static void deviceRows(CamJson& j) {
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
   add("Largest free block", String(largestBlock() / 1024) + " KB");
+  add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");
   add("ESP-NOW messages dropped while busy", String((unsigned)espNowDropped) + (espNowDropped ? ", which their sensors resend" : ""));
   nvs_stats_t nvs;
   if (nvs_get_stats(nullptr, &nvs) == ESP_OK) add("Settings storage", String(nvs.used_entries) + " of " + nvs.total_entries + " entries used");
@@ -574,66 +578,75 @@ void setup() {
   enableLoopWDT();  // an unattended hub must restart itself if the main loop ever stalls
 }
 
-void loop() {
-  bool connected = WiFi.status() == WL_CONNECTED;
-  bool justLost = !connected && wasConnected;
-  static bool everConnected = false;
-  static uint32_t lostAt = 0;  // when the network went, while it is gone
-  if (connected && !wasConnected) {
-    // A drop and return without a restart is logged, because someone may be keeping the hub off its network.
-    if (everConnected && lostAt) server->networkLost((millis() - lostAt) / 1000 + 1);
-    everConnected = true;
-    server->networkUp();
-    connectedAt = timerStart();
-    startGatewayPing();
-    staticChecked = false;
-    static bool nameAnnounced = false;
-    if (!nameAnnounced && MDNS.begin(settings.hubName.c_str())) {
-      MDNS.addService("http", "tcp", settings.webPort);
-      nameAnnounced = true;
-    }
-  }
-  wasConnected = connected;
+// ---- the main loop: each step below keeps one promise, and loop() runs them in this order ----
 
-  // An unattended hub must not stay off the network: keep asking, then start clean.
-  static bool hadGuest = false;
+static bool everConnected = false;
+static uint32_t lostAt = 0;  // when the network went, while it is gone
+static bool hadGuest = false;
+
+// Back on Wi-Fi. A drop and return without a restart is logged, because someone may be keeping the hub off its network.
+static void onConnected() {
+  if (everConnected && lostAt) server->networkLost((millis() - lostAt) / 1000 + 1);
+  everConnected = true;
+  server->networkUp();
+  connectedAt = timerStart();
+  startGatewayPing();
+  staticChecked = false;
+  static bool nameAnnounced = false;
+  if (!nameAnnounced && MDNS.begin(settings.hubName.c_str())) {
+    MDNS.addService("http", "tcp", settings.webPort);
+    nameAnnounced = true;
+  }
+}
+
+// An unattended hub must not stay off the network: keep asking, then start clean.
+static void keepOnNetwork(bool connected, bool justLost) {
   if (connected) {
     lostAt = 0;
     hadGuest = false;
     if (wifiTrying == 1) promoteBackup();
     if (setupOpen) closeSetup();
-  } else {
-    if (lostAt == 0) lostAt = timerStart();
-    bool haveNetwork = settings.wifiSsid[0].length() > 0;
-    if (!haveNetwork) openSetup();
-    if (justLost && haveNetwork) tryNetwork(0);
-    // Connection attempts move the radio, which would drop whoever is on the setup network and block its scan.
-    bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
-    if (guest && !hadGuest) WiFi.disconnect(false);
-    hadGuest = guest;
-    if (guest) {
-      lostAt = timerStart();  // someone is using the setup page; a restart would throw them off
-    } else if (haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
-      if (wifiTrying == 0 && settings.wifiSsid[1].length() > 0) {
-        tryNetwork(1);
-      } else {  // neither network worked: open the setup network and keep trying behind it
-        openSetup();
-        tryNetwork(0);
-      }
-    }
-    if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
+    return;
   }
-  if (setupOpen) dnsServer.processNextRequest();
-  if (!settings.timeNtp && esp_sntp_enabled() && clockSet()) applyTime();  // the one-off NTP reading after a power cut has arrived
+  if (lostAt == 0) lostAt = timerStart();
+  bool haveNetwork = settings.wifiSsid[0].length() > 0;
+  if (!haveNetwork) openSetup();
+  if (justLost && haveNetwork) tryNetwork(0);
+  // Connection attempts move the radio, which would drop whoever is on the setup network and block its scan.
+  bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
+  if (guest && !hadGuest) WiFi.disconnect(false);
+  hadGuest = guest;
+  if (guest) {
+    lostAt = timerStart();  // someone is using the setup page; a restart would throw them off
+  } else if (haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
+    if (wifiTrying == 0 && settings.wifiSsid[1].length() > 0) {
+      tryNetwork(1);
+    } else {  // neither network worked: open the setup network and keep trying behind it
+      openSetup();
+      tryNetwork(0);
+    }
+  }
+  if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
+}
+
+// A restart asked for on the page, and the minute a new firmware must last before it is kept.
+static void restartWhenAsked(bool connected) {
   if (restartPending && millis() - restartRequestedAt > 1500) {
     confirmFirmware();  // someone used this firmware's pages to ask for this restart, so it must not count as a failure
     restartFor(restartRequested);
   }
-  // A new firmware has to stay on the network for a minute. Any restart before that, including the Wi-Fi one above, undoes the update.
+  // A new firmware has to stay on the network for a minute. Any restart before that, including the Wi-Fi one, undoes the update.
   if (firmwareUnproven && (connected ? millis() - connectedAt > FIRMWARE_PROOF_MS : settings.wifiSsid[0].isEmpty() && millis() > FIRMWARE_PROOF_MS)) confirmFirmware();
+}
 
-  // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
-  static uint32_t lowSince = 0;
+// Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
+static void restartWhenStuck() {
+  static uint32_t lowSince = 0, sampledAt = 0;
+  if (millis() - sampledAt >= 1000) {  // for Device Info: how cut up the memory has been
+    sampledAt = millis();
+    uint32_t block = largestBlock();
+    if (block < smallestBlock) smallestBlock = block;
+  }
   if (ESP.getFreeHeap() >= LOW_HEAP_BYTES) {
     lowSince = 0;
   } else {
@@ -641,16 +654,21 @@ void loop() {
     if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(RESTART_LOW_MEMORY);
   }
   if (server->stalledMs(millis()) > 30000) restartFor(RESTART_STALLED);  // the loop runs but the server has stopped serving
+}
 
-  // The uptime check stops the hub from restarting again within the same minute.
+// The uptime check stops the hub from restarting again within the same minute.
+static void restartWhenScheduled() {
   static uint32_t scheduleCheckedAt = 0;
-  if (settings.schedule.on && millis() > 180000 && millis() - scheduleCheckedAt > 20000) {
-    scheduleCheckedAt = millis();
-    time_t now = time(nullptr);
-    struct tm local;
-    localtime_r(&now, &local);
-    if (clockSet() && (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == settings.schedule.minute) restartFor(RESTART_SCHEDULED);
-  }
+  if (!settings.schedule.on || millis() <= 180000 || millis() - scheduleCheckedAt <= 20000) return;
+  scheduleCheckedAt = millis();
+  time_t now = time(nullptr);
+  struct tm local;
+  localtime_r(&now, &local);
+  if (clockSet() && (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == settings.schedule.minute) restartFor(RESTART_SCHEDULED);
+}
+
+// Connected, but cut off: a wrong fixed address, or a router that stopped answering.
+static void restartWhenCutOff(bool connected) {
   // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
   if (connected && usingStatic && !staticChecked && millis() - connectedAt > STATIC_CHECK_MS) {
     staticChecked = true;
@@ -663,15 +681,32 @@ void loop() {
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
   uint32_t lastReply = lastPingReply;
   if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(RESTART_ROUTER_SILENT);
+}
 
+static void printHeartbeat() {
   static uint32_t printedAt = 0;
-  if (millis() - printedAt > 10000) {
-    printedAt = millis();
-    Serial.printf("ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
-                  WiFi.localIP().toString().c_str(), settings.onvifPort, settings.webPort, settings.rtspPort, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
-                  (unsigned)wifiDropReason, ESP.getFreeHeap(), largestBlock(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
-  }
+  if (millis() - printedAt <= 10000) return;
+  printedAt = millis();
+  Serial.printf("ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
+                WiFi.localIP().toString().c_str(), settings.onvifPort, settings.webPort, settings.rtspPort, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
+                (unsigned)wifiDropReason, ESP.getFreeHeap(), largestBlock(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
+}
 
+void loop() {
+  bool connected = WiFi.status() == WL_CONNECTED;
+  bool justLost = !connected && wasConnected;
+  if (connected && !wasConnected) onConnected();  // before keepOnNetwork, which forgets when the network went
+  wasConnected = connected;
+  keepOnNetwork(connected, justLost);
+  if (setupOpen) dnsServer.processNextRequest();
+  if (!settings.timeNtp && esp_sntp_enabled() && clockSet()) applyTime();  // the one-off NTP reading after a power cut has arrived
+  restartWhenAsked(connected);
+  restartWhenStuck();
+  restartWhenScheduled();
+  restartWhenCutOff(connected);
+  printHeartbeat();
+
+  // Sensor messages first, so the server saves them together and then confirms them, in the same pass.
   SensorMessage m;
   while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowPacket(m.mac, m.data, m.len, m.rssi);
   server->poll(20);

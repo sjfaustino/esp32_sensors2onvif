@@ -2,15 +2,16 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <functional>
 #include <string>
+#include <utility>
 #include "cam_frames.h"
 #include "cam_json.h"
+#include "cam_timing.h"
 
 static const size_t MAX_REQUEST = 16 * 1024;
 static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
 static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 1024;  // the picture plus 18 bytes of headers per 1400-byte packet
-static const uint32_t HTTP_TIMEOUT_MS = 10000;
-static const uint32_t MAX_POLL_MS = 10000;      // the longest a PullMessages is held, so it cannot occupy a connection for long
 static const int MAX_WAITING_POLLS = 2;         // the rest of the connections stay free for the web page and the NVR
 static const size_t MAX_FIRMWARE = 3 * 1024 * 1024;
 static const uint8_t LOW_BATTERY_PERCENT = 20;
@@ -22,25 +23,19 @@ static const char HTML_TYPE[] = "text/html; charset=utf-8";
 static const char JSON_OK[] = "{\"ok\":true}\n";
 static const char GZIPPED[] = "Content-Encoding: gzip\r\n";  // the web pages are stored that way
 static const char UNAUTHORIZED[] = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-static const uint32_t RTSP_IDLE_MS = 120000;
-static const uint32_t RTSP_STALL_MS = 30000;
-static const uint32_t NOTIFY_SEND_MS = 2000;
-static const uint32_t NOTIFY_CLOSE_MS = 1000;
-static const uint32_t REPEAT_TRUE_MS = 1000;
-static const uint32_t DELAYED_AFTER_S = 30;       // older reports are past events, unless the node's settings say otherwise
-static const uint32_t DELAYED_GAP_MS = 4000;      // lets the NVR close one record before the next
-static const uint32_t RESEND_WINDOW_MS = 60000;   // the same ESP-NOW report again within this is a resend
 static const size_t HISTORY_ROOM = 64 * 1024;  // beyond the event logs: the waiting alerts, settings files and room to rewrite them
 static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
-static const uint32_t HOOK_WAIT_MS = 5000;  // for the webhook to connect, and again for its reply
-static const uint32_t PULL_ALIVE_MS = 60000;      // an NVR that pulls events and has not asked for this long is not listening
-static const uint32_t PUSH_RETRY_MS = 30000;      // a failed event push is tried again this often
-static const uint32_t RECORD_CHECK_MS = 5000;     // after an alert starts, time for its event push to reach the NVR
-static const uint32_t ALIVE_EVERY_MS = 10UL * 60UL * 1000UL;  // how often the time is saved, so a restart can tell how long the hub was off
-static const uint32_t START_CLOCK_WAIT_MS = 120000;  // "hub started" waits this long for the clock, to say how long it was off
 static const char ALIVE_FILE[] = "alive.bin";
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
+
+// Calls a callback the board may leave unset. An unset one does nothing and gives false, an empty text or nothing,
+// so a missing feature is refused, not a crash.
+template <typename R, typename... P, typename... A>
+inline R camCall(const std::function<R(P...)>& f, A&&... a) {
+  if (!f) return R();
+  return f(std::forward<A>(a)...);
+}
 
 // ---- HTTP replies ----
 

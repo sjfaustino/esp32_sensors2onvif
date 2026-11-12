@@ -14,6 +14,7 @@
 #include "cam_soap.h"
 #include "cam_storage.h"
 #include "cam_subs.h"
+#include "cam_timing.h"
 
 
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
@@ -60,7 +61,8 @@ struct CamAddress {
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
 };
 
-// Every std::function here must be set, except fsUsage, canAllocate, hasHeadroom, espNowInfo, onvifNetwork, localMinute and the crash ones.
+// What the board provides. Any std::function may be left unset: the feature it serves is then refused or left out,
+// so a PC build or a test sets only what it uses.
 struct CamConfig {
   std::string fsRoot = "/littlefs";
   std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
@@ -370,7 +372,7 @@ class SensorCamServer {
   std::function<size_t(size_t, char*, size_t)> csvRead_;  // streams the whole history for a download
   uint32_t nvrSeenAt_ = 0;  // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;
-  uint32_t nvrGoneMs_ = 3 * 60 * 1000;  // not listening for this long is logged once, as the NVR having stopped
+  uint32_t nvrGoneMs_ = CAM_NVR_GONE_MS;  // a test may shorten it
   uint32_t beganAt_ = 0;
   bool networkSeen_ = false;
   bool startNoted_ = false;

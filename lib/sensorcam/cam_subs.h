@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <string>
+#include "cam_timing.h"
 
 // ONVIF event subscribers.
 //
@@ -24,7 +25,7 @@ struct CamSub {
 class SubTable {
  public:
   static const int SIZE = 6;
-  static const uint32_t IDLE_MS = 10UL * 60UL * 1000UL;
+  static const uint32_t IDLE_MS = CAM_SUB_IDLE_MS;
 
   // The NVR subscribes twice with the same URL; one entry means one notification per event.
   CamSub& addPush(const std::string& consumer, uint32_t peer, uint32_t now);

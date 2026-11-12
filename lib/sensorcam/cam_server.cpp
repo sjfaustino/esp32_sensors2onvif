@@ -11,7 +11,7 @@
 #include "cam_server_internal.h"
 
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
-    : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(REPEAT_TRUE_MS),
+    : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
 }
@@ -116,7 +116,7 @@ std::string* SensorCamServer::borrowFileOut(HttpConn& c) {
 
 void SensorCamServer::closeHttp(HttpConn& c) {
   if (c.firmwareActive) {  // the browser went away partway through, so the update is abandoned
-    cfg_.firmwareEnd(false);
+    camCall(cfg_.firmwareEnd, false);
     firmwareOwner_ = nullptr;
   }
   if (fileOutOwner_ == &c) {
@@ -156,7 +156,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
-  if (listenFd == captiveListen_ && !cfg_.setupActive()) {
+  if (listenFd == captiveListen_ && !camCall(cfg_.setupActive)) {
     netClose(fd);
     return;
   }
@@ -228,7 +228,7 @@ static uint32_t pollWaitMs(const std::string& timeout) {
       number = 0;
     }
   }
-  return ms < MAX_POLL_MS ? ms : MAX_POLL_MS;
+  return ms < CAM_POLL_HOLD_MAX_MS ? ms : CAM_POLL_HOLD_MAX_MS;
 }
 
 static uint32_t subIdFromPath(const std::string& path) {
@@ -430,8 +430,8 @@ bool SensorCamServer::authorized(const HttpConn& c, const std::string& headers) 
 }
 
 void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
-  bool done = ok && cfg_.firmwareEnd(true);
-  if (!ok) cfg_.firmwareEnd(false);
+  bool done = ok && camCall(cfg_.firmwareEnd, true);
+  if (!ok) camCall(cfg_.firmwareEnd, false);
   firmwareOwner_ = nullptr;
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
@@ -442,7 +442,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
 
 void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || cfg_.firmwareWrite((const uint8_t*)data, take);
+  bool written = !take || camCall(cfg_.firmwareWrite, (const uint8_t*)data, take);
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -491,7 +491,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");
   // Phones and laptops probe a known site on joining a network; sending them here is what opens the setup page by itself.
-  if (c.web && isGet && cfg_.setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
+  if (c.web && isGet && camCall(cfg_.setupActive) && headerValue(headers, "host") != cfg_.setupAddress) {
     c.out = "HTTP/1.1 302 Found\r\nLocation: http://" + cfg_.setupAddress + "/setup\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     c.answered = true;
     return true;
@@ -509,7 +509,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
     if (!authorized(c, headers)) return needLogin(MAX_FIRMWARE);
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware");
-    if (firmwareOwner_ || !cfg_.firmwareBegin(contentLength)) return refuse(507, "could not start the update");
+    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength)) return refuse(507, "could not start the update");
     firmwareOwner_ = &c;
     c.firmwareActive = true;
     c.firmwareLeft = contentLength;
@@ -651,7 +651,7 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       return;
     }
   }
-  if (!c.pollWaiting && now - c.openedAt > HTTP_TIMEOUT_MS) closeHttp(c);
+  if (!c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS) closeHttp(c);
 }
 
 // ---- RTSP ----
@@ -767,7 +767,7 @@ void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uin
     }
   }
   if (c.fd >= 0 && (writable || !c.out.empty())) flushRtsp(c, now);
-  if (c.fd >= 0 && (now - c.activityAt > (c.playing ? RTSP_STALL_MS : RTSP_IDLE_MS))) closeRtsp(c);
+  if (c.fd >= 0 && (now - c.activityAt > (c.playing ? CAM_RTSP_STALL_MS : CAM_RTSP_IDLE_MS))) closeRtsp(c);
 }
 
 void SensorCamServer::pushFrames(uint32_t now) {
@@ -829,7 +829,7 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
   n.fd = fd;
   n.outPos = 0;
   n.state = NotifyIo::CONNECTING;
-  n.deadline = now + NOTIFY_SEND_MS;
+  n.deadline = now + CAM_NOTIFY_SEND_MS;
 }
 
 void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now) {
@@ -853,7 +853,7 @@ void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, u
     if (n.outPos >= n.out.size()) {
       // The NVR closes without an HTTP reply, so this only waits for that close. A webhook replies.
       n.state = NotifyIo::WAIT_CLOSE;
-      n.deadline = now + (n.hook ? HOOK_WAIT_MS : NOTIFY_CLOSE_MS);
+      n.deadline = now + (n.hook ? CAM_HOOK_WAIT_MS : CAM_NOTIFY_CLOSE_MS);
     }
   }
   if (n.state == NotifyIo::WAIT_CLOSE && readable) {
@@ -909,14 +909,14 @@ void SensorCamServer::poll(int maxWaitMs) {
   if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap
   if (waitingDirty_) saveWaiting();  // small, and it is what a restart would replay
   if (!startNoted_) noteHubStart(now);
-  if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
+  if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= CAM_ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
   if (cfg_.watchNvr) checkNvr(now);
   subs_.expire(now);
   servicePolls(now);
   if (signal_.update(sensors_.anyActive(), now)) subs_.markAllPending();
   for (int i = 0; i < SubTable::SIZE; i++) {  // so one failed push cannot leave the NVR counted as not listening
     CamSub& s = subs_.at(i);
-    if (!s.used || !s.push || !s.pushFailed || now - s.retryAt < PUSH_RETRY_MS) continue;
+    if (!s.used || !s.push || !s.pushFailed || now - s.retryAt < CAM_PUSH_RETRY_MS) continue;
     s.pending = true;
     s.retryAt = now;
   }

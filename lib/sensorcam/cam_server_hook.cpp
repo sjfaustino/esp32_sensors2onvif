@@ -75,7 +75,7 @@ void SensorCamServer::startHook(uint32_t now) {
               (cfg_.webhook.text ? "text/plain; charset=utf-8" : JSON_TYPE) + "\r\nContent-Length: " + std::to_string(body.size()) +
               "\r\nConnection: close\r\n\r\n" + body;
   hook_.state = NotifyIo::CONNECTING;
-  hook_.deadline = now + HOOK_WAIT_MS;
+  hook_.deadline = now + CAM_HOOK_WAIT_MS;
 }
 
 std::string SensorCamServer::webhookJson() {

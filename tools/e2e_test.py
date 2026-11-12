@@ -82,12 +82,19 @@ def get(path):
         headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
     if TOKEN and path.startswith('/sensor'):
         path += f'&token={TOKEN}'
-    c = http.client.HTTPConnection(HOST, WEB, timeout=5)
-    c.request('GET', path, headers=headers)
-    r = c.getresponse()
-    data = body_of(r).decode()
-    c.close()
-    return r.status, data
+    for attempt in range(2):
+        try:
+            c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+            c.request('GET', path, headers=headers)
+            r = c.getresponse()
+            data = body_of(r).decode()
+            c.close()
+            return r.status, data
+        except (ConnectionAbortedError, ConnectionResetError, http.client.RemoteDisconnected):
+            # The hub closes a new connection at once while all of its connections are busy, and a sensor tries again.
+            if attempt:
+                raise
+            time.sleep(0.5)
 
 
 def http_status(path):
@@ -229,7 +236,7 @@ class PullingNvr:
                 soap('PullMessages', self.address)
             except OSError:
                 pass  # the hub restarting under a test
-            self.stopping.wait(5)
+            self.stopping.wait(20)  # well inside the minute the hub allows, and seldom in the way of the other checks
 
     def stop(self):
         self.stopping.set()

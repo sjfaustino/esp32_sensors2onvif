@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include <string>
+#include "cam_timing.h"
 
 std::string camSha1(const std::string& data);    // the raw 20 bytes
 std::string camHmacSha1(const std::string& key, const std::string& data);  // the raw 20 bytes
@@ -37,8 +38,8 @@ bool camHostListValid(const std::string& names);
 // slowly both get at most about 100 tries a day.
 class CamLoginGuard {
  public:
-  static const int FREE_TRIES = 10;
-  static const uint32_t FIRST_LOCK_MS = 60000, LONGEST_LOCK_MS = 15 * 60000, FORGET_MS = 24UL * 3600 * 1000;
+  static const int FREE_TRIES = CAM_LOGIN_FREE_TRIES;
+  static const uint32_t FIRST_LOCK_MS = CAM_LOGIN_FIRST_LOCK_MS, LONGEST_LOCK_MS = CAM_LOGIN_LONGEST_LOCK_MS, FORGET_MS = CAM_LOGIN_FORGET_MS;
   bool allowed(uint32_t peer, uint32_t now) const;
   void note(uint32_t peer, bool ok, uint32_t now);  // only for logins that offered a password
 

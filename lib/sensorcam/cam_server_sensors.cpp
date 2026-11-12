@@ -92,7 +92,7 @@ void SensorCamServer::networkLost(uint32_t seconds) {
 void SensorCamServer::noteHubStart(uint32_t now) {
   time_t t = time(nullptr);
   bool clockOk = t >= CAM_CLOCK_VALID_AFTER;
-  if (startNoted_ || !networkSeen_ || (!clockOk && now - beganAt_ < START_CLOCK_WAIT_MS)) return;
+  if (startNoted_ || !networkSeen_ || (!clockOk && now - beganAt_ < CAM_START_CLOCK_WAIT_MS)) return;
   startNoted_ = true;
   bool offKnown = clockOk && lastAlive_ >= CAM_CLOCK_VALID_AFTER && t >= lastAlive_ && (int64_t)(t - lastAlive_) < (int64_t)CAM_AGE_UNKNOWN;
   uint32_t off = offKnown ? (uint32_t)(t - lastAlive_) : CAM_AGE_UNKNOWN;
@@ -107,7 +107,7 @@ bool SensorCamServer::nvrListening(uint32_t now) const {
   for (int i = 0; i < SubTable::SIZE; i++) {
     const CamSub& s = subs_.at(i);
     if (!s.used || (nvr && s.peer != nvr)) continue;
-    if (s.push ? !s.pushFailed : now - s.pulledAt < PULL_ALIVE_MS) return true;  // other requests from it do not count
+    if (s.push ? !s.pushFailed : now - s.pulledAt < CAM_PULL_ALIVE_MS) return true;  // other requests from it do not count
   }
   return false;
 }
@@ -215,7 +215,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
     }
   }
 
-  uint32_t lateAfter = slots_[id - 1].node.lateS ? slots_[id - 1].node.lateS : DELAYED_AFTER_S;
+  uint32_t lateAfter = slots_[id - 1].node.lateS ? slots_[id - 1].node.lateS : CAM_PAST_AFTER_S;
   bool late = r.age > lateAfter;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
   bool wasReported = h.reported;
@@ -300,7 +300,7 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
   // A resend repeats the report a moment later, and the hub ignores it. Only a short while, so a restarted sensor that
   // happens to reuse the last number is still heard.
   uint32_t now = millis_();
-  bool resend = h.counterSeen && h.counter == r.counter && h.counterActive == r.active && now - h.counterAt < RESEND_WINDOW_MS;
+  bool resend = h.counterSeen && h.counter == r.counter && h.counterActive == r.active && now - h.counterAt < CAM_RESEND_WINDOW_MS;
   if (!resend) {
     h.counterSeen = true;
     h.counter = r.counter;
@@ -343,7 +343,7 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
     sensors_.trigger(id, now, d.direction, true, holdFor(id), d.several);
     startAlert(id, true, now, d.replay);
   }
-  nextDelayedAt_ = now + (id ? holdFor(id) : cfg_.holdMs) + DELAYED_GAP_MS;
+  nextDelayedAt_ = now + (id ? holdFor(id) : cfg_.holdMs) + CAM_PAST_GAP_MS;
   delayedGap_ = true;
 }
 
