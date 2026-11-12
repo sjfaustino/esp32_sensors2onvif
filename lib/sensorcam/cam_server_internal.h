@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <string>
 #include "cam_frames.h"
+#include "cam_json.h"
 
 static const size_t MAX_REQUEST = 16 * 1024;
 static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
@@ -19,6 +20,7 @@ static const char HUB_USER[] = "admin";
 static const char JSON_TYPE[] = "application/json";
 static const char HTML_TYPE[] = "text/html; charset=utf-8";
 static const char JSON_OK[] = "{\"ok\":true}\n";
+static const char GZIPPED[] = "Content-Encoding: gzip\r\n";  // the web pages are stored that way
 static const char UNAUTHORIZED[] = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 static const uint32_t RTSP_IDLE_MS = 120000;
 static const uint32_t RTSP_STALL_MS = 30000;
@@ -54,5 +56,16 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
 
 inline std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }
 inline std::string jsonOk(const std::string& body) { return httpResponse(200, JSON_TYPE, body); }
-inline std::string jsonFail(int status, const std::string& message) { return httpResponse(status, JSON_TYPE, "{\"ok\":false,\"error\":\"" + message + "\"}\n"); }
+inline std::string jsonFail(int status, const std::string& message) { return httpResponse(status, JSON_TYPE, camJsonError(message)); }
 inline std::string saved(bool ok, const char* failure) { return ok ? jsonOk(JSON_OK) : jsonFail(507, failure); }
+
+// A reply of one object, whose members fill writes.
+template <typename Fill>
+inline std::string jsonObject(Fill fill) {
+  std::string out;
+  CamJson j(out);
+  j.object();
+  fill(j);
+  j.finish();
+  return out;
+}

@@ -21,3 +21,6 @@ builds/
 __pycache__/
 *.pyc
 .venv/
+
+# Written by tools/embed_web.py on every build
+lib/sensorcam/cam_web_pages.cpp

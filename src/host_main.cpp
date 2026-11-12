@@ -81,7 +81,10 @@ int main(int argc, char** argv) {
   cfg.webPort = 18080;
   cfg.captivePort = 18081;
   cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
-  cfg.addressJson = [] { return std::string("{\"type\":\"WiFi\",\"dhcp\":true,\"staticFor\":\"\",\"ip\":\"127.0.0.1\",\"mask\":\"255.0.0.0\",\"gateway\":\"127.0.0.1\",\"dns\":\"127.0.0.1\",\"mac\":\"02:00:00:00:00:01\"}\n"); };
+  cfg.addressInfo = [](CamJson& j) {
+    j.str("type", "WiFi").flag("dhcp", true).str("staticFor", "").str("ip", "127.0.0.1").str("mask", "255.0.0.0").str("gateway", "127.0.0.1");
+    j.str("dns", "127.0.0.1").str("mac", "02:00:00:00:00:01");
+  };
   cfg.addressSave = [](const CamAddress&) { return true; };
   static bool firmwareGood = false;
   cfg.firmwareBegin = [](size_t) {
@@ -99,10 +102,10 @@ int main(int argc, char** argv) {
   cfg.restoreText = [](const std::string& text) { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; };
   cfg.healthSave = [](bool) { return true; };
   cfg.nvrSave =[](const std::string&) { return true; };
-  cfg.timeJson = [] { return std::string("{\"ntp\":true,\"server\":\"pool.ntp.org\",\"offset\":0,\"dst\":0,\"synced\":true,\"local\":\"2026-01-01 00:00:00\"}\n"); };
+  cfg.timeInfo = [](CamJson& j) { j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00"); };
   cfg.timeSave = [](const CamTime&) { return true; };
   cfg.scheduleSave = [](const CamSchedule&) { return true; };
-  cfg.deviceRows = [] { return std::string("[\"Firmware version\",\"test\"]"); };
+  cfg.deviceRows = [](CamJson& j) { j.array().str("Firmware version").str("test").end(); };
   // A pretend 3000-byte crash report, byte i being i % 251, so the test can check a download read in pieces.
   static size_t crashLeft = 3000;
   cfg.crashSize = [] { return crashLeft; };
@@ -119,7 +122,12 @@ int main(int argc, char** argv) {
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   cfg.setupActive = [] { return setupOn; };
-  cfg.wifiNetworks = [] { return std::string("{\"name\":\"hub.local\",\"current\":\"\",\"scanning\":false,\"networks\":[{\"ssid\":\"test-net\",\"rssi\":-40,\"open\":false}]}\n"); };
+  cfg.wifiNetworks = [](CamJson& j) {  // a network name can hold any character, so the second one tests the escaping
+    j.str("name", "hub.local").str("current", "").str("backup", "").flag("scanning", false).array("networks");
+    j.object().str("ssid", "test-net").num("rssi", -40).flag("open", false).end();
+    j.object().str("ssid", "say \"hi\" \\ to\tall\x01").num("rssi", -70).flag("open", true).end();
+    j.end();
+  };
   // Checks what the WiFi form passes on: the backup flag, and the password decoded exactly.
   cfg.wifiSave = [](const std::string& ssid, const std::string& password, bool backup) {
     if (ssid == "want-backup") return backup;

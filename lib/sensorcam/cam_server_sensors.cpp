@@ -9,7 +9,6 @@
 #include "cam_frames.h"
 #include "cam_net.h"
 #include "cam_soap.h"
-#include "cam_web.h"
 #include "cam_server_internal.h"
 
 // The history survives a restart. The whole file is rewritten, so a burst of events waits and is written once.
@@ -276,7 +275,7 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
 std::string SensorCamServer::handleSensor(const std::string& target, int& status) {
   if (!cfg_.sensorToken.empty() && queryParam(target, "token") != cfg_.sensorToken) {
     status = 403;
-    return "{\"ok\":false,\"error\":\"bad token\"}\n";
+    return camJsonError("bad token");
   }
   uint8_t mac[6];
   std::string input = queryParam(target, "input");
@@ -297,28 +296,24 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
   }
   bool ok = applyReport(id, r, millis_());
   status = ok ? 200 : 404;
-  return ok ? "{\"ok\":true}\n" : "{\"ok\":false,\"error\":\"unknown sensor\"}\n";
+  return ok ? std::string(JSON_OK) : camJsonError("unknown sensor");
 }
 
 std::string SensorCamServer::statusJson(uint32_t now) {
-  std::string active;
   int known = 0;
-  for (int id = 1; id <= sensors_.count(); id++) {
-    known += slots_[id - 1].used;
-    if (sensors_.active(id)) active += (active.empty() ? "\"" : ",\"") + slotName(id) + "\"";
-  }
-  std::string health;
-  for (int id = 1; id <= sensors_.count(); id++) {
-    const Health& h = health_[id - 1];
-    if (!h.heard) continue;
-    uint32_t quiet = now - h.heardAt;
-    health += (health.empty() ? "" : ",") + std::string("{\"sensor\":\"") + slotName(id) + "\",\"last_heard_s\":" + std::to_string(quiet / 1000) +
-              ",\"battery\":" + (h.battery == CAM_BATTERY_UNKNOWN ? std::string("null") : std::to_string(h.battery)) +
-              ",\"silent\":" + (h.silent ? "true" : "false") + "}";
-  }
-  return "{\"sensors\":" + std::to_string(known) + ",\"active\":[" + active + "],\"subscribers\":" +
-         std::to_string(subs_.count()) + ",\"streams\":" + std::to_string(streamCount()) + ",\"delayed_waiting\":" + std::to_string(delayedCount_) +
-         ",\"heard\":[" + health + "],\"uptime_s\":" + std::to_string(now / 1000) + "}\n";
+  for (int id = 1; id <= sensors_.count(); id++) known += slots_[id - 1].used;
+  return jsonObject([&](CamJson& j) {
+    j.num("sensors", known).array("active");
+    for (int id = 1; id <= sensors_.count(); id++)
+      if (sensors_.active(id)) j.str(slotName(id));
+    j.end().num("subscribers", subs_.count()).num("streams", streamCount()).num("delayed_waiting", delayedCount_).array("heard");
+    for (int id = 1; id <= sensors_.count(); id++) {
+      const Health& h = health_[id - 1];
+      if (!h.heard) continue;
+      j.object().str("sensor", slotName(id)).num("last_heard_s", (now - h.heardAt) / 1000).num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).flag("silent", h.silent).end();
+    }
+    j.end().num("uptime_s", now / 1000);
+  });
 }
 
 void camCopyText(char* out, size_t size, const std::string& text) {
@@ -334,27 +329,24 @@ std::string SensorCamServer::eventsJson() {
   // Trimmed to what RAM allows, because running out is fatal. About 200 bytes each, doubled while building the reply.
   int count = eventCount_;
   while (count > 0 && !roomFor((size_t)count * 400)) count /= 2;
-  std::string out = "[";
+  std::string out;
   out.reserve((size_t)count * 200 + 8);
+  CamJson j(out);
+  j.array();
   for (int n = 0; n < count; n++) {
     const CamEvent& e = events_[(eventNext_ - 1 - n + 2 * EVENT_LOG_SIZE) % EVENT_LOG_SIZE];
     bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
     bool ageKnown = e.age != CAM_AGE_UNKNOWN;
-    if (n) out += ",";
-    out += std::string("{\"sensor\":\"") + e.sensor + "\",\"name\":\"" + camJsonEscape(e.name) + "\",\"kind\":" + std::to_string(e.kind) + ",\"active\":" + (e.active ? "true" : "false") +
-           ",\"delayed\":" + (e.delayed ? "true" : "false") +
-           ",\"received\":" + (clockOk ? "\"" + iso(e.received) + "\"" : std::string("null")) +
-           ",\"happened\":" + (clockOk && ageKnown ? "\"" + iso(e.received - (time_t)e.age) + "\"" : std::string("null")) +
-           ",\"age_s\":" + (ageKnown ? std::to_string(e.age) : std::string("null")) +
-           ",\"battery\":" + (e.battery == CAM_BATTERY_UNKNOWN ? std::string("null") : std::to_string(e.battery)) + ",\"targets\":[";
-    for (int i = 0; i < e.targetCount; i++) {
-      out += std::string(i ? "," : "") + "{\"distance_cm\":" +
-             (e.targets[i].distanceCm == CAM_DISTANCE_UNKNOWN ? std::string("null") : std::to_string(e.targets[i].distanceCm)) +
-             ",\"direction\":" + std::to_string(e.targets[i].direction) + "}";
-    }
-    out += "]}";
+    j.object().str("sensor", e.sensor).str("name", e.name).num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
+    j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
+    j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
+    j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery).array("targets");
+    for (int i = 0; i < e.targetCount; i++)
+      j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();
+    j.end().end();
   }
-  return out + "]\n";
+  j.finish();
+  return out;
 }
 
 int SensorCamServer::findSlot(const uint8_t mac[6], uint8_t input) const {

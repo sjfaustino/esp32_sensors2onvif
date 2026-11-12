@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "cam_json.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
 #include "cam_soap.h"
@@ -16,8 +17,6 @@ const time_t CAM_CLOCK_VALID_AFTER = 1577836800;  // 2020-01-01: earlier means t
 
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
-
-std::string camJsonEscape(const std::string& text);
 
 // Copies text into a fixed buffer, shortened if needed without splitting a UTF-8 character.
 void camCopyText(char* out, size_t size, const std::string& text);
@@ -69,7 +68,7 @@ struct CamConfig {
   std::function<bool()> setupActive;           // the setup network is open
   std::string hostName;                        // the name shown in the web menu, such as esp-alarmhub.local
   std::string setupAddress = "192.168.4.1";    // where visitors to the setup network are sent
-  std::function<std::string()> wifiNetworks;   // JSON for the setup page
+  std::function<void(CamJson&)> wifiNetworks;  // the setup page's members: name, current, backup, scanning, networks
   std::function<bool(const std::string& ssid, const std::string& password, bool backup)> wifiSave;
   uint16_t onvifPort = 8899;  // ONVIF requests only
   uint16_t webPort = 80;      // the file manager, sensor input, status and events
@@ -84,16 +83,16 @@ struct CamConfig {
   std::function<std::string()> backupText;
   std::function<bool(const std::string& text)> restoreText;
   std::function<void(SoapContext&)> onvifNetwork;  // fills in the hub's network details for ONVIF clients
-  std::function<std::string()> timeJson;       // JSON for the Time page
+  std::function<void(CamJson&)> timeInfo;      // the Time page's members
   std::function<bool(const CamTime&)> timeSave;
   CamSchedule schedule;
   std::function<bool(const CamSchedule&)> scheduleSave;
-  std::function<std::string()> deviceRows;     // JSON ["label","value"] pairs for the Device Info page
+  std::function<void(CamJson&)> deviceRows;    // ["label","value"] arrays for the Device Info page
   std::function<size_t()> crashSize;           // bytes of the crash report the chip saved to flash; 0 when there is none
   std::function<bool(size_t offset, char* out, size_t len)> crashRead;
   std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
-  std::function<std::string()> espNowInfo;  // JSON members for the ESP-NOW page: the hub's mac and channel
+  std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
   std::string espNowKey;                    // signs version 2 ESP-NOW messages
   bool espNowUnsigned = false;              // also accept unsigned version 1 messages
   std::function<bool(bool)> espNowSave;     // stores espNowUnsigned
@@ -102,7 +101,7 @@ struct CamConfig {
   std::function<int()> localMinute;         // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
-  std::function<std::string()> addressJson;              // JSON for the Network page
+  std::function<void(CamJson&)> addressInfo;            // the Network page's members
   std::function<bool(const CamAddress&)> addressSave;    // stores DHCP or a fixed address; applies after a restart
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;

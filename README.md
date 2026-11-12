@@ -261,3 +261,11 @@ python tools/e2e_test.py
 ```
 
 `tools/e2e_test.py` can also test a flashed board. Its header explains how.
+
+## Changing the web pages
+
+The pages are ordinary files in `web/`: `index` is the main page and `setup` the Wi-Fi setup page, each with its own
+`.html`, `.css` and `.js`. Opening `web/index.html` in a browser shows the layout, though nothing loads without a hub.
+Every build runs `tools/embed_web.py`, which puts each page's stylesheet and script inside it, gzips it and builds it
+into the firmware. The hub sends the pages gzipped, which every browser accepts. `node --check web/index.js` finds
+script mistakes before a build.

@@ -30,6 +30,11 @@ jobs:
           pip install platformio
           choco install ffmpeg --no-progress -y
 
+      - name: Web page scripts
+        run: |
+          node --check web/index.js
+          node --check web/setup.js
+
       - name: Unit tests
         run: pio test -e native
 

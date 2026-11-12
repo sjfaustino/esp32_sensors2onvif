@@ -9,7 +9,7 @@ E2E_WEB_PASSWORD to it and E2E_SENSOR_TOKEN to the token on its HTTP page. It cr
 has its own clear.h264 or text.json it skips the checks that would replace them, and it stops
 if it cannot tell. Never point E2E_DEVICE at an NVR.
 """
-import base64, datetime, hashlib, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
+import base64, datetime, gzip, hashlib, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_frames
@@ -65,6 +65,17 @@ def soap(action, path='/onvif/media', inner=''):
     return r.status, data
 
 
+def body_of(r):
+    """The reply's body, unzipped if the hub sent it gzipped, as it does the web pages. Notes how it came."""
+    global last_encoding
+    last_encoding = r.getheader('Content-Encoding')
+    data = r.read()
+    return gzip.decompress(data) if last_encoding == 'gzip' else data
+
+
+last_encoding = None
+
+
 def get(path):
     headers = {}
     if PASSWORD:
@@ -74,7 +85,7 @@ def get(path):
     c = http.client.HTTPConnection(HOST, WEB, timeout=5)
     c.request('GET', path, headers=headers)
     r = c.getresponse()
-    data = r.read().decode()
+    data = body_of(r).decode()
     c.close()
     return r.status, data
 
@@ -115,7 +126,7 @@ def api(method, path, body=None, auth=True, origin=None):
     c = http.client.HTTPConnection(HOST, WEB, timeout=15)
     c.request(method, path, body, headers)
     r = c.getresponse()
-    data = r.read()
+    data = body_of(r)
     c.close()
     return r.status, data
 
@@ -261,6 +272,8 @@ def file_manager_tests(files, hub_files_free):
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
+    check('page is sent gzipped', last_encoding == 'gzip', last_encoding)
+    check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES=' in page and b'src="index.js"' not in page)
     check('page offers a picture preview', b'title:"Preview"' in page)
     check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
                                                   b'data-view="espnow"', b'data-view="events"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
@@ -327,8 +340,11 @@ def file_manager_tests(files, hub_files_free):
         code, page = api('GET', '/setup', auth=False)
         check('setup page needs the web password on the home network', code == 401, code)
         code, page = api('GET', '/setup')
-        check('setup page is served', code == 200 and b'Hub Wi-Fi setup' in page, code)
+        check('setup page is served', code == 200 and b'Hub Wi-Fi setup' in page and b'async function scan' in page, code)
         check('network list is served', b'test-net' in api('GET', '/api/wifi/scan')[1])
+        if not DEVICE:
+            names = [n['ssid'] for n in json.loads(api('GET', '/api/wifi/scan')[1])['networks']]
+            check('a network name with quotes, a backslash and control characters arrives exactly', names == ['test-net', 'say "hi" \\ to\tall\x01'], names)
         check('short Wi-Fi password is refused', api('POST', '/api/wifi', 'ssid=x&password=short')[0] == 400)
         check('empty Wi-Fi name is refused', api('POST', '/api/wifi', 'ssid=&password=longenough')[0] == 400)
         secret = 'password=p%25ss%20w%2Brd%26ok'
@@ -991,6 +1007,7 @@ def main():
             # A delayed alert belongs to its device. A new sensor that takes a deleted one's place must not play it.
             gone, newcomer = '02-00-00-00-44-01', '02-00-00-00-44-02'
             api('POST', f'/api/mkdir?path={gone}/1')
+            wait_until(lambda: status()['delayed_waiting'] == 0, timeout=60)  # past events from earlier checks play out first
             get(f'/sensor?{sid(1)}')
             get(f'/sensor?mac={gone}&input=1&age=unknown')
             check('a delayed alert waits while another sensor is active', status()['delayed_waiting'] == 1, status())

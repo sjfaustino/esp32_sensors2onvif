@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SensorCam files</title>
+<link rel="stylesheet" href="index.css"></head><body>
+<nav id="menu">
+<div class="first">Network Manager</div>
+<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="espnow">ESP-NOW</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
+<div class="first">Sensors Manager</div>
+<div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="events">Events</div><div class="item" data-view="notify">Notifications</div></div>
+<div class="first">NVR Manager</div>
+<div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
+<div class="first">System Manager</div>
+<div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device Info</div></div>
+</nav>
+<main>
+<p id="openWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
+<div class="view" id="view-network" hidden><h1>Network</h1>
+<label class="netRow"><span>Connection</span><input id="netType" disabled></label>
+<label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
+<label class="netRow"><span>IP address</span><input id="netIp" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>Subnet mask</span><input id="netMask" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>Gateway</span><input id="netGw" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>DNS server</span><input id="netDns" maxlength="15" inputmode="decimal"></label>
+<label class="netRow"><span>MAC address</span><input id="netMac" disabled></label>
+<div class="portForm"><button id="saveNet">Save</button></div>
+<div class="portMsg" id="netMsg"></div></div>
+<div class="view" id="view-wifi" hidden><h1>WiFi</h1><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
+<div class="view" id="view-onvif" hidden><h1>ONVIF</h1><div class="portForm"><label>Port <input id="onvifPort" type="number" min="1" max="65535"></label> <button id="saveOnvif">Save</button></div><div class="portMsg" id="onvifMsg"></div><table class="info" id="onvifInfo"></table></div>
+<div class="view" id="view-http" hidden><h1>HTTP</h1>
+<div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
+<div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
+<div class="portForm"><label><input id="protect" type="checkbox"> Password protection (user admin)</label></div>
+<div class="portForm" id="pwRow" hidden><label>Password <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
+<div class="portForm"><button id="saveWeb">Save</button></div>
+<div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
+<div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
+<div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
+<label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low</label>
+<label class="portForm" style="display:block"><input id="espUnsigned" type="checkbox"> Also accept unsigned messages (version 1). Anyone in radio range could then send false alerts.</label>
+<h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
+<h2 style="font-family:inherit;margin-top:18px">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
+<div class="view" id="view-nvr" hidden><h1>NVR</h1>
+<label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
+<div class="portForm"><button id="saveNvr">Save</button></div>
+<div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
+<div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
+<div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
+<div class="view" id="view-notify" hidden><h1>Notifications</h1>
+<p style="margin:0 0 6px;font-size:14px">The hub can send each alert to a web address on your network, such as a Home Assistant webhook, Node-RED or a self-hosted ntfy server. Use http:// and an IP address; https and names are not supported.</p>
+<label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" placeholder="http://192.168.1.10:8123/api/webhook/hub"></label>
+<label class="netRow"><span>Format</span><select id="hookText"><option value="0">JSON</option><option value="1">Plain text</option></select></label>
+<label class="portForm" style="display:block"><input id="hookAlerts" type="checkbox"> Alerts</label>
+<label class="portForm" style="display:block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal</label>
+<div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button></div>
+<div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
+<div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
+<h2 style="font-family:inherit;margin-bottom:6px">Scheduled restart</h2>
+<label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" style="width:auto"></label>
+<label class="netRow"><span>Day</span><select id="rbDay"><option value="-1">Every day</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
+<label class="netRow"><span>Time</span><input id="rbTime" type="time"></label>
+<div class="portForm"><button id="saveRb">Save</button></div><div class="portMsg" id="rbMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Restart now</h2>
+<div class="portForm"><button id="rebootNow">Restart the hub</button></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Firmware update</h2>
+<div class="portForm"><input id="fwFile" type="file" accept=".bin"> <button id="fwSend">Update firmware</button></div>
+<div class="portMsg" id="fwMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Backup and restore</h2>
+<p style="margin:0 0 6px;font-size:14px">The backup file holds the WiFi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
+<div class="portForm"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a> <input id="rsFile" type="file" accept=".txt"> <button id="rsSend">Restore</button></div>
+<div class="portMsg" id="rsMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Full backup</h2>
+<p style="margin:0 0 6px;font-size:14px">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
+<div class="portForm"><button id="fbSave">Download full backup</button> <input id="fbFile" type="file" accept=".tar"> <button id="fbLoad">Restore full backup</button></div>
+<div class="portMsg" id="fbMsg"></div>
+<h2 style="font-family:inherit;margin:18px 0 6px">Reset settings</h2>
+<p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address, time and notification settings. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
+<div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
+<div class="view" id="view-time" hidden><h1>Time</h1>
+<label class="netRow"><span>Current time</span><input id="tmNow" disabled></label>
+<label class="netRow"><span>Timezone</span><select id="tmZone"></select></label>
+<label class="netRow"><span>Daylight saving</span><select id="tmDst"><option value="0">None</option><option value="1">Europe</option><option value="2">United States</option></select></label>
+<label class="netRow"><span>Set time by</span><select id="tmMode"><option value="ntp">NTP server</option><option value="manual">Manual</option></select></label>
+<label class="netRow"><span>NTP server</span><input id="tmServer" maxlength="63" autocapitalize="none"></label>
+<label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
+<div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
+<div class="portMsg" id="tmMsg"></div>
+<p style="margin:0;font-size:14px;color:#5a636d">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
+<div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
+<div class="view" id="view-sensors">
+<h1>Sensors</h1>
+<div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
+<div id="msg"></div>
+<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addNode">Add node</button></span>
+<span id="clear"></span></div>
+<div id="tree"></div>
+<p><button id="makeThumbs">Create missing thumbnails</button></p>
+</div></main>
+<script src="index.js"></script></body></html>

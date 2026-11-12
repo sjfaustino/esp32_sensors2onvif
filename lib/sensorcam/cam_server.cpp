@@ -8,7 +8,6 @@
 #include "cam_frames.h"
 #include "cam_net.h"
 #include "cam_soap.h"
-#include "cam_web.h"
 #include "cam_server_internal.h"
 
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)

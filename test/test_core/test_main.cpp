@@ -517,8 +517,28 @@ static void base64_matches_known_values() {
   TEST_ASSERT_EQUAL_STRING("TQ==", base64((const uint8_t*)"M", 1).c_str());
 }
 
+static void json_writer_places_commas_and_brackets() {
+  std::string out;
+  CamJson j(out);
+  j.object().num("a", 1).array("b").num(2).str("x").null().flag(true).end().object("c").end().array("d").end().num("e", false, 5).num("f", true, -7);
+  j.str("g", false, "no").str("h", true, "yes").finish();
+  TEST_ASSERT_EQUAL_STRING("{\"a\":1,\"b\":[2,\"x\",null,true],\"c\":{},\"d\":[],\"e\":null,\"f\":-7,\"g\":null,\"h\":\"yes\"}\n", out.c_str());
+  out.clear();
+  CamJson(out).array().object().str("k", "v").finish();  // closes what is left open
+  TEST_ASSERT_EQUAL_STRING("[{\"k\":\"v\"}]\n", out.c_str());
+}
+
+static void json_writer_escapes_any_text() {
+  std::string out;
+  CamJson(out).object().str("say \"hi\"", "a\"b\\c\nd\re\tf\x01g\x1f h\xc3\xa9").finish();
+  TEST_ASSERT_EQUAL_STRING("{\"say \\\"hi\\\"\":\"a\\\"b\\\\c\\nd\\re\\tf\\u0001g\\u001f h\xc3\xa9\"}\n", out.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"ok\":false,\"error\":\"can't \\\"x\\\"\"}\n", camJsonError("can't \"x\"").c_str());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(json_writer_places_commas_and_brackets);
+  RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(hold_expires_and_retrigger_extends);
   RUN_TEST(hold_survives_millis_wrap);
   RUN_TEST(unknown_sensors_rejected);

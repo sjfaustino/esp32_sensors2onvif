@@ -130,24 +130,16 @@ static void closeSetup() {
   Serial.println("Joined Wi-Fi; setup network closed.");
 }
 
-static std::string jsonText(const String& s) { return camJsonEscape(s.c_str()); }
-
 // The scan runs in the background so the video and ONVIF keep being served; the page asks again until it is done.
-static std::string networksJson() {
-  std::string head = std::string("{\"name\":\"") + settings.hubName.c_str() + ".local" + (settings.webPort == 80 ? std::string() : ":" + std::to_string(settings.webPort)) + "\",\"current\":\"" + jsonText(settings.wifiSsid[0]) + "\",\"backup\":\"" + jsonText(settings.wifiSsid[1]) + "\",";
+static void networksInfo(CamJson& j) {
+  j.str("name", std::string(settings.hubName.c_str()) + ".local" + (settings.webPort == 80 ? std::string() : ":" + std::to_string(settings.webPort)));
+  j.str("current", settings.wifiSsid[0].c_str()).str("backup", settings.wifiSsid[1].c_str());
   int16_t n = WiFi.scanComplete();
-  if (n == WIFI_SCAN_RUNNING) return head + "\"scanning\":true,\"networks\":[]}\n";
-  if (n < 0) {
-    WiFi.scanNetworks(true);
-    return head + "\"scanning\":true,\"networks\":[]}\n";
-  }
-  std::string list;
-  for (int i = 0; i < n && i < 20; i++) {
-    if (i) list += ",";
-    list += "{\"ssid\":\"" + jsonText(WiFi.SSID(i)) + "\",\"rssi\":" + std::to_string(WiFi.RSSI(i)) + ",\"open\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "true" : "false") + "}";
-  }
-  WiFi.scanDelete();
-  return head + "\"scanning\":false,\"networks\":[" + list + "]}\n";
+  if (n < 0 && n != WIFI_SCAN_RUNNING) WiFi.scanNetworks(true);
+  j.flag("scanning", n < 0).array("networks");
+  for (int i = 0; i < n && i < 20; i++) j.object().str("ssid", WiFi.SSID(i).c_str()).num("rssi", WiFi.RSSI(i)).flag("open", WiFi.encryptionType(i) == WIFI_AUTH_OPEN).end();
+  if (n >= 0) WiFi.scanDelete();
+  j.end();
 }
 
 static String tzName(int minutes) {
@@ -186,14 +178,14 @@ static void applyTime() {
   }
 }
 
-static std::string timeJson() {
+static void timeInfo(CamJson& j) {
   time_t now = time(nullptr);
   struct tm local;
   localtime_r(&now, &local);
   char shown[24];
   strftime(shown, sizeof(shown), "%Y-%m-%d %H:%M:%S", &local);
-  return std::string("{\"ntp\":") + (settings.timeNtp ? "true" : "false") + ",\"server\":\"" + jsonText(settings.ntpServer) + "\",\"offset\":" + std::to_string(settings.tzOffset) + ",\"dst\":" + std::to_string(settings.tzDst) +
-         ",\"synced\":" + (clockSet() ? "true" : "false") + ",\"local\":\"" + shown + "\"}\n";
+  j.flag("ntp", settings.timeNtp).str("server", settings.ntpServer.c_str()).num("offset", settings.tzOffset).num("dst", settings.tzDst);
+  j.flag("synced", clockSet()).str("local", shown);
 }
 
 static bool saveTime(const CamTime& t) {
@@ -216,10 +208,10 @@ static bool maintenance(const std::string& action) {
   return ok;
 }
 
-static std::string addressJson() {
-  return std::string("{\"type\":\"WiFi\",\"dhcp\":") + (usingStatic ? "false" : "true") + ",\"settings.staticFor\":\"" + jsonText(settings.staticFor) + "\",\"ip\":\"" + WiFi.localIP().toString().c_str() +
-         "\",\"mask\":\"" + WiFi.subnetMask().toString().c_str() + "\",\"gateway\":\"" + WiFi.gatewayIP().toString().c_str() + "\",\"dns\":\"" + WiFi.dnsIP().toString().c_str() +
-         "\",\"mac\":\"" + WiFi.macAddress().c_str() + "\"}\n";
+static void addressInfo(CamJson& j) {
+  j.str("type", "WiFi").flag("dhcp", !usingStatic).str("staticFor", settings.staticFor.c_str()).str("ip", WiFi.localIP().toString().c_str());
+  j.str("mask", WiFi.subnetMask().toString().c_str()).str("gateway", WiFi.gatewayIP().toString().c_str()).str("dns", WiFi.dnsIP().toString().c_str());
+  j.str("mac", WiFi.macAddress().c_str());
 }
 
 static bool saveAddress(const CamAddress& a) {
@@ -230,7 +222,7 @@ static bool saveAddress(const CamAddress& a) {
   return ok;
 }
 
-static std::string deviceRows();
+static void deviceRows(CamJson& j);
 
 // The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
 extern "C" bool verifyRollbackLater() { return true; }
@@ -289,7 +281,7 @@ static CamConfig makeConfig() {
   c.onvifPort = settings.onvifPort;
   c.webPort = settings.webPort;
   c.settingsSave = saveSettings;
-  c.espNowInfo = [] { return std::string("\"mac\":\"") + WiFi.macAddress().c_str() + "\",\"channel\":" + std::to_string(WiFi.channel()); };
+  c.espNowInfo = [](CamJson& j) { j.str("mac", WiFi.macAddress().c_str()).num("channel", WiFi.channel()); };
   c.onvifNetwork = [](SoapContext& s) {
     s.ip = WiFi.localIP().toString().c_str();
     s.mac = WiFi.macAddress().c_str();
@@ -302,7 +294,7 @@ static CamConfig makeConfig() {
     s.firmwareVersion = FIRMWARE_VERSION;
     s.timeFromNtp = settings.timeNtp;
   };
-  c.timeJson = timeJson;
+  c.timeInfo = timeInfo;
   c.timeSave = saveTime;
   c.schedule = settings.schedule;
   c.scheduleSave = storeSchedule;
@@ -313,12 +305,12 @@ static CamConfig makeConfig() {
   c.maintenance = maintenance;
   c.nvrIp = settings.nvrIp;
   c.nvrSave = storeNvr;
-  c.addressJson = addressJson;
+  c.addressInfo = addressInfo;
   c.addressSave = saveAddress;
   if (settings.webPort != 80) c.setupAddress += ":" + std::to_string(settings.webPort);
   c.hostName = std::string(settings.hubName.c_str()) + ".local";
   c.setupActive = [] { return setupOpen; };
-  c.wifiNetworks = networksJson;
+  c.wifiNetworks = networksInfo;
   c.wifiSave = saveWifi;
   c.rtspPort = settings.rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
@@ -484,9 +476,8 @@ static const char* lastRestartText() {
 
 static uint32_t programBytes = 0;
 
-static std::string deviceRows() {
-  std::string out;
-  auto add = [&](const char* label, const String& value) { out += (out.empty() ? "[\"" : ",[\"") + std::string(label) + "\",\"" + jsonText(value) + "\"]"; };
+static void deviceRows(CamJson& j) {
+  auto add = [&](const char* label, const String& value) { j.array().str(label).str(value.c_str()).end(); };
   add("Device name", settings.hubName);
   add("Firmware version", FIRMWARE_VERSION);
   add("Firmware built", __DATE__ " " __TIME__);
@@ -511,7 +502,6 @@ static std::string deviceRows() {
   add("WiFi signal", WiFi.status() == WL_CONNECTED ? String(WiFi.RSSI()) + " dBm" : String("-"));
   add("IP address", WiFi.localIP().toString());
   add("MAC address", WiFi.macAddress());
-  return out;
 }
 
 void setup() {

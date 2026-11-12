@@ -12,15 +12,6 @@
 #include "cam_web.h"
 #include "cam_server_internal.h"
 
-std::string camJsonEscape(const std::string& s) {
-  std::string out;
-  for (char ch : s) {
-    if (ch == '"' || ch == '\\') out += '\\';
-    if ((unsigned char)ch >= 0x20) out += ch;
-  }
-  return out;
-}
-
 static bool hasFile(const std::vector<CamFsEntry>& items, const std::string& name) {
   for (const CamFsEntry& e : items)
     if (!e.dir && e.name == name) return true;
@@ -43,48 +34,48 @@ std::string SensorCamServer::treeJson() {
     return true;
   };
   if (!makeRoom(128)) return std::string();
-  std::string clear = "null";
-  for (const CamFsEntry& s : root)
-    if (!s.dir && s.name == "clear.h264") clear = std::to_string(s.size);
-  out += "{\"used\":" + std::to_string(used) + ",\"total\":" + std::to_string(total) + ",\"clear\":" + clear + ",\"clearPreview\":" + (hasFile(root, "clear.jpg") ? "true" : "false") + ",\"nodes\":[";
-  bool firstNode = true;
+  bool clear = false;
+  uint32_t clearSize = 0;
+  for (const CamFsEntry& s : root) {
+    if (s.dir || s.name != "clear.h264") continue;
+    clear = true;
+    clearSize = s.size;
+  }
+  CamJson j(out);
+  j.object().num("used", used).num("total", total).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
     if (!makeRoom(80)) return std::string();
     CamNodeSettings node;
     std::string nodeText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
-    out += std::string(firstNode ? "" : ",") + "{\"mac\":\"" + s.name + "\",\"late\":" + (node.lateS ? std::to_string(node.lateS) : std::string("null")) + ",\"sensors\":[";
-    firstNode = false;
+    j.object().str("mac", s.name).num("late", node.lateS != 0, node.lateS).array("sensors");
     uint8_t mac[6];
     camParseMac(s.name, mac);
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
-    bool firstSensor = true;
     for (const CamFsEntry& n : inputs) {
       std::string base = s.name + "/" + n.name;
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
       int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
       if (!slot) continue;  // beyond the sensor limit, so it does nothing
-      if (!makeRoom(960)) return std::string();  // the longest possible entry, with all ten pictures
+      if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
       const CamSensorSettings& set = slots_[slot - 1].settings;
-      out += std::string(firstSensor ? "" : ",") + "{\"input\":" + n.name + ",\"name\":\"" + camJsonEscape(slots_[slot - 1].name) +
-             "\",\"hold\":" + (set.holdS ? std::to_string(set.holdS) : std::string("null")) +
-             ",\"quiet\":" + (set.quietFrom >= 0 ? "[" + std::to_string(set.quietFrom) + "," + std::to_string(set.quietTo) + "]" : std::string("null")) + ",\"files\":[";
-      firstSensor = false;
+      j.object().num("input", atoi(n.name.c_str())).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
+      if (set.quietFrom >= 0) j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
+      else j.null("quiet");
+      j.array("files");
       std::vector<CamFsEntry> items;
       storage_.list(base, items);
-      bool firstFile = true;
       for (const CamFsEntry& f : items) {
         if (f.dir || camClassifyPath(base + "/" + f.name) != CAM_PATH_FILE) continue;
-        out += std::string(firstFile ? "" : ",") + "{\"name\":\"" + f.name + "\",\"size\":" + std::to_string(f.size) + ",\"preview\":" + (hasFile(items, camPreviewPath(f.name)) ? "true" : "false") + "}";
-        firstFile = false;
+        j.object().str("name", f.name).num("size", f.size).flag("preview", hasFile(items, camPreviewPath(f.name))).end();
       }
-      out += "]}";
+      j.end().end();
     }
-    out += "]}";
+    j.end().end();
   }
-  out += "]}\n";
+  j.finish();
   return out;
 }
 
@@ -215,9 +206,9 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
 void SensorCamServer::apiSetup(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
-    sendBody(c, HTML_TYPE, CAM_SETUP_PAGE, sizeof(CAM_SETUP_PAGE) - 1);
+    sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, GZIPPED);
   } else if (r.is("GET", "/api/wifi/scan")) {
-    c.out = jsonOk(cfg_.wifiNetworks());
+    c.out = jsonOk(jsonObject(cfg_.wifiNetworks));
   } else if (r.is("POST", "/api/wifi")) {
     std::string form = r.form();
     std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
@@ -231,14 +222,14 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
 bool SensorCamServer::apiPages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/") || r.is("GET", "/files")) {
-    sendBody(c, HTML_TYPE, CAM_WEB_PAGE, sizeof(CAM_WEB_PAGE) - 1);
+    sendBody(c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, GZIPPED);
   } else if (r.is("GET", "/api/tree")) {
     c.body = treeJson();
     if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
     else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/live")) {
     if (!frame_) frameToShow(millis_());
-    c.out = jsonOk("{\"seq\":" + std::to_string(liveSeq_) + ",\"file\":\"" + (frameFile_.empty() ? std::string("built-in") : frameFile_) + "\"}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.num("seq", liveSeq_).str("file", frameFile_.empty() ? std::string("built-in") : frameFile_); }));
   } else if (r.is("GET", "/api/live/frame")) {
     if (!frame_) frameToShow(millis_());
     std::string* out = borrowFileOut(c);
@@ -266,47 +257,48 @@ std::string SensorCamServer::espNowJson() {
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
-  out += "{" + (cfg_.espNowInfo ? cfg_.espNowInfo() : std::string("\"mac\":\"\",\"channel\":0")) + ",\"key\":\"" + cfg_.espNowKey +
-         "\",\"unsigned\":" + (cfg_.espNowUnsigned ? "true" : "false") + ",\"nodes\":[";
-  bool first = true;
+  CamJson j(out);
+  j.object();
+  if (cfg_.espNowInfo) cfg_.espNowInfo(j);
+  else j.str("mac", "").num("channel", 0);
+  j.str("key", cfg_.espNowKey).flag("unsigned", cfg_.espNowUnsigned).array("nodes");
   uint32_t now = millis_();
-  auto optional = [](bool known, long long value) { return known ? std::to_string(value) : std::string("null"); };
   for (int id = 1; id <= sensors_.count(); id++) {
     if (!slots_[id - 1].used) continue;
     const Health& h = health_[id - 1];
     std::string name = slotName(id);
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
-    out += std::string(first ? "" : ",") + "{\"low\":" + (h.lowBattery ? "true" : "false") + ",\"name\":\"" + camJsonEscape(slots_[id - 1].name) + "\",\"node\":\"" + name.substr(0, name.find('/')) + "\",\"input\":" + std::to_string(slots_[id - 1].input) +
-             ",\"state\":\"" + state + "\",\"ago\":" + optional(h.heard, (now - h.heardAt) / 1000) +
-             ",\"battery\":" + optional(h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery) + ",\"rssi\":" + optional(h.rssi != 0, h.rssi) +
-             ",\"counter\":" + optional(h.counterSeen, h.counter) + ",\"weak\":" + (h.weak ? "true" : "false") +
-             ",\"refused\":" + std::to_string(h.refused) + ",\"refusal\":\"" + h.refusal + "\"}";
-    first = false;
+    j.object().flag("low", h.lowBattery).str("name", slots_[id - 1].name).str("node", name.substr(0, name.find('/'))).num("input", slots_[id - 1].input);
+    j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
+    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).end();
   }
-  out += "],\"unknown\":[";
-  first = true;
+  j.end().array("unknown");
   for (const UnknownSender& u : unknown_) {
     if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
-    out += std::string(first ? "" : ",") + "{\"mac\":\"" + camMacText(u.mac) + "\",\"input\":" + std::to_string(u.input) + ",\"ago\":" + std::to_string((now - u.heardAt) / 1000) +
-               ",\"rssi\":" + optional(u.rssi != 0, u.rssi) + ",\"messages\":" + std::to_string(u.messages) + "}";
-    first = false;
+    j.object().str("mac", camMacText(u.mac)).num("input", u.input).num("ago", (now - u.heardAt) / 1000).num("rssi", u.rssi != 0, u.rssi).num("messages", u.messages).end();
   }
-  out += "]}\n";
+  j.finish();
   return out;
 }
 
 bool SensorCamServer::apiInfo(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/device")) {
-    std::string rows = cfg_.deviceRows();
     int known = 0;
     for (const Slot& s : slots_) known += s.used;
     uint32_t used = 0, total = 0;
     if (cfg_.fsUsage) cfg_.fsUsage(used, total);
-    c.out = jsonOk("{\"rows\":[" + rows + (rows.empty() ? "" : ",") + "[\"Picture storage\",\"" + std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB\"]," +
-                   "[\"Sensors\",\"" + std::to_string(known) + "\"],[\"Video streams open\",\"" + std::to_string(streamCount()) + "\"],[\"Event subscribers\",\"" + std::to_string(subs_.count()) + "\"]" +
-                   (eventsSaveFailed_ ? ",[\"Event history\",\"Could not be saved; storage may be full\"]" : "") + "],\"crash\":" +
-                   std::to_string(cfg_.crashSize ? cfg_.crashSize() : 0) + "}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) {
+      j.array("rows");
+      cfg_.deviceRows(j);
+      auto row = [&](const char* label, const std::string& value) { j.array().str(label).str(value).end(); };
+      row("Picture storage", std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB");
+      row("Sensors", std::to_string(known));
+      row("Video streams open", std::to_string(streamCount()));
+      row("Event subscribers", std::to_string(subs_.count()));
+      if (eventsSaveFailed_) row("Event history", "Could not be saved; storage may be full");
+      j.end().num("crash", cfg_.crashSize ? cfg_.crashSize() : 0);
+    }));
   } else if (r.is("GET", "/api/crash")) {  // read from flash 1 KB at a time, because it can be larger than any free block
     size_t size = cfg_.crashSize && cfg_.crashRead ? cfg_.crashSize() : 0;
     if (!size) {
@@ -325,13 +317,14 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
     if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
     else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/info")) {
-    std::string unsupported;
-    for (const std::string& seen : unsupported_)
-      if (!seen.empty()) unsupported += (unsupported.empty() ? "\"" : ",\"") + seen + "\"";
-    c.out = jsonOk("{\"unsupported\":[" + unsupported + "],\"token\":\"" + cfg_.sensorToken + "\",\"onvifLogin\":" + (cfg_.onvifPassword.empty() ? "false" : "true") + ",\"ip\":\"" + localIp_() + "\",\"name\":\"" + cfg_.hostName + "\",\"onvifPort\":" + std::to_string(cfg_.onvifPort) +
-                   ",\"webPort\":" + std::to_string(cfg_.webPort) + ",\"rtspPort\":" + std::to_string(cfg_.rtspPort) +
-                   ",\"streams\":" + std::to_string(streamCount()) + ",\"subscribers\":" + std::to_string(subs_.count()) +
-                   ",\"serial\":\"" + cfg_.serial + "\",\"password\":" + (cfg_.webPassword.empty() ? "false" : "true") + "}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) {
+      j.array("unsupported");
+      for (const std::string& seen : unsupported_)
+        if (!seen.empty()) j.str(seen);
+      j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
+      j.num("onvifPort", cfg_.onvifPort).num("webPort", cfg_.webPort).num("rtspPort", cfg_.rtspPort).num("streams", streamCount()).num("subscribers", subs_.count());
+      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty());
+    }));
   } else {
     return false;
   }
@@ -341,7 +334,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
 bool SensorCamServer::apiSystem(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/time")) {
-    c.out = jsonOk(cfg_.timeJson());
+    c.out = jsonOk(jsonObject(cfg_.timeInfo));
   } else if (r.is("POST", "/api/time")) {
     std::string form = r.form(), epochText = queryParam(form, "epoch");
     CamTime t;
@@ -360,7 +353,7 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       c.out = saved(cfg_.timeSave(t), "could not save the time settings");
     }
   } else if (r.is("GET", "/api/schedule")) {
-    c.out = jsonOk(std::string("{\"on\":") + (cfg_.schedule.on ? "true" : "false") + ",\"day\":" + std::to_string(cfg_.schedule.day) + ",\"minute\":" + std::to_string(cfg_.schedule.minute) + "}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", cfg_.schedule.on).num("day", cfg_.schedule.day).num("minute", cfg_.schedule.minute); }));
   } else if (r.is("POST", "/api/schedule")) {
     std::string form = r.form();
     long long day = 0, minute = 0;
@@ -381,7 +374,7 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
     if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
     else c.out = saved(cfg_.maintenance("reset"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
-    c.out = jsonOk(std::string("{\"alarm\":") + (cfg_.healthAlarm ? "true" : "false") + "}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
   } else if (r.is("POST", "/api/alerts")) {
     bool on = queryParam(r.form(), "alarm") == "1", ok = cfg_.healthSave(on);
     if (ok) cfg_.healthAlarm = on;
@@ -401,14 +394,14 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
   if (r.is("GET", "/api/nvr")) {
     uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
     bool video = false, events = false;
-    std::string viewers;
-    for (RtspConn& v : rtsp_) {
-      if (v.fd < 0 || !v.playing) continue;
-      viewers += (viewers.empty() ? "\"" : ",\"") + peerText(v.peer) + "\"";
-      video = video || (nvr && v.peer == nvr);
-    }
+    for (RtspConn& v : rtsp_) video = video || (nvr && v.fd >= 0 && v.playing && v.peer == nvr);
     for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && subs_.at(i).used && subs_.at(i).peer == nvr);
-    c.out = jsonOk("{\"ip\":\"" + cfg_.nvrIp + "\",\"video\":" + (video ? "true" : "false") + ",\"events\":" + (events ? "true" : "false") + ",\"viewers\":[" + viewers + "]}\n");
+    c.out = jsonOk(jsonObject([&](CamJson& j) {
+      j.str("ip", cfg_.nvrIp).flag("video", video).flag("events", events).array("viewers");
+      for (RtspConn& v : rtsp_)
+        if (v.fd >= 0 && v.playing) j.str(peerText(v.peer));
+      j.end();
+    }));
   } else if (r.is("POST", "/api/nvr")) {
     std::string ip = queryParam(r.form(), "ip");
     uint32_t parsed;
@@ -420,7 +413,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       c.out = saved(ok, "could not save the NVR address");
     }
   } else if (r.is("GET", "/api/network")) {
-    c.out = jsonOk(cfg_.addressJson());
+    c.out = jsonOk(jsonObject(cfg_.addressInfo));
   } else if (r.is("POST", "/api/network")) {
     std::string form = r.form();
     CamAddress a;
@@ -523,7 +516,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "save an address first");
     } else {
       std::string message = "Test from " + cfg_.hostName;
-      queueHook(message, "{\"event\":\"test\",\"hub\":\"" + cfg_.hostName + "\",\"message\":\"" + message + "\"}");
+      queueHook(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block

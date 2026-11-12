@@ -15,10 +15,11 @@ void SensorCamServer::notifyHook(int id, uint8_t kind, bool delayed) {
   std::string message = (name.empty() ? sensor : name + " (" + sensor + ")") + ": " + event;
   uint8_t battery = health_[id - 1].battery;
   time_t now = time(nullptr);
-  queueHook(message, "{\"event\":\"" + event + "\",\"sensor\":\"" + sensor + "\",\"name\":\"" + camJsonEscape(name) +
-                         "\",\"battery\":" + (battery == CAM_BATTERY_UNKNOWN ? std::string("null") : std::to_string(battery)) +
-                         ",\"time\":" + (now >= CAM_CLOCK_VALID_AFTER ? "\"" + iso(now) + "\"" : std::string("null")) + ",\"hub\":\"" + cfg_.hostName +
-                         "\",\"message\":\"" + camJsonEscape(message) + "\"}");
+  bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
+  queueHook(message, jsonObject([&](CamJson& j) {
+              j.str("event", event).str("sensor", sensor).str("name", name).num("battery", battery != CAM_BATTERY_UNKNOWN, battery);
+              j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
+            }));
 }
 
 // One at a time, oldest first. A full queue drops the new message, so a burst cannot use up memory.
@@ -65,8 +66,10 @@ void SensorCamServer::startHook(uint32_t now) {
 
 std::string SensorCamServer::webhookJson() {
   const CamWebhook& w = cfg_.webhook;
-  auto yes = [](bool b) { return b ? "true" : "false"; };
-  return "{\"url\":\"" + camJsonEscape(w.url) + "\",\"text\":" + yes(w.text) + ",\"alerts\":" + yes(w.alerts) + ",\"problems\":" + yes(w.problems) +
-         ",\"last\":\"" + camJsonEscape(hookResult_) + "\",\"lastAt\":" + (hookResultAt_ >= CAM_CLOCK_VALID_AFTER ? "\"" + iso(hookResultAt_) + "\"" : std::string("null")) +
-         ",\"waiting\":" + std::to_string(hookCount_ + (hook_.state != NotifyIo::IDLE)) + ",\"dropped\":" + std::to_string(hookDropped_) + "}\n";
+  bool clockOk = hookResultAt_ >= CAM_CLOCK_VALID_AFTER;
+  return jsonObject([&](CamJson& j) {
+    j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems);
+    j.str("last", hookResult_).str("lastAt", clockOk, clockOk ? iso(hookResultAt_) : std::string());
+    j.num("waiting", hookCount_ + (hook_.state != NotifyIo::IDLE)).num("dropped", hookDropped_);
+  });
 }
