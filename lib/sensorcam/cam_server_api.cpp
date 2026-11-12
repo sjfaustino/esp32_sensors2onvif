@@ -15,8 +15,8 @@
 // Pictures may use the storage only up to what the event history still needs: its full size, both CSV files, and room
 // to rewrite the saved files. Without that room no report could be saved, and so none could be confirmed.
 size_t SensorCamServer::historyRoom() const {
-  size_t csv = storage_.fileSize(EVENTS_CSV) + storage_.fileSize(EVENTS_CSV_OLD);
-  return HISTORY_ROOM + (csv < 2 * EVENTS_CSV_MAX ? 2 * EVENTS_CSV_MAX - csv : 0);
+  size_t logs = log_.bytesOnStorage();
+  return HISTORY_ROOM + (logs < 2 * CamEventLog::FILE_MAX ? 2 * CamEventLog::FILE_MAX - logs : 0);
 }
 
 bool SensorCamServer::roomBesideHistory(size_t bytes) const {
@@ -194,6 +194,7 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   if (key == "net.ip" || key == "net.mask" || key == "net.gw") return parseIpv4(value, ip);
   if (key == "net.dns" || key == "net.nvrip") return value.empty() || parseIpv4(value, ip);
   if (key == "net.webpw") return value.size() <= 63;
+  if (key == "net.hosts") return camHostListValid(value);
   if (key == "wifi.ssid" || key == "wifi.ssid2" || key == "net.ipfor") return value.size() <= 32;
   if (key == "wifi.password" || key == "wifi.password2") return value.empty() || (value.size() >= 8 && value.size() <= 63);
   return false;
@@ -311,7 +312,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
       row("Sensors", std::to_string(known));
       row("Video streams open", std::to_string(streamCount()));
       row("Event subscribers", std::to_string(subs_.count()));
-      if (eventsSaveFailed_) row("Event history", "Could not be saved; storage may be full");
+      if (log_.saveFailed()) row("Event history", "Could not be saved; storage may be full");
       j.end().num("crash", cfg_.crashSize ? cfg_.crashSize() : 0);
     }));
   } else if (r.is("GET", "/api/crash")) {  // read from flash 1 KB at a time, because it can be larger than any free block
@@ -338,7 +339,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
         if (!seen.empty()) j.str(seen);
       j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
       j.num("onvifPort", cfg_.onvifPort).num("webPort", cfg_.webPort).num("rtspPort", cfg_.rtspPort).num("streams", streamCount()).num("subscribers", subs_.count());
-      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty());
+      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts);
     }));
   } else {
     return false;
@@ -451,6 +452,8 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     };
     long long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
     std::string name = queryParam(form, "name"), protect = queryParam(form, "protect"), password = percentDecode(queryParam(form, "password"));
+    bool hostsGiven = form.find("&hosts=") != std::string::npos || form.compare(0, 7, "?hosts=") == 0;
+    std::string hosts = percentDecode(queryParam(form, "hosts"));
     bool nameOk = validHubName(name);
     bool passwordOn = protect.empty() ? !cfg_.webPassword.empty() : protect == "on";
     if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
@@ -459,6 +462,8 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       c.out = jsonFail(400, "the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen");
     } else if (password.size() > 63 || (passwordOn && password.empty() && cfg_.webPassword.empty())) {
       c.out = jsonFail(400, "enter a password of up to 63 characters");
+    } else if (hostsGiven && !camHostListValid(hosts)) {
+      c.out = jsonFail(400, "other names: up to 4, separated by commas, of letters, digits, dots and hyphens");
     } else {
       CamSettings s;
       s.onvifPort = (uint16_t)onvif;
@@ -467,6 +472,8 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       s.name = name;
       s.passwordOn = passwordOn;
       s.password = password;
+      s.hostsGiven = hostsGiven;
+      s.hosts = hosts;
       c.out = saved(cfg_.settingsSave(s), "could not save the settings");
     }
   } else {
@@ -539,10 +546,9 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
-    flushCsv();
-    csvOldBytes_ = storage_.fileSize(EVENTS_CSV_OLD);
-    size_t total = csvOldBytes_ + storage_.fileSize(EVENTS_CSV);
-    c.out = httpHead(200, "text/csv; charset=utf-8", sizeof(CSV_HEADER) - 1 + total, "Content-Disposition: attachment; filename=\"hub-events.csv\"\r\n") + CSV_HEADER;
+    log_.save(downloadingHistory());
+    size_t total = log_.csvBegin();  // made from the log as it is sent, piece by piece
+    c.out = httpHead(200, "text/csv; charset=utf-8", total, "Content-Disposition: attachment; filename=\"hub-events.csv\"\r\n");
     c.pull = &csvRead_;
     c.staticLen = total;
   } else {

@@ -1,6 +1,8 @@
 #include "cam_auth.h"
+#include <ctype.h>
 #include <stdint.h>
 #include <string.h>
+#include <vector>
 #include "cam_rtp.h"
 #include "cam_soap.h"
 
@@ -177,6 +179,86 @@ bool camDigestValid(const std::string& auth, const std::string& method, const st
 
 bool camBasicValid(const std::string& auth, const std::string& user, const std::string& password) {
   return auth.compare(0, 6, "Basic ") == 0 && camSameText(camBase64Decode(auth.substr(6)), user + ":" + password);
+}
+
+static std::string lower(std::string s) {
+  for (char& ch : s) ch = (char)tolower((unsigned char)ch);
+  return s;
+}
+
+// The names in a comma-separated list, lowercased and trimmed.
+static std::vector<std::string> nameList(const std::string& names) {
+  std::vector<std::string> out;
+  size_t at = 0;
+  while (at <= names.size()) {
+    size_t comma = names.find(',', at);
+    if (comma == std::string::npos) comma = names.size();
+    std::string name = names.substr(at, comma - at);
+    while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (!name.empty()) out.push_back(lower(name));
+    at = comma + 1;
+  }
+  return out;
+}
+
+bool camHostListValid(const std::string& names) {
+  std::vector<std::string> list = nameList(names);
+  if (list.size() > 4 || names.size() > 200) return false;
+  for (const std::string& name : list) {
+    if (name.size() > 63 || name.front() == '.' || name.front() == '-' || name.back() == '.' || name.back() == '-') return false;
+    for (char ch : name)
+      if (!isalnum((unsigned char)ch) && ch != '.' && ch != '-') return false;
+  }
+  return true;
+}
+
+bool camKnownHost(const std::string& header, const std::string& ip, const std::string& hubName, const std::string& setupHost, const std::string& extraNames) {
+  if (header.empty()) return true;
+  std::string host = lower(header.substr(0, header.find(':')));
+  while (!host.empty() && host.back() == '.') host.pop_back();
+  std::string name = lower(hubName.substr(0, hubName.find('.')));
+  if (host == ip || host == lower(setupHost.substr(0, setupHost.find(':'))) || (!name.empty() && host == name)) return true;
+  static const char* const ENDINGS[] = {".local", ".lan", ".home", ".home.arpa", ".localdomain", ".internal"};  // none can be bought
+  for (const char* ending : ENDINGS)
+    if (!name.empty() && host == name + ending) return true;
+  for (const std::string& extra : nameList(extraNames))
+    if (host == extra) return true;
+  return false;
+}
+
+uint32_t CamLoginGuard::lockMs(uint16_t failures) {
+  if (failures < FREE_TRIES) return 0;
+  int doublings = failures - FREE_TRIES < 8 ? failures - FREE_TRIES : 8;
+  uint32_t ms = FIRST_LOCK_MS << doublings;
+  return ms < LONGEST_LOCK_MS ? ms : LONGEST_LOCK_MS;
+}
+
+bool CamLoginGuard::allowed(uint32_t peer, uint32_t now) const {
+  for (const Entry& e : entries_)
+    if (e.peer == peer && e.failures && now - e.lastAt < lockMs(e.failures)) return false;
+  return true;
+}
+
+void CamLoginGuard::note(uint32_t peer, bool ok, uint32_t now) {
+  Entry* entry = nullptr;
+  Entry* spare = &entries_[0];  // a free entry, or else the one quiet for longest
+  for (Entry& e : entries_) {
+    if (e.peer == peer && e.failures) entry = &e;
+    if (spare->failures && (!e.failures || now - e.lastAt > now - spare->lastAt)) spare = &e;
+  }
+  if (ok) {
+    if (entry) *entry = Entry();
+    return;
+  }
+  if (!entry) {
+    entry = spare;
+    *entry = Entry();
+    entry->peer = peer;
+  }
+  if (entry->failures && now - entry->lastAt >= FORGET_MS) entry->failures = 0;
+  if (entry->failures < 0xFFFF) entry->failures++;
+  entry->lastAt = now;
 }
 
 // Keyed with a secret that stays on the hub, so a snapshot link seen in an NVR's settings cannot be used to guess the

@@ -132,15 +132,18 @@ uint8_t reportDirection(const SensorReport& r) {
   return r.targets[best].direction;
 }
 
-bool SensorBoard::trigger(int id, uint32_t now, uint8_t direction, bool delayed, uint32_t holdMs) {
+bool SensorBoard::trigger(int id, uint32_t now, uint8_t direction, bool delayed, uint32_t holdMs, bool several) {
   if (id < 1 || id > count()) return false;
   Entry& s = sensors_[id - 1];
   s.on = true;
   s.until = now + (holdMs ? holdMs : holdMs_);
   s.direction = direction;
   s.delayed = delayed;
+  s.several = several;
   return true;
 }
+
+bool SensorBoard::several(int id) const { return id >= 1 && id <= count() && sensors_[id - 1].on && sensors_[id - 1].several; }
 
 bool SensorBoard::clear(int id) {
   if (id < 1 || id > count()) return false;
@@ -176,7 +179,7 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
   return false;
 }
 
-void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs) {
+void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several) {
   CamDelayed* same = nullptr;
   for (int n = 0; n < count_; n++) {
     CamDelayed& d = slot(n);
@@ -197,10 +200,11 @@ void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction
     same->happenedAt = happenedAt;
   }
   if (!same) {  // full of other sensors' alerts
-    slot(count_ - 1).direction = CAM_DIRECTION_SEVERAL;
+    slot(count_ - 1).several = true;
     return;
   }
-  if (same->direction != CAM_DIRECTION_SEVERAL) same->direction = direction;
+  same->direction = direction;
+  same->several = same->several || several;
   if (timeKnown && same->timeKnown && (int32_t)(happenedAt - same->happenedAt) > 0) same->happenedAt = happenedAt;
 }
 

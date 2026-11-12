@@ -45,9 +45,6 @@ const uint8_t CAM_CONFIRMATION = 3;
 const int CAM_CONFIRMATION_LEN = 7 + CAM_SIGNATURE_LEN;
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key);
 
-// A past-event record standing for alerts from more than one sensor, shown with the built-in past-event picture.
-const uint8_t CAM_DIRECTION_SEVERAL = 0xFE;
-
 // Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
 // FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
 struct CamSensorSettings {
@@ -81,7 +78,8 @@ class SensorBoard {
   SensorBoard(int count, uint32_t holdMs) : holdMs_(holdMs), sensors_(count) {}
 
   // Starts or extends the hold, for holdMs or else the default. Returns false for an unknown id.
-  bool trigger(int id, uint32_t now, uint8_t direction = 0, bool delayed = false, uint32_t holdMs = 0);
+  // several: a past-event record standing for more than one sensor, shown with the built-in past-event picture.
+  bool trigger(int id, uint32_t now, uint8_t direction = 0, bool delayed = false, uint32_t holdMs = 0, bool several = false);
   bool clear(int id);
   void tick(uint32_t now);  // ends holds that have run out
   bool active(int id) const;
@@ -90,11 +88,13 @@ class SensorBoard {
 
   // The active sensor to show, cycling when several are active. False when none is.
   bool shown(uint32_t now, int& id, uint8_t& direction, bool& delayed) const;
+  bool several(int id) const;
 
  private:
   struct Entry {
     bool on = false;
     bool delayed = false;
+    bool several = false;
     uint8_t direction = 0;
     uint32_t until = 0;
   };
@@ -107,7 +107,8 @@ class SensorBoard {
 struct CamDelayed {
   uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
   uint8_t input = 0;
-  uint8_t direction = 0;    // CAM_DIRECTION_SEVERAL once other sensors' alerts have joined it
+  uint8_t direction = 0;
+  bool several = false;     // other sensors' alerts have joined it, because the queue was full
   bool timeKnown = false;   // the report gave its age, so when it happened is known
   uint32_t happenedAt = 0;  // on the millis() clock; the latest of the alerts merged into this one
 };
@@ -118,7 +119,7 @@ class CamDelayedQueue {
   // A late alert from one sensor within holdMs of a waiting one from that sensor joins it, as it would have live.
   // When the queue is full it joins a waiting one from that sensor, or else the newest waiting record, which then
   // stands for several sensors. So every alert gets a record, and the count never passes SIZE.
-  void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs);
+  void add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several = false);
   bool take(CamDelayed& out);  // the oldest; false when none is waiting
   int count() const { return count_; }
   const CamDelayed& at(int n) const { return items_[(head_ + n) % SIZE]; }  // n from 0, the oldest, to count() - 1

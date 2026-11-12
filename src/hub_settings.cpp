@@ -54,6 +54,7 @@ void loadSettings() {
     s.webPort = p.getUShort("web", WEB_PORT);
     s.rtspPort = p.getUShort("rtsp", RTSP_PORT);
     s.hubName = p.getString("name", MDNS_NAME);
+    s.extraHosts = p.getString("hosts", "");
     // A hub is password protected unless someone turns that off, so an empty setting falls back to the setup network's password.
     s.webPassword = p.getString("webpw", strlen(WEB_PASSWORD) ? WEB_PASSWORD : SETUP_AP_PASSWORD);
     s.sensorToken = p.getString("token", SENSOR_TOKEN);
@@ -100,6 +101,7 @@ bool storeSettings(const CamSettings& s) {
     if (!s.name.empty()) done = done && putText(p, "name", s.name.c_str());
     if (!s.passwordOn) done = done && putText(p, "webpw", "");
     else if (!s.password.empty()) done = done && putText(p, "webpw", s.password.c_str());
+    if (s.hostsGiven) done = done && putText(p, "hosts", s.hosts.c_str());
     return done;
   });
 }
@@ -206,7 +208,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "rtsp", 'u'},     {"net", "name", 's'},      {"net", "webpw", 's'},   {"net", "token", 's'},      {"net", "ipfor", 's'}, {"net", "ip", 's'},
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
-    {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},
+    {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
 };
 
 std::string backupText() {

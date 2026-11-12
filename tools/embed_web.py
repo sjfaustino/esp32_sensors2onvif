@@ -1,7 +1,7 @@
 """Builds the hub's web pages into the firmware.
 
-The pages are ordinary files in web/: each NAME.html links NAME.css and NAME.js. This puts the
-stylesheet and script inside the page, gzips it, and writes the bytes to
+The pages are ordinary files in web/: each NAME.html links its stylesheets and scripts there. This
+puts them inside the page, where they were linked, gzips it, and writes the bytes to
 lib/sensorcam/cam_web_pages.cpp (not kept in git), which cam_web.h declares. The hub sends a page
 as it is stored, with Content-Encoding: gzip.
 
@@ -18,19 +18,17 @@ PAGES = [('index', 'CAM_WEB_PAGE'), ('setup', 'CAM_SETUP_PAGE')]
 
 
 def inline(folder, name):
+    """The page with each stylesheet and script it links from web/ put inside it, in the same place."""
     def read(file):
         with open(os.path.join(folder, file), encoding='utf-8') as f:
-            return f.read()
+            text = f.read()
+        if not file.endswith('.html') and ('</style' in text.lower() or '</script' in text.lower()):
+            sys.exit(f'web/{file}: a stylesheet or script cannot contain </style or </script')
+        return text
 
     page = read(name + '.html')
-    css, js = read(name + '.css'), read(name + '.js')
-    if '</style' in css.lower() or '</script' in js.lower():
-        sys.exit(f'web/{name}: a stylesheet or script cannot contain </style or </script')
-    link = f'<link rel="stylesheet" href="{name}.css">'
-    script = f'<script src="{name}.js"></script>'
-    if page.count(link) != 1 or page.count(script) != 1:
-        sys.exit(f'web/{name}.html must contain {link} and {script} once each')
-    page = page.replace(link, '<style>\n' + css + '</style>').replace(script, '<script>\n' + js + '</script>')
+    page = re.sub(r'<link rel="stylesheet" href="([\w.-]+\.css)">', lambda m: '<style>\n' + read(m.group(1)) + '</style>', page)
+    page = re.sub(r'<script([^>]*?) src="([\w.-]+\.js)"></script>', lambda m: f'<script{m.group(1)}>\n' + read(m.group(2)) + '</script>', page)
     leftover = re.findall(r'<(?:link|script)[^>]*(?:href|src)="(?!https?:)[^"]*"', page)
     if leftover:
         sys.exit(f'web/{name}.html links a file the hub does not serve: {leftover[0]}')

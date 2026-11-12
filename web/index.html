@@ -30,6 +30,8 @@
 <div class="view" id="view-http" hidden><h1>HTTP</h1>
 <div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
 <div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
+<div class="portForm"><label>Other names <input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box"></label></div>
+<p style="margin:0 0 6px;font-size:14px">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
 <div class="portForm"><label><input id="protect" type="checkbox"> Password protection (user admin)</label></div>
 <div class="portForm" id="pwRow" hidden><label>Password <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
 <div class="portForm"><button id="saveWeb">Save</button></div>
@@ -96,4 +98,8 @@
 <div id="tree"></div>
 <p><button id="makeThumbs">Create missing thumbnails</button></p>
 </div></main>
+<script type="text/plain" id="encoder-worker" src="encoder-worker.js"></script>
+<script src="sha256.js"></script>
+<script src="pictures.js"></script>
+<script src="sensors.js"></script>
 <script src="index.js"></script></body></html>

@@ -10,12 +10,12 @@
 // because it means a recording is missing.
 void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
-  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_RECORDED ? w.alerts || w.problems : w.problems;
+  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_DELIVERED ? w.alerts || w.problems : w.problems;
   if (w.url.empty() || !wanted) return;
   std::string event = camEventName(kind, true, delayed);
   std::string sensor = slotName(id), name = slots_[id - 1].name;
   std::string message = (name.empty() ? sensor : name + " (" + sensor + ")") + ": " + event;
-  if (kind == CAM_EVENT_NOT_RECORDED) message += ", because the NVR is not listening";
+  if (kind == CAM_EVENT_NOT_DELIVERED) message += ", because the NVR is not listening";
   uint8_t battery = health_[id - 1].battery;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;

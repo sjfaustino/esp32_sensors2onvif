@@ -281,6 +281,15 @@ bool CamStorage::appendFile(const std::string& path, const char* data, size_t le
   return fclose(f) == 0 && ok;
 }
 
+bool CamStorage::writeAt(const std::string& path, size_t offset, const char* data, size_t len) const {
+  std::string target = full(path);
+  FILE* f = fopen(target.c_str(), "r+b");
+  if (!f) f = fopen(target.c_str(), "w+b");
+  if (!f) return false;
+  bool ok = fseek(f, (long)offset, SEEK_SET) == 0 && fwrite(data, 1, len, f) == len;
+  return fclose(f) == 0 && ok;
+}
+
 bool CamStorage::readAt(const std::string& path, size_t offset, char* out, size_t len) const {
   FILE* f = fopen(full(path).c_str(), "rb");
   if (!f) return false;

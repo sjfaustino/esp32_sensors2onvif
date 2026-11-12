@@ -32,8 +32,7 @@ jobs:
 
       - name: Web page scripts
         run: |
-          node --check web/index.js
-          node --check web/setup.js
+          Get-ChildItem web/*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
           npx --yes prettier@3.3.3 --print-width 120 --end-of-line lf --check web/*.js web/*.css
 
       - name: Unit tests

@@ -39,8 +39,10 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     lastSent.clear();
   } else if (command == "disk-nearly-full" || command == "disk-normal") {  // the storage left over beside what is stored
     diskTotal = command == "disk-normal" ? 10u * 1024 * 1024 : 300u * 1024;
-  } else if (command == "nvr-watch-on" || command == "nvr-watch-off") {  // off by default, so its events stay out of other checks
-    hub.setNvrWatch(command == "nvr-watch-on", 3000);
+  } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
+    hub.networkLost(125);
+  } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes
+    hub.setNvrGoneMs(command == "nvr-gone-fast" ? 3000 : 3 * 60 * 1000);
   } else if (command == "auth-on" || command == "auth-off") {
     hub.setOnvifPassword(command == "auth-on" ? "onvif-secret" : "");
   } else if (command.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
@@ -141,11 +143,18 @@ int main(int argc, char** argv) {
   };
   cfg.startReason = "PC build started";
   cfg.snapshotSecret = "test-snapshot-secret";
-  cfg.fsUsage = [](uint32_t& used, uint32_t& total) {
-    used = 0;
-    total = diskTotal;
+  static std::string storageFolder = argv[2];
+  cfg.fsUsage = [](uint32_t& used, uint32_t& total) {  // what is really stored, of a pretend storage size
+    std::function<uint32_t(const CamStorage&, const std::string&)> sum = [&](const CamStorage& s, const std::string& path) {
+      std::vector<CamFsEntry> items;
+      s.list(path, items);
+      uint32_t bytes = 0;
+      for (const CamFsEntry& e : items) bytes += e.dir ? sum(s, path.empty() ? e.name : path + "/" + e.name) : (e.size + 4095) / 4096 * 4096;
+      return bytes;
+    };
+    used = sum(CamStorage(storageFolder), "");
+    total = diskTotal > used ? diskTotal : used;
   };
-  cfg.watchNvr = false;  // turned on by its own checks, so its events stay out of the others
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
   cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses

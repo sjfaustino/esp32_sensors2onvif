@@ -545,6 +545,9 @@ def main():
         try:
             if proc:
                 check('server starts', HUB.stdout.readline().strip() == 'ready')
+            # An NVR is listening before any alert, as in use. Without one, the hub would keep every alert for a replay.
+            # This one pulls events, and counts as listening while this test keeps talking to the hub.
+            soap('CreatePullPointSubscription', '/onvif/events')
             codes = [api('GET', f'/api/file?path={p}')[0] for p in ('clear.h264', 'text.json')]
             if any(c not in (200, 404) for c in codes):
                 sys.exit(f'stopping: cannot tell whether the board has its own files (HTTP {codes})')
@@ -567,10 +570,11 @@ def main():
             # The NVR sends Subscribe to device_service, twice, with one listener URL.
             nvr = FakeNvrListener()
             inner = f'<ConsumerReference><Address>http://{LOCAL}:{nvr.port}/onvif_notify_server/</Address></ConsumerReference>'
+            subscribers = status()['subscribers']
             for _ in range(2):
                 code, data = soap('Subscribe', device, inner)
                 check('Subscribe accepted on device_service', code == 200 and 'SubscribeResponse' in data, data[:200])
-            check('two identical Subscribes make one subscriber', status()['subscribers'] == 1)
+            check('two identical Subscribes make one subscriber', status()['subscribers'] == subscribers + 1)
             wait_until(lambda: len(nvr.events) >= 2)
             check('initial state is pushed as false', nvr.states()[:1] == ['false'], nvr.states())
             check('initial push is marked Initialized', 'PropertyOperation="Initialized"' in nvr.events[0][1])
@@ -853,24 +857,36 @@ def main():
 
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')
-                control('nvr-watch-on')  # the NVR counts as gone after 3 s here, instead of 3 minutes
+                control('nvr-gone-fast')  # the NVR counts as gone after 3 s here, instead of 3 minutes
                 get(f'/sensor?{sid(1)}')
                 missed = poll(event_list, lambda l: l and any(e['kind'] == 5 for e in l[:2]))
-                check('an alert the NVR is not listening for is logged as not recorded', missed and any(e['kind'] == 5 and e['sensor'] == path and e['event'] == 'alert not recorded' for e in missed[:2]), missed[:3])
+                check('an alert the NVR is not listening for is logged as not delivered', missed and any(e['kind'] == 5 and e['sensor'] == path and e['event'] == 'alert not delivered' for e in missed[:2]), missed[:3])
                 gone = poll(event_list, lambda l: any(e['kind'] == 6 for e in l[:3]))
                 check('the NVR not listening is logged as a hub event', [e['sensor'] for e in gone[:3] if e['kind'] == 6] == ['hub'], gone[:3])
                 clear(1)
                 soap('CreatePullPointSubscription', '/onvif/events')  # this PC now listens, as an NVR that pulls events would
                 api('POST', '/api/nvr', 'ip=127.0.0.1')
-                back = poll(event_list, lambda l: l and l[0]['kind'] == 7)
-                check('the NVR listening again is logged', back and back[0]['kind'] == 7 and back[0]['sensor'] == 'hub', back[:2])
+                back = poll(event_list, lambda l: l and any(e['kind'] == 7 for e in l[:2]))
+                check('the NVR listening again is logged', back and any(e['kind'] == 7 and e['sensor'] == 'hub' for e in back[:2]), back[:2])
+                check('the alert the NVR missed plays once it listens again, as a past event', wait_until(lambda: name(1) in status()['active'], timeout=15), status())
+                control('end-alerts')
                 flagged = sum(e['kind'] == 5 for e in event_list())
                 get(f'/sensor?{sid(1)}')
                 time.sleep(6)  # past the check, which comes 5 s after an alert starts
                 check('an alert the NVR is listening for is not flagged', sum(e['kind'] == 5 for e in event_list()) == flagged, event_list()[:3])
                 clear(1)
-                control('nvr-watch-off')
+                control('nvr-gone-normal')
                 api('POST', '/api/nvr', 'ip=')
+
+                # Being kept off the network is logged when the hub is back.
+                control('network-lost')
+                lost = event_list()[0]
+                check('time off the network is logged', lost['kind'] == 9 and lost['sensor'] == 'hub' and lost['off_s'] == 125 and lost['event'] == 'network lost', lost)
+
+                # Other names the hub answers to.
+                check('other names for the hub can be saved', api('POST', '/api/settings', 'hosts=' + urllib.parse.quote('esp-alarmhub.fritz.box, hub.example.lan'))[0] == 200)
+                check('a bad other name is refused', api('POST', '/api/settings', 'hosts=' + urllib.parse.quote('bad name!'))[0] == 400)
+                check('more than four other names are refused', api('POST', '/api/settings', 'hosts=a,b,c,d,e')[0] == 400)
 
                 # Firmware and backup.
                 check('firmware update needs the web password', api('PUT', '/api/firmware', b'\xe9' * 100, auth=False)[0] == 401)

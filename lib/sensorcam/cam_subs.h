@@ -17,6 +17,7 @@ struct CamSub {
   bool initialized = false;   // push: first message (PropertyOperation "Initialized") was sent
   int lastPull = -1;          // pull: last state delivered, -1 for none
   bool pushFailed = false;    // push: the last notification could not be delivered
+  uint32_t retryAt = 0;       // push: when a failed one was last tried again
 };
 
 class SubTable {

@@ -38,9 +38,10 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 
 ## Events and alerts
 
-**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. They are saved within 5 seconds, so a crash or
-power cut can lose the last few. **Download the full history (CSV)** gives every event the hub has kept, about the last 5000, in
-UTC. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and Events pages.
+**Sensors Manager > Events** lists the last 64 events and keeps them across restarts. Every event is added to one log on
+storage, `events.log`, and never rewritten; a report is in it before its sensor gets a confirmation. **Download the full
+history (CSV)** makes a CSV file from that log as it is sent, about the last 5400 events, in UTC. History from firmware before
+this log is kept: its newest events are moved into the log once, and its old CSV files come first in the download. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and Events pages.
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
@@ -54,10 +55,19 @@ hub from a small UPS.
 
 The hub also checks that each alert reached the NVR. Five seconds after an alert starts, or when it ends if that is sooner,
 the NVR must hold an event subscription and the last event pushed to it must have arrived, or, for an NVR that pulls
-events, it must have asked within the last minute. If not, the history gets **Alert not recorded** for that sensor, and
+events, it must have asked within the last minute. If not, the history gets **Alert not delivered** for that sensor, and
 Notifications sends it. With the NVR's address set on the NVR page only that NVR counts; without it, any subscriber does,
 and the page warns about that at the top. When the NVR has not been listening for 3 minutes,
-the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back.
+the hub logs **NVR stopped listening** once, and **NVR listening again** when it is back. An alert the NVR did not get is
+kept, and once the NVR listens again it plays as a past event, so the NVR still records that something happened, with the
+past-event picture. A failed event push is tried again every 30 seconds.
+
+When the hub rejoins its Wi-Fi network after losing it, without restarting, it logs **network lost** with how long it was
+off, because someone may be keeping it off on purpose.
+
+Delivered is all the hub can see. Whether the NVR then records depends on its own settings for the hub's channel: motion
+detection on, and recording and logging on motion. An NVR with those off gets every alert and records none, and the hub
+cannot tell. Check them when adding the hub, and check a recording after any NVR update or reset.
 
 Each time the hub starts it logs **Hub started** with the reason, such as a power cut or a firmware update, and how long
 it was off. It saves the time every 10 minutes and before a planned restart, so after a power cut the time off is an upper
@@ -74,8 +84,8 @@ NVR or to Notifications. Quiet hours need the clock to be set; until it is, aler
 a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
 or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
-`alert not recorded`, `delayed alert not recorded`, `NVR not listening`, `NVR listening again`, `hub started` and `test`.
-The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not recorded is sent
+`alert not delivered`, `delayed alert not delivered`, `NVR not listening`, `NVR listening again`, `hub started`, `network lost` and `test`.
+The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
@@ -98,9 +108,12 @@ HTTP sensor reports need `&token=<value>`. The hub makes a token the first time 
 ESP-NOW reports are signed with a separate key instead; see below.
 
 Ten wrong passwords in a row from one address, on the web page, ONVIF or RTSP, shut that address out for a minute, even
-with the right password. Asking without a password, as a browser or NVR first does, does not count. The web port answers
-only to the hub's own IP address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or
-`.internal`, and the setup address, so a website cannot point its own name at the hub and use your browser to reach it.
+with the right password. Each wrong one after that doubles the time, up to 15 minutes, and the count is kept for a day or
+until the right password is given, so slow guessing gets no further than quick guessing: about 100 tries a day. Asking
+without a password, as a browser or NVR first does, does not count. The web port answers only to the hub's own IP
+address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or `.internal`, the setup address,
+and the **Other names** on the HTTP page, such as the name your router gives the hub. So a website cannot point its own
+name at the hub and use your browser to reach it. A name it refuses gets a reply saying where to add it.
 The ONVIF snapshot address carries a token made from the password and a secret that never leaves the hub, so the address
 cannot be used to guess the password. The picture encoder the page downloads is checked against the published files
 before it runs, because it runs with your login.
@@ -247,7 +260,7 @@ folder get no confirmation. The confirmation is 15 bytes:
 | 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 7 bytes above |
 
 A sensor should check the signature, so that nothing else in radio range can stop it resending. The confirmation means
-the hub has the alert, not that the NVR recorded it; the hub reports that separately (see Events and alerts).
+the hub has the alert, not that the NVR got it or recorded it; the hub reports delivery separately (see Events and alerts).
 
 Devices that cache alerts should send them oldest first and keep resending each until it is confirmed.
 They should also resend their current state about hourly, because `/status` marks a sensor silent after 3 hours
@@ -321,9 +334,11 @@ python tools/e2e_test.py
 
 ## Changing the web pages
 
-The pages are ordinary files in `web/`: `index` is the main page and `setup` the Wi-Fi setup page, each with its own
-`.html`, `.css` and `.js`. Opening `web/index.html` in a browser shows the layout, though nothing loads without a hub.
-Every build runs `tools/embed_web.py`, which puts each page's stylesheet and script inside it, gzips it and builds it
-into the firmware. The hub sends the pages gzipped, which every browser accepts. `node --check web/index.js` finds
+The pages are ordinary files in `web/`: `index.html` is the main page and `setup.html` the Wi-Fi setup page. The main
+page's scripts are `sensors.js` (the Sensors page, and the helpers the others use), `pictures.js` (making pictures),
+`sha256.js` (checking the downloaded encoder), `encoder-worker.js` (the encoder's worker, carried in the page as text) and
+`index.js` (the menu and every other page). Opening `web/index.html` in a browser shows the layout, though nothing loads
+without a hub. Every build runs `tools/embed_web.py`, which puts each stylesheet and script a page links inside it, gzips
+it and builds it into the firmware. The hub sends the pages gzipped, which every browser accepts. `node --check` finds
 script mistakes before a build. The scripts and styles are laid out by Prettier, and the checks on GitHub refuse them
 otherwise; after an edit, run `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`.

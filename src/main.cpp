@@ -325,6 +325,7 @@ static CamConfig makeConfig() {
   c.espNowSend = sendToNode;
   c.startReason = lastRestartText();
   c.snapshotSecret = settings.snapshotKey.c_str();
+  c.extraHosts = settings.extraHosts.c_str();
   c.espNowUnsigned = settings.espNowUnsigned;
   c.espNowSave = storeEspNowUnsigned;
   c.webhook = settings.webhook;
@@ -576,7 +577,12 @@ void setup() {
 void loop() {
   bool connected = WiFi.status() == WL_CONNECTED;
   bool justLost = !connected && wasConnected;
+  static bool everConnected = false;
+  static uint32_t lostAt = 0;  // when the network went, while it is gone
   if (connected && !wasConnected) {
+    // A drop and return without a restart is logged, because someone may be keeping the hub off its network.
+    if (everConnected && lostAt) server->networkLost((millis() - lostAt) / 1000 + 1);
+    everConnected = true;
     server->networkUp();
     connectedAt = timerStart();
     startGatewayPing();
@@ -590,7 +596,6 @@ void loop() {
   wasConnected = connected;
 
   // An unattended hub must not stay off the network: keep asking, then start clean.
-  static uint32_t lostAt = 0;
   static bool hadGuest = false;
   if (connected) {
     lostAt = 0;

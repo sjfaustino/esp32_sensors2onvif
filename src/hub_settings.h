@@ -9,6 +9,7 @@ struct HubSettings {
   String wifiSsid[2], wifiPassword[2];  // [0] is the main network, [1] the backup
   uint16_t onvifPort = 0, webPort = 0, rtspPort = 0;
   String hubName, webPassword, sensorToken;
+  String extraHosts;  // other names the web port answers to, comma-separated
   String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
   String snapshotKey;  // keys the snapshot address's token; never shown, and not in backups
   bool espNowUnsigned = false;

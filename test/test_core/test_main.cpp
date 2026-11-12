@@ -572,10 +572,10 @@ static void a_full_past_event_queue_still_records_every_sensor() {
   CamDelayed d;
   for (int i = 0; i < CamDelayedQueue::SIZE - 1; i++) {
     TEST_ASSERT_TRUE(q.take(d));
-    TEST_ASSERT_NOT_EQUAL(CAM_DIRECTION_SEVERAL, d.direction);
+    TEST_ASSERT_FALSE(d.several);
   }
   TEST_ASSERT_TRUE(q.take(d));
-  TEST_ASSERT_EQUAL(CAM_DIRECTION_SEVERAL, d.direction);
+  TEST_ASSERT_TRUE(d.several);
   TEST_ASSERT_FALSE(q.take(d));
 }
 
@@ -609,8 +609,187 @@ static void xml_text_is_unescaped_and_secrets_compared_whole() {
   TEST_ASSERT_FALSE(camSnapshotToken("one", "pw") == camSnapshotToken("two", "pw"));  // depends on the hub's secret
 }
 
+static void wrong_passwords_lock_out_quick_and_slow_guessing() {
+  CamLoginGuard g;
+  uint32_t t = 1000;
+  for (int i = 0; i < 9; i++) g.note(7, false, t);
+  TEST_ASSERT_TRUE(g.allowed(7, t));  // nine wrong: still allowed
+  g.note(7, false, t);
+  TEST_ASSERT_FALSE(g.allowed(7, t + 59000));  // the tenth locks it for a minute
+  TEST_ASSERT_TRUE(g.allowed(8, t));          // only that address
+  TEST_ASSERT_TRUE(g.allowed(7, t + 60000));
+  g.note(7, false, t + 60000);  // waiting out the lock does not start the count again: the next lock is twice as long
+  TEST_ASSERT_FALSE(g.allowed(7, t + 60000 + 119000));
+  TEST_ASSERT_TRUE(g.allowed(7, t + 60000 + 120000));
+  uint32_t at = t + 180000;
+  for (int i = 0; i < 20; i++) {  // guessing slowly, once each lock runs out, reaches the longest lock
+    g.note(7, false, at);
+    at += CamLoginGuard::LONGEST_LOCK_MS;
+  }
+  TEST_ASSERT_FALSE(g.allowed(7, at - CamLoginGuard::LONGEST_LOCK_MS + CamLoginGuard::LONGEST_LOCK_MS - 1));
+  g.note(7, true, at);  // a right password clears it
+  TEST_ASSERT_TRUE(g.allowed(7, at));
+  for (int i = 0; i < 9; i++) g.note(9, false, 0);
+  g.note(9, false, CamLoginGuard::FORGET_MS);  // a day later, the old ones are forgotten
+  TEST_ASSERT_TRUE(g.allowed(9, CamLoginGuard::FORGET_MS));
+}
+
+// ---- the event log ----
+
+static std::string tempFolder(const char* name) {
+  std::string path = std::string(getenv("TEMP") ? getenv("TEMP") : "/tmp") + "/" + name;
+  CamStorage(path).removeTree("");
+  CamStorage(path).makeDirs("");
+  return path;
+}
+
+static CamEvent sampleEvent(int n) {
+  CamEvent e;
+  e.received = 1800000000 + n;
+  e.age = (uint32_t)n;
+  snprintf(e.sensor, sizeof(e.sensor), "AA-BB-CC-DD-EE-%02d/1", n % 100);
+  snprintf(e.text, sizeof(e.text), "Gate, \"%d\"", n);
+  e.kind = CAM_EVENT_REPORT;
+  e.active = n % 2;
+  e.delayed = n % 3 == 0;
+  e.battery = (uint8_t)(n % 101);
+  e.targetCount = 2;
+  e.targets[0].distanceCm = 250;
+  e.targets[0].direction = 1;
+  e.targets[1].distanceCm = 120;
+  e.targets[1].direction = 3;
+  return e;
+}
+
+static void an_event_record_reads_back_and_damage_is_found() {
+  CamEvent e = sampleEvent(42), back;
+  e.offS = 3600;
+  uint8_t r[CAM_EVENT_RECORD];
+  camEventEncode(e, r);
+  TEST_ASSERT_TRUE(camEventDecode(r, back));
+  TEST_ASSERT_TRUE(camEventCsvLine(back) == camEventCsvLine(e));
+  TEST_ASSERT_EQUAL_UINT32(3600, back.offS);
+  TEST_ASSERT_EQUAL_STRING(e.text, back.text);
+  r[40] ^= 1;
+  TEST_ASSERT_FALSE(camEventDecode(r, back));
+  TEST_ASSERT_EQUAL_STRING("2027-01-15T08:00:42Z,2027-01-15T08:00:00Z,AA-BB-CC-DD-EE-42/1,\"Gate, \"\"42\"\"\",clear,42,1.20,left to right\n",
+                           camEventCsvLine(e).c_str());
+}
+
+// Reads the download the way the web server does: in pieces, some sent only in part and asked for again.
+static std::string download(CamEventLog& log) {
+  size_t total = log.csvBegin(), at = 0;
+  std::string out;
+  char piece[700];
+  while (at < total) {
+    size_t n = total - at < sizeof(piece) ? total - at : sizeof(piece);
+    if (!log.csvRead(at, piece, n)) return "read failed";
+    size_t sent = n > 100 && (at / 700) % 2 ? n / 3 : n;  // every other piece only partly sent
+    out.append(piece, sent);
+    at += sent;
+  }
+  char extra;
+  return log.csvRead(total, &extra, 1) ? "read past the end" : out;
+}
+
+static void the_event_log_survives_restarts_and_downloads_whole() {
+  std::string folder = tempFolder("cam_event_log_test");
+  CamStorage storage(folder);
+  std::string expect = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
+  {
+    CamEventLog log(storage);
+    log.load();
+    for (int i = 0; i < 100; i++) {
+      log.add(sampleEvent(i));
+      expect += camEventCsvLine(sampleEvent(i));
+      if (i % 7 == 0) TEST_ASSERT_TRUE(log.save(false));
+    }
+    TEST_ASSERT_TRUE(log.save(false));
+    TEST_ASSERT_TRUE(download(log) == expect);
+  }
+  FILE* f = fopen((folder + "/events.log").c_str(), "ab");  // a power cut part way through a record
+  fwrite("\x01\x02\x03", 1, 3, f);
+  fclose(f);
+  CamEventLog again(storage);
+  again.load();
+  TEST_ASSERT_EQUAL(CamEventLog::RECENT, again.count());
+  TEST_ASSERT_EQUAL_STRING(sampleEvent(99).text, again.recent(0).text);
+  TEST_ASSERT_EQUAL_STRING(sampleEvent(36).text, again.recent(63).text);
+  again.add(sampleEvent(100));  // written over the cut-off record
+  TEST_ASSERT_TRUE(again.save(false));
+  TEST_ASSERT_TRUE(download(again) == expect + camEventCsvLine(sampleEvent(100)));
+  TEST_ASSERT_EQUAL(101 * CAM_EVENT_RECORD, (int)again.bytesOnStorage());
+}
+
+static void the_event_log_starts_a_new_file_but_not_during_a_download() {
+  std::string folder = tempFolder("cam_event_log_rotate");
+  CamStorage storage(folder);
+  CamEventLog log(storage);
+  log.load();
+  std::string expect = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
+  size_t perFile = CamEventLog::FILE_MAX / CAM_EVENT_RECORD;
+  for (size_t i = 0; i < perFile + 10; i++) {
+    log.add(sampleEvent((int)i));
+    expect += camEventCsvLine(sampleEvent((int)i));
+    TEST_ASSERT_TRUE(log.save(i == perFile + 5));  // one save during a download keeps adding to the same file
+  }
+  TEST_ASSERT_TRUE(storage.exists("events-old.log"));
+  TEST_ASSERT_TRUE(download(log) == expect);
+  CamEventLog again(storage);
+  again.load();
+  TEST_ASSERT_TRUE(download(again) == expect);
+}
+
+static void the_older_firmwares_history_is_kept() {
+  std::string folder = tempFolder("cam_event_log_legacy");
+  CamStorage storage(folder);
+  // Its newest events as a copy of memory, with the count and next position: three events, the newest at index 2.
+  std::string blob(16 + 64 * sizeof(CamEvent), '\0');
+  uint32_t header[4] = {0x31564543, (uint32_t)sizeof(CamEvent), 3, 3};
+  memcpy(&blob[0], header, sizeof(header));
+  for (int i = 0; i < 3; i++) {
+    CamEvent e = sampleEvent(i);
+    memcpy(&blob[16 + i * sizeof(CamEvent)], &e, sizeof(e));
+  }
+  storage.writeFile("events.bin", blob.data(), blob.size());
+  storage.writeFile("events.csv", "old line\n", 9);
+  CamEventLog log(storage);
+  log.load();
+  TEST_ASSERT_EQUAL(3, log.count());
+  TEST_ASSERT_EQUAL_STRING(sampleEvent(2).text, log.recent(0).text);
+  TEST_ASSERT_FALSE(storage.exists("events.bin"));
+  std::string expect = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\nold line\n";
+  for (int i = 0; i < 3; i++) expect += camEventCsvLine(sampleEvent(i));
+  TEST_ASSERT_TRUE(download(log) == expect);  // the old CSV file first, unchanged
+}
+
+static void only_the_hubs_own_names_are_served() {
+  const char* ip = "192.168.1.50";
+  TEST_ASSERT_TRUE(camKnownHost("", ip, "esp-alarmhub.local", "192.168.4.1:8080", ""));
+  TEST_ASSERT_TRUE(camKnownHost("192.168.1.50:8080", ip, "esp-alarmhub.local", "192.168.4.1:8080", ""));
+  TEST_ASSERT_TRUE(camKnownHost("192.168.4.1", ip, "esp-alarmhub.local", "192.168.4.1:8080", ""));
+  TEST_ASSERT_TRUE(camKnownHost("ESP-AlarmHub.Local.", ip, "esp-alarmhub.local", "", ""));
+  TEST_ASSERT_TRUE(camKnownHost("esp-alarmhub.home.arpa", ip, "esp-alarmhub.local", "", ""));
+  TEST_ASSERT_FALSE(camKnownHost("esp-alarmhub.fritz.box", ip, "esp-alarmhub.local", "", ""));
+  TEST_ASSERT_TRUE(camKnownHost("esp-alarmhub.fritz.box:80", ip, "esp-alarmhub.local", "", " Esp-AlarmHub.Fritz.Box , other"));
+  TEST_ASSERT_FALSE(camKnownHost("esp-alarmhub.attacker.example", ip, "esp-alarmhub.local", "", "other"));
+  TEST_ASSERT_FALSE(camKnownHost("192.168.1.5", ip, "esp-alarmhub.local", "", ""));
+  TEST_ASSERT_TRUE(camHostListValid(""));
+  TEST_ASSERT_TRUE(camHostListValid("a.b, c-d,e,f"));
+  TEST_ASSERT_FALSE(camHostListValid("a,b,c,d,e"));
+  TEST_ASSERT_FALSE(camHostListValid("bad name"));
+  TEST_ASSERT_FALSE(camHostListValid(".lead"));
+  TEST_ASSERT_FALSE(camHostListValid("x/y"));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(only_the_hubs_own_names_are_served);
+  RUN_TEST(an_event_record_reads_back_and_damage_is_found);
+  RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);
+  RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);
+  RUN_TEST(the_older_firmwares_history_is_kept);
+  RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
