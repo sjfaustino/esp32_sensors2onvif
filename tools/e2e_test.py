@@ -274,7 +274,8 @@ def grab_colour():
     out = subprocess.run(['ffmpeg', '-v', 'error', '-rtsp_transport', 'tcp', '-i', f'rtsp://{login}{HOST}:{RTSP}/stream', '-frames:v', '1',
                           '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, timeout=40)
     if len(out.stdout) != 640 * 360 * 3:
-        return 'no frame: ' + out.stderr.decode(errors='replace')[:300]
+        error = out.stderr.decode(errors='replace')
+        return 'no frame: ' + (error.replace(login, 'LOGIN@') if login else error)[:300]  # ffmpeg repeats the address, password and all
     r, g = sum(out.stdout[0::3]), sum(out.stdout[1::3])
     if g > r:
         return 'green'
@@ -525,16 +526,17 @@ def file_manager_tests(files, hub_files_free):
     check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
     get(f'/sensor?{sid(4)}&direction=1')
     check('snapshot shows the picture being sent', wait_until(lambda: snapshot(ONVIF)[2] == tiny))
-    # Video is sent straight from the picture, with no buffer per viewer, so all of these work at once.
+    # Video is sent straight from the picture, with no buffer per viewer, so all of these work at once. The hub takes
+    # two viewers, and on a board the NVR is already one of them.
     seen = {}
-    viewers = [threading.Thread(target=lambda k=k: seen.update({k: grab_colour()})) for k in ('a', 'b')]
+    viewers = [threading.Thread(target=lambda k=k: seen.update({k: grab_colour()})) for k in (('a',) if DEVICE else ('a', 'b'))]
     for v in viewers:
         v.start()
     time.sleep(1)
     download, snap = api('GET', f'/api/file?path={path}'), snapshot(ONVIF)
     for v in viewers:
         v.join()
-    check('two viewers, a download and a snapshot at once all work', download == (200, good) and snap[0] == 200 and all(not c.startswith('no frame') for c in seen.values()),
+    check('viewers, a download and a snapshot at once all work', download == (200, good) and snap[0] == 200 and all(not c.startswith('no frame') for c in seen.values()),
           (download[0], snap[0], seen))
     clear(4)
     # The picture changes under a running stream, which keeps going.
@@ -690,7 +692,8 @@ def main():
             check('each activation is in the event history', [e['active'] for e in history[:3]] == [True, False, True], history[:3])
             time.sleep(max(HOLD_MS / 1000 * 0.8 - (time.time() - started), 0))
             check('a second activation within the hold extends the same alert', name(2) in status()['active'] and 'false' not in nvr.states()[before:], nvr.states()[before:])
-            time.sleep(HOLD_MS / 1000 * 0.4 + 1)
+            # Waited for rather than slept: over a slow network the last activation lands late, and its hold ends later.
+            wait_until(lambda: 'false' in nvr.states()[before:], timeout=HOLD_MS / 1000 * 0.4 + 6)
             check('the alert ends when the hold after the last activation runs out', nvr.states()[before:][-1:] == ['false'] and nvr.states()[before:].count('false') == 1, nvr.states()[before:])
 
             # The Live page shows the picture being sent.
