@@ -524,7 +524,33 @@ def file_manager_tests(files, hub_files_free):
     check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
     get(f'/sensor?{sid(4)}&direction=1')
     check('snapshot shows the picture being sent', wait_until(lambda: snapshot(ONVIF)[2] == tiny))
+    # Video is sent straight from the picture, with no buffer per viewer, so all of these work at once.
+    seen = {}
+    viewers = [threading.Thread(target=lambda k=k: seen.update({k: grab_colour()})) for k in ('a', 'b')]
+    for v in viewers:
+        v.start()
+    time.sleep(1)
+    download, snap = api('GET', f'/api/file?path={path}'), snapshot(ONVIF)
+    for v in viewers:
+        v.join()
+    check('two viewers, a download and a snapshot at once all work', download == (200, good) and snap[0] == 200 and all(not c.startswith('no frame') for c in seen.values()),
+          (download[0], snap[0], seen))
     clear(4)
+    # The picture changes under a running stream, which keeps going.
+    login = f'admin:{urllib.parse.quote(BOARD_LOGIN, safe="")}@' if BOARD_LOGIN else ''
+    viewer = subprocess.Popen(['ffmpeg', '-v', 'error', '-rtsp_transport', 'tcp', '-i', f'rtsp://{login}{HOST}:{RTSP}/stream', '-t', '8', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    counted = {}
+    reader = threading.Thread(target=lambda: counted.update(bytes=len(viewer.stdout.read())))
+    reader.start()
+    for _ in range(4):
+        get(f'/sensor?{sid(4)}&direction=1')
+        time.sleep(1)
+        clear(4)
+        time.sleep(1)
+    reader.join(30)
+    viewer.wait(30)
+    check('a stream keeps going while the picture changes', counted.get('bytes', 0) // (640 * 360 * 3) >= 10, counted)
     check('replacing a picture removes its old thumbnail', api('PUT', f'/api/file?path={path}', good)[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)
     api('PUT', f'/api/file?path={jpg}', tiny)
     check('deleting a picture removes its thumbnail', api('DELETE', f'/api/file?path={path}')[0] == 200 and api('GET', f'/api/file?path={jpg}')[0] == 404)

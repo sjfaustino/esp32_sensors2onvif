@@ -1,10 +1,11 @@
 #include "cam_rtp.h"
+#include <string.h>
 
 static const size_t RTP_MTU = 1400;
 static const uint32_t SSRC = 0x53454E53;
 
-static void appendPacket(std::string& out, RtpState& st, int channel, bool marker, const uint8_t* head, size_t headLen,
-                         const uint8_t* body, size_t bodyLen) {
+static size_t writePacket(uint8_t* out, RtpState& st, int channel, bool marker, const uint8_t* head, size_t headLen,
+                          const uint8_t* body, size_t bodyLen) {
   size_t rtpLen = 12 + headLen + bodyLen;
   uint8_t h[16] = {'$',
                    (uint8_t)channel,
@@ -23,40 +24,52 @@ static void appendPacket(std::string& out, RtpState& st, int channel, bool marke
                    (uint8_t)(SSRC >> 8),
                    (uint8_t)SSRC};
   st.seq++;
-  out.append((const char*)h, sizeof(h));
-  if (headLen) out.append((const char*)head, headLen);
-  out.append((const char*)body, bodyLen);
+  memcpy(out, h, sizeof(h));
+  if (headLen) memcpy(out + sizeof(h), head, headLen);
+  memcpy(out + sizeof(h) + headLen, body, bodyLen);
+  return sizeof(h) + headLen + bodyLen;
 }
 
-void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, uint32_t nowMs, std::string& out) {
+void rtpStartFrame(RtpSend& s, const CamFrame& frame, RtpState& st, uint32_t nowMs) {
   if (!st.started) {
     st.started = true;
     st.startMs = nowMs;
   }
   st.ts = (nowMs - st.startMs) * 90u;  // the 90 kHz video clock; it wraps smoothly, as RTP expects
-  for (int i = 0; i < frame.count; i++) {
-    const CamNal& n = frame.nals[i];
-    bool lastNal = i == frame.count - 1;
-    if (n.len <= RTP_MTU) {
-      appendPacket(out, st, channel, lastNal, nullptr, 0, n.data, n.len);
-      continue;
-    }
-    // FU-A fragmentation
-    uint8_t indicator = (n.data[0] & 0xE0) | 28;
-    uint8_t kind = n.data[0] & 0x1F;
-    const uint8_t* p = n.data + 1;
-    size_t left = n.len - 1;
-    bool first = true;
-    while (left) {
-      size_t part = left > RTP_MTU ? RTP_MTU : left;
-      bool end = part == left;
-      uint8_t fu[2] = {indicator, (uint8_t)(kind | (first ? 0x80 : 0) | (end ? 0x40 : 0))};
-      appendPacket(out, st, channel, lastNal && end, fu, 2, p, part);
-      p += part;
-      left -= part;
-      first = false;
-    }
+  s.frame = frame.count ? &frame : nullptr;
+  s.nal = 0;
+  s.offset = 0;
+}
+
+size_t rtpNextPacket(RtpSend& s, RtpState& st, int channel, uint8_t* out) {
+  if (!s.frame) return 0;
+  const CamNal& n = s.frame->nals[s.nal];
+  bool lastNal = s.nal == s.frame->count - 1;
+  size_t len;
+  bool nalDone;
+  if (n.len <= RTP_MTU) {
+    len = writePacket(out, st, channel, lastNal, nullptr, 0, n.data, n.len);
+    nalDone = true;
+  } else {  // FU-A fragmentation: the NAL header byte becomes the FU indicator and header
+    if (s.offset == 0) s.offset = 1;
+    size_t left = n.len - s.offset, part = left > RTP_MTU ? RTP_MTU : left;
+    nalDone = part == left;
+    uint8_t fu[2] = {(uint8_t)((n.data[0] & 0xE0) | 28), (uint8_t)((n.data[0] & 0x1F) | (s.offset == 1 ? 0x80 : 0) | (nalDone ? 0x40 : 0))};
+    len = writePacket(out, st, channel, lastNal && nalDone, fu, 2, n.data + s.offset, part);
+    s.offset += part;
   }
+  if (nalDone) {
+    s.offset = 0;
+    if (++s.nal >= s.frame->count) s.frame = nullptr;
+  }
+  return len;
+}
+
+void rtpAppendFrame(const CamFrame& frame, RtpState& st, int channel, uint32_t nowMs, std::string& out) {
+  RtpSend s;
+  rtpStartFrame(s, frame, st, nowMs);
+  uint8_t packet[RTP_PACKET_MAX];
+  while (size_t len = rtpNextPacket(s, st, channel, packet)) out.append((const char*)packet, len);
 }
 
 std::string base64(const uint8_t* d, size_t len) {

@@ -147,7 +147,7 @@ class SensorCamServer {
   // and web connections, event pushes and the webhook share the other 7. Web connections and the webhook together stop
   // at 6, so a push can always start.
   static const int MAX_HTTP = 6;
-  static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a picture-sized buffer plus network buffers
+  static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
   static const int HOOK_QUEUE = 8;
 
@@ -207,6 +207,7 @@ class SensorCamServer {
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
     size_t firmwareLeft = 0;
     const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
+    std::function<bool(size_t, char*, size_t)> reader;  // this reply's own piece reader, a file or the picture; pull points at it
     // A body of unknown length, read piece by piece until it gives nothing, then ended by closing the connection.
     const std::function<size_t(size_t, char*, size_t)>* stream = nullptr;
   };
@@ -214,8 +215,11 @@ class SensorCamServer {
     int fd = -1;
     uint32_t peer = 0;
     uint32_t activityAt = 0;
-    std::string in, out;
+    std::string in, out;  // out holds the RTSP replies; video goes through packet
     size_t outPos = 0;
+    RtpSend video;                     // the frame being sent, packet by packet
+    uint8_t packet[RTP_PACKET_MAX];    // the packet being sent, which may go out in parts
+    size_t packetLen = 0, packetPos = 0;
     bool playing = false;
     bool closeAfterSend = false;
     bool authed = false;
@@ -346,13 +350,10 @@ class SensorCamServer {
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
   uint32_t liveSeq_ = 0;  // changes whenever the picture being sent changes, so the Live page fetches only new ones
   const CamFrame* frame_ = nullptr;
-  std::string frameData_;
-  std::string spareOut_[MAX_RTSP];  // stream buffers reserved at boot, because a picture-sized allocation can fail once the hub is busy
-  // An idle stream buffer lent to one reply at a time. A picture-sized allocation can fail and restart the hub,
-  // and a third reserved buffer would leave the network stack too little memory to send video.
-  std::string* fileOut_ = nullptr;
-  HttpConn* fileOutOwner_ = nullptr;
-  std::string* borrowFileOut(HttpConn& c);
+  std::string frameData_;  // the picture loaded from storage, in one buffer reserved at boot
+  uint32_t pictureGen_ = 0;  // changes whenever frameData_ is about to be overwritten, so a reply reading it stops
+  void releasePicture();     // before frameData_ is overwritten: nothing may still be reading the old picture
+  bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
   HttpConn* firmwareOwner_ = nullptr;
   HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
   CamNal frameNals_[3];

@@ -247,18 +247,37 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
     if (!frame_) frameToShow(millis_());
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.num("seq", liveSeq_).str("file", frameFile_.empty() ? std::string("built-in") : frameFile_); }));
   } else if (r.is("GET", "/api/live/frame")) {
+    // Read from the picture as it is sent, each NAL after a start code. If the picture is replaced meanwhile, the reply
+    // stops short and the page asks again.
     if (!frame_) frameToShow(millis_());
-    std::string* out = borrowFileOut(c);
-    if (!out) {
-      c.out = jsonFail(507, "the hub is busy; try again");
-      return true;
-    }
-    out->clear();
-    for (int i = 0; i < frame_->count; i++) {
-      out->append("\0\0\0\1", 4);
-      out->append((const char*)frame_->nals[i].data, frame_->nals[i].len);
-    }
-    sendBody(c, "video/h264", out->data(), out->size(), "X-Frame-Seq: " + std::to_string(liveSeq_) + "\r\n");
+    const CamFrame* frame = frame_;
+    size_t size = 0;
+    for (int i = 0; i < frame->count; i++) size += 4 + frame->nals[i].len;
+    uint32_t gen = pictureGen_;
+    c.reader = [this, frame, gen](size_t offset, char* out, size_t len) {
+      if (frame == &loadedFrame_ && pictureGen_ != gen) return false;  // the built-in pictures never change
+      for (int i = 0; i < frame->count && len; i++) {
+        static const char START[4] = {0, 0, 0, 1};
+        const CamNal& n = frame->nals[i];
+        for (int part = 0; part < 2 && len; part++) {
+          const char* data = part ? (const char*)n.data : START;
+          size_t partLen = part ? n.len : 4;
+          if (offset >= partLen) {
+            offset -= partLen;
+            continue;
+          }
+          size_t take = partLen - offset < len ? partLen - offset : len;
+          memcpy(out, data + offset, take);
+          out += take;
+          len -= take;
+          offset = 0;
+        }
+      }
+      return len == 0;
+    };
+    c.pull = &c.reader;
+    c.staticLen = size;
+    c.out = httpHead(200, "video/h264", size, "X-Frame-Seq: " + std::to_string(liveSeq_) + "\r\n");
   } else {
     return false;
   }
@@ -592,16 +611,7 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
     if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0) c.out = jsonFail(422, "not a JPEG");
     else c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the preview; storage may be full");
   } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
-    size_t size = storage_.fileSize(path);
-    if (size == 0) {
-      c.out = jsonFail(404, "no such file");
-    } else if (!borrowFileOut(c)) {
-      c.out = jsonFail(507, "the hub is busy; try again");
-    } else if (!storage_.readFile(path, *fileOut_, CAM_MAX_FRAME)) {
-      c.out = jsonFail(404, "no such file");
-    } else {
-      sendBody(c, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264", fileOut_->data(), fileOut_->size());
-    }
+    if (!sendFile(c, path, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264")) c.out = jsonFail(404, "no such file");
   } else if (fileRoute && method == "PUT" && isText) {
     if (bodyLen > 1024) {
       c.out = jsonFail(413, "text is too long");

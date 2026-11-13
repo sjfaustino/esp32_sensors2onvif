@@ -12,7 +12,7 @@
 #include <vector>
 #include "cam_frames.h"
 
-const size_t CAM_MAX_FRAME = 32 * 1024;  // three buffers this size are in use with two viewers, on boards without PSRAM
+const size_t CAM_MAX_FRAME = 32 * 1024;  // the one picture buffer, reserved at boot; video and downloads read from it or from storage
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set, and a sensor's
 // name.txt and settings.txt, and a node's settings.txt.

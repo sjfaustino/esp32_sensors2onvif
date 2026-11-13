@@ -11,7 +11,6 @@
 
 static const size_t MAX_REQUEST = 16 * 1024;
 static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
-static const size_t STREAM_BUFFER = CAM_MAX_FRAME + 1024;  // the picture plus 18 bytes of headers per 1400-byte packet
 static const int MAX_WAITING_POLLS = 2;         // the rest of the connections stay free for the web page and the NVR
 static const size_t MAX_FIRMWARE = 3 * 1024 * 1024;
 static const uint8_t LOW_BATTERY_PERCENT = 20;
