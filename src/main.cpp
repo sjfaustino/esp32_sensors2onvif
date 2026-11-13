@@ -503,6 +503,42 @@ static uint32_t programBytes = 0;
 // not show it.
 static uint32_t smallestBlock = UINT32_MAX;
 
+// How the memory is cut up: the largest free pieces and the largest pieces in use, to find what holds memory apart.
+// The walk holds the heap's lock, so it only fills fixed arrays and allocates nothing.
+struct HeapPieces {
+  static const int TOP = 8;
+  uint32_t freeTop[TOP] = {}, usedTop[TOP] = {};
+  uint32_t freeCount = 0, usedCount = 0, usedFrom1k = 0;
+};
+
+static void keepLargest(uint32_t* top, uint32_t size) {
+  for (int i = 0; i < HeapPieces::TOP; i++) {
+    if (size <= top[i]) continue;
+    for (int k = HeapPieces::TOP - 1; k > i; k--) top[k] = top[k - 1];
+    top[i] = size;
+    return;
+  }
+}
+
+static bool countPiece(walker_heap_into_t, walker_block_info_t block, void* user) {
+  HeapPieces& p = *(HeapPieces*)user;
+  if (block.used) {
+    p.usedCount++;
+    p.usedFrom1k += block.size >= 1024;
+    keepLargest(p.usedTop, block.size);
+  } else {
+    p.freeCount++;
+    keepLargest(p.freeTop, block.size);
+  }
+  return true;
+}
+
+static String pieceList(const uint32_t* top) {
+  String out;
+  for (int i = 0; i < HeapPieces::TOP && top[i]; i++) out += (i ? ", " : "") + String(top[i] / 102.4f / 10, 1);
+  return out + " KB";
+}
+
 static void deviceRows(CamJson& j) {
   auto add = [&](const char* label, const String& value) { j.array().str(label).str(value.c_str()).end(); };
   add("Device name", settings.hubName);
@@ -524,6 +560,10 @@ static void deviceRows(CamJson& j) {
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
   add("Largest free block", String(largestBlock() / 1024) + " KB");
   add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");
+  HeapPieces pieces;
+  heap_caps_walk(MALLOC_CAP_DEFAULT, countPiece, &pieces);
+  add("Free memory pieces", String(pieces.freeCount) + "; the largest " + pieceList(pieces.freeTop));
+  add("Memory in use", String(pieces.usedCount) + " pieces, " + pieces.usedFrom1k + " of 1 KB or more; the largest " + pieceList(pieces.usedTop));
   add("ESP-NOW messages dropped while busy", String((unsigned)espNowDropped) + (espNowDropped ? ", which their sensors resend" : ""));
   nvs_stats_t nvs;
   if (nvs_get_stats(nullptr, &nvs) == ESP_OK) add("Settings storage", String(nvs.used_entries) + " of " + nvs.total_entries + " entries used");
