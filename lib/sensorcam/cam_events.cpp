@@ -173,14 +173,16 @@ static void convertLegacy(const CamStorage& storage) {
       camEventEncode(e, r);
       records.append((const char*)r, sizeof(r));
     }
-    // Removed only once converted. An unreadable file is left alone: it is the user's data, and is tried again at
-    // the next start, until the log exists.
-    if (ok && storage.writeFile(LOG, records.data(), records.size())) storage.removeTree(LEGACY_BIN);
+    // Added after whatever the log holds: a file found beside the log was written by the older firmware after a failed
+    // update was undone, so its events are newer. Removed only once converted. An unreadable file is left alone: it
+    // is the user's data, and is tried again at the next start.
+    size_t logSize = storage.fileSize(LOG);
+    if (ok && storage.writeAt(LOG, logSize - logSize % CAM_EVENT_RECORD, records.data(), records.size())) storage.removeTree(LEGACY_BIN);
   }
 }
 
 void CamEventLog::load() {
-  if (!storage_.exists(LOG) && !storage_.exists(LOG_OLD) && storage_.exists(LEGACY_BIN)) convertLegacy(storage_);
+  if (storage_.exists(LEGACY_BIN)) convertLegacy(storage_);
   size_t oldSize = storage_.fileSize(LOG_OLD), curSize = storage_.fileSize(LOG);
   oldBytes_ = oldSize - oldSize % CAM_EVENT_RECORD;  // a record cut short at the end is written over by the next one
   curBytes_ = curSize - curSize % CAM_EVENT_RECORD;

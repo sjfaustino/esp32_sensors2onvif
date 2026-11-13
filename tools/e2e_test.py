@@ -880,6 +880,10 @@ def main():
                 catcher.shutdown()
                 check('the event history needs the web password', api('GET', '/api/events', auth=False)[0] == 401)
                 check('/status needs the web password', http_status('/status') == 401)
+                control('memory-short')
+                code = api('GET', '/api/events')[0]
+                control('memory-normal')
+                check('a reply larger than the memory left fails alone, and the hub keeps running', code == 507 and api('GET', '/api/events')[0] == 200, code)
 
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')

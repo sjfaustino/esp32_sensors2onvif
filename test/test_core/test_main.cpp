@@ -762,6 +762,22 @@ static void the_older_firmwares_history_is_kept() {
   std::string expect = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\nold line\n";
   for (int i = 0; i < 3; i++) expect += camEventCsvLine(sampleEvent(i));
   TEST_ASSERT_TRUE(download(log) == expect);  // the old CSV file first, unchanged
+
+  // A failed update is undone, and the older firmware starts a new file: its events go after the log's.
+  header[2] = header[3] = 2;
+  for (int i = 0; i < 2; i++) {
+    CamEvent e = sampleEvent(10 + i);
+    memcpy(&blob[16 + i * sizeof(CamEvent)], &e, sizeof(e));
+  }
+  memcpy(&blob[0], header, sizeof(header));
+  storage.writeFile("events.bin", blob.data(), blob.size());
+  CamEventLog later(storage);
+  later.load();
+  TEST_ASSERT_EQUAL(5, later.count());
+  TEST_ASSERT_EQUAL_STRING(sampleEvent(11).text, later.recent(0).text);
+  TEST_ASSERT_FALSE(storage.exists("events.bin"));
+  for (int i = 0; i < 2; i++) expect += camEventCsvLine(sampleEvent(10 + i));
+  TEST_ASSERT_TRUE(download(later) == expect);
 }
 
 static void only_the_hubs_own_names_are_served() {

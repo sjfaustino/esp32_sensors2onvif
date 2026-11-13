@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <new>
 #include "cam_auth.h"
 #include "cam_frames.h"
 #include "cam_net.h"
@@ -205,6 +206,38 @@ void SensorCamServer::sendBody(HttpConn& c, const char* type, const char* data, 
   c.staticBody = data;
   c.staticLen = len;
   c.out = httpHead(200, type, len, extraHeaders);
+}
+
+// The body is kept apart from the headers rather than copied after them, so a large reply never needs a second block
+// of its size.
+void SensorCamServer::reply(HttpConn& c, int status, const char* type, std::string body) {
+  c.body = std::move(body);
+  c.staticBody = c.body.data();
+  c.staticLen = c.body.size();
+  c.out = httpHead(status, type, c.body.size());
+}
+
+// Memory ran out while answering. Only this request fails: what it was building is let go, and it is told to try
+// again. A hub that stopped here would miss alerts while it restarted, and a new firmware would be undone.
+void SensorCamServer::shortOfMemory(HttpConn& c) {
+  static const char REPLY[] = "HTTP/1.1 507 Insufficient Storage\r\nContent-Type: application/json\r\nContent-Length: 50\r\nConnection: close\r\n\r\n"
+                              "{\"ok\":false,\"error\":\"the hub is short of memory\"}\n";
+  static_assert(sizeof("{\"ok\":false,\"error\":\"the hub is short of memory\"}\n") - 1 == 50, "the length above must match");
+  if (c.toFrameBuffer) {
+    uploading_ = nullptr;
+    c.toFrameBuffer = false;
+    frameKey_.clear();
+  }
+  std::string().swap(c.in);
+  std::string().swap(c.body);
+  std::string().swap(c.out);
+  c.staticBody = REPLY;
+  c.staticLen = sizeof(REPLY) - 1;
+  c.pull = nullptr;
+  c.stream = nullptr;
+  c.pollWaiting = false;
+  c.outPos = 0;
+  c.answered = true;
 }
 
 int SensorCamServer::streamCount() const {
@@ -571,11 +604,11 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.out = UNAUTHORIZED;
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
     std::string body = handleSensor(target, status);
-    c.out = httpResponse(status, "application/json", body);
+    reply(c, status, JSON_TYPE, std::move(body));
   } else if (isGet && target.compare(0, 7, "/status") == 0) {
-    c.out = httpResponse(200, "application/json", statusJson(now));
+    reply(c, 200, JSON_TYPE, statusJson(now));
   } else if (isGet && target.compare(0, 7, "/events") == 0) {
-    c.out = httpResponse(200, "application/json", eventsJson());
+    reply(c, 200, JSON_TYPE, eventsJson());
   } else if (isGet) {
     c.out = httpResponse(404, "text/plain", "not found\n");
   } else {
@@ -586,7 +619,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
       c.in.clear();
       return false;
     }
-    c.out = httpResponse(status, "application/soap+xml; charset=utf-8", body);
+    reply(c, status, "application/soap+xml; charset=utf-8", std::move(body));
   }
   c.answered = true;
   return true;
@@ -637,7 +670,11 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       } else {
         c.in.append(buf, n);
       }
-      handleHttp(c, now);
+      try {
+        handleHttp(c, now);
+      } catch (const std::bad_alloc&) {
+        shortOfMemory(c);
+      }
       if (c.fd < 0) return;
     }
   }

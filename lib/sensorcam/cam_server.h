@@ -271,6 +271,8 @@ class SensorCamServer {
   void apiFiles(const ApiRequest& r);
   std::string espNowJson();
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
+  static void reply(HttpConn& c, int status, const char* type, std::string body);
+  void shortOfMemory(HttpConn& c);
   int streamCount() const;
   bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
   bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }

@@ -1,5 +1,6 @@
 // PC build of the firmware library for tools/e2e_test.py. Binds to loopback only.
 // Usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD [SILENT_MS]]
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <ctime>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include "cam_server.h"
@@ -25,6 +27,17 @@ static bool setupOn = false;
 static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
 static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
 
+// As on the board when memory is short and broken up: a request for a block larger than this fails, as the board's does.
+static std::atomic<size_t> largestBlock{0};  // 0 for no limit
+void* operator new(size_t n) {
+  size_t limit = largestBlock.load();
+  void* p = limit && n > limit ? nullptr : malloc(n ? n : 1);
+  if (!p) throw std::bad_alloc();
+  return p;
+}
+void operator delete(void* p) noexcept { free(p); }
+void operator delete(void* p, size_t) noexcept { free(p); }
+
 // The test's controls, which only this build has: one command per line on standard input, each answered with
 // "done COMMAND" on standard output once it has taken effect, or "unknown COMMAND". A command with an answer gives it
 // after a colon: "done COMMAND: ANSWER".
@@ -39,6 +52,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     lastSent.clear();
   } else if (command == "disk-nearly-full" || command == "disk-normal") {  // the storage left over beside what is stored
     diskTotal = command == "disk-normal" ? 10u * 1024 * 1024 : 300u * 1024;
+  } else if (command == "memory-short" || command == "memory-normal") {  // no block above 2 KB, as on a hub short of memory
+    largestBlock = command == "memory-short" ? 2048 : 0;
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
     hub.networkLost(125);
   } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes

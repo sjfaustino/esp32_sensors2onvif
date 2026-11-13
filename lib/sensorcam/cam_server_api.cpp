@@ -327,7 +327,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
   } else if (r.is("POST", "/api/crash/delete")) {
     c.out = saved(cfg_.crashDelete && cfg_.crashDelete(), "could not delete the crash report");
   } else if (r.is("GET", "/api/events")) {
-    c.out = jsonOk(eventsJson());
+    reply(c, 200, JSON_TYPE, eventsJson());
   } else if (r.is("GET", "/api/espnow")) {
     c.body = espNowJson();
     if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
@@ -522,7 +522,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the setting; storage may be full");
     }
   } else if (r.is("GET", "/api/webhook")) {
-    c.out = jsonOk(webhookJson());
+    reply(c, 200, JSON_TYPE, webhookJson());
   } else if (r.is("POST", "/api/webhook")) {
     std::string form = r.form();
     CamWebhook w;

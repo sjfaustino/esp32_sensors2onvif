@@ -27,8 +27,13 @@ HTTP chunks, so a download cut short is seen as failed rather than taken for the
 
 While every web connection is busy, or memory is short, the hub does not accept new connections, so they wait in the
 network stack's queue and are served once room frees, rather than being accepted and closed. A sensor's report waits
-a moment instead of being lost. Firmware before this log kept its newest events in `events.bin`, which is converted once,
-and possibly `events.csv` files, which are served first in the download and never written again.
+a moment instead of being lost. A large reply is sent from its own string, never copied after its headers, and a request
+that still finds no block big enough fails alone with a 507: an out-of-memory abort would restart the hub, and in the
+first minutes after an update would undo it.
+
+Firmware before this log kept its newest events in `events.bin`, which is converted and removed, and possibly
+`events.csv` files, which are served first in the download and never written again. If an update is undone, the older
+firmware starts a new `events.bin`; the next update adds its events after the log's.
 
 ## Checking delivery, and replaying what the NVR missed
 
