@@ -169,13 +169,19 @@ std::string iso(time_t t) {
 
 static std::string num(int v) { return std::to_string(v); }
 
+// Made in one block of its exact size: joining the pieces would grow the reply step by step, each step a new block.
 std::string soapEnvelope(const std::string& body) {
-  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
-         "xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" "
-         "xmlns:tt=\"http://www.onvif.org/ver10/schema\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\" "
-         "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" "
-         "xmlns:tns1=\"http://www.onvif.org/ver10/topics\" xmlns:wstop=\"http://docs.oasis-open.org/wsn/t-1\"><s:Body>" +
-         body + "</s:Body></s:Envelope>";
+  static const char HEAD[] =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+      "xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" "
+      "xmlns:tt=\"http://www.onvif.org/ver10/schema\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\" "
+      "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" "
+      "xmlns:tns1=\"http://www.onvif.org/ver10/topics\" xmlns:wstop=\"http://docs.oasis-open.org/wsn/t-1\"><s:Body>";
+  static const char TAIL[] = "</s:Body></s:Envelope>";
+  std::string out;
+  out.reserve(sizeof(HEAD) - 1 + body.size() + sizeof(TAIL) - 1);
+  out.append(HEAD, sizeof(HEAD) - 1).append(body).append(TAIL, sizeof(TAIL) - 1);
+  return out;
 }
 
 std::string soapFault(const char* reason) {

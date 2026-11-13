@@ -9,7 +9,9 @@
 #include "cam_json.h"
 #include "cam_timing.h"
 
-static const size_t MAX_REQUEST = 16 * 1024;
+// An ONVIF request, held whole before its login can be checked. An NVR's are about 1 KB, so this leaves room for any
+// client while six connections at the limit still cannot use up the hub's memory.
+static const size_t MAX_REQUEST = 8 * 1024;
 static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
 static const int MAX_WAITING_POLLS = 2;         // the rest of the connections stay free for the web page and the NVR
 static const size_t MAX_FIRMWARE = 3 * 1024 * 1024;

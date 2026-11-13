@@ -307,6 +307,7 @@ def file_manager_tests(files, hub_files_free):
     check('endless web headers are dropped without a login', dropped_after(WEB, b'GET / HTTP/1.1\r\nX: ' + b'a' * 8000))
     check('endless ONVIF headers are dropped without a login', dropped_after(ONVIF, b'POST / HTTP/1.1\r\nX: ' + b'a' * 8000))
     check('endless RTSP headers are dropped without a login', dropped_after(RTSP, b'OPTIONS * RTSP/1.0\r\nX: ' + b'a' * 8000))
+    check('an ONVIF request over 8 KB is dropped before it is held', dropped_after(ONVIF, b'POST /onvif/device_service HTTP/1.1\r\nContent-Length: 8193\r\n\r\n<'))
     own_site = f'http://{HOST}' + ('' if WEB == 80 else f':{WEB}')
     check('another site cannot use a logged-in browser', api('POST', '/api/restore', b'hello', origin='http://evil.example')[0] == 403)
     check('the hub\'s own page is not refused as another site', api('POST', '/api/restore', b'hello', origin=own_site)[0] == 400)

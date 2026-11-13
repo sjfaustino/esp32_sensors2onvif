@@ -377,7 +377,7 @@ void SensorCamServer::servicePolls(uint32_t now) {
     SoapContext ctx;
     ctx.host = c.pollHost;
     ctx.now = time(nullptr);
-    c.out = httpResponse(200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
+    reply(c, 200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
     c.pollWaiting = false;
     c.answered = true;
     c.openedAt = now;  // the time limit now covers sending this reply, not the wait before it
