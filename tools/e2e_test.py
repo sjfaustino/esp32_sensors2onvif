@@ -1009,6 +1009,13 @@ def main():
                 asker.join(15)
                 check('it is answered once the upload ends', upload_reply.startswith(b'HTTP/1.1 200') and waiting.get('answer') == 401, (upload_reply[:40], waiting))
                 check('the hub still answers after a firmware upload', status()['uptime_s'] >= 0)
+                control('firmware-refused')
+                try:
+                    code, reply = api('PUT', '/api/firmware', b'\xe9' + b'\x01' * (1300 * 1024))
+                except OSError as e:
+                    code, reply = type(e).__name__, b''
+                control('firmware-allowed')
+                check('a refused firmware of full size gets its reason, not a reset', code == 507 and b'could not start the update' in reply, (code, reply[:80]))
                 code, backup = api('GET', '/api/backup')
                 check('backup can be downloaded', code == 200 and backup.startswith(b'sensorcam-backup 1'), code)
                 check('backup needs the web password', api('GET', '/api/backup', auth=False)[0] == 401)

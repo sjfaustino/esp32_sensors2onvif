@@ -96,12 +96,17 @@
         const r = await get("/api/live/frame");
         if (!r.ok)
           throw new Error(
-            r.status == 507
-              ? "Both video connections are in use, or the hub is sending another file. Trying again."
-              : "The hub could not send the picture.",
+            r.status == 507 ? "The hub is short of memory. Trying again." : "The hub could not send the picture.",
           );
-        const seq = Number(r.headers.get("X-Frame-Seq")),
-          data = new Uint8Array(await r.arrayBuffer());
+        const seq = Number(r.headers.get("X-Frame-Seq"));
+        // The hub stops sending a picture that is replaced meanwhile, so the next one can be asked for.
+        const data = new Uint8Array(
+          await r.arrayBuffer().catch(() => {
+            const e = new Error("The picture changed while it was being sent. Trying again.");
+            e.soon = true;
+            throw e;
+          }),
+        );
         let url;
         try {
           url = await decoded(data);
@@ -124,8 +129,8 @@
         m.textContent = "";
       }
     } catch (e) {
-      wait = 5000;
-      m.className = "portMsg err";
+      wait = e.soon ? 500 : 5000;
+      m.className = e.soon ? "portMsg" : "portMsg err";
       m.textContent = e.message || "Could not show the picture.";
     }
     setTimeout(() => livePoll(run), wait);

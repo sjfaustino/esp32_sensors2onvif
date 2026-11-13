@@ -24,6 +24,7 @@ static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t 
 }
 
 static bool setupOn = false;
+static bool firmwareRefused = false;  // the next update cannot start, as on a board short of memory
 static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
 static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
 
@@ -52,6 +53,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     lastSent.clear();
   } else if (command == "disk-nearly-full" || command == "disk-normal") {  // the storage left over beside what is stored
     diskTotal = command == "disk-normal" ? 10u * 1024 * 1024 : 300u * 1024;
+  } else if (command == "firmware-refused" || command == "firmware-allowed") {
+    firmwareRefused = command == "firmware-refused";
   } else if (command == "memory-short" || command == "memory-normal") {  // no block above 2 KB, as on a hub short of memory
     largestBlock = command == "memory-short" ? 2048 : 0;
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
@@ -116,7 +119,7 @@ int main(int argc, char** argv) {
   static bool firmwareGood = false;
   cfg.firmwareBegin = [](size_t) {
     firmwareGood = false;
-    return true;
+    return !firmwareRefused;
   };
   cfg.firmwareWrite = [](const uint8_t* data, size_t len) {
     static bool first = true;

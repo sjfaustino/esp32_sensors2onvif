@@ -495,11 +495,11 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
 
   size_t contentLength = (size_t)strtoul(headerValue(headers, "content-length").c_str(), nullptr, 10);
   // A browser reports a connection closed mid-upload as a bare network error, so read the rest of the body before replying.
-  auto refuse = [&](int code, const char* message) {
+  auto refuse = [&](int code, const char* message, size_t drainLimit = 128 * 1024) {
     c.out = jsonFail(code, message);
     c.answered = true;
     size_t got = c.in.size() - (headEnd + 4);
-    c.discardLeft = contentLength > got && contentLength <= 128 * 1024 ? contentLength - got : 0;
+    c.discardLeft = contentLength > got && contentLength <= drainLimit ? contentLength - got : 0;
     return true;
   };
   // The same for a missing login, on the requests that are acted on before their body has arrived.
@@ -531,8 +531,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   }
   if (method == "PUT" && target == "/api/firmware") {  // goes straight to flash, because it is far larger than memory
     if (!authorized(c, headers)) return needLogin(MAX_FIRMWARE);
-    if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware");
-    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength)) return refuse(507, "could not start the update");
+    // A refused firmware is read to its end before the reply, as the browser reports a reply that comes while it is
+    // still sending as a bare network error, without the reason.
+    if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
+    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength)) return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;
     c.firmwareActive = true;
     // Video is what uses the network's memory most, and an update that runs out of it stops the hub. The NVR
@@ -655,6 +657,7 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
     }
     if (n > 0 && c.answered) {
       c.discardLeft -= (size_t)n < c.discardLeft ? (size_t)n : c.discardLeft;
+      c.openedAt = now;  // a large refused upload takes a while to read through; the limit is for one that stalls
     } else if (n > 0 && c.firmwareActive) {
       feedFirmware(c, buf, (size_t)n, now);
     } else if (n > 0 && c.pollWaiting) {
