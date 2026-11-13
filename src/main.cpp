@@ -509,6 +509,7 @@ struct HeapPieces {
   static const int TOP = 8;
   uint32_t freeTop[TOP] = {}, usedTop[TOP] = {};
   uint32_t freeCount = 0, usedCount = 0, usedFrom1k = 0;
+  uint32_t bucketCount[5] = {}, bucketBytes[5] = {};  // in use: under 64 B, 256 B, 1 KB, 4 KB, and larger
 };
 
 static void keepLargest(uint32_t* top, uint32_t size) {
@@ -525,6 +526,9 @@ static bool countPiece(walker_heap_into_t, walker_block_info_t block, void* user
   if (block.used) {
     p.usedCount++;
     p.usedFrom1k += block.size >= 1024;
+    int b = block.size < 64 ? 0 : block.size < 256 ? 1 : block.size < 1024 ? 2 : block.size < 4096 ? 3 : 4;
+    p.bucketCount[b]++;
+    p.bucketBytes[b] += block.size;
     keepLargest(p.usedTop, block.size);
   } else {
     p.freeCount++;
@@ -564,6 +568,9 @@ static void deviceRows(CamJson& j) {
   heap_caps_walk(MALLOC_CAP_DEFAULT, countPiece, &pieces);
   add("Free memory pieces", String(pieces.freeCount) + "; the largest " + pieceList(pieces.freeTop));
   add("Memory in use", String(pieces.usedCount) + " pieces, " + pieces.usedFrom1k + " of 1 KB or more; the largest " + pieceList(pieces.usedTop));
+  add("Memory in use by size", String("under 64 B: ") + pieces.bucketCount[0] + " = " + pieces.bucketBytes[0] / 1024 + " KB; 64-255 B: " +
+      pieces.bucketCount[1] + " = " + pieces.bucketBytes[1] / 1024 + " KB; 256 B-1 KB: " + pieces.bucketCount[2] + " = " + pieces.bucketBytes[2] / 1024 +
+      " KB; 1-4 KB: " + pieces.bucketCount[3] + " = " + pieces.bucketBytes[3] / 1024 + " KB; larger: " + pieces.bucketCount[4] + " = " + pieces.bucketBytes[4] / 1024 + " KB");
   add("ESP-NOW messages dropped while busy", String((unsigned)espNowDropped) + (espNowDropped ? ", which their sensors resend" : ""));
   nvs_stats_t nvs;
   if (nvs_get_stats(nullptr, &nvs) == ESP_OK) add("Settings storage", String(nvs.used_entries) + " of " + nvs.total_entries + " entries used");
