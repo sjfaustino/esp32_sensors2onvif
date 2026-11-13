@@ -954,6 +954,29 @@ def main():
                 check('firmware update needs the web password', api('PUT', '/api/firmware', b'\xe9' * 100, auth=False)[0] == 401)
                 check('valid firmware is accepted', api('PUT', '/api/firmware', b'\xe9' + b'\x01' * 9000)[0] == 200)
                 check('other files are refused as firmware', api('PUT', '/api/firmware', b'not firmware' * 500)[0] == 400)
+                # During an upload the hub drops video and takes nothing new, so the update has the memory it needs.
+                video, code, _ = rtsp_describe()
+                video.settimeout(3)
+                upload = socket.create_connection((HOST, WEB), timeout=15)
+                login = base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
+                image = b'\xe9' + b'\x01' * 19999
+                upload.sendall(f'PUT /api/firmware HTTP/1.1\r\nHost: {HOST}\r\nAuthorization: Basic {login}\r\nContent-Length: {len(image)}\r\n\r\n'.encode() + image[:2000])
+                try:
+                    video_closed = video.recv(100) == b''
+                except OSError:
+                    video_closed = True
+                video.close()
+                check('a firmware upload stops the video stream', code == 200 and video_closed, code)
+                waiting = {}
+                asker = threading.Thread(target=lambda: waiting.update(answer=http_status('/status')))
+                asker.start()
+                asker.join(1.5)
+                check('a request during a firmware upload waits', asker.is_alive(), waiting)
+                upload.sendall(image[2000:])
+                upload_reply = upload.recv(200)
+                upload.close()
+                asker.join(15)
+                check('it is answered once the upload ends', upload_reply.startswith(b'HTTP/1.1 200') and waiting.get('answer') == 401, (upload_reply[:40], waiting))
                 check('the hub still answers after a firmware upload', status()['uptime_s'] >= 0)
                 code, backup = api('GET', '/api/backup')
                 check('backup can be downloaded', code == 200 and backup.startswith(b'sensorcam-backup 1'), code)

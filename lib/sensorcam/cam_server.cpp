@@ -154,7 +154,7 @@ int SensorCamServer::sharedSockets() const {
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   // Short of RAM or sockets: left waiting in the queue, to be taken once existing traffic has drained.
-  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP) {
+  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP || updating()) {
     refused_++;  // counts the passes it had to wait, for the heartbeat
     return;
   }
@@ -545,6 +545,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength)) return refuse(507, "could not start the update");
     firmwareOwner_ = &c;
     c.firmwareActive = true;
+    // Video is what uses the network's memory most, and an update that runs out of it stops the hub. The NVR
+    // reconnects after the restart that follows, or at once if the update fails.
+    for (RtspConn& r : rtsp_)
+      if (r.fd >= 0) closeRtsp(r);
     c.firmwareLeft = contentLength;
     std::string first = c.in.substr(headEnd + 4);
     c.in.clear();
@@ -999,11 +1003,12 @@ void SensorCamServer::poll(int maxWaitMs) {
 
   // While every web connection is busy, or memory is short, new ones are left waiting in the network stack's queue rather
   // than accepted and closed, so a sensor's report waits a moment instead of being lost. Each is taken once room frees.
-  bool room = sharedSockets() < MAX_HTTP && hasHeadroom();
+  // During a firmware update nothing new is taken: the update needs the memory, and the hub restarts after it anyway.
+  bool room = sharedSockets() < MAX_HTTP && hasHeadroom() && !updating();
   if (onvifListen_ >= 0 && room) add(onvifListen_, rd);
   if (webListen_ >= 0 && room) add(webListen_, rd);
   if (captiveListen_ >= 0 && room) add(captiveListen_, rd);
-  if (rtspListen_ >= 0) add(rtspListen_, rd);
+  if (rtspListen_ >= 0 && !updating()) add(rtspListen_, rd);
   if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {
     if (c.fd < 0) continue;

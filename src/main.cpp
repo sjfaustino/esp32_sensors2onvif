@@ -727,7 +727,8 @@ static void restartWhenCutOff(bool connected) {
   // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
   // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
   uint32_t lastReply = lastPingReply;
-  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS) restartFor(RESTART_ROUTER_SILENT);
+  // Not during a firmware upload, whose data still arriving shows the network works; a stalled one is closed anyway.
+  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS && !server->updating()) restartFor(RESTART_ROUTER_SILENT);
 }
 
 static void printHeartbeat() {

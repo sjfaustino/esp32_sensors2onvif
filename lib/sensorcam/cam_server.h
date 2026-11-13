@@ -136,6 +136,7 @@ class SensorCamServer {
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow();  // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
+  bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
@@ -271,8 +272,7 @@ class SensorCamServer {
   void apiFiles(const ApiRequest& r);
   std::string espNowJson();
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
-  static void reply(HttpConn& c, int status, const char* type, std::string body);
-  void shortOfMemory(HttpConn& c);
+  static void reply(HttpConn& c, int status, const char* type, std::string body);  void shortOfMemory(HttpConn& c);
   int streamCount() const;
   bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
   bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
