@@ -696,7 +696,8 @@ def main():
             wait_until(lambda: 'false' in nvr.states()[before:], timeout=HOLD_MS / 1000 * 0.4 + 6)
             check('the alert ends when the hold after the last activation runs out', nvr.states()[before:][-1:] == ['false'] and nvr.states()[before:].count('false') == 1, nvr.states()[before:])
 
-            # The Live page shows the picture being sent.
+            # The Live page shows the picture being sent. The picture changes on the next frame after the alert ends.
+            time.sleep(1.5)
             idle = json.loads(api('GET', '/api/live')[1])
             code, idle_frame = api('GET', '/api/live/frame')
             check('Live sends a whole picture', code == 200 and idle_frame.startswith(b'\0\0\0\1') and idle_frame[4] & 0x1F == 7, code)
