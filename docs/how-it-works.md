@@ -29,7 +29,9 @@ While every web connection is busy, or memory is short, the hub does not accept 
 network stack's queue and are served once room frees, rather than being accepted and closed. A sensor's report waits
 a moment instead of being lost. A large reply is sent from its own string, never copied after its headers, and a request
 that still finds no block big enough fails alone with a 507: an out-of-memory abort would restart the hub, and in the
-first minutes after an update would undo it.
+first minutes after an update would undo it. During a firmware upload the hub closes its video streams and takes no new
+connections until the upload ends: on a board without PSRAM, an upload beside a running stream could use up the memory
+and stop the hub.
 
 Firmware before this log kept its newest events in `events.bin`, which is converted and removed, and possibly
 `events.csv` files, which are served first in the download and never written again. If an update is undone, the older
