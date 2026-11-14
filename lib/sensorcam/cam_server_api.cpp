@@ -237,7 +237,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
 void SensorCamServer::apiSetup(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
-    sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, GZIPPED);
+    sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, PAGE_HEADERS);
   } else if (r.is("GET", "/api/wifi/scan")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.wifiNetworks, j); }));
   } else if (r.is("POST", "/api/wifi")) {
@@ -253,7 +253,7 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
 bool SensorCamServer::apiPages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/") || r.is("GET", "/files")) {
-    sendBody(c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, GZIPPED);
+    sendBody(c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, PAGE_HEADERS);
   } else if (r.is("GET", "/api/tree")) {
     c.body = treeJson();
     if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");

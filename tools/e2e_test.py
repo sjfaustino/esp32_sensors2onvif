@@ -67,8 +67,9 @@ def soap(action, path='/onvif/media', inner=''):
 
 def body_of(r):
     """The reply's body, unzipped if the hub sent it gzipped, as it does the web pages. Notes how it came."""
-    global last_encoding, last_transfer
+    global last_encoding, last_transfer, last_cache
     last_encoding = r.getheader('Content-Encoding')
+    last_cache = r.getheader('Cache-Control')
     last_transfer = r.getheader('Transfer-Encoding')
     data = r.read()
     return gzip.decompress(data) if last_encoding == 'gzip' else data
@@ -791,6 +792,7 @@ def file_manager_tests(files, hub_files_free):
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page is sent gzipped', last_encoding == 'gzip', last_encoding)
+    check('a browser must check for a newer page', last_cache == 'no-cache', last_cache)
     if not DEVICE:
         # Another site pointing its own name at the hub is refused; the hub's own names are not.
         check("a page under another site\'s name is refused", raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)

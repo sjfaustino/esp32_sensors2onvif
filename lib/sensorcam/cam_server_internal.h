@@ -22,7 +22,8 @@ static const char HUB_USER[] = "admin";
 static const char JSON_TYPE[] = "application/json";
 static const char HTML_TYPE[] = "text/html; charset=utf-8";
 static const char JSON_OK[] = "{\"ok\":true}\n";
-static const char GZIPPED[] = "Content-Encoding: gzip\r\n";  // the web pages are stored that way
+// The web pages are stored gzipped. no-cache: a browser must not show an old page after the firmware changes.
+static const char PAGE_HEADERS[] = "Content-Encoding: gzip\r\nCache-Control: no-cache\r\n";
 static const char UNAUTHORIZED[] = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 static const size_t HISTORY_ROOM = 64 * 1024;  // beyond the event logs: the waiting alerts, settings files and room to rewrite them
 static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
