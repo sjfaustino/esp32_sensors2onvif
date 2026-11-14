@@ -112,6 +112,10 @@ Home Assistant then shows:
   Home Assistant's alarm cards and keypads, and asks for no code, so limit who can use it in Home Assistant. A disarm from
   it lasts the hub's re-arm time, and the hub state's `rearm_at` says when it ends. Anyone who can publish to the broker
   can use the panel too, so give the broker a login. The Armed switch of earlier firmware is taken away.
+- **The hub's health**, as diagnostic sensors on the hub, sent every minute: free memory, the lowest it has been, the
+  largest free block and the smallest that has been since the start, the work dropped for lack of memory, ESP-NOW
+  messages dropped while busy, the Wi-Fi signal, and when the hub last started. Home Assistant keeps their history, so
+  memory that keeps shrinking over days shows long before it matters.
 - **Each sensor** as its own device, named as on the Sensors page, with Alert (on for as long as the NVR is shown the
   alert), Battery, Signal, Problem (silent, low battery or weak signal) and an Events entity carrying every event of
   its history, with the same names as the Events page.

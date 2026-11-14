@@ -20,9 +20,29 @@
 #include "cam_server_internal.h"
 
 static const int HUB_PARTS = 4;     // the hub's entities: alert, NVR listening, events, the alarm panel
+// The hub's health, each a diagnostic sensor reading one member of <base>/hub/health.
+struct HealthPart {
+  const char* part;
+  const char* name;
+  const char* unit;          // nullptr for none
+  const char* deviceClass;   // nullptr for none
+  const char* stateClass;    // nullptr for none
+};
+static const HealthPart HEALTH[] = {
+    {"free_kb", "Free memory", "kB", "data_size", "measurement"},
+    {"lowest_kb", "Lowest free memory", "kB", "data_size", "measurement"},
+    {"largest_kb", "Largest free block", "kB", "data_size", "measurement"},
+    {"worst_largest_kb", "Smallest largest free block", "kB", "data_size", "measurement"},
+    {"dropped", "Work dropped for lack of memory", nullptr, nullptr, "total_increasing"},
+    {"espnow_dropped", "ESP-NOW messages dropped", nullptr, nullptr, "total_increasing"},
+    {"rssi", "Wi-Fi signal", "dBm", "signal_strength", "measurement"},
+    {"started", "Last started", nullptr, "timestamp", nullptr},
+};
+static const int HEALTH_PARTS = sizeof(HEALTH) / sizeof(HEALTH[0]);
 static const int SENSOR_PARTS = 5;  // each sensor's: alert, battery, signal, problem, events
 static const int SLOT_STEPS = SENSOR_PARTS + 1 + SENSOR_PARTS;  // taking an old sensor away (with its state), then telling of the new
-static const int DISCOVERY_STEPS = HUB_PARTS + CAM_MAX_SENSORS * SLOT_STEPS;
+static const int HUB_STEPS = HUB_PARTS + HEALTH_PARTS;
+static const int DISCOVERY_STEPS = HUB_STEPS + CAM_MAX_SENSORS * SLOT_STEPS;
 static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events"};
 static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event"};
 static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed"};
@@ -263,6 +283,22 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
     if (mqttSensorState(i, false, now, out)) return true;
+  if (cfg_.healthInfo && (!mqtt_.healthTold || now - mqtt_.healthAt >= CAM_MQTT_HEALTH_MS)) {
+    CamHealth h;
+    cfg_.healthInfo(h);
+    time_t t = time(nullptr);
+    bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
+    std::string json = jsonObject([&](CamJson& j) {
+      j.num("free_kb", h.freeHeap / 1024).num("lowest_kb", h.lowestFreeHeap / 1024).num("largest_kb", h.largestBlock / 1024);
+      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", memoryFailures_).num("espnow_dropped", h.espNowDropped);
+      j.num("rssi", h.wifiRssi != 0, h.wifiRssi).num("uptime_s", (long long)h.uptimeS);
+      j.str("started", clockOk, clockOk ? iso(t - (time_t)h.uptimeS) : std::string());
+    });
+    out = camMqttPublish(mqttBase() + "/hub/health", payload(json), true, 0);
+    mqtt_.healthTold = true;
+    mqtt_.healthAt = now;
+    return true;
+  }
   if (now - mqtt_.sentAt >= CAM_MQTT_PING_MS) {
     out = camMqttPing();
     return true;
@@ -368,7 +404,21 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     out = camMqttPublish(std::string("homeassistant/") + COMPONENTS[step] + "/" + cfg_.serial + "/hub_" + part + "/config", payload(json), true, 0);
     return true;
   }
-  int i = (step - HUB_PARTS) / SLOT_STEPS, k = (step - HUB_PARTS) % SLOT_STEPS;
+  if (step < HUB_STEPS) {  // the hub's health
+    if (!cfg_.healthInfo) return false;
+    const HealthPart& p = HEALTH[step - HUB_PARTS];
+    std::string id = hubId + "_hub_" + p.part, json = jsonObject([&](CamJson& j) {
+      common(j, id, p.name, base + "/hub/health");
+      j.str("value_template", std::string("{{ value_json.") + p.part + " }}").str("entity_category", "diagnostic");
+      if (p.unit) j.str("unit_of_measurement", p.unit);
+      if (p.deviceClass) j.str("device_class", p.deviceClass);
+      if (p.stateClass) j.str("state_class", p.stateClass);
+      j.object("device").array("identifiers").str(hubId).end().end();
+    });
+    out = camMqttPublish("homeassistant/sensor/" + cfg_.serial + "/hub_" + p.part + "/config", payload(json), true, 0);
+    return true;
+  }
+  int i = (step - HUB_STEPS) / SLOT_STEPS, k = (step - HUB_STEPS) % SLOT_STEPS;
   const Slot& s = slots_[i];
   MqttTold& t = mqttTold_[i];
   if (k <= SENSOR_PARTS) {  // a sensor deleted, or replaced in its slot: its entities and its retained state are taken away

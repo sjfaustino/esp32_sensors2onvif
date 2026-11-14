@@ -206,6 +206,14 @@ int main(int argc, char** argv) {
   cfg.armedSave = [](bool, int64_t) { return true; };
   cfg.rearmSave = [](uint32_t) { return true; };
   cfg.firmwareVersion = "test";
+  cfg.healthInfo = [](CamHealth& h) {  // pretend figures, so the test can check they arrive
+    h.freeHeap = 140 * 1024;
+    h.lowestFreeHeap = 120 * 1024;
+    h.largestBlock = 76 * 1024;
+    h.worstLargestBlock = 60 * 1024;
+    h.wifiRssi = -58;
+    h.uptimeS = 3600;
+  };
   cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";

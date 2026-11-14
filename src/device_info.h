@@ -19,6 +19,7 @@ void sampleMemory();  // each pass of the main loop: keeps the worst the free me
 
 // What malloc can really hand out. ESP.getMaxAllocHeap() also counts instruction RAM, which strings cannot use.
 uint32_t largestBlock();
+uint32_t worstLargestBlock();  // the smallest largestBlock() has been since the start, checked each second
 std::string macSerial();
 
 size_t crashSize();

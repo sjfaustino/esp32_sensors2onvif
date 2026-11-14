@@ -74,6 +74,17 @@ struct CamMqtt {
   std::string password;
 };
 
+// The hub's health, for Home Assistant's diagnostic sensors. Bytes, except where it says otherwise.
+struct CamHealth {
+  uint32_t freeHeap = 0;
+  uint32_t lowestFreeHeap = 0;     // since the start
+  uint32_t largestBlock = 0;       // what one allocation can have now
+  uint32_t worstLargestBlock = 0;  // the least that has been, since the start: how cut up the memory has got
+  uint32_t espNowDropped = 0;      // arrived while the hub was busy; their senders resend
+  int wifiRssi = 0;                // dBm; 0 when not connected
+  uint64_t uptimeS = 0;
+};
+
 struct CamAddress {
   bool dhcp = true;
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
@@ -134,6 +145,7 @@ struct CamConfig {
   std::function<bool(uint32_t)> rearmSave;
   std::function<bool(const CamMqtt&)> mqttSave;
   std::string firmwareVersion;              // told to Home Assistant
+  std::function<void(CamHealth&)> healthInfo;  // for Home Assistant's diagnostic sensors; unset sends none
   std::function<int()> localMinute;        // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
@@ -435,6 +447,8 @@ class SensorCamServer {
     int64_t hubUntil = 0;
     bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
     bool subscribed = false;  // to the arm switch's commands
+    bool healthTold = false;
+    uint32_t healthAt = 0;
   };
   void serviceMqtt(bool readable, bool writable, uint32_t now);
   void mqttHousekeeping(uint32_t now);

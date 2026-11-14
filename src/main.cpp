@@ -209,6 +209,7 @@ static bool saveAddress(const CamAddress& a) {
 }
 
 static void hubDeviceRows(CamJson& j);
+static void hubHealth(CamHealth& h);
 static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len);
 static const char* lastRestartText();
 
@@ -291,6 +292,7 @@ static CamConfig makeConfig() {
   c.rearmMinutes = settings.rearmMinutes;
   c.rearmSave = storeRearm;
   c.firmwareVersion = FIRMWARE_VERSION;
+  c.healthInfo = hubHealth;
   c.localMinute = [] {
     time_t now = time(nullptr);
     if (now < CAM_CLOCK_VALID_AFTER) return -1;
@@ -450,6 +452,16 @@ static const char* lastRestartText() {
     default: return "Other";
   }
   return RESTART_TEXT[lastRestartCause < RESTART_CAUSES ? lastRestartCause : RESTART_UNKNOWN];
+}
+
+static void hubHealth(CamHealth& h) {
+  h.freeHeap = ESP.getFreeHeap();
+  h.lowestFreeHeap = ESP.getMinFreeHeap();
+  h.largestBlock = largestBlock();
+  h.worstLargestBlock = worstLargestBlock();
+  h.espNowDropped = espNowDropped;
+  h.wifiRssi = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  h.uptimeS = esp_timer_get_time() / 1000000ULL;
 }
 
 static void hubDeviceRows(CamJson& j) {

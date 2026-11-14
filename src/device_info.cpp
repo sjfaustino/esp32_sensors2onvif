@@ -68,6 +68,8 @@ void deviceInfoBegin() {
   loadCrash();
 }
 
+uint32_t worstLargestBlock() { return smallestBlock == UINT32_MAX ? largestBlock() : smallestBlock; }
+
 void sampleMemory() {
   static uint32_t sampledAt = 0;
   if (millis() - sampledAt < 1000) return;

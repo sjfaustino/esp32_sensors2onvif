@@ -33,6 +33,7 @@ const uint32_t CAM_MQTT_SILENT_MS = 60000;     // chosen: a broker that has said
 const uint32_t CAM_MQTT_WAIT_MS = 10000;       // chosen: to connect, to be accepted, and for an event to be acknowledged
 const uint32_t CAM_MQTT_RETRY_MS = 15000;      // chosen: after a failed connection, before the next
 const uint32_t CAM_MQTT_SIGNAL_MS = 60000;     // chosen: a sensor's signal strength alone is published at most this often
+const uint32_t CAM_MQTT_HEALTH_MS = 60000;     // chosen: how often the hub's own health is published
 
 // ---- pairing nodes ----
 const uint32_t CAM_PAIR_WINDOW_MS = 120000;           // chosen: how long new nodes may say hello after the button is pressed

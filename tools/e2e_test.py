@@ -454,6 +454,18 @@ def mqtt_tests(sensor_alert, sensor_clear):
           told and told['retain'] and config.get('state_topic') == f'{base}/{key(1)}/state' and config.get('availability_topic') == f'{base}/status'
           and config.get('device', {}).get('via_device') == f'sensors2onvif_{serial}', config)
     check('and of every sensor', wait_until(lambda: all(broker.latest(f'homeassistant/event/{serial}/{key(n)}_events/config') for n in SENSORS)))
+    health = wait_until(lambda: broker.state(f'{base}/hub/health'))
+    if not DEVICE:
+        check('the hub\'s health is sent', health and health['free_kb'] == 140 and health['worst_largest_kb'] == 60 and health['rssi'] == -58
+              and health['dropped'] >= 0 and health['started'], health)
+    else:
+        check('the hub\'s health is sent', health and health['free_kb'] > 0 and 'dropped' in health, health)
+    told = wait_until(lambda: all(broker.latest(f'homeassistant/sensor/{serial}/hub_{p}/config') for p in ('free_kb', 'worst_largest_kb', 'dropped', 'rssi', 'started')))
+    check('and Home Assistant is told of each health sensor', told)
+    free = broker.latest(f'homeassistant/sensor/{serial}/hub_free_kb/config')
+    free = json.loads(free['payload']) if free else {}
+    check('as diagnostic sensors of the hub', free.get('entity_category') == 'diagnostic' and free.get('unit_of_measurement') == 'kB'
+          and free.get('state_topic') == f'{base}/hub/health', free)
     hub = wait_until(lambda: broker.latest(f'homeassistant/binary_sensor/{serial}/hub_alert/config'))
     check('and of the hub', hub and json.loads(hub['payload'])['device']['identifiers'] == [f'sensors2onvif_{serial}'], hub)
 
