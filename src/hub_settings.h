@@ -48,7 +48,8 @@ bool storeWebhook(const CamWebhook& w);
 bool storeMqtt(const CamMqtt& m);
 bool storeArmed(CamArmMode mode, int64_t until);
 bool storeRearm(uint32_t minutes);
-bool resetSettings();  // erases everything except what the sensors need to keep reporting
+bool resetSettings();
+bool forgetKeys();  // the sensor token, ESP-NOW key, pairing key and snapshot secret; loadSettings makes new ones  // erases everything except what the sensors need to keep reporting
 
 std::string backupText();
 bool restoreText(const std::string& text);  // all or nothing

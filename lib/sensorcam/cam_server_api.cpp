@@ -432,6 +432,10 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
   } else if (r.is("POST", "/api/reset")) {
     if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
     else c.out = saved(camCall(cfg_.maintenance, "reset"), "could not do that");
+  } else if (r.is("POST", "/api/newkeys")) {
+    // Every node and HTTP sensor stops being heard until set up again, so a stray request must not do it.
+    if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");
+    else c.out = saved(camCall(cfg_.maintenance, "newkeys"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
   } else if (r.is("POST", "/api/alerts")) {

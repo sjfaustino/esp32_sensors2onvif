@@ -230,6 +230,13 @@ bool resetSettings() {
   return ok && withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key) && putText(p, "pairkey", pair); });
 }
 
+bool forgetKeys() {
+  return withPrefs("net", [](Preferences& p) {
+    for (const char* key : {"token", "enkey", "pairkey", "snapkey"}) p.remove(key);
+    return !p.isKey("token") && !p.isKey("enkey") && !p.isKey("pairkey") && !p.isKey("snapkey");
+  });
+}
+
 // ---- backup and restore ----
 
 struct BackupKey {

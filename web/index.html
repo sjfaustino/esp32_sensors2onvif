@@ -97,6 +97,9 @@
 <p class="note">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
 <div class="portForm"><button id="fbSave">Download full backup</button> <input id="fbFile" type="file" accept=".tar"> <button id="fbLoad">Restore full backup</button></div>
 <div class="portMsg" id="fbMsg"></div>
+<h2 class="sub">New keys</h2>
+<p class="note">Makes a new ESP-NOW key, pairing key, sensor token and snapshot address, then restarts. Every sensor node must then be set up or paired again, HTTP sensors need the new token, and ONVIF clients the new snapshot address. Use it if a key may have got out.</p>
+<div class="portForm"><button id="newKeys" class="del">Make new keys</button></div>
 <h2 class="sub">Reset settings</h2>
 <p class="note">Erases the saved WiFi networks, ports, name, web password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
 <div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>

@@ -128,7 +128,7 @@ struct CamConfig {
   std::function<size_t()> crashSize;           // bytes of the crash report the chip saved to flash; 0 when there is none
   std::function<bool(size_t offset, char* out, size_t len)> crashRead;
   std::function<bool()> crashDelete;
-  std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
+  std::function<bool(const std::string& action)> maintenance;  // "reboot", "reset" or "newkeys"; restarts shortly after replying
   std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
   std::string espNowKey;                    // signs the ESP-NOW messages of nodes not paired
   std::string pairingKey;                   // the hub's X25519 private key, as 64 hex digits; empty turns pairing off

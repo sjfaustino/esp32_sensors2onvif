@@ -272,6 +272,10 @@ during that minute, the hub goes back to the previous firmware and Device Info s
 networks, ports, name, web password, fixed address, time, notification and MQTT settings, arms the hub, and keeps the pictures, the sensor nodes,
 and the ESP-NOW key and token that sensors use.
 
+**New keys** makes a new ESP-NOW key, pairing key, sensor token and snapshot address, then restarts: the keys are
+deleted and the start makes new ones, as on the first. Every sensor node must then be set up or paired again, so use it
+only if a key may have got out. A settings backup made before brings the old keys back if restored.
+
 A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, and each node's settings.
 Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
 pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the

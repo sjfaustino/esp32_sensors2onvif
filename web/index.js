@@ -258,6 +258,16 @@
     if (confirm("Restart the hub now? The video stops for a few seconds."))
       sysAction("/api/reboot", "", "The hub is restarting.", () => location.reload());
   };
+  $("newKeys").onclick = () => {
+    if (
+      confirm(
+        "Make new keys? Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts.",
+      )
+    )
+      sysAction("/api/newkeys", "confirm=yes", "New keys are being made. The hub is restarting.", () =>
+        location.reload(),
+      );
+  };
   $("resetAll").onclick = () => {
     if (
       confirm(

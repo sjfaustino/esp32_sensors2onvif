@@ -48,11 +48,12 @@ enum RestartCause : uint32_t {
   RESTART_BUTTON,
   RESTART_FIRMWARE,
   RESTART_RESTORED,
+  RESTART_NEW_KEYS,
   RESTART_CAUSES
 };
 static const char* const RESTART_TEXT[RESTART_CAUSES] = {
     "Software restart",  "WiFi lost for 5 minutes",   "Low memory",     "Server stalled",  "Router stopped answering", "New WiFi settings", "New web, port or address settings",
-    "Fixed address could not reach the router", "Scheduled restart", "Settings reset", "Restart button", "Firmware update", "Settings restored"};
+    "Fixed address could not reach the router", "Scheduled restart", "Settings reset", "Restart button", "Firmware update", "Settings restored", "New keys"};
 
 static bool restartPending = false;
 static uint32_t restartRequestedAt = 0;
@@ -185,6 +186,11 @@ static bool saveTime(const CamTime& t) {
 }
 
 static bool maintenance(const std::string& action) {
+  if (action == "newkeys") {  // the start that follows makes new ones, as on the first
+    bool ok = forgetKeys();
+    if (ok) requestRestart(RESTART_NEW_KEYS);
+    return ok;
+  }
   if (action != "reset") {
     requestRestart(RESTART_BUTTON);
     return true;
