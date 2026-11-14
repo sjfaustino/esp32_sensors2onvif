@@ -529,7 +529,23 @@ bool SensorCamServer::sensorFits(const std::string& path) const {
   return false;
 }
 
+// What Home Assistant is told of the sensors: which there are, and their names.
+uint32_t SensorCamServer::sensorsTag() const {
+  uint32_t h = 2166136261u;  // FNV-1a
+  auto add = [&](const void* p, size_t n) {
+    for (size_t i = 0; i < n; i++) h = (h ^ ((const uint8_t*)p)[i]) * 16777619u;
+  };
+  for (const Slot& s : slots_) {
+    add(&s.used, 1);
+    add(s.mac, 6);
+    add(&s.input, 1);
+    add(s.name.data(), s.name.size() + 1);
+  }
+  return h;
+}
+
 void SensorCamServer::rescan() {
+  uint32_t before = sensorsTag();
   bool seen[CAM_MAX_SENSORS] = {false};
   std::vector<CamFsEntry> nodes;
   storage_.list("", nodes);
@@ -552,6 +568,7 @@ void SensorCamServer::rescan() {
         slots_[i].input = input;
         health_[i] = Health();
         health_[i].watchedAt = millis_();
+        mqttShown_[i] = MqttShown();
         id = i + 1;
       }
       if (id) {
@@ -571,6 +588,8 @@ void SensorCamServer::rescan() {
     delivery_.forget(i + 1);
     slots_[i] = Slot();
     health_[i] = Health();
+    mqttShown_[i] = MqttShown();
   }
   frameKey_.clear();
+  if (sensorsTag() != before) mqtt_.discovery = 0;  // a sensor or a name changed, so Home Assistant is told again
 }

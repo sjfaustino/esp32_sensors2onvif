@@ -26,6 +26,14 @@ const uint32_t CAM_RTSP_IDLE_MS = 120000;      // chosen: a video connection not
 const uint32_t CAM_RTSP_STALL_MS = 30000;      // chosen: a playing video connection that takes nothing
 const uint32_t CAM_HOOK_WAIT_MS = 5000;        // chosen: for the webhook to connect, and again for its reply
 
+// ---- MQTT ----
+const uint16_t CAM_MQTT_KEEPALIVE_S = 60;      // chosen: the broker announces the hub gone after 1.5 times this without a word
+const uint32_t CAM_MQTT_PING_MS = 20000;       // chosen: a ping after this long with nothing sent
+const uint32_t CAM_MQTT_SILENT_MS = 60000;     // chosen: a broker that has said nothing for this long, pings included, is gone
+const uint32_t CAM_MQTT_WAIT_MS = 10000;       // chosen: to connect, to be accepted, and for an event to be acknowledged
+const uint32_t CAM_MQTT_RETRY_MS = 15000;      // chosen: after a failed connection, before the next
+const uint32_t CAM_MQTT_SIGNAL_MS = 60000;     // chosen: a sensor's signal strength alone is published at most this often
+
 // ---- the hub itself ----
 const uint32_t CAM_ALIVE_EVERY_MS = 10UL * 60 * 1000;  // chosen: how often the time is saved, so a restart can say how long it was off
 const uint32_t CAM_START_CLOCK_WAIT_MS = 120000;       // chosen: "hub started" waits this long for the clock

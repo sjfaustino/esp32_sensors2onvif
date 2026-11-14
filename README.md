@@ -84,6 +84,31 @@ whenever alerts or node problems are; the hub's own events are sent with node pr
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
 
+## Home Assistant
+
+**Sensors Manager > Home Assistant** connects the hub to an MQTT broker, and Home Assistant then finds the hub and each
+sensor by itself. In Home Assistant, install the Mosquitto broker add-on and the MQTT integration, make a Home Assistant
+user for the hub, and enter the broker's IP address, that user and its password here. The hub has no name lookup, so the
+address must be an IP address, and the connection is not encrypted.
+
+Home Assistant then shows:
+
+- **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, and an Events entity
+  for the hub's own events: `hub started`, `network lost`, `NVR not listening` and `NVR listening again`.
+- **Each sensor** as its own device, named as on the Sensors page, with Alert (on for as long as the NVR is shown the
+  alert), Battery, Signal, Problem (silent, low battery or weak signal) and an Events entity carrying every event of
+  its history, with the same names as the Events page.
+
+The hub leaves "offline" with the broker as its last will, so Home Assistant marks the hub and every sensor unavailable
+the moment the hub's connection drops: from a power cut, a crash, or someone keeping it off the network. An automation on
+that is the warning the hub cannot send itself. Events are sent with MQTT's acknowledgement, and one not acknowledged is
+sent again after reconnecting; up to the newest 64 wait while the broker is away. Past events replaying for the NVR are
+not shown as alerts, since they are not happening now; they arrive as `delayed alert` events instead.
+
+The topics are under `sensors2onvif/<serial number>/`, and the discovery messages under `homeassistant/`. A sensor
+deleted on the hub is taken away from Home Assistant too, unless the hub restarts before it next reaches the broker; then
+delete it in Home Assistant.
+
 ## ONVIF thumbnails
 
 ONVIF clients ask the hub for a JPEG of the current picture. The hub stores only H.264 and cannot convert it, so the browser

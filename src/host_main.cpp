@@ -190,6 +190,8 @@ int main(int argc, char** argv) {
   };
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
+  cfg.mqttSave = [](const CamMqtt&) { return true; };
+  cfg.firmwareVersion = "test";
   cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";

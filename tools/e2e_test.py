@@ -296,6 +296,207 @@ def dropped_after(port, data):
         s.close()
 
 
+class FakeBroker:
+    """A pretend MQTT broker: records the hub's login and every message it publishes, and acknowledges them. It can be
+    told to refuse the login, or to close the connection on the next event instead of acknowledging it."""
+
+    def __init__(self, host):
+        self.server = socket.socket()
+        self.server.bind((host, 0))
+        self.server.listen(2)
+        self.port = self.server.getsockname()[1]
+        self.connects, self.messages = [], []
+        self.refuse = 0  # the CONNACK return code; 0 accepts
+        self.drop_next_event = False
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def close(self):
+        self.server.close()
+
+    def _accept(self):
+        while True:
+            try:
+                c, _ = self.server.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(c,), daemon=True).start()
+
+    @staticmethod
+    def _size(buf):
+        """The whole packet's size, or 0 while it is not all there."""
+        length, scale = 0, 1
+        for i in range(1, 5):
+            if i >= len(buf):
+                return 0
+            length += (buf[i] & 0x7F) * scale
+            if not buf[i] & 0x80:
+                return 1 + i + length if len(buf) >= 1 + i + length else 0
+            scale *= 128
+        raise ValueError('bad length')
+
+    def _serve(self, c):
+        buf = b''
+        try:
+            while True:
+                data = c.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while (size := self._size(buf)):
+                    packet, buf = buf[:size], buf[size:]
+                    if not self._handle(c, packet):
+                        c.close()
+                        return
+        except OSError:
+            pass
+
+    def _handle(self, c, p):
+        kind, at = p[0] >> 4, 1
+        while p[at] & 0x80:
+            at += 1
+        body = p[at + 1:]
+
+        def text(pos):
+            n = body[pos] << 8 | body[pos + 1]
+            return body[pos + 2:pos + 2 + n], pos + 2 + n
+
+        if kind == 1:  # CONNECT
+            flags, pos = body[7], 10
+            client, pos = text(pos)
+            hello = {'client': client.decode(), 'clean': bool(flags & 2), 'will_retain': bool(flags & 0x20), 'will_qos': flags >> 3 & 3}
+            if flags & 4:
+                topic, pos = text(pos)
+                message, pos = text(pos)
+                hello['will'] = (topic.decode(), message)
+            if flags & 0x80:
+                user, pos = text(pos)
+                hello['user'] = user.decode()
+            if flags & 0x40:
+                password, pos = text(pos)
+                hello['password'] = password.decode()
+            self.connects.append(hello)
+            c.sendall(bytes([0x20, 2, 0, self.refuse]))
+            return self.refuse == 0
+        if kind == 3:  # PUBLISH
+            qos, retain = p[0] >> 1 & 3, bool(p[0] & 1)
+            topic, pos = text(0)
+            pid = body[pos] << 8 | body[pos + 1] if qos else 0
+            payload = body[pos + 2:] if qos else body[pos:]
+            self.messages.append({'topic': topic.decode(), 'payload': payload, 'retain': retain, 'qos': qos})
+            if qos:
+                if self.drop_next_event:
+                    self.drop_next_event = False
+                    return False
+                c.sendall(bytes([0x40, 2, pid >> 8, pid & 0xFF]))
+        if kind == 12:  # PINGREQ
+            c.sendall(b'\xd0\x00')
+        return True
+
+    def latest(self, topic):
+        found = [m for m in self.messages if m['topic'] == topic]
+        return found[-1] if found else None
+
+    def state(self, topic):
+        m = self.latest(topic)
+        return json.loads(m['payload']) if m and m['payload'] else None
+
+    def events(self, topic):
+        return [m for m in self.messages if m['topic'] == topic and m['qos'] == 1]
+
+
+def mqtt_tests(sensor_alert, sensor_clear):
+    """Home Assistant through MQTT, against a pretend broker on this PC."""
+    settings = json.loads(api('GET', '/api/mqtt')[1])
+    if settings['host']:
+        print('SKIP MQTT: the hub already has a broker set, which these tests would replace')
+        return
+    broker = FakeBroker(LOCAL)
+    serial = json.loads(api('GET', '/api/info')[1])['serial']
+    base = f'sensors2onvif/{serial}'
+
+    def key(n):
+        return SENSORS[n][0].replace('-', '').lower() + f'_{SENSORS[n][1]}'
+
+    def mqtt_page():
+        return json.loads(api('GET', '/api/mqtt')[1])
+
+    check('a broker given by name is refused', api('POST', '/api/mqtt', 'host=broker.lan&port=1883')[0] == 400)
+    check('a broker port out of range is refused', api('POST', '/api/mqtt', f'host={LOCAL}&port=70000')[0] == 400)
+    saved = api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=hub&password=' + urllib.parse.quote('s3cret pw'))[0]
+    check('the MQTT settings can be saved', saved == 200)
+    page = poll(mqtt_page, lambda m: m['connected'])
+    check('the hub connects to the broker', page['connected'] and page['state'] == 'connected', page)
+    check('the page never shows the MQTT password', page['password'] is True and 's3cret' not in json.dumps(page), page)
+    hello = broker.connects[0] if broker.connects else {}
+    check('the hub logs in with its user and password', hello.get('user') == 'hub' and hello.get('password') == 's3cret pw', hello)
+    check('the hub leaves "offline" with the broker as its retained last will', hello.get('will') == (f'{base}/status', b'offline') and hello.get('will_retain'), hello)
+    online = wait_until(lambda: broker.latest(f'{base}/status'))
+    check('the hub says it is online, retained', online and online['payload'] == b'online' and online['retain'], online)
+
+    # Home Assistant's discovery.
+    topic = f'homeassistant/binary_sensor/{serial}/{key(1)}_alert/config'
+    told = wait_until(lambda: broker.latest(topic))
+    config = json.loads(told['payload']) if told else {}
+    check('Home Assistant is told of a sensor, retained',
+          told and told['retain'] and config.get('state_topic') == f'{base}/{key(1)}/state' and config.get('availability_topic') == f'{base}/status'
+          and config.get('device', {}).get('via_device') == f'sensors2onvif_{serial}', config)
+    check('and of every sensor', wait_until(lambda: all(broker.latest(f'homeassistant/event/{serial}/{key(n)}_events/config') for n in SENSORS)))
+    hub = wait_until(lambda: broker.latest(f'homeassistant/binary_sensor/{serial}/hub_alert/config'))
+    check('and of the hub', hub and json.loads(hub['payload'])['device']['identifiers'] == [f'sensors2onvif_{serial}'], hub)
+
+    # An alert: the sensor's state at once, and the event, which the broker acknowledges.
+    sensor_alert(1)
+    on = wait_until(lambda: (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'ON')
+    check('an alert turns the sensor on in Home Assistant', on, broker.state(f'{base}/{key(1)}/state'))
+    check('and the hub', (broker.state(f'{base}/hub/state') or {}).get('alert') == 'ON', broker.state(f'{base}/hub/state'))
+    sent = wait_until(lambda: [e for e in broker.events(f'{base}/{key(1)}/event') if json.loads(e['payload'])['event_type'] == 'alert'])
+    check('the alert is sent as an event the broker must acknowledge', sent and not sent[-1]['retain'], sent)
+    page = poll(mqtt_page, lambda m: m['waiting'] == 0)
+    check('the event counts as sent once acknowledged', page['waiting'] == 0, page)
+    sensor_clear(1)
+    off = wait_until(lambda: (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'OFF', timeout=15)
+    check('the alert ending turns the sensor off', off, broker.state(f'{base}/{key(1)}/state'))
+
+    # An event the broker never acknowledged is sent again once the hub has reconnected.
+    before = len(broker.events(f'{base}/{key(1)}/event'))
+    broker.drop_next_event = True
+    sensor_alert(1)
+    again = wait_until(lambda: len(broker.events(f'{base}/{key(1)}/event')) >= before + 2, timeout=30)
+    events = broker.events(f'{base}/{key(1)}/event')
+    check('an event lost with the connection is sent again after reconnecting', again and events[-1]['payload'] == events[-2]['payload'], events[before:])
+    check('and the hub logged in again', len(broker.connects) >= 2)
+    sensor_clear(1)
+
+    # A sensor added appears in Home Assistant, and one deleted is taken away again.
+    path = '02-00-00-00-00-98/1'
+    gone_topic = f'homeassistant/binary_sensor/{serial}/020000000098_1_alert/config'
+    api('POST', f'/api/mkdir?path={path}')
+    added = wait_until(lambda: (broker.latest(gone_topic) or {}).get('payload'))
+    check('a sensor added appears in Home Assistant', added)
+    api('PUT', f'/api/file?path={path}/name.txt', b'Back door')
+    renamed = wait_until(lambda: json.loads(broker.latest(gone_topic)['payload'] or b'{}').get('device', {}).get('name') == 'Back door')
+    check('a sensor renamed is renamed in Home Assistant', renamed, broker.latest(gone_topic))
+    told = len(broker.messages)
+    api('POST', f'/api/sensor-settings?path={path}', 'hold=20')
+    time.sleep(0.5)  # time for discovery to be wrongly sent again
+    check('a change Home Assistant does not show sends nothing again', len(broker.messages) == told, broker.messages[told:][:3])
+    api('DELETE', '/api/file?path=02-00-00-00-00-98')
+    removed = wait_until(lambda: broker.latest(gone_topic)['payload'] == b'' and (broker.latest(f'{base}/020000000098_1/state') or {}).get('payload') == b'')
+    check('a sensor deleted is taken away from Home Assistant, with its retained state', removed, broker.latest(gone_topic))
+
+    # A broker that refuses the login says why on the page.
+    broker.refuse = 5
+    api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=hub&password=')
+    refused = poll(mqtt_page, lambda m: 'refused' in m['state'])
+    check('a refused login shows on the page', refused['state'] == 'the broker refused: not authorized', refused)
+    check('a password left blank keeps the saved one', broker.connects[-1].get('password') == 's3cret pw', broker.connects[-1])
+    broker.refuse = 0
+
+    check('the MQTT settings need the web password', api('GET', '/api/mqtt', auth=False)[0] == 401)
+    check('MQTT can be turned off', api('POST', '/api/mqtt', 'host=')[0] == 200 and poll(mqtt_page, lambda m: m['state'] == 'not set up')['state'] == 'not set up')
+    broker.close()
+
+
 def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
@@ -949,6 +1150,8 @@ def main():
                 get(f'/sensor?{sid(1)}')
                 clear(1)
                 check('a new event changes the tag', events_tagged(tag)[0] == 200)
+
+                mqtt_tests(lambda n: get(f'/sensor?{sid(n)}'), clear)
 
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')

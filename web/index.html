@@ -6,7 +6,7 @@
 <div class="first">Network Manager</div>
 <div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="espnow">ESP-NOW</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
 <div class="first">Sensors Manager</div>
-<div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="events">Events</div><div class="item" data-view="notify">Notifications</div></div>
+<div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="events">Events</div><div class="item" data-view="notify">Notifications</div><div class="item" data-view="ha">Home Assistant</div></div>
 <div class="first">NVR Manager</div>
 <div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
 <div class="first">System Manager</div>
@@ -56,6 +56,15 @@
 <label class="portForm" style="display:block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal</label>
 <div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button></div>
 <div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
+<div class="view" id="view-ha" hidden><h1>Home Assistant</h1>
+<p style="margin:0 0 6px;font-size:14px">The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network.</p>
+<label class="netRow"><span>Broker address</span><input id="mqHost" maxlength="15" inputmode="decimal" placeholder="192.168.1.10"></label>
+<label class="netRow"><span>Port</span><input id="mqPort" type="number" min="1" max="65535" placeholder="1883"></label>
+<label class="netRow"><span>User</span><input id="mqUser" maxlength="64" autocapitalize="none" autocomplete="off"></label>
+<label class="netRow"><span>Password</span><input id="mqPw" type="password" maxlength="64" autocomplete="new-password"></label>
+<p style="margin:0 0 6px;font-size:14px">Leave the address empty to turn MQTT off. A password left blank keeps the saved one. The connection is not encrypted, as with the hub's other connections.</p>
+<div class="portForm"><button id="saveMq">Save</button></div>
+<div class="portMsg" id="mqMsg"></div><table class="info" id="mqInfo"></table></div>
 <div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
 <h2 style="font-family:inherit;margin-bottom:6px">Scheduled restart</h2>
 <label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" style="width:auto"></label>

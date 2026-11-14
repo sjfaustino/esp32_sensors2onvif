@@ -57,6 +57,14 @@ struct CamWebhook {
   bool problems = true;   // silent nodes, low batteries and weak signals
 };
 
+// An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.
+struct CamMqtt {
+  std::string host;  // the broker's IPv4 address; empty turns MQTT off
+  uint16_t port = 1883;
+  std::string user;      // empty logs in without a user name or password
+  std::string password;
+};
+
 struct CamAddress {
   bool dhcp = true;
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
@@ -106,7 +114,10 @@ struct CamConfig {
   std::function<bool(bool)> espNowSave;     // stores espNowUnsigned
   CamWebhook webhook;
   std::function<bool(const CamWebhook&)> webhookSave;
-  std::function<int()> localMinute;         // minutes after local midnight, or -1 when the clock is not set; for quiet hours
+  CamMqtt mqtt;
+  std::function<bool(const CamMqtt&)> mqttSave;
+  std::string firmwareVersion;              // told to Home Assistant
+  std::function<int()> localMinute;        // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
   std::function<void(CamJson&)> addressInfo;            // the Network page's members
@@ -146,8 +157,8 @@ class SensorCamServer {
 
  private:
   // lwIP has 16 sockets. Up to 7 are always taken (4 listening, discovery, ping, the setup page's DNS), 2 are for video,
-  // and web connections, event pushes and the webhook share the other 7. Web connections and the webhook together stop
-  // at 6, so a push can always start.
+  // and web connections, event pushes, the webhook and MQTT share the other 7. All but the pushes together stop at 6,
+  // so a push can always start.
   static const int MAX_HTTP = 6;
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
@@ -335,6 +346,58 @@ class SensorCamServer {
   std::string webhookJson();
   bool apiSensors(const ApiRequest& r);
   void serviceDiscovery();
+
+  // ---- MQTT, for Home Assistant: cam_server_mqtt.cpp ----
+  struct MqttShown {  // a sensor's state as last published, so only a change is sent
+    bool told = false;
+    bool alert = false, silent = false, low = false, weak = false;
+    uint8_t battery = CAM_BATTERY_UNKNOWN;
+    int8_t rssi = 0;
+    uint32_t at = 0;
+  };
+  struct MqttTold {  // a sensor Home Assistant was told of, so one deleted or replaced is taken away again
+    bool used = false;
+    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+    uint8_t input = 0;
+  };
+  struct MqttIo {
+    enum State { OFF, CONNECTING, WAIT_CONNACK, READY } state = OFF;
+    int fd = -1;
+    std::string out;
+    size_t outPos = 0;
+    uint8_t in[64];
+    size_t inLen = 0;
+    size_t skip = 0;  // bytes of a packet too large for in, read and dropped
+    uint32_t deadline = 0, sentAt = 0, heardAt = 0;
+    uint16_t nextId = 1;
+    uint16_t ackId = 0;     // the event sent and not yet acknowledged; 0 for none
+    uint32_t ackEvent = 0;  // its number, counting the events added to the log since the start
+    uint32_t ackSince = 0;
+    bool online = false;
+    int discovery = 0;  // the next discovery message; -1 once all are sent
+    bool hubTold = false, hubAlert = false, hubNvr = false;
+  };
+  void serviceMqtt(bool readable, bool writable, uint32_t now);
+  void mqttHousekeeping(uint32_t now);
+  void startMqtt(uint32_t now);
+  void endMqtt(const char* why, uint32_t now);
+  void mqttPacket(const uint8_t* p, size_t len, uint32_t now);
+  bool mqttNext(uint32_t now, std::string& out);  // the next message to send, if any
+  bool mqttDiscoveryStep(int step, std::string& out);
+  bool mqttSensorState(int i, bool alertsOnly, uint32_t now, std::string& out);
+  bool mqttEvent(std::string& out);
+  std::string mqttBase() const;  // the hub's topics start with this
+  uint32_t sensorsTag() const;   // changes when a sensor is added, deleted or renamed
+  std::string mqttJson();
+  MqttIo mqtt_;
+  MqttShown mqttShown_[CAM_MAX_SENSORS];
+  MqttTold mqttTold_[CAM_MAX_SENSORS];
+  uint32_t mqttEventsSent_ = 0;  // the events published, counting as CamEventLog::added does
+  uint32_t mqttEventsLost_ = 0;  // more waited than the log keeps in memory
+  uint32_t mqttRetryAt_ = 0;
+  bool mqttWaiting_ = false;  // a connection failed, and the next waits until mqttRetryAt_
+  std::string mqttResult_ = "not set up";
+  time_t mqttConnectedAt_ = 0;
   void pushFrames(uint32_t now);
 
   CamConfig cfg_;

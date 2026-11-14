@@ -77,6 +77,10 @@ void loadSettings() {
     s.webhook.text = p.getBool("hooktx", false);
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
+    s.mqtt.host = p.getString("mqhost", "").c_str();
+    s.mqtt.port = p.getUShort("mqport", 1883);
+    s.mqtt.user = p.getString("mquser", "").c_str();
+    s.mqtt.password = p.getString("mqpw", "").c_str();
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
     s.timeNtp = p.getBool("ntp", true);
@@ -188,6 +192,12 @@ bool storeWebhook(const CamWebhook& w) {
   });
 }
 
+bool storeMqtt(const CamMqtt& m) {
+  return withPrefs("net", [&m](Preferences& p) {
+    return putText(p, "mqhost", m.host.c_str()) && p.putUShort("mqport", m.port) == 2 && putText(p, "mquser", m.user.c_str()) && putText(p, "mqpw", m.password.c_str());
+  });
+}
+
 // Pictures live on LittleFS, so they survive this.
 bool resetSettings() {
   bool ok = true;
@@ -209,6 +219,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
     {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
+    {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
 };
 
 std::string backupText() {

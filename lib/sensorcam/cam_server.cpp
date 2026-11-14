@@ -71,6 +71,7 @@ bool SensorCamServer::begin() {
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
   log_.load();
+  mqttEventsSent_ = log_.added();  // the run before sent those
   loadWaiting();
   std::string alive;
   if (storage_.readFile(ALIVE_FILE, alive, 16) && alive.size() == 8) {  // seconds since 1970, little-endian
@@ -134,7 +135,7 @@ int SensorCamServer::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;
   for (const NotifyIo& n : notify_) open += n.fd >= 0;
-  return open + (hook_.fd >= 0);
+  return open + (hook_.fd >= 0) + (mqtt_.fd >= 0);
 }
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
@@ -815,6 +816,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
     if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
   if (hook_.state == NotifyIo::IDLE && hookCount_ && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
+  mqttHousekeeping(now);
   pushFrames(now);
 }
 
@@ -854,6 +856,10 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
     else add(n.fd, wr);
   }
   if (hook_.state != NotifyIo::IDLE) add(hook_.fd, hook_.state == NotifyIo::WAIT_CLOSE ? rd : wr);
+  if (mqtt_.fd >= 0) {
+    if (mqtt_.state != MqttIo::CONNECTING) add(mqtt_.fd, rd);
+    if (mqtt_.state == MqttIo::CONNECTING || mqtt_.outPos < mqtt_.out.size()) add(mqtt_.fd, wr);
+  }
 
   int32_t untilFrame = (int32_t)(nextFrameAt_ - now);
   int wait = untilFrame < maxWaitMs ? (untilFrame < 0 ? 0 : untilFrame) : maxWaitMs;
@@ -878,4 +884,5 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   for (NotifyIo& n : notify_)
     if (n.state != NotifyIo::IDLE) serviceNotify(n, FD_ISSET(n.fd, &rd), FD_ISSET(n.fd, &wr), now);
   if (hook_.state != NotifyIo::IDLE) serviceNotify(hook_, FD_ISSET(hook_.fd, &rd), FD_ISSET(hook_.fd, &wr), now);
+  if (mqtt_.fd >= 0) serviceMqtt(FD_ISSET(mqtt_.fd, &rd), FD_ISSET(mqtt_.fd, &wr), now);
 }

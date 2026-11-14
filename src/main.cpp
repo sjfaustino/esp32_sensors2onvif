@@ -281,6 +281,9 @@ static CamConfig makeConfig() {
   c.espNowSave = storeEspNowUnsigned;
   c.webhook = settings.webhook;
   c.webhookSave = storeWebhook;
+  c.mqtt = settings.mqtt;
+  c.mqttSave = storeMqtt;
+  c.firmwareVersion = FIRMWARE_VERSION;
   c.localMinute = [] {
     time_t now = time(nullptr);
     if (now < CAM_CLOCK_VALID_AFTER) return -1;

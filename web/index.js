@@ -319,7 +319,48 @@
       loadHook(true);
       sysTimer = setInterval(() => loadHook(false), 3000);
     }
+    if (view == "ha") {
+      loadMqtt(true);
+      sysTimer = setInterval(() => loadMqtt(false), 3000);
+    }
   }
+  async function loadMqtt(all) {
+    try {
+      const m = await call("GET", "/api/mqtt");
+      if (all) {
+        $("mqHost").value = m.host;
+        $("mqPort").value = m.port;
+        $("mqUser").value = m.user;
+        $("mqPw").value = "";
+        $("mqPw").placeholder = m.password ? "saved" : "";
+      }
+      fill("mqInfo", [
+        ["Connection", m.state + (m.since ? ", since " + new Date(m.since).toLocaleString() : "")],
+        ["Events waiting to send", m.waiting],
+        ["Events lost, too many waiting", m.lost],
+        ["Topics", m.topic + "/…"],
+        ["In Home Assistant", "the device " + m.hub + ", and one device per sensor"],
+      ]);
+    } catch (e) {}
+  }
+  $("saveMq").onclick = async () => {
+    if (
+      await send(
+        $("mqMsg"),
+        "/api/mqtt",
+        "host=" +
+          encodeURIComponent($("mqHost").value.trim()) +
+          "&port=" +
+          encodeURIComponent($("mqPort").value.trim()) +
+          "&user=" +
+          encodeURIComponent($("mqUser").value) +
+          "&password=" +
+          encodeURIComponent($("mqPw").value),
+        "Saved. The connection shows below within a few seconds.",
+      )
+    )
+      loadMqtt(true);
+  };
   async function loadHook(all) {
     try {
       const h = await call("GET", "/api/webhook");

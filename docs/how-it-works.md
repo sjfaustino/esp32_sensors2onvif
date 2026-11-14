@@ -53,6 +53,16 @@ not count. A failed push is tried again every 30 seconds, so one failure cannot 
 the NVR missed is logged once, kept, and played as a past event once it listens again; a replay missed too waits again
 without a second entry. Delivered is all the hub can know: whether the NVR records depends on its own settings.
 
+## MQTT
+
+`lib/sensorcam/cam_server_mqtt.cpp` keeps one connection to the broker and holds one message at a time, built only once
+the one before has gone, in this order: the hub's "online", any alert that started or ended, the next event, Home
+Assistant's discovery, other state changes, then a ping. Events are not queued anywhere new: the connection reads them
+from the event history's newest 64 and remembers how far the broker has acknowledged, so logging an alert costs MQTT
+nothing, and an event in flight when the connection drops is sent again. Building a message that runs out of memory
+leaves it for a later pass. The connection takes one of the sockets web connections use, so with MQTT on, five web
+connections can be open at once instead of six.
+
 ## Past events
 
 Late alerts wait in `CamDelayedQueue` (`lib/sensorcam/cam_sensors.h`) and play one at a time, a few seconds apart, so

@@ -175,11 +175,20 @@ static bool validHookUrl(const std::string& url) {
   return url.empty() || (ok && parseHttpUrl(url, u) && inet_addr(u.host.c_str()) != INADDR_NONE);
 }
 
+// An MQTT user name or password: sent as it is, so anything but control characters, up to 64 bytes.
+static bool validMqttText(const std::string& s) {
+  bool ok = s.size() <= 64;
+  for (char ch : s) ok = ok && (unsigned char)ch >= 0x20 && ch != 0x7f;
+  return ok;
+}
+
 bool camBackupValueValid(const std::string& key, const std::string& value) {
   long long n = 0;
   bool number = wholeNumber(value, n);
   uint32_t ip;
-  if (key == "net.onvif" || key == "net.web" || key == "net.rtsp") return number && n >= 1 && n <= 65535;
+  if (key == "net.onvif" || key == "net.web" || key == "net.rtsp" || key == "net.mqport") return number && n >= 1 && n <= 65535;
+  if (key == "net.mqhost") return value.empty() || parseIpv4(value, ip);
+  if (key == "net.mquser" || key == "net.mqpw") return validMqttText(value);
   if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.enuns" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
   if (key == "net.enkey") return value.size() >= 16 && validToken(value);
@@ -572,6 +581,35 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       std::string message = "Test from " + cfg_.hostName;
       queueHook(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
       c.out = jsonOk(JSON_OK);
+    }
+  } else if (r.is("GET", "/api/mqtt")) {
+    reply(c, 200, JSON_TYPE, mqttJson());
+  } else if (r.is("POST", "/api/mqtt")) {
+    std::string form = r.form(), port = queryParam(form, "port");
+    CamMqtt m;
+    m.host = percentDecode(queryParam(form, "host"));
+    m.user = percentDecode(queryParam(form, "user"));
+    m.password = percentDecode(queryParam(form, "password"));
+    long long n = 1883;
+    uint32_t ip;
+    bool portOk = (port.empty() || wholeNumber(port, n)) && n >= 1 && n <= 65535;
+    if (!m.host.empty() && !parseIpv4(m.host, ip)) {
+      c.out = jsonFail(400, "enter the broker's IP address, such as 192.168.1.10; names are not supported");
+    } else if (!portOk) {
+      c.out = jsonFail(400, "the port must be 1 to 65535");
+    } else if (!validMqttText(m.user) || !validMqttText(m.password)) {
+      c.out = jsonFail(400, "the user name and password may have up to 64 characters");
+    } else {
+      m.port = (uint16_t)n;
+      if (m.password.empty() && !m.user.empty()) m.password = cfg_.mqtt.password;  // left blank, the saved one is kept
+      if (m.user.empty()) m.password.clear();
+      bool ok = camCall(cfg_.mqttSave, m);
+      if (ok) {
+        cfg_.mqtt = m;
+        endMqtt("connecting", millis_());  // the new settings apply at once
+        mqttWaiting_ = false;
+      }
+      c.out = saved(ok, "could not save the MQTT settings");
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
     log_.save(downloadingHistory());

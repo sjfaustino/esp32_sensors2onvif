@@ -3,6 +3,7 @@
 #include <string>
 #include "cam_auth.h"
 #include "cam_frames.h"
+#include "cam_mqtt.h"
 #include "cam_rtp.h"
 #include "cam_server.h"
 #include "cam_sensors.h"
@@ -219,6 +220,37 @@ static void sha1_in_pieces_matches() {
   TEST_ASSERT_EQUAL_STRING("0098ba824b5c16427bd7a1122a5a442a25ec644d", hex(camSha1(std::string(64, 'a'))).c_str());
   TEST_ASSERT_EQUAL_STRING("ee971065aaa017e0632a8ca6c77bb3bf8b1dfc56", hex(camSha1(std::string(119, 'a'))).c_str());
   TEST_ASSERT_EQUAL_STRING("f34c1488385346a55709ba056ddd08280dd4c6d6", hex(camSha1(std::string(120, 'a'))).c_str());
+}
+
+// The bytes MQTT 3.1.1 specifies, worked out by hand from the standard.
+static void mqtt_packets_match_the_standard() {
+  std::string c = camMqttConnect("c", "", "", "w", "x", 60);
+  TEST_ASSERT_EQUAL_STRING("1013" "00044d51545404" "2e" "003c" "000163" "000177" "000178", camHex((const uint8_t*)c.data(), c.size()).c_str());
+  c = camMqttConnect("c", "u", "p", "w", "x", 60);
+  TEST_ASSERT_EQUAL_STRING("1019" "00044d51545404" "ee" "003c" "000163" "000177" "000178" "000175" "000170", camHex((const uint8_t*)c.data(), c.size()).c_str());
+  std::string p = camMqttPublish("t", "hi", true, 0);
+  TEST_ASSERT_EQUAL_STRING("3105000174" "6869", camHex((const uint8_t*)p.data(), p.size()).c_str());
+  p = camMqttPublish("t", "hi", false, 0x0102);
+  TEST_ASSERT_EQUAL_STRING("3207000174" "0102" "6869", camHex((const uint8_t*)p.data(), p.size()).c_str());
+  p = camMqttPublish("t", std::string(200, 'a'), false, 0);  // a length of 203 takes two bytes
+  TEST_ASSERT_EQUAL_STRING("30cb01", camHex((const uint8_t*)p.data(), 3).c_str());
+  TEST_ASSERT_EQUAL(206, (int)p.size());
+  TEST_ASSERT_EQUAL(206, (int)camMqttPacketSize((const uint8_t*)p.data(), p.size()));
+  TEST_ASSERT_EQUAL(0, (int)camMqttPacketSize((const uint8_t*)p.data(), 2));  // the length is not all there yet
+  const uint8_t ack[] = {0x20, 0x02, 0x00, 0x00}, broken[] = {0x30, 0xff, 0xff, 0xff, 0xff, 0x01};
+  TEST_ASSERT_EQUAL(4, (int)camMqttPacketSize(ack, 4));
+  TEST_ASSERT_EQUAL(0, (int)camMqttPacketSize(ack, 1));
+  TEST_ASSERT_EQUAL(-1, (int)camMqttPacketSize(broken, sizeof(broken)));
+  TEST_ASSERT_EQUAL_STRING("c000", camHex((const uint8_t*)camMqttPing().data(), 2).c_str());
+  // The settings a backup may bring back.
+  TEST_ASSERT_TRUE(camBackupValueValid("net.mqhost", "192.168.1.10"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.mqhost", ""));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.mqhost", "broker.lan"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.mqport", "1883"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.mqport", "0"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.mquser", "home assistant"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.mqpw", "line\nbreak"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.mqpw", std::string(65, 'a')));
 }
 
 static void signed_messages_are_checked() {
@@ -926,6 +958,7 @@ int main() {
   RUN_TEST(hmac_sha1_matches_rfc_2202);
   RUN_TEST(sha1_in_pieces_matches);
   RUN_TEST(signed_messages_are_checked);
+  RUN_TEST(mqtt_packets_match_the_standard);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(quiet_hours_cross_midnight);
