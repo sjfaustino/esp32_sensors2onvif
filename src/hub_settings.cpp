@@ -1,5 +1,6 @@
 #include "hub_settings.h"
 #include <Preferences.h>
+#include <bootloader_random.h>
 #include <vector>
 #include "config.h"
 
@@ -21,13 +22,17 @@ static bool putText(Preferences& p, const char* key, const String& value) {
   return p.getString(key, "") == value;
 }
 
+// For the keys, made in loadSettings before Wi-Fi starts. esp_random() is truly random only while the radio runs or this
+// other source of noise is on, and that source must not be on once Wi-Fi is.
 static String randomHex(int words) {
+  bootloader_random_enable();
   String out;
   char word[9];
   for (int i = 0; i < words; i++) {
     snprintf(word, sizeof(word), "%08lx", (unsigned long)esp_random());
     out += word;
   }
+  bootloader_random_disable();
   return out;
 }
 

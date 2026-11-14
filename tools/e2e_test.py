@@ -404,11 +404,11 @@ class FakeBroker:
             c.sendall(b'\xd0\x00')
         return True
 
-    def send(self, topic, payload):
-        """Publishes to the hub at QoS 0, as Home Assistant's switch does."""
+    def send(self, topic, payload, retained=False):
+        """Publishes to the hub at QoS 0, as Home Assistant's switch does; retained, as a broker repeats a kept message."""
         t = topic.encode()
         body = bytes([len(t) >> 8, len(t) & 0xFF]) + t + payload
-        self.conn.sendall(bytes([0x30, len(body)]) + body)
+        self.conn.sendall(bytes([0x31 if retained else 0x30, len(body)]) + body)
 
     def latest(self, topic):
         found = [m for m in self.messages if m['topic'] == topic]
@@ -527,6 +527,9 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('an alert while armed shows the panel triggered', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'triggered'))
     sensor_clear(1)
     check('and armed again once it ends', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_away', timeout=15))
+    broker.send(f'{base}/armed/set', b'DISARM', retained=True)
+    time.sleep(0.5)  # time for the hub to wrongly obey it
+    check('a retained command, repeated by the broker, is ignored', get_json('/api/arm')['armed'] is True)
     api('POST', '/api/arm/rearm', 'minutes=60')
     broker.send(f'{base}/armed/set', b'DISARM')
     off = poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is False)

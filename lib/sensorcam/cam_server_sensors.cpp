@@ -364,7 +364,7 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
 }
 
 std::string SensorCamServer::handleSensor(const std::string& target, int& status) {
-  if (!cfg_.sensorToken.empty() && queryParam(target, "token") != cfg_.sensorToken) {
+  if (!cfg_.sensorToken.empty() && !camSameText(queryParam(target, "token"), cfg_.sensorToken)) {
     status = 403;
     return camJsonError("bad token");
   }

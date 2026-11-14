@@ -112,7 +112,9 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
     mqttResult_ = "connected";
   } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, or a sensor's test button
     CamMqttMessage m;
-    if (!camMqttReadPublish(p, len, m)) return;
+    // A retained command was sent some time ago and is repeated by the broker on every connection: obeying it could
+    // keep disarming the hub. Home Assistant does not retain its commands.
+    if ((p[0] & 0x01) || !camMqttReadPublish(p, len, m)) return;
     std::string topic(m.topic, m.topicLen), base = mqttBase() + "/";
     if (topic.compare(0, base.size(), base) != 0) return;
     topic.erase(0, base.size());
