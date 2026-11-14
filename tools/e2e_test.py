@@ -1886,6 +1886,20 @@ def test_deleting_folders_and_restart(files, proc, puller, storage):
     check('all its sensors are gone', get(f'/sensor?{sid(1)}')[0] == 404 and status()['sensors'] == count - 4)
 
     if proc:
+        # A planned restart writes the waiting alerts as they are, so an alert the NVR already got does not play again.
+        wait_until(lambda: not status()['active'] and status()['delayed_waiting'] == 0, timeout=60)  # what earlier checks left plays out
+        get(f'/sensor?{sid(4)}')
+        wait_until(lambda: name(4) not in status()['active'], timeout=20)  # its hold runs out, well after its delivery check at 5 s
+        control('save-now')
+        proc.kill()
+        proc.wait()
+        proc = start_hub(storage, PASSWORD, '1500')
+        HUB.stdout.readline()
+        puller.stop()
+        puller = PullingNvr()
+        time.sleep(3)  # time for a stale entry to wrongly start playing
+        check('after a planned restart, an alert the NVR got does not play again', name(4) not in status()['active'] and status()['delayed_waiting'] == 0, status())
+
         # A past event still waiting when the power goes must play after the restart: its sensor was told it was received.
         get(f'/sensor?{sid(4)}')  # keeps it waiting
         get(f'/sensor?{sid(5)}&age=500')

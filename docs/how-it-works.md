@@ -15,7 +15,8 @@ need, up to about 600 KB, is kept free, because without it no report could be co
 input, direction and flags (1 for a record standing for several sensors, 2 for an alert the NVR missed, 4 for a replay
 already logged). It is written with the report that starts an alert, and when a queue changes; after a restart its
 entries play as past events. An alert whose delivery check has passed since may still be in it, so a power cut can cause
-a false replay, never a missed one.
+a false replay, never a missed one. A planned restart, such as a firmware update, writes the file as it is first, so it
+replays nothing the NVR already got.
 
 ## The event history
 

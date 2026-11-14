@@ -19,8 +19,11 @@ bool SensorCamServer::downloadingHistory() const {
   return false;
 }
 
+// Before a planned restart. The alerts waiting for an NVR record are written as they are: one whose delivery has been
+// checked since it was saved would otherwise play again after the restart, as a past event.
 void SensorCamServer::saveNow() {
-  persist();
+  log_.save(downloadingHistory());
+  saveWaiting();
   writeAlive(millis_());  // a planned restart then knows exactly when the hub stopped
 }
 

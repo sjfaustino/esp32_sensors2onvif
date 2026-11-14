@@ -73,6 +73,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     reply = std::to_string(hub.memoryFailures());
   } else if (command == "lists-fail" || command == "lists-work") {  // folder listings fail, as on a storage error
     camStorageListsFail = command == "lists-fail";
+  } else if (command == "save-now") {  // what the board does before a planned restart
+    hub.saveNow();
   } else if (command == "minutes-fast") {  // a minute of a timed disarm lasts a second, so the test need not wait
     hub.setMinuteMs(1000);
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
