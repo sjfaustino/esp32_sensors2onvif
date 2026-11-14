@@ -22,8 +22,9 @@ void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamE
 }
 
 // The hub's own events: in the history as sensor "hub", and sent as node problems.
-void SensorCamServer::hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message) {
+void SensorCamServer::hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message, bool flag) {
   SensorReport r;  // age 0: it happened when it was logged
+  r.active = flag;
   addEvent("hub", detail.c_str(), r, false, kind, offS);
   notifyHubHook(kind, detail, message);
 }

@@ -1324,6 +1324,16 @@ def test_nvr_goes_again_during_replay():
     time.sleep(6)  # past the check, which comes 5 s after an alert starts
     check('an alert the NVR is listening for is not flagged', sum(e['kind'] == 5 for e in event_list()) == flagged, event_list()[:3])
     clear(1)
+    # A past event waits while the NVR is not listening, rather than playing to nobody and being logged as missed.
+    missed = sum(e['kind'] == 5 for e in event_list())
+    api('POST', '/api/nvr', 'ip=192.0.2.8')
+    get(f'/sensor?{sid(2)}&age=500')
+    time.sleep(7)  # longer than a play and its delivery check would take
+    check('a past event waits while the NVR is not listening', name(2) not in status()['active'] and status()['delayed_waiting'] >= 1
+          and sum(e['kind'] == 5 for e in event_list()) == missed, status())
+    api('POST', '/api/nvr', 'ip=127.0.0.1')
+    check('and plays once it listens again', wait_until(lambda: name(2) in status()['active'], timeout=15), status())
+    control('end-alerts')
     control('nvr-gone-normal')
     api('POST', '/api/nvr', 'ip=')
 
@@ -1920,6 +1930,14 @@ def test_deleting_folders_and_restart(files, proc, puller, storage):
         starts = [e for e in event_list() if e['kind'] == 8]
         check('the start is logged with its reason and how long the hub was off', starts and starts[0]['sensor'] == 'hub' and starts[0]['detail'] == 'PC build started'
               and starts[0]['event'] == 'hub started' and starts[0]['off_s'] is not None and starts[0]['off_s'] < 3600, starts[:2])
+        # A third start soon after the last two, none of them asked for: the hub counts them as restarting often.
+        proc.kill()
+        proc.wait()
+        proc = start_hub(storage, PASSWORD, '1500')
+        HUB.stdout.readline()
+        loop = poll(event_list, lambda l: any(e['kind'] == 16 for e in l))
+        loop = [e for e in loop if e['kind'] == 16]
+        check('three unplanned starts within an hour are logged as restarting often', loop and loop[0]['sensor'] == 'hub' and loop[0]['detail'] == '3 times in an hour', loop)
     api('DELETE', f'/api/file?path={B}')
     return proc
 

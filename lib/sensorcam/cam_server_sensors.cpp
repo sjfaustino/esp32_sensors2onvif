@@ -101,7 +101,18 @@ void SensorCamServer::noteHubStart(uint32_t now) {
   bool offKnown = clockOk && lastAlive_ >= CAM_CLOCK_VALID_AFTER && t >= lastAlive_ && (int64_t)(t - lastAlive_) < (int64_t)CAM_AGE_UNKNOWN;
   uint32_t off = offKnown ? (uint32_t)(t - lastAlive_) : CAM_AGE_UNKNOWN;
   std::string reason = cfg_.startReason.empty() ? std::string("unknown") : cfg_.startReason;
-  hubEvent(CAM_EVENT_HUB_STARTED, reason, off, camEventMessage(CAM_EVENT_HUB_STARTED, cfg_.hostName, reason, off, false));
+  hubEvent(CAM_EVENT_HUB_STARTED, reason, off, camEventMessage(CAM_EVENT_HUB_STARTED, cfg_.hostName, reason, off, false), !cfg_.startPlanned);
+  // A crash loop otherwise shows only as the hub missing for a moment now and then. The starts are counted from the
+  // history, so it needs the clock.
+  if (cfg_.startPlanned || !clockOk) return;
+  int starts = 0;
+  for (int n = 0; n < log_.count(); n++) {
+    const CamEvent& e = log_.recent(n);
+    starts += e.kind == CAM_EVENT_HUB_STARTED && e.active && e.received >= t - 3600;
+  }
+  if (starts < RESTART_LOOP_STARTS) return;
+  std::string detail = std::to_string(starts) + " times in an hour";
+  hubEvent(CAM_EVENT_RESTART_LOOP, detail, CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_RESTART_LOOP, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
 }
 
 // The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
@@ -353,6 +364,9 @@ void SensorCamServer::serviceDelayed(uint32_t now) {
   // The flag keeps the comparison valid: an old timestamp alone would look like the future after 24.8 days.
   if (delayedGap_ && (int32_t)(now - nextDelayedAt_) >= 0) delayedGap_ = false;
   CamDelayed d;
+  // Played to an NVR that is not listening, one would only be logged as missed and wait again: after a power cut that
+  // is every one, as the hub is back before the NVR reconnects.
+  if (cfg_.watchNvr && !nvrListening(now)) return;
   if (sensors_.anyActive() || delayedGap_ || !delayed_.take(d)) return;
   waitingDirty_ = true;
   int id = findSlot(d.mac, d.input);

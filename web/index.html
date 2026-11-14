@@ -60,7 +60,8 @@
 <div class="portForm"><button id="saveNvr">Save</button></div>
 <div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
 <div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
-<div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
+<div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><p class="portForm">Show <select id="evSensor"><option value="">every sensor and the hub</option></select> <select id="evKind"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select></p>
+<table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
 <div class="view" id="view-notify" hidden><h1>Notifications</h1>
 <p class="note">The hub can send each alert to a web address on your network, such as a Home Assistant webhook, Node-RED or a self-hosted ntfy server. Use http:// and an IP address; https and names are not supported.</p>
 <label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" placeholder="http://192.168.1.10:8123/api/webhook/hub"></label>

@@ -893,9 +893,41 @@
         ? Math.floor(m / 60) + " h " + (m % 60) + " min"
         : Math.floor(m / 1440) + " days " + (Math.floor(m / 60) % 24) + " h";
   }
+  // Filtered here, from the list the hub sends, so the hub builds nothing more for it.
+  const ALERT_KINDS = [0, 3, 5, 10, 13, 15],
+    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16];
+  let events = [];
   async function loadEvents() {
     try {
-      const list = await call("GET", "/api/events");
+      events = await call("GET", "/api/events");
+      const seen = [...new Set(events.map((e) => e.sensor))].sort(),
+        chosen = $("evSensor").value;
+      $("evSensor").replaceChildren(
+        el("option", { value: "", textContent: "every sensor and the hub" }),
+        ...seen.map((s) => {
+          const named = events.find((e) => e.sensor == s && e.name);
+          return el("option", {
+            value: s,
+            textContent: s == "hub" ? "the hub" : named ? named.name + " (" + s + ")" : s,
+          });
+        }),
+      );
+      $("evSensor").value = seen.includes(chosen) ? chosen : "";
+      showEvents();
+    } catch (e) {}
+  }
+  function showEvents() {
+    const sensor = $("evSensor").value,
+      kind = $("evKind").value;
+    const list = events.filter(
+      (e) =>
+        (!sensor || e.sensor == sensor) &&
+        (!kind ||
+          (kind == "alerts" && ALERT_KINDS.includes(e.kind) && e.sensor != "hub") ||
+          (kind == "problems" && PROBLEM_KINDS.includes(e.kind)) ||
+          (kind == "hub" && e.sensor == "hub")),
+    );
+    {
       $("evTable").replaceChildren(
         ...(list.length ? [headRow(["Time", "Sensor", "Event", "Details", "Battery"])] : []),
         ...list.map((e) => {
@@ -925,9 +957,15 @@
           );
         }),
       );
-      $("evNone").textContent = list.length ? "" : "No events yet.";
-    } catch (e) {}
+      $("evNone").textContent = list.length
+        ? ""
+        : events.length
+          ? "None of these among the latest 64 events."
+          : "No events yet.";
+    }
   }
+  $("evSensor").onchange = showEvents;
+  $("evKind").onchange = showEvents;
   $("fwSend").onclick = async () => {
     const m = $("fwMsg"),
       f = $("fwFile").files[0];

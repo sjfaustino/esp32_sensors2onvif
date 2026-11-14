@@ -161,6 +161,7 @@ struct CamConfig {
   std::string sensorToken;  // when set, /sensor requires token=<value>
   std::string serial = "000000000000";
   std::string startReason;  // why the hub last started, for the "hub started" event
+  bool startPlanned = false;  // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
   std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
   bool watchNvr = true;     // log and send alerts the NVR was not listening for
@@ -360,12 +361,13 @@ class SensorCamServer {
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
   void addEvent(const char* sensor, const char* text,const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
-  void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message);
+  void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message, bool flag = false);
   bool nvrListening(uint32_t now) const;
   bool roomBesideHistory(size_t bytes) const;  // whether a picture of this size still leaves the event history its room
   size_t historyRoom() const;                  // the storage the event history may still need
   void checkNvr(uint32_t now);
   void noteHubStart(uint32_t now);
+  static const int RESTART_LOOP_STARTS = 3;  // unplanned starts within an hour that count as restarting often
   void startAlert(int id, bool delayed, uint32_t now, bool replay = false);  // an alert that is a new NVR record, to be checked as delivered
   void healthAlert(int id, CamEventKind kind, uint32_t now);
   bool persist();

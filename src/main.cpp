@@ -218,6 +218,7 @@ static void hubDeviceRows(CamJson& j);
 static void hubHealth(CamHealth& h);
 static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len);
 static const char* lastRestartText();
+static bool startWasPlanned();
 
 // The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
 extern "C" bool verifyRollbackLater() { return true; }
@@ -284,6 +285,7 @@ static CamConfig makeConfig() {
   c.wifiChannel = [] { return (int)WiFi.channel(); };
   c.espNowSend = sendToNode;
   c.startReason = lastRestartText();
+  c.startPlanned = startWasPlanned();
   c.snapshotSecret = settings.snapshotKey.c_str();
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
@@ -445,6 +447,22 @@ static void sendToNode(const uint8_t mac[6], const uint8_t* data, int len) {
     }
   }
   esp_now_send(mac, data, len);
+}
+
+// Asked for by someone: not a crash, a watchdog, a power cut, or one of the hub's own restarts for a fault.
+static bool startWasPlanned() {
+  if (esp_reset_reason() != ESP_RST_SW) return false;
+  switch (lastRestartCause) {
+    case RESTART_NEW_WIFI:
+    case RESTART_NEW_SETTINGS:
+    case RESTART_SCHEDULED:
+    case RESTART_SETTINGS_RESET:
+    case RESTART_BUTTON:
+    case RESTART_FIRMWARE:
+    case RESTART_RESTORED:
+    case RESTART_NEW_KEYS: return true;
+    default: return false;
+  }
 }
 
 static const char* lastRestartText() {

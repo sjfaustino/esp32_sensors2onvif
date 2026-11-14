@@ -56,7 +56,8 @@ hub from a small UPS.
 The hub checks that each alert reached the NVR. If the NVR was not listening, the history gets **Alert not delivered**
 and Notifications sends it; the alert is kept, and once the NVR listens again it plays as a past event, so the NVR
 still records that something happened. Set the NVR's address on the NVR page, or any device subscribed to the hub's
-events counts as the NVR; the page warns at the top until you do. When the NVR has not been listening for 3 minutes,
+events counts as the NVR; the page warns at the top until you do. Past events, and alerts kept for the NVR, play only while the NVR is listening, so after a power cut they wait for it to
+reconnect instead of being logged as missed. When the NVR has not been listening for 3 minutes,
 the hub logs **NVR stopped listening**, and **NVR listening again** when it is back. If the hub rejoins its Wi-Fi after
 losing it, it logs **network lost** with how long, because someone may be keeping it off on purpose.
 
@@ -65,7 +66,11 @@ detection on, and recording and logging on motion. Check them when adding the hu
 update or reset.
 
 Each time the hub starts it logs **Hub started** with the reason, such as a power cut or a firmware update, and how long
-it was off, to within 10 minutes after a power cut.
+it was off, to within 10 minutes after a power cut. Three starts within an hour that nobody asked for, such as crashes,
+watchdog restarts or power cuts, are logged as **restarting often** and sent like the hub's other events, as something
+keeps stopping it. Updates, the restart button and new settings do not count.
+
+The Events page can show one sensor's events, or only alerts, problems or the hub's own events.
 
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the

@@ -31,6 +31,7 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_HOME_ALERT: return "alert while armed home";
     case CAM_EVENT_ARMED_HOME: return "armed home";
     case CAM_EVENT_TEST_ALERT: return "test alert";
+    case CAM_EVENT_RESTART_LOOP: return "restarting often";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -59,6 +60,7 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
       return who + " was off its Wi-Fi network for up to " + (known ? camDurationText(offS) : std::string("an unknown time")) +
              "; alerts in that time reach the NVR as past events once it is back";
     case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
+    case CAM_EVENT_RESTART_LOOP: return who + " has restarted by itself " + detail + ": something keeps stopping it, so alerts may be missed";
     case CAM_EVENT_ARMED_HOME:
       return who + " was armed home" + (detail.empty() ? std::string() : " from " + detail) + ": interior sensors are logged but not sent to the NVR";
     case CAM_EVENT_DISARMED:
