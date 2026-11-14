@@ -77,6 +77,7 @@ std::string SensorCamServer::treeJson() {
       if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
       const CamSensorSettings& set = slots_[slot - 1].settings;
       j.object().num("input", atoi(n.name.c_str())).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
+      j.flag("interior", set.interior);
       if (set.quietFrom >= 0) j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
       else j.null("quiet");
       j.array("files");
@@ -533,16 +534,17 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path"), form = r.form();
-    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to");
+    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to"), zone = queryParam(form, "zone");
     uint8_t mac[6];
     size_t slash = path.find('/');
     bool sensor = camClassifyPath(path) == CAM_PATH_SENSOR && camParseMac(path.substr(0, slash), mac) && findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1));
     CamSensorSettings s;
-    std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n");
+    std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n") +
+                       (zone.empty() ? "" : "zone=" + zone + "\n");
     if (!sensor) {
       c.out = jsonFail(404, "no such sensor");
     } else if (!camParseSensorSettings(text, s)) {
-      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, and quiet hours need a start and an end that differ");
+      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter");
     } else {
       std::string file = path + "/settings.txt", clean = camSensorSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
@@ -591,17 +593,20 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     long long left = disarmSecondsLeft(millis_());
     bool timed = !cfg_.armed && cfg_.disarmedUntil;
     c.out = jsonOk(jsonObject([&](CamJson& j) {
-      j.flag("armed", cfg_.armed).flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
+      j.flag("armed", cfg_.armed).str("mode", armMode() == CAM_DISARMED ? "disarmed" : armMode() == CAM_ARMED_HOME ? "home" : "away");
+      j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
     }));
   } else if (r.is("POST", "/api/arm")) {
-    std::string form = r.form(), on = queryParam(form, "armed"), forText = queryParam(form, "for");
+    std::string form = r.form(), on = queryParam(form, "armed"), mode = queryParam(form, "mode"), forText = queryParam(form, "for");
     long long minutes = cfg_.rearmMinutes;
-    if (on != "1" && on != "0") {
-      c.out = jsonFail(400, "armed must be 1 or 0");
+    if (mode.empty()) mode = on == "1" ? "away" : on == "0" ? "disarmed" : "";  // armed=1 and 0, as earlier firmware took
+    if (mode != "away" && mode != "home" && mode != "disarmed") {
+      c.out = jsonFail(400, "mode must be away, home or disarmed");
     } else if (!forText.empty() && (!wholeNumber(forText, minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES)) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
-      c.out = saved(setArmed(on == "1", "the web page", (uint32_t)minutes), "could not save the setting");
+      CamArmMode m = mode == "away" ? CAM_ARMED_AWAY : mode == "home" ? CAM_ARMED_HOME : CAM_DISARMED;
+      c.out = saved(setArmMode(m, "the web page", (uint32_t)minutes), "could not save the setting");
     }
   } else if (r.is("POST", "/api/arm/rearm")) {
     long long minutes = -1;

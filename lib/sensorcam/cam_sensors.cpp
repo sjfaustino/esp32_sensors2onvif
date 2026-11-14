@@ -93,6 +93,8 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
       s.holdS = (uint32_t)hold;
     } else if (key == "quiet" && dash != std::string::npos && minuteOfDay(value.substr(0, dash), s.quietFrom) &&
                minuteOfDay(value.substr(dash + 1), s.quietTo) && s.quietFrom != s.quietTo) {
+    } else if (key == "zone" && (value == "interior" || value == "perimeter")) {
+      s.interior = value == "interior";
     } else {
       return false;
     }
@@ -105,6 +107,7 @@ std::string camSensorSettingsText(const CamSensorSettings& s) {
   std::string out;
   if (s.holdS) out += "hold=" + std::to_string(s.holdS) + "\n";
   if (s.quietFrom >= 0) out += "quiet=" + std::to_string(s.quietFrom) + "-" + std::to_string(s.quietTo) + "\n";
+  if (s.interior) out += "zone=interior\n";
   return out;
 }
 

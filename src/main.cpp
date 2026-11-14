@@ -289,6 +289,7 @@ static CamConfig makeConfig() {
   c.armed = settings.armed;
   c.armedSave = storeArmed;
   c.disarmedUntil = settings.disarmedUntil;
+  c.armedHome = settings.armedHome;
   c.rearmMinutes = settings.rearmMinutes;
   c.rearmSave = storeRearm;
   c.firmwareVersion = FIRMWARE_VERSION;

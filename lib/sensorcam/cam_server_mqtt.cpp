@@ -45,8 +45,8 @@ static const int HUB_STEPS = HUB_PARTS + HEALTH_PARTS;
 static const int DISCOVERY_STEPS = HUB_STEPS + CAM_MAX_SENSORS * SLOT_STEPS;
 static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events"};
 static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event"};
-static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed"};
-static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost", "armed", "disarmed"};
+static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed", "alert while armed home"};
+static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost", "armed", "armed home", "disarmed"};
 
 // A sensor in topics and ids: its MAC address in lower-case hex, and its input.
 static std::string sensorKey(const uint8_t mac[6], uint8_t input) {
@@ -115,8 +115,9 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
     if (!camMqttReadPublish(p, len, m) || m.topicLen != topic.size() || memcmp(m.topic, topic.data(), m.topicLen) != 0) return;
     std::string command(m.payload, m.payloadLen);
     // ON and OFF are what the Armed switch of earlier firmware sent.
-    if (command == "ARM_AWAY" || command == "ON") setArmed(true, "Home Assistant");
-    if (command == "DISARM" || command == "OFF") setArmed(false, "Home Assistant", cfg_.rearmMinutes);
+    if (command == "ARM_AWAY" || command == "ON") setArmMode(CAM_ARMED_AWAY, "Home Assistant");
+    if (command == "ARM_HOME") setArmMode(CAM_ARMED_HOME, "Home Assistant");
+    if (command == "DISARM" || command == "OFF") setArmMode(CAM_DISARMED, "Home Assistant", cfg_.rearmMinutes);
     mqtt_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {
     uint16_t id = (uint16_t)(p[2] << 8 | p[3]);
@@ -248,19 +249,20 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   bool alert = false;
   for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slots_[id - 1].used && sensors_.active(id) && !sensors_.pastEvent(id));
   bool nvr = nvrListening(now);
-  bool armed = cfg_.armed;
+  bool armed = cfg_.armed, home = cfg_.armedHome;
   int64_t until = cfg_.disarmedUntil;
-  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || until != mqtt_.hubUntil) {
+  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome || until != mqtt_.hubUntil) {
     bool known = !armed && until > 1;
     std::string json = jsonObject([&](CamJson& j) {
       j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF");
-      j.str("alarm", !armed ? "disarmed" : alert ? "triggered" : "armed_away").str("rearm_at", known, known ? iso((time_t)until) : std::string());
+      j.str("alarm", !armed ? "disarmed" : alert ? "triggered" : home ? "armed_home" : "armed_away").str("rearm_at", known, known ? iso((time_t)until) : std::string());
     });
     out = camMqttPublish(mqttBase() + "/hub/state", payload(json), true, 0);
     mqtt_.hubTold = true;
     mqtt_.hubAlert = alert;
     mqtt_.hubNvr = nvr;
     mqtt_.hubArmed = armed;
+    mqtt_.hubHome = home;
     mqtt_.hubUntil = until;
     return true;
   }
@@ -395,7 +397,8 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
       }
       if (step == 3) {  // no code: Home Assistant guards who may use it
         j.str("value_template", "{{ value_json.alarm }}").str("command_topic", base + "/armed/set").str("payload_arm_away", "ARM_AWAY");
-        j.str("payload_disarm", "DISARM").array("supported_features").str("arm_away").end().flag("code_arm_required", false).flag("code_disarm_required", false);
+        j.str("payload_arm_home", "ARM_HOME").str("payload_disarm", "DISARM").array("supported_features").str("arm_away").str("arm_home").end();
+        j.flag("code_arm_required", false).flag("code_disarm_required", false);
         j.str("json_attributes_topic", base + "/hub/state");
       }
       j.object("device").array("identifiers").str(hubId).end().str("name", hubName).str("manufacturer", "sensors2onvif").str("model", "ESP32 sensor hub");

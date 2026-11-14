@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
   cfg.mqttSave = [](const CamMqtt&) { return true; };
-  cfg.armedSave = [](bool, int64_t) { return true; };
+  cfg.armedSave = [](bool, bool, int64_t) { return true; };
   cfg.rearmSave = [](uint32_t) { return true; };
   cfg.firmwareVersion = "test";
   cfg.healthInfo = [](CamHealth& h) {  // pretend figures, so the test can check they arrive

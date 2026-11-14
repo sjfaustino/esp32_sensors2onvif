@@ -205,11 +205,16 @@ uint32_t SensorCamServer::holdFor(int id) const {
   return seconds ? seconds * 1000 : cfg_.holdMs;
 }
 
-// A report that happened before the hub was disarmed still counts, and so does one whose time is not known: a false
-// alert is better than a missed one. Disarmed since the start counts from the start, as nothing earlier is known.
-bool SensorCamServer::disarmedFor(const SensorReport& r, uint32_t now) const {
-  if (cfg_.armed || r.age == CAM_AGE_UNKNOWN) return false;
-  return (uint64_t)r.age * 1000 <= (uint64_t)(now - disarmedAt_);
+// Disarmed, no sensor counts; armed home, interior ones do not. A report of something that happened while its sensor
+// still counted counts, and so does one whose time is not known: a false alert is better than a missed one. A mode
+// kept from before the start counts from the start, as nothing earlier is known.
+CamEventKind SensorCamServer::heldAs(int id, const SensorReport& r, uint32_t now) const {
+  bool interior = slots_[id - 1].settings.interior;
+  bool held = !cfg_.armed || (cfg_.armedHome && interior);
+  if (!held || r.age == CAM_AGE_UNKNOWN) return CAM_EVENT_REPORT;
+  uint32_t offAt = interior ? interiorOffAt_ : perimeterOffAt_;
+  if ((uint64_t)r.age * 1000 > (uint64_t)(now - offAt)) return CAM_EVENT_REPORT;
+  return cfg_.armed ? CAM_EVENT_HOME_ALERT : CAM_EVENT_DISARMED_ALERT;
 }
 
 std::string camMinutesText(uint32_t m) {
@@ -226,21 +231,24 @@ bool camTimedDisarmOver(int64_t until, time_t wallNow, uint32_t msSinceStart, ui
 }
 
 // A disarm can be given an end, or have its end changed, while disarmed; arming always ends it.
-bool SensorCamServer::setArmed(bool on, const std::string& from, uint32_t minutes) {
-  if (on && cfg_.armed) return true;
-  if (on) minutes = 0;
+bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes) {
+  CamArmMode was = armMode();
+  if (mode != CAM_DISARMED) minutes = 0;
+  if (mode == was && mode != CAM_DISARMED) return true;
   time_t t = time(nullptr);
   int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
-  if (!on && !cfg_.armed && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
-  if (!camCall(cfg_.armedSave, on, until)) return false;
+  if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
+  if (!camCall(cfg_.armedSave, mode != CAM_DISARMED, mode == CAM_ARMED_HOME, until)) return false;
   uint32_t now = millis_();
-  if (cfg_.armed && !on) disarmedAt_ = now;  // a change of end keeps when the disarm began
-  cfg_.armed = on;
+  if (was == CAM_ARMED_AWAY) interiorOffAt_ = now;  // a change of end keeps when a disarm began
+  if (was != CAM_DISARMED && mode == CAM_DISARMED) perimeterOffAt_ = now;
+  cfg_.armed = mode != CAM_DISARMED;
+  cfg_.armedHome = mode == CAM_ARMED_HOME;
   cfg_.disarmedUntil = until;
   disarmEndKnown_ = minutes != 0;
   disarmEndsAt_ = now + minutes * minuteMs_;
   std::string detail = minutes ? from + ", for " + camMinutesText(minutes) : from;
-  CamEventKind kind = on ? CAM_EVENT_ARMED : CAM_EVENT_DISARMED;
+  CamEventKind kind = mode == CAM_ARMED_AWAY ? CAM_EVENT_ARMED : mode == CAM_ARMED_HOME ? CAM_EVENT_ARMED_HOME : CAM_EVENT_DISARMED;
   hubEvent(kind, detail, CAM_AGE_UNKNOWN, camEventMessage(kind, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
   return true;
 }
@@ -249,7 +257,7 @@ void SensorCamServer::rearmWhenDue(uint32_t now) {
   if (cfg_.armed || !cfg_.disarmedUntil) return;
   bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
                              : camTimedDisarmOver(cfg_.disarmedUntil, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
-  if (due) setArmed(true, "the re-arm timer");  // if it cannot be saved, it is tried again on the next pass
+  if (due) setArmMode(CAM_ARMED_AWAY, "the re-arm timer");  // away, the safer; if it cannot be saved, it is tried again on the next pass
 }
 
 long long SensorCamServer::disarmSecondsLeft(uint32_t now) const {
@@ -285,7 +293,8 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   bool wasReported = h.reported;
   h.reported = r.active;
   bool quiet = r.active && quietNow(id);  // logged, but the NVR is not told
-  bool disarmed = r.active && !quiet && disarmedFor(r, now);  // the same
+  CamEventKind heldKind = r.active && !quiet ? heldAs(id, r, now) : CAM_EVENT_REPORT;  // the same, for the arm mode
+  bool disarmed = heldKind != CAM_EVENT_REPORT;
   bool held = quiet || disarmed;
   if (r.active && late && !held) {
     queueDelayed(id, r, now);
@@ -299,7 +308,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   // Repeats and heartbeats that change nothing would push real events out of the log.
   // An activation is logged unless it only repeats one whose alert is still running; a sensor that never reports clear
   // still has each new alert logged.
-  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? CAM_EVENT_DISARMED_ALERT : CAM_EVENT_REPORT);
+  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? heldKind : CAM_EVENT_REPORT);
   if (r.active && !held && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
   if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
   return true;
@@ -498,7 +507,7 @@ std::string SensorCamServer::statusJson(uint32_t now) {
       if (!h.heard) continue;
       j.object().str("sensor", slotName(id)).num("last_heard_s", (now - h.heardAt) / 1000).num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).flag("silent", h.silent).end();
     }
-    j.end().num("uptime_s", now / 1000).flag("armed", cfg_.armed);
+    j.end().num("uptime_s", now / 1000).flag("armed", cfg_.armed).str("mode", armMode() == CAM_DISARMED ? "disarmed" : armMode() == CAM_ARMED_HOME ? "home" : "away");
   });
 }
 

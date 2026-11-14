@@ -47,12 +47,14 @@ const int CAM_CONFIRMATION_LEN = 7 + CAM_SIGNATURE_LEN;
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key);
 void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]);  // without using the heap
 
-// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
-// FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.
+// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS", "quiet=FROM-TO" and "zone=interior"
+// lines, FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR,
+// and so is an interior sensor's while the hub is armed home.
 struct CamSensorSettings {
   uint32_t holdS = 0;  // how long an alert stays active; 0 uses the hub's default
   int quietFrom = -1;  // -1 for no quiet hours
   int quietTo = -1;
+  bool interior = false;  // otherwise perimeter, which is watched in every armed mode
 };
 const uint32_t CAM_MAX_HOLD_S = 3600;
 bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  // false for anything the page would refuse

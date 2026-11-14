@@ -85,6 +85,8 @@ struct CamHealth {
   uint64_t uptimeS = 0;
 };
 
+enum CamArmMode { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
+
 struct CamAddress {
   bool dhcp = true;
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
@@ -139,8 +141,9 @@ struct CamConfig {
   CamMqtt mqtt;
   // Disarmed, alerts are logged but not sent to the NVR or the webhook, as in quiet hours. Kept across restarts.
   bool armed = true;
+  bool armedHome = false;     // armed home rather than away: interior sensors are logged but not sent to the NVR
   int64_t disarmedUntil = 0;  // see camTimedDisarmOver; 0 for a disarm without an end
-  std::function<bool(bool armed, int64_t until)> armedSave;
+  std::function<bool(bool armed, bool home, int64_t until)> armedSave;
   uint32_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
   std::function<bool(uint32_t)> rearmSave;
   std::function<bool(const CamMqtt&)> mqttSave;
@@ -180,9 +183,11 @@ class SensorCamServer {
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
   uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
   bool armed() const { return cfg_.armed; }
-  // Arms, or disarms for minutes (0 until armed again), saved first; from says where, for the history. False when it
-  // could not be saved.
-  bool setArmed(bool on, const std::string& from, uint32_t minutes = 0);
+  CamArmMode armMode() const { return !cfg_.armed ? CAM_DISARMED : cfg_.armedHome ? CAM_ARMED_HOME : CAM_ARMED_AWAY; }
+  // Arms away or home, or disarms for minutes (0 until armed again), saved first; from says where, for the history.
+  // False when it could not be saved.
+  bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
+  bool setArmed(bool on, const std::string& from, uint32_t minutes = 0) { return setArmMode(on ? CAM_ARMED_AWAY : CAM_DISARMED, from, minutes); }
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
@@ -385,8 +390,10 @@ class SensorCamServer {
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
   void interruptPastEvent(uint32_t now);
   bool quietNow(int id) const;
-  bool disarmedFor(const SensorReport& r, uint32_t now) const;  // the report happened while disarmed
-  uint32_t disarmedAt_ = 0;
+  // How an alert is logged when the arm mode holds it back from the NVR, or CAM_EVENT_REPORT when it counts.
+  CamEventKind heldAs(int id, const SensorReport& r, uint32_t now) const;
+  // When perimeter sensors stopped counting (the hub was disarmed), and interior ones (it left armed away).
+  uint32_t perimeterOffAt_ = 0, interiorOffAt_ = 0;
   // A timed disarm: when it ends on the millisecond clock, known when it began in this run.
   bool disarmEndKnown_ = false;
   uint32_t disarmEndsAt_ = 0;
@@ -443,7 +450,7 @@ class SensorCamServer {
     uint32_t ackSince = 0;
     bool online = false;
     int discovery = 0;  // the next discovery message; -1 once all are sent
-    bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false;
+    bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false, hubHome = false;
     int64_t hubUntil = 0;
     bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
     bool subscribed = false;  // to the arm switch's commands

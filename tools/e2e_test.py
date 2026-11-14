@@ -538,6 +538,13 @@ def mqtt_tests(sensor_alert, sensor_clear):
     broker.send(f'{base}/armed/set', b'ARM_AWAY')
     on = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
     check('Home Assistant can arm the hub', on['armed'] is True and not on['timed'], on)
+    broker.send(f'{base}/armed/set', b'ARM_HOME')
+    home = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['mode'] == 'home')
+    check('Home Assistant can arm the hub home', home['mode'] == 'home', home)
+    check('the panel shows it armed home', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_home'))
+    check('the panel offers arming home', 'arm_home' in panel.get('supported_features', []) and panel.get('payload_arm_home') == 'ARM_HOME', panel)
+    broker.send(f'{base}/armed/set', b'ARM_AWAY')
+    poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['mode'] == 'away')
     broker.send(f'{base}/armed/set', b'OFF')  # what the switch of earlier firmware sent
     check('the switch of earlier firmware still works', poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)['armed'] is False)
     broker.send(f'{base}/armed/set', b'ON')
@@ -580,6 +587,34 @@ def arm_tests():
     get(f'/sensor?{sid(1)}')
     check('armed, an alert reaches the NVR again', name(1) in status()['active'], status())
     clear(1)
+
+    # Armed home: interior sensors are logged but not sent to the NVR; perimeter ones count as ever.
+    check('a bad zone is refused', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=garden')[0] == 400)
+    check('a sensor can be marked interior', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=interior')[0] == 200)
+    zoned = [s for n in json.loads(api('GET', '/api/tree')[1])['nodes'] for s in n['sensors'] if f"{n['mac']}/{s['input']}" == name(2)]
+    check('the sensor list shows it interior', zoned and zoned[0]['interior'] is True, zoned)
+    check('a bad mode is refused', api('POST', '/api/arm', 'mode=party')[0] == 400)
+    check('the hub can be armed home', api('POST', '/api/arm', 'mode=home')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['mode'] == 'home')
+    newest = event_list()[0]
+    check('arming home is logged', newest['event'] == 'armed home' and newest['detail'] == 'the web page', newest)
+    check('/status says armed home', status()['mode'] == 'home' and status()['armed'] is True)
+    get(f'/sensor?{sid(2)}')
+    newest = event_list()[0]
+    check('armed home, an interior alert is logged as that', newest['sensor'] == name(2) and newest['kind'] == 13 and newest['event'] == 'alert while armed home', newest)
+    check('and is not sent to the NVR', name(2) not in status()['active'], status())
+    clear(2)
+    get(f'/sensor?{sid(1)}')
+    check('armed home, a perimeter alert reaches the NVR', name(1) in status()['active'], status())
+    clear(1)
+    get(f'/sensor?{sid(2)}&age=500')  # it happened while the hub was armed away
+    check('an interior alert from before arming home still reaches the NVR', wait_until(lambda: name(2) in status()['active'], timeout=20), status())
+    clear(2)
+    api('POST', '/api/arm', 'mode=disarmed&for=0')
+    get(f'/sensor?{sid(1)}&age=3')  # it happened while armed home, a moment before the disarm
+    check('a perimeter alert from before the disarm, while armed home, still reaches the NVR', wait_until(lambda: name(1) in status()['active'], timeout=20), status())
+    clear(1)
+    api('POST', '/api/arm', 'mode=away')
+    api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=perimeter')
 
     # A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched.
     check('a disarm longer than a week is refused', api('POST', '/api/arm', 'armed=0&for=10081')[0] == 400)

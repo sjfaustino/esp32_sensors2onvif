@@ -309,6 +309,12 @@ static void a_timed_disarm_ends_safely_after_a_restart() {
   TEST_ASSERT_EQUAL_STRING("1 day", camMinutesText(1440).c_str());
   TEST_ASSERT_EQUAL_STRING("7 days", camMinutesText(10080).c_str());
   TEST_ASSERT_TRUE(camBackupValueValid("net.rearm", "720"));
+  CamSensorSettings zone;  // the zone, and that it is kept with the other settings
+  TEST_ASSERT_TRUE(camParseSensorSettings("hold=20\nzone=interior\n", zone));
+  TEST_ASSERT_TRUE(zone.interior);
+  TEST_ASSERT_EQUAL_STRING("hold=20\nzone=interior\n", camSensorSettingsText(zone).c_str());
+  TEST_ASSERT_TRUE(camParseSensorSettings("zone=perimeter\n", zone) && !zone.interior);
+  TEST_ASSERT_FALSE(camParseSensorSettings("zone=garden\n", zone));
   TEST_ASSERT_FALSE(camBackupValueValid("net.rearm", "10081"));
 }
 

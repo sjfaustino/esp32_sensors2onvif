@@ -78,8 +78,13 @@ that happened before the disarm still goes through, and so does one whose time i
 logged as hub events, with where they came from. The setting survives restarts and resets to armed with the other
 settings; it is not in backups, so restoring one never disarms the hub.
 
+The hub can also be **armed home**, for when someone is in: each sensor's Alert settings mark it as perimeter, the
+default, or interior. Armed home, an interior sensor's alerts are logged as "alert while armed home" but not sent to the
+NVR, while perimeter sensors count as when armed away. A late report counts if what it reports happened while its sensor
+still counted: for an interior sensor, before the hub left armed away; for a perimeter one, before it was disarmed.
+
 A disarm can last a set time, from 30 minutes to a day, after which the hub arms itself again and logs "armed" from the
-re-arm timer, so forgetting to arm it cannot leave the house unwatched. The Sensors page asks how long each time;
+re-arm timer, armed away, so forgetting to arm it cannot leave the house unwatched. The Sensors page asks how long each time;
 **A disarm from Home Assistant lasts** sets how long one from Home Assistant does. "Until armed again" turns the timer
 off. A timed disarm survives a restart, but if the hub cannot tell how much of it is left, because its clock was not set
 when the disarm began or is not set within two minutes of the restart, it arms itself at once.
@@ -108,7 +113,8 @@ Home Assistant then shows:
 
 - **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, an Alarm panel, and
   an Events entity for the hub's own events: `hub started`, `network lost`, `NVR not listening`, `NVR listening again`,
-  `armed` and `disarmed`. The Alarm panel shows disarmed, armed away, or triggered while an alert is on, works with
+  `armed`, `armed home` and `disarmed`. The Alarm panel arms away or home and shows disarmed, armed away, armed home,
+  or triggered while an alert is on, works with
   Home Assistant's alarm cards and keypads, and asks for no code, so limit who can use it in Home Assistant. A disarm from
   it lasts the hub's re-arm time, and the hub state's `rearm_at` says when it ends. Anyone who can publish to the broker
   can use the panel too, so give the broker a login. The Armed switch of earlier firmware is taken away.
@@ -129,6 +135,98 @@ not shown as alerts, since they are not happening now; they arrive as `delayed a
 The topics are under `sensors2onvif/<serial number>/`, and the discovery messages under `homeassistant/`. A sensor
 deleted on the hub is taken away from Home Assistant too, unless the hub restarts before it next reaches the broker; then
 delete it in Home Assistant.
+
+### Automations to start from
+
+Home Assistant names each entity after its device and itself, such as `alarm_control_panel.esp_alarmhub_alarm` for
+the hub's panel and `event.sensor_02_00_00_00_77_01_1_events` for a sensor's events; check yours under Settings >
+Devices & services > MQTT, and replace the names below. `notify.mobile_app_phone` is the Home Assistant app on your
+phone. Paste each under Settings > Automations & scenes > Create automation > Edit in YAML.
+
+The hub gone, which it cannot report itself: a power cut, a crash, or someone keeping it off the network.
+
+```yaml
+alias: Alarm hub offline
+triggers:
+  - trigger: state
+    entity_id: alarm_control_panel.esp_alarmhub_alarm
+    to: unavailable
+    for: "00:02:00"
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      title: Alarm hub offline
+      message: The hub has been off the network for 2 minutes. Alerts are not reaching the NVR.
+```
+
+An alert while armed, saying which sensor. List each sensor's events entity.
+
+```yaml
+alias: Alarm alert
+triggers:
+  - trigger: state
+    entity_id:
+      - event.sensor_02_00_00_00_77_01_1_events
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type in ['alert', 'delayed alert'] }}"
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      title: Alarm
+      message: "{{ trigger.to_state.attributes.message }}"
+```
+
+Problems: a sensor silent, on a low battery or a weak signal, an alert the NVR missed, or the NVR not listening.
+
+```yaml
+alias: Alarm problem
+triggers:
+  - trigger: state
+    entity_id:
+      - event.sensor_02_00_00_00_77_01_1_events
+      - event.esp_alarmhub_events
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.attributes.event_type in ['went silent', 'low battery', 'weak signal',
+         'alert not delivered', 'delayed alert not delivered', 'NVR not listening'] }}
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      title: Alarm problem
+      message: "{{ trigger.to_state.attributes.message }}"
+```
+
+Armed away when everyone has left, and armed home late at night if still disarmed. Disarming is left to a person on
+purpose: a phone's location can be wrong.
+
+```yaml
+alias: Arm when everyone leaves
+triggers:
+  - trigger: numeric_state
+    entity_id: zone.home
+    below: 1
+actions:
+  - action: alarm_control_panel.alarm_arm_away
+    target:
+      entity_id: alarm_control_panel.esp_alarmhub_alarm
+---
+alias: Arm home at night
+triggers:
+  - trigger: time
+    at: "23:30:00"
+conditions:
+  - condition: state
+    entity_id: alarm_control_panel.esp_alarmhub_alarm
+    state: disarmed
+actions:
+  - action: alarm_control_panel.alarm_arm_home
+    target:
+      entity_id: alarm_control_panel.esp_alarmhub_alarm
+```
+
+The last block holds two automations; paste each part separately.
 
 ## ONVIF thumbnails
 

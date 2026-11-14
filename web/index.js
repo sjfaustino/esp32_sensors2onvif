@@ -328,7 +328,7 @@
       sysTimer = setInterval(() => loadMqtt(false), 3000);
     }
   }
-  // Armed or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
+  // Armed away, armed home, or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
   // A disarm can last a while and then end by itself, so forgetting to arm again cannot leave the house unwatched.
   const DISARM_TIMES = [
     [30, "30 minutes"],
@@ -344,7 +344,7 @@
     $(id).replaceChildren(
       ...DISARM_TIMES.map(([m, t]) => el("option", { value: m, textContent: (id == "armFor" ? "for " : "") + t })),
     );
-  let armWasArmed = null;
+  let armWasMode = null;
   function timeLeft(s) {
     const m = Math.ceil(s / 60);
     return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
@@ -352,44 +352,47 @@
   async function loadArm() {
     try {
       const a = await call("GET", "/api/arm");
-      $("armState").textContent = a.armed
-        ? "armed"
-        : "disarmed" +
-          (!a.timed
-            ? " until armed again"
-            : a.left_s != null
-              ? ", arms again in " + timeLeft(a.left_s)
-              : ", arms again soon") +
-          ": alerts are logged but not sent to the NVR";
-      if (armWasArmed !== a.armed) $("armFor").value = a.rearm; // only when the state changes, so a choice being made stays
-      armWasArmed = a.armed;
+      $("armState").textContent =
+        a.mode == "away"
+          ? "armed away: every sensor counts"
+          : a.mode == "home"
+            ? "armed home: interior sensors are logged but not sent to the NVR"
+            : "disarmed" +
+              (!a.timed
+                ? " until armed again"
+                : a.left_s != null
+                  ? ", arms again in " + timeLeft(a.left_s)
+                  : ", arms again soon") +
+              ": alerts are logged but not sent to the NVR";
+      if (armWasMode !== a.mode) $("armFor").value = a.rearm; // only when the mode changes, so a choice being made stays
+      armWasMode = a.mode;
       if (document.activeElement != $("rearmDefault")) $("rearmDefault").value = a.rearm;
-      $("armFor").hidden = !a.armed;
-      $("armBtn").textContent = a.armed ? "Disarm" : "Arm";
-      $("armBtn").hidden = false;
-      $("armBtn").dataset.armed = a.armed ? "1" : "0";
-      $("armWarn").hidden = a.armed;
+      $("armAway").disabled = a.mode == "away";
+      $("armHome").disabled = a.mode == "home";
+      $("armWarn").hidden = a.mode != "disarmed";
     } catch (e) {}
   }
-  $("armBtn").onclick = async () => {
-    const arm = $("armBtn").dataset.armed != "1",
-      minutes = $("armFor").value,
+  async function setMode(mode, minutes) {
+    try {
+      await call("POST", "/api/arm", "mode=" + mode + "&for=" + (minutes || 0));
+    } catch (e) {
+      alert(e.message);
+    }
+    loadArm();
+  }
+  $("armAway").onclick = () => setMode("away");
+  $("armHome").onclick = () => setMode("home");
+  $("disarmBtn").onclick = () => {
+    const minutes = $("armFor").value,
       how = DISARM_TIMES.find(([m]) => m == minutes)[1];
     if (
-      !arm &&
-      !confirm(
+      confirm(
         "Disarm the hub " +
           (minutes == 0 ? how : "for " + how) +
           "? Alerts will be logged but not sent to the NVR, so nothing is recorded.",
       )
     )
-      return;
-    try {
-      await call("POST", "/api/arm", "armed=" + (arm ? 1 : 0) + "&for=" + minutes);
-    } catch (e) {
-      alert(e.message);
-    }
-    loadArm();
+      setMode("disarmed", minutes);
   };
   $("rearmDefault").onchange = async () => {
     try {
@@ -575,7 +578,7 @@
           }
           if (n.name) await add(base + "/name.txt");
           await add(base + "/text.json");
-          if (n.hold || n.quiet) await add(base + "/settings.txt");
+          if (n.hold || n.quiet || n.interior) await add(base + "/settings.txt");
         }
       }
       const a = el("a", {

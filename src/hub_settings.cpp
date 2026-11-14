@@ -88,6 +88,7 @@ void loadSettings() {
     s.mqtt.password = p.getString("mqpw", "").c_str();
     s.armed = p.getBool("armed", true);
     s.disarmedUntil = s.armed ? 0 : p.getLong64("armuntil", 0);
+    s.armedHome = s.armed && p.getBool("armhome", false);
     s.rearmMinutes = p.getUShort("rearm", 0);
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
@@ -206,8 +207,10 @@ bool storeMqtt(const CamMqtt& m) {
   });
 }
 
-bool storeArmed(bool on, int64_t until) {
-  return withPrefs("net", [on, until](Preferences& p) { return p.putLong64("armuntil", until) == 8 && p.putBool("armed", on) == 1; });
+bool storeArmed(bool on, bool home, int64_t until) {
+  return withPrefs("net", [on, home, until](Preferences& p) {
+    return p.putLong64("armuntil", until) == 8 && p.putBool("armhome", home) == 1 && p.putBool("armed", on) == 1;
+  });
 }
 
 bool storeRearm(uint32_t minutes) {

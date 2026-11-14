@@ -17,6 +17,7 @@ struct HubSettings {
   CamWebhook webhook;
   CamMqtt mqtt;
   bool armed = true;  // not in backups, so restoring one never disarms the hub
+  bool armedHome = false;
   int64_t disarmedUntil = 0;  // a timed disarm's end: see camTimedDisarmOver
   uint16_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
   bool healthAlarm = false;
@@ -48,7 +49,7 @@ bool storeHealthAlarm(bool on);
 bool storeEspNowUnsigned(bool on);
 bool storeWebhook(const CamWebhook& w);
 bool storeMqtt(const CamMqtt& m);
-bool storeArmed(bool on, int64_t until);
+bool storeArmed(bool on, bool home, int64_t until);
 bool storeRearm(uint32_t minutes);
 bool resetSettings();  // erases everything except what the sensors need to keep reporting
 

@@ -81,7 +81,7 @@ bool SensorCamServer::begin() {
     for (int i = 7; i >= 0; i--) t = t << 8 | (uint8_t)alive[i];
     lastAlive_ = (time_t)(int64_t)t;
   }
-  beganAt_ = nvrSeenAt_ = disarmedAt_ = millis_();
+  beganAt_ = nvrSeenAt_ = perimeterOffAt_ = interiorOffAt_ = millis_();
   subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
   return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }

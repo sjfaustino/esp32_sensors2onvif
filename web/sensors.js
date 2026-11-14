@@ -181,10 +181,17 @@ function settingsPanel(base, n) {
   const from = el("input", { type: "time", value: n.quiet ? hm(n.quiet[0]) : "" }),
     to = el("input", { type: "time", value: n.quiet ? hm(n.quiet[1]) : "" });
   const minutes = (v) => (v ? Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5)) : "");
+  const zone = el(
+    "select",
+    null,
+    el("option", { value: "perimeter", textContent: "perimeter: watched whenever the hub is armed" }),
+    el("option", { value: "interior", textContent: "interior: not watched while the hub is armed home" }),
+  );
+  zone.value = n.interior ? "interior" : "perimeter";
   return el(
     "details",
     null,
-    el("summary", { textContent: "Alert settings" + (n.hold || n.quiet ? " (changed)" : "") }),
+    el("summary", { textContent: "Alert settings" + (n.hold || n.quiet || n.interior ? " (changed)" : "") }),
     el("p", null, "An alert lasts ", hold, " seconds. Empty uses the hub's default."),
     el(
       "p",
@@ -195,6 +202,13 @@ function settingsPanel(base, n) {
       to,
       ". During quiet hours alerts are logged but not sent to the NVR or to Notifications. Leave both empty for none.",
     ),
+    el(
+      "p",
+      null,
+      "Zone: ",
+      zone,
+      ". Mark the sensors inside the house as interior, so the hub can be armed home at night.",
+    ),
     el("button", {
       textContent: "Save alert settings",
       onclick: () =>
@@ -203,7 +217,14 @@ function settingsPanel(base, n) {
             call(
               "POST",
               "/api/sensor-settings?path=" + base,
-              "hold=" + hold.value + "&from=" + minutes(from.value) + "&to=" + minutes(to.value),
+              "hold=" +
+                hold.value +
+                "&from=" +
+                minutes(from.value) +
+                "&to=" +
+                minutes(to.value) +
+                "&zone=" +
+                zone.value,
             ),
           "Saved the alert settings",
         ),
