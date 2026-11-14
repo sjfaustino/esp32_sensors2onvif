@@ -16,8 +16,8 @@ struct SensorTarget {
   uint8_t direction = 0;
 };
 
-// One report from a device. On the air, little-endian, 13 + 3 * targetCount bytes:
-// version (1), input (1-255), active (0/1), battery %, counter (u32), age seconds (u32),
+// One report from a device. On the air, little-endian, 13 + 3 * targetCount bytes and the signature:
+// CAM_REPORT, input (1-255), active (0/1), battery %, counter (u32), age seconds (u32),
 // target count (0-3), then for each target distance cm (u16) and direction (0-4).
 struct SensorReport {
   uint8_t input = 1;
@@ -29,13 +29,13 @@ struct SensorReport {
   SensorTarget targets[CAM_MAX_TARGETS];
 };
 
-// Reads version 1 and 2 messages. It does not check a version 2 signature; camCheckPacket does.
-bool parseSensorPacket(const uint8_t* data, int len, SensorReport& out);
-
-// Version 2 is version 1 followed by an 8-byte signature: the first 8 bytes of HMAC-SHA1, keyed with the hub's
-// ESP-NOW key, over the sender's MAC address (6 bytes) and then the message before the signature.
+// A report on the air: CAM_REPORT, then the fields above, then an 8-byte signature: the first 8 bytes of HMAC-SHA1, keyed
+// with the hub's ESP-NOW key or the node's own, over the sender's MAC address (6 bytes) and then the bytes before the
+// signature. parseSensorPacket reads it without checking the signature; camCheckPacket checks it too.
+const uint8_t CAM_REPORT = 2;
 const int CAM_SIGNATURE_LEN = 8;
-enum CamPacketCheck { CAM_PACKET_INVALID, CAM_PACKET_UNSIGNED, CAM_PACKET_SIGNED, CAM_PACKET_BAD_SIGNATURE };
+bool parseSensorPacket(const uint8_t* data, int len, SensorReport& out);
+enum CamPacketCheck { CAM_PACKET_INVALID, CAM_PACKET_SIGNED, CAM_PACKET_BAD_SIGNATURE };
 CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, SensorReport& out);
 // The signature for a message of len bytes, without its own signature. For senders and tests.
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);

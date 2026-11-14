@@ -13,7 +13,6 @@ struct HubSettings {
   String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
   String pairingKey;  // the hub's X25519 private key, for pairing nodes; made once, kept by a reset, and in backups
   String snapshotKey;  // keys the snapshot address's token; never shown, and not in backups
-  bool espNowUnsigned = false;
   CamWebhook webhook;
   CamMqtt mqtt;
   CamArmMode armMode = CAM_ARMED_AWAY;  // not in backups, so restoring one never disarms the hub
@@ -45,7 +44,6 @@ bool storeNvr(const std::string& ip);
 bool storeAddress(const CamAddress& a, const String& network);  // a fixed address for that network, or DHCP
 void forgetStatic();
 bool storeHealthAlarm(bool on);
-bool storeEspNowUnsigned(bool on);
 bool storeWebhook(const CamWebhook& w);
 bool storeMqtt(const CamMqtt& m);
 bool storeArmed(CamArmMode mode, int64_t until);

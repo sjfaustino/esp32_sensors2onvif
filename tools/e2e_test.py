@@ -754,10 +754,6 @@ def pairing_tests():
     control('end-alerts')
     control(f'radio-raw {mac} {report(2, 8, b"test-espnow-key-0123456789").hex()}')
     check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
-    api('POST', '/api/espnow', 'unsigned=1')
-    control(f'radio-raw {mac} {bytes([1, 2, 1, 80, 9, 0, 0, 0, 0, 0, 0, 0, 0]).hex()}')
-    api('POST', '/api/espnow', 'unsigned=0')
-    check('and so is an unsigned one, even when unsigned messages are allowed', node_row(2).get('refusal') == 'not signed', node_row(2))
     check('the ESP-NOW page shows the node has its own key', node_row(1).get('paired') is True)
 
     other = X25519PrivateKey.generate()
@@ -1088,15 +1084,7 @@ def test_replacement_all_clear(files):
 def test_signed_messages(node_entry, radio):
     # Signed messages.
     info = radio()
-    check('the ESP-NOW page shows the key, and that unsigned messages are refused', info['key'] == 'test-espnow-key-0123456789' and info['unsigned'] is False, info)
-    before = node_entry(radio())
-    control('radio-unsigned')
-    after = node_entry(radio())
-    check('an unsigned message is refused', after['refused'] == before['refused'] + 1 and after['refusal'] == 'not signed' and after['counter'] == before['counter'], after)
-    check('unsigned messages can be allowed', api('POST', '/api/espnow', 'unsigned=1')[0] == 200 and radio()['unsigned'] is True)
-    control('radio-unsigned')
-    check('an unsigned message is accepted when allowed', node_entry(radio())['counter'] != after['counter'] and node_entry(radio())['refused'] == after['refused'], node_entry(radio()))
-    api('POST', '/api/espnow', 'unsigned=0')
+    check('the ESP-NOW page shows the key', info['key'] == 'test-espnow-key-0123456789', info)
     control('last-sent')
     control('radio-forged')
     check('a message signed with another key is refused', node_entry(radio())['refusal'] == 'wrong signature', node_entry(radio()))

@@ -77,7 +77,6 @@ void loadSettings() {
       s.snapshotKey = randomHex(4);
       p.putString("snapkey", s.snapshotKey);
     }
-    s.espNowUnsigned = p.getBool("enuns", false);
     s.webhook.url = p.getString("hook", "").c_str();
     s.webhook.text = p.getBool("hooktx", false);
     s.webhook.alerts = p.getBool("hookal", true);
@@ -193,10 +192,6 @@ bool storeHealthAlarm(bool on) {
   return withPrefs("net", [on](Preferences& p) { return p.putBool("hlth", on) == 1; });
 }
 
-bool storeEspNowUnsigned(bool on) {
-  return withPrefs("net", [on](Preferences& p) { return p.putBool("enuns", on) == 1; });
-}
-
 bool storeWebhook(const CamWebhook& w) {
   return withPrefs("net", [&w](Preferences& p) {
     return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1;
@@ -242,7 +237,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "rtsp", 'u'},     {"net", "name", 's'},      {"net", "webpw", 's'},   {"net", "token", 's'},      {"net", "ipfor", 's'}, {"net", "ip", 's'},
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
-    {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
+    {"net", "enkey", 's'},   {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
     {"net", "pairkey", 's'}, {"net", "rearm", 'u'},   {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
 };
 

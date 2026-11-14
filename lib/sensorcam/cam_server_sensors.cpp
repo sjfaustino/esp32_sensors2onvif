@@ -300,9 +300,7 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   Health& h = health_[id - 1];
   // The report number is never a reason to refuse a correctly signed report: a sensor that restarts its count must
   // not lose an alert. The price is that a recorded report could be played back to make a false alert.
-  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                                ? "wrong signature"
-                        : check == CAM_PACKET_UNSIGNED && (paired || !cfg_.espNowUnsigned) ? "not signed"
-                                                                                           : nullptr;
+  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE ? "wrong signature" : nullptr;
   if (refusal) {
     h.refused++;
     h.refusal = refusal;

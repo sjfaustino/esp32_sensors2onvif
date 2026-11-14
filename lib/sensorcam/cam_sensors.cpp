@@ -10,8 +10,8 @@ static const int TARGET_LEN = 3;
 static uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
 
 bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
-  if (len < 1 || (d[0] != 1 && d[0] != 2)) return false;
-  if (d[0] == 2) len -= CAM_SIGNATURE_LEN;
+  if (len < 1 || d[0] != CAM_REPORT) return false;
+  len -= CAM_SIGNATURE_LEN;
   if (len < HEADER_LEN || d[1] == 0 || d[2] > 1 || d[12] > CAM_MAX_TARGETS) return false;
   if (len != HEADER_LEN + d[12] * TARGET_LEN) return false;
   SensorReport r;
@@ -44,7 +44,6 @@ std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, 
 
 CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
   if (!parseSensorPacket(d, len, out)) return CAM_PACKET_INVALID;
-  if (d[0] == 1) return CAM_PACKET_UNSIGNED;
   uint8_t expected[20];
   signature(mac, d, len - CAM_SIGNATURE_LEN, key, expected);
   uint8_t differ = 0;  // every byte is compared, so the time taken does not reveal how much matched

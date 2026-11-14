@@ -716,7 +716,6 @@
         ["WiFi channel", j.channel],
         ["ESP-NOW key", j.key],
       ]);
-      $("espUnsigned").checked = j.unsigned;
       const STATES = {
         active: "Active",
         idle: "Idle",
@@ -873,9 +872,6 @@
   }
   $("espAlarm").onchange = (e) => {
     call("POST", "/api/alerts", "alarm=" + (e.target.checked ? 1 : 0)).catch(() => {});
-  };
-  $("espUnsigned").onchange = (e) => {
-    call("POST", "/api/espnow", "unsigned=" + (e.target.checked ? 1 : 0)).catch(() => {});
   };
   const DIRECTIONS = ["", "approaching", "moving away", "left to right", "right to left"];
   // The same wording as the hub's own messages: "7 min", "2 h 13 min", "3 days 4 h".

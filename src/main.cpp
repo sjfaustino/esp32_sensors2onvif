@@ -280,8 +280,6 @@ static CamConfig makeConfig() {
   c.startReason = lastRestartText();
   c.snapshotSecret = settings.snapshotKey.c_str();
   c.extraHosts = settings.extraHosts.c_str();
-  c.espNowUnsigned = settings.espNowUnsigned;
-  c.espNowSave = storeEspNowUnsigned;
   c.webhook = settings.webhook;
   c.webhookSave = storeWebhook;
   c.mqtt = settings.mqtt;

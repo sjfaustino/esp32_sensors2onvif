@@ -360,11 +360,11 @@ on LittleFS.
 ## Sensor input over ESP-NOW
 
 Each device sends this message unicast to the MAC address the serial console prints. It is little-endian and 13 bytes,
-plus 3 for each target, plus the 8-byte signature in version 2.
+plus 3 for each target, plus the 8-byte signature.
 
 | Bytes | Field |
 |---|---|
-| 1 | Version: `2` signed, `1` unsigned |
+| 1 | `2`, a report |
 | 1 | Input number on the device, starting at `1` |
 | 1 | Active: `1` active, `0` inactive |
 | 1 | Battery percent, `0xFF` when unknown or mains powered. Other values above 100 also count as unknown. |
@@ -373,7 +373,7 @@ plus 3 for each target, plus the 8-byte signature in version 2.
 | 1 | Number of targets, `0` to `3` |
 | 2 per target | Distance in cm, `0xFFFF` when unknown |
 | 1 per target | Direction: `0` unknown, `1` approaching, `2` moving away, `3` left to right, `4` right to left |
-| 8 | Version 2 only: the first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key as text, over the sender's 6-byte MAC address followed by every byte above |
+| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key as text, over the sender's 6-byte MAC address followed by every byte above |
 
 The hub only accepts a device and input that have a folder on LittleFS.
 
@@ -414,21 +414,18 @@ so whoever watches the recording can tell it did not happen at that moment. Each
 filed at its arrival time; `GET /events` gives the true times.
 
 The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
-carried in backups. The hub refuses a version 2 message with a wrong signature; the ESP-NOW page counts these. The report
+carried in backups. The hub refuses a message with a wrong signature or none; the ESP-NOW page counts those it can read. The report
 number is never a reason to refuse a correctly signed message, so a sensor that restarts its count, or loses it with a
 battery change, is never ignored. It is used only to ignore a resend: the same number and state again within a minute.
 The cost is that someone who records a sensor's message could play it back later to make a false alert, though not a
 false all-clear, because a clear report never ends an alert. A missed intruder is worse than a false alert.
-
-Version 1 messages carry no signature, so anything within radio range that knows a listed MAC address could send a false
-alert. The hub refuses them unless **Also accept unsigned messages** is ticked on the ESP-NOW page.
 
 ### Pairing a node
 
 A node can instead pair with the hub: it finds the hub by itself and gets a key of its own, which no one listening to the
 radio can learn, and nothing secret is typed in or printed. Its reports and confirmations are then exactly as above, but
 signed with its own 20-byte key instead of the ESP-NOW key, and the hub accepts only that key from it, never the shared
-one and never an unsigned message. A stolen node then gives away its own key only.
+one. A stolen node then gives away its own key only.
 
 The node makes an X25519 key pair (RFC 7748) when it is first set up, keeps the private key, and has the fingerprint of
 its public key on a label: the first 6 bytes of the public key's SHA-1, in upper-case hex, as `4F2A-91C7-03BD`. To pair:

@@ -39,13 +39,13 @@ void* operator new(size_t n) {
 void operator delete(void* p) noexcept { free(p); }
 void operator delete(void* p, size_t) noexcept { free(p); }
 
-// Sends a report the way a sensor node would: version 2 signs it, version 1 does not.
-static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key, bool active = false) {
+// Sends a report the way a sensor node would, signed with key.
+static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, const char* key, bool active = false) {
   uint8_t mac[6] = {2, 0, 0, 0, 0, last};
-  uint8_t p[13 + 8] = {(uint8_t)version, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
-  if (version == 2) memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
+  uint8_t p[13 + 8] = {CAM_REPORT, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
+  memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
   HubCall call;
-  hub->espNowPacket(mac, p, version == 2 ? 21 : 13, rssi);
+  hub->espNowPacket(mac, p, sizeof(p), rssi);
 }
 
 // The test's controls, which only this build has: one command per line on standard input, each answered with
@@ -91,16 +91,15 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     hub.espNowPacket(from, bytes, (int)data.size() / 2, -55);
   } else if (command.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
     uint8_t node = command == "radio-unknown" ? 0x99 : 1;
-    if (command == "radio-huge") radio(&hub, node, 2147483700UL, 55, -61, 2, ESPNOW_KEY);  // above the largest signed 32-bit number
-    else if (command == "radio-unsigned") radio(&hub, node, counter++, 55, -61, 1, "");
-    else if (command == "radio-forged") radio(&hub, node, counter++, 55, -61, 2, "not-the-key");
-    else if (command == "radio-old") radio(&hub, node, counter - 10, 55, -61, 2, ESPNOW_KEY);
-    else if (command == "radio-alert") radio(&hub, node, counter++, 55, -61, 2, ESPNOW_KEY, true);
-    else if (command == "radio-restart-alert") radio(&hub, node, 1, 55, -61, 2, ESPNOW_KEY, true);  // a sensor that restarted, firing
+    if (command == "radio-huge") radio(&hub, node, 2147483700UL, 55, -61, ESPNOW_KEY);  // above the largest signed 32-bit number
+    else if (command == "radio-forged") radio(&hub, node, counter++, 55, -61, "not-the-key");
+    else if (command == "radio-old") radio(&hub, node, counter - 10, 55, -61, ESPNOW_KEY);
+    else if (command == "radio-alert") radio(&hub, node, counter++, 55, -61, ESPNOW_KEY, true);
+    else if (command == "radio-restart-alert") radio(&hub, node, 1, 55, -61, ESPNOW_KEY, true);  // a sensor that restarted, firing
     else if (command == "radio-weak")
-      for (int i = 0; i < 10; i++) radio(&hub, node, counter++, 55, -90, 2, ESPNOW_KEY);
+      for (int i = 0; i < 10; i++) radio(&hub, node, counter++, 55, -90, ESPNOW_KEY);
     else if (command == "radio-known" || command == "radio-unknown" || command == "radio-low")
-      radio(&hub, node, counter++, command == "radio-low" ? 10 : 55, -61, 2, ESPNOW_KEY);
+      radio(&hub, node, counter++, command == "radio-low" ? 10 : 55, -61, ESPNOW_KEY);
     else return false;
   } else {
     return false;
@@ -202,7 +201,6 @@ int main(int argc, char** argv) {
     used = sum(CamStorage(storageFolder), "");
     total = diskTotal > used ? diskTotal : used;
   };
-  cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
   cfg.mqttSave = [](const CamMqtt&) { return true; };
   cfg.armedSave = [](CamArmMode, int64_t) { return true; };

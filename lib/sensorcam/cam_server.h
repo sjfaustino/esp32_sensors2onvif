@@ -130,13 +130,11 @@ struct CamConfig {
   std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
-  std::string espNowKey;                    // signs version 2 ESP-NOW messages from nodes not paired
+  std::string espNowKey;                    // signs the ESP-NOW messages of nodes not paired
   std::string pairingKey;                   // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
   std::function<int()> wifiChannel;         // told to nodes in the pairing answer
   // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
   std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
-  bool espNowUnsigned = false;              // also accept unsigned version 1 messages
-  std::function<bool(bool)> espNowSave;     // stores espNowUnsigned
   CamWebhook webhook;
   std::function<bool(const CamWebhook&)> webhookSave;
   CamMqtt mqtt;

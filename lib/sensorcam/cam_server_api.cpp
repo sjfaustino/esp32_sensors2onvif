@@ -191,7 +191,7 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   if (key == "net.mqhost") return value.empty() || parseIpv4(value, ip);
   if (key == "net.rearm") return number && n >= 0 && n <= CAM_MAX_DISARM_MINUTES;
   if (key == "net.mquser" || key == "net.mqpw") return validMqttText(value);
-  if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.enuns" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
+  if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
   if (key == "net.enkey") return value.size() >= 16 && validToken(value);
   if (key == "net.pairkey") {
@@ -311,7 +311,7 @@ std::string SensorCamServer::espNowJson() {
   j.object();
   if (cfg_.espNowInfo) cfg_.espNowInfo(j);
   else j.str("mac", "").num("channel", 0);
-  j.str("key", cfg_.espNowKey).flag("unsigned", cfg_.espNowUnsigned).array("nodes");
+  j.str("key", cfg_.espNowKey).array("nodes");
   uint32_t now = millis_();
   for (int id = 1; id <= sensors_.count(); id++) {
     if (!slots_[id - 1].used) continue;
@@ -525,14 +525,10 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
   return true;
 }
 
-// ESP-NOW signing, per-sensor settings, the webhook and the full event history.
+// Per-sensor settings, the webhook and the full event history.
 bool SensorCamServer::apiSensors(const ApiRequest& r) {
   HttpConn& c = r.c;
-  if (r.is("POST", "/api/espnow")) {
-    bool on = queryParam(r.form(), "unsigned") == "1", ok = camCall(cfg_.espNowSave, on);
-    if (ok) cfg_.espNowUnsigned = on;
-    c.out = saved(ok, "could not save the setting");
-  } else if (r.is("POST", "/api/sensor-settings")) {
+  if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path"), form = r.form();
     std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to"), zone = queryParam(form, "zone");
     bool sensor = slotForPath(path) != 0;

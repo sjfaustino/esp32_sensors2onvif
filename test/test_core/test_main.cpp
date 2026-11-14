@@ -180,7 +180,6 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_FALSE(camBackupValueValid("net.hook", "http://homeassistant.local/x"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.hook", "http://192.168.1.10/a b"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.hookal", "1"));
-  TEST_ASSERT_FALSE(camBackupValueValid("net.enuns", "yes"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.token", "0123abcd"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.token", "a\"b"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.ip", "192.168.8.192"));
@@ -351,9 +350,9 @@ static void signed_messages_are_checked() {
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(other, p, sizeof(p), "key-1", r));  // copied to another node
   p[3] = 10;  // altered after signing
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "key-1", r));
-  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckPacket(mac, p, 13, "key-1", r));  // version 2 without its signature
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckPacket(mac, p, 13, "key-1", r));  // without its signature
   p[0] = 1;
-  TEST_ASSERT_EQUAL(CAM_PACKET_UNSIGNED, camCheckPacket(mac, p, 13, "key-1", r));
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckPacket(mac, p, sizeof(p), "key-1", r));  // not a report
 }
 
 static void sensor_settings_round_trip_and_refuse_bad_values() {
@@ -428,7 +427,7 @@ static void long_names_are_cut_between_characters() {
 }
 
 static void battery_outside_0_to_100_is_unknown() {
-  uint8_t p[] = {1, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0};
+  uint8_t p[] = {2, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // the last 8 stand for the signature
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(100, r.battery);
@@ -441,8 +440,8 @@ static void battery_outside_0_to_100_is_unknown() {
 }
 
 static void parses_report_with_no_targets() {
-  // version, input, active, battery, counter 0x01020304, age 300, no targets
-  const uint8_t p[] = {1, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0};
+  // a report, input, active, battery, counter 0x01020304, age 300, no targets, then 8 bytes for the signature, unchecked here
+  const uint8_t p[] = {2, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(2, r.input);
@@ -454,10 +453,11 @@ static void parses_report_with_no_targets() {
 }
 
 static void parses_three_targets_and_picks_nearest() {
-  const uint8_t p[] = {1, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 3,
+  const uint8_t p[] = {2, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 3,
                        0x90, 0x01, 1,    // 400 cm, approaching
                        0x96, 0x00, 2,    // 150 cm, moving away
-                       0xFF, 0xFF, 3};   // unknown distance
+                       0xFF, 0xFF, 3,    // unknown distance
+                       0, 0, 0, 0, 0, 0, 0, 0};  // the signature, unchecked here
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(3, r.targetCount);
@@ -468,11 +468,11 @@ static void parses_three_targets_and_picks_nearest() {
 }
 
 static void rejects_malformed_reports() {
-  const uint8_t good[] = {1, 1, 1, 80, 1, 0, 0, 0, 0, 0, 0, 0, 1, 10, 0, 1};
+  const uint8_t good[] = {2, 1, 1, 80, 1, 0, 0, 0, 0, 0, 0, 0, 1, 10, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(good, sizeof(good), r));
   uint8_t bad[sizeof(good)];
-  struct { int index; uint8_t value; } changes[] = {{0, 2}, {1, 0}, {2, 2}, {12, 4}, {12, 2}, {15, 5}};
+  struct { int index; uint8_t value; } changes[] = {{0, 1}, {0, 3}, {1, 0}, {2, 2}, {12, 4}, {12, 2}, {15, 5}};
   for (auto& c : changes) {
     memcpy(bad, good, sizeof(good));
     bad[c.index] = c.value;
