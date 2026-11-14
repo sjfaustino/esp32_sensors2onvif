@@ -305,7 +305,8 @@ class FakeBroker:
         self.server.bind((host, 0))
         self.server.listen(2)
         self.port = self.server.getsockname()[1]
-        self.connects, self.messages = [], []
+        self.connects, self.messages, self.subscriptions = [], [], []
+        self.conn = None  # the hub's connection, for sending it a command
         self.refuse = 0  # the CONNACK return code; 0 accepts
         self.drop_next_event = False
         threading.Thread(target=self._accept, daemon=True).start()
@@ -319,6 +320,7 @@ class FakeBroker:
                 c, _ = self.server.accept()
             except OSError:
                 return
+            self.conn = c
             threading.Thread(target=self._serve, args=(c,), daemon=True).start()
 
     @staticmethod
@@ -388,9 +390,20 @@ class FakeBroker:
                     self.drop_next_event = False
                     return False
                 c.sendall(bytes([0x40, 2, pid >> 8, pid & 0xFF]))
+        if kind == 8:  # SUBSCRIBE
+            pid = body[0] << 8 | body[1]
+            topic, pos = text(2)
+            self.subscriptions.append((topic.decode(), body[pos]))
+            c.sendall(bytes([0x90, 3, pid >> 8, pid & 0xFF, 0]))
         if kind == 12:  # PINGREQ
             c.sendall(b'\xd0\x00')
         return True
+
+    def send(self, topic, payload):
+        """Publishes to the hub at QoS 0, as Home Assistant's switch does."""
+        t = topic.encode()
+        body = bytes([len(t) >> 8, len(t) & 0xFF]) + t + payload
+        self.conn.sendall(bytes([0x30, len(body)]) + body)
 
     def latest(self, topic):
         found = [m for m in self.messages if m['topic'] == topic]
@@ -484,6 +497,27 @@ def mqtt_tests(sensor_alert, sensor_clear):
     removed = wait_until(lambda: broker.latest(gone_topic)['payload'] == b'' and (broker.latest(f'{base}/020000000098_1/state') or {}).get('payload') == b'')
     check('a sensor deleted is taken away from Home Assistant, with its retained state', removed, broker.latest(gone_topic))
 
+    # The Armed switch.
+    switch = wait_until(lambda: broker.latest(f'homeassistant/switch/{serial}/hub_armed/config'))
+    switch = json.loads(switch['payload']) if switch else {}
+    check('Home Assistant gets an Armed switch', switch.get('command_topic') == f'{base}/armed/set' and switch.get('state_topic') == f'{base}/hub/state', switch)
+    check('the hub listens for the switch', (f'{base}/armed/set', 0) in broker.subscriptions, broker.subscriptions)
+    check('the switch shows the hub armed', (broker.state(f'{base}/hub/state') or {}).get('armed') == 'ON', broker.state(f'{base}/hub/state'))
+    broker.send(f'{base}/armed/set', b'OFF')
+    off = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)
+    check('Home Assistant can disarm the hub', off['armed'] is False, off)
+    newest = event_list()[0]
+    check('disarming is logged, saying from where', newest['sensor'] == 'hub' and newest['event'] == 'disarmed' and newest['detail'] == 'Home Assistant', newest)
+    check('the switch shows the hub disarmed', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('armed') == 'OFF'))
+    sensor_alert(1)
+    held = wait_until(lambda: [e for e in broker.events(f'{base}/{key(1)}/event') if json.loads(e['payload'])['event_type'] == 'alert while disarmed'])
+    check('an alert while disarmed reaches Home Assistant as that event', held)
+    check('and the sensor does not turn on', (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'OFF', broker.state(f'{base}/{key(1)}/state'))
+    sensor_clear(1)
+    broker.send(f'{base}/armed/set', b'ON')
+    on = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
+    check('Home Assistant can arm the hub', on['armed'] is True, on)
+
     # A broker that refuses the login says why on the page.
     broker.refuse = 5
     api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=hub&password=')
@@ -495,6 +529,31 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('the MQTT settings need the web password', api('GET', '/api/mqtt', auth=False)[0] == 401)
     check('MQTT can be turned off', api('POST', '/api/mqtt', 'host=')[0] == 200 and poll(mqtt_page, lambda m: m['state'] == 'not set up')['state'] == 'not set up')
     broker.close()
+
+
+def arm_tests():
+    """Disarmed, alerts are logged but not sent to the NVR; one that happened before the disarm still is."""
+    check('arming needs the web password', api('POST', '/api/arm', 'armed=0', auth=False)[0] == 401)
+    check('a bad arm value is refused', api('POST', '/api/arm', 'armed=maybe')[0] == 400)
+    check('the hub can be disarmed', api('POST', '/api/arm', 'armed=0')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['armed'] is False)
+    newest = event_list()[0]
+    check('disarming from the page is logged', newest['event'] == 'disarmed' and newest['detail'] == 'the web page', newest)
+    check('/status says the hub is disarmed', status()['armed'] is False)
+    get(f'/sensor?{sid(1)}')
+    newest = event_list()[0]
+    check('an alert while disarmed is logged as that', newest['sensor'] == name(1) and newest['kind'] == 10 and newest['event'] == 'alert while disarmed', newest)
+    check('and is not sent to the NVR', name(1) not in status()['active'], status())
+    clear(1)
+    get(f'/sensor?{sid(2)}&age=500')  # it happened before the hub was disarmed, a moment ago
+    check('an alert from before the disarm still reaches the NVR', wait_until(lambda: name(2) in status()['active'], timeout=20), status())
+    clear(2)
+    get(f'/sensor?{sid(3)}&age=unknown')
+    check('so does one whose time is not known', wait_until(lambda: name(3) in status()['active'], timeout=20), status())
+    clear(3)
+    check('the hub can be armed again', api('POST', '/api/arm', 'armed=1')[0] == 200 and status()['armed'] is True)
+    get(f'/sensor?{sid(1)}')
+    check('armed, an alert reaches the NVR again', name(1) in status()['active'], status())
+    clear(1)
 
 
 def file_manager_tests(files, hub_files_free):
@@ -1152,6 +1211,7 @@ def main():
                 check('a new event changes the tag', events_tagged(tag)[0] == 200)
 
                 mqtt_tests(lambda n: get(f'/sensor?{sid(n)}'), clear)
+                arm_tests()
 
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')

@@ -283,6 +283,8 @@ static CamConfig makeConfig() {
   c.webhookSave = storeWebhook;
   c.mqtt = settings.mqtt;
   c.mqttSave = storeMqtt;
+  c.armed = settings.armed;
+  c.armedSave = storeArmed;
   c.firmwareVersion = FIRMWARE_VERSION;
   c.localMinute = [] {
     time_t now = time(nullptr);

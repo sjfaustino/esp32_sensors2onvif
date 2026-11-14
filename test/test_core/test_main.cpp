@@ -242,6 +242,19 @@ static void mqtt_packets_match_the_standard() {
   TEST_ASSERT_EQUAL(0, (int)camMqttPacketSize(ack, 1));
   TEST_ASSERT_EQUAL(-1, (int)camMqttPacketSize(broken, sizeof(broken)));
   TEST_ASSERT_EQUAL_STRING("c000", camHex((const uint8_t*)camMqttPing().data(), 2).c_str());
+  std::string s = camMqttSubscribe("t", 1);
+  TEST_ASSERT_EQUAL_STRING("8206" "0001" "000174" "00", camHex((const uint8_t*)s.data(), s.size()).c_str());
+  // A command from Home Assistant, at QoS 0 and at QoS 1, read back to its topic and payload.
+  for (uint16_t id : {0, 7}) {
+    std::string in = camMqttPublish("a/set", "OFF", false, id);
+    CamMqttMessage m;
+    TEST_ASSERT_TRUE(camMqttReadPublish((const uint8_t*)in.data(), in.size(), m));
+    TEST_ASSERT_EQUAL_STRING("a/set", std::string(m.topic, m.topicLen).c_str());
+    TEST_ASSERT_EQUAL_STRING("OFF", std::string(m.payload, m.payloadLen).c_str());
+    TEST_ASSERT_FALSE(camMqttReadPublish((const uint8_t*)in.data(), in.size() - 1, m));  // cut short
+  }
+  CamMqttMessage none;
+  TEST_ASSERT_FALSE(camMqttReadPublish(ack, 4, none));  // not a PUBLISH
   // The settings a backup may bring back.
   TEST_ASSERT_TRUE(camBackupValueValid("net.mqhost", "192.168.1.10"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.mqhost", ""));

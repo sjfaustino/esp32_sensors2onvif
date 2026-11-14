@@ -22,6 +22,9 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_NVR_BACK = 7,
   CAM_EVENT_HUB_STARTED = 8,
   CAM_EVENT_NETWORK_LOST = 9,  // the hub was off its Wi-Fi network for a while, without restarting
+  CAM_EVENT_DISARMED_ALERT = 10,  // an alert while the hub was disarmed: logged, not sent to the NVR
+  CAM_EVENT_ARMED = 11,           // hub events; the detail says from where
+  CAM_EVENT_DISARMED = 12,
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
 const char* camEventName(uint8_t kind, bool active, bool delayed);

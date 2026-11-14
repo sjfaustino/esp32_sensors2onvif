@@ -14,6 +14,7 @@
 </nav>
 <main>
 <p id="openWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
+<p id="armWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Sensors page.</p>
 <p id="nvrWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
 <div class="view" id="view-network" hidden><h1>Network</h1>
 <label class="netRow"><span>Connection</span><input id="netType" disabled></label>
@@ -85,7 +86,7 @@
 <div class="portForm"><button id="fbSave">Download full backup</button> <input id="fbFile" type="file" accept=".tar"> <button id="fbLoad">Restore full backup</button></div>
 <div class="portMsg" id="fbMsg"></div>
 <h2 style="font-family:inherit;margin:18px 0 6px">Reset settings</h2>
-<p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address, time and notification settings. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
+<p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
 <div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
 <div class="view" id="view-time" hidden><h1>Time</h1>
 <label class="netRow"><span>Current time</span><input id="tmNow" disabled></label>
@@ -100,6 +101,7 @@
 <div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
+<p class="portForm" style="margin:0 0 10px">Alarm: <b id="armState">…</b> <button id="armBtn" hidden></button></p>
 <div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
 <div id="msg"></div>
 <div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addNode">Add node</button></span>

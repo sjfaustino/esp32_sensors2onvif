@@ -56,6 +56,35 @@ std::string camMqttPublish(const std::string& topic, const std::string& payload,
   return packet((uint8_t)(0x30 | (packetId ? 0x02 : 0) | (retain ? 0x01 : 0)), body);
 }
 
+std::string camMqttSubscribe(const std::string& topic, uint16_t packetId) {
+  std::string body;
+  body += (char)(packetId >> 8);
+  body += (char)(packetId & 0xff);
+  putText(body, topic);
+  body += (char)0;  // QoS 0
+  return packet(0x82, body);
+}
+
+bool camMqttReadPublish(const uint8_t* p, size_t len, CamMqttMessage& out) {
+  long size = camMqttPacketSize(p, len);
+  if (size <= 0 || (size_t)size != len || (p[0] >> 4) != CAM_MQTT_PUBLISH) return false;
+  size_t at = 1;
+  while (p[at] & 0x80) at++;
+  at++;  // past the length
+  if (at + 2 > len) return false;
+  size_t topicLen = (size_t)(p[at] << 8 | p[at + 1]);
+  at += 2;
+  if (at + topicLen > len) return false;
+  out.topic = (const char*)p + at;
+  out.topicLen = topicLen;
+  at += topicLen;
+  if ((p[0] >> 1) & 3) at += 2;  // a packet id, at QoS 1 or 2
+  if (at > len) return false;
+  out.payload = (const char*)p + at;
+  out.payloadLen = len - at;
+  return true;
+}
+
 std::string camMqttPing() { return std::string("\xc0\x00", 2); }
 std::string camMqttDisconnect() { return std::string("\xe0\x00", 2); }
 

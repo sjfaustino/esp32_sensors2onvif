@@ -72,13 +72,20 @@ quiet hours in local time. During quiet hours that sensor's alerts are logged as
 NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
 `settings.txt` in the sensor's folder.
 
+The whole hub can be disarmed, on the Sensors page or from Home Assistant. Disarmed, every alert is logged as "alert while
+disarmed" but is not sent to the NVR or to Notifications, and every page says so at the top. A late report of something
+that happened before the disarm still goes through, and so does one whose time is not known. Arming and disarming are
+logged as hub events, with where they came from. The setting survives restarts and resets to armed with the other
+settings; it is not in backups, so restoring one never disarms the hub.
+
 ## Notifications
 
 **Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a web address on your network, such as
 a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
 or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
-`alert not delivered`, `delayed alert not delivered`, `NVR not listening`, `NVR listening again`, `hub started`, `network lost` and `test`.
+`alert not delivered`, `delayed alert not delivered`, `NVR not listening`, `NVR listening again`, `hub started`, `network lost`,
+`armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
@@ -93,8 +100,9 @@ address must be an IP address, and the connection is not encrypted.
 
 Home Assistant then shows:
 
-- **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, and an Events entity
-  for the hub's own events: `hub started`, `network lost`, `NVR not listening` and `NVR listening again`.
+- **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, an Armed switch, and
+  an Events entity for the hub's own events: `hub started`, `network lost`, `NVR not listening`, `NVR listening again`,
+  `armed` and `disarmed`. Anyone who can publish to the broker can use the Armed switch, so give the broker a login.
 - **Each sensor** as its own device, named as on the Sensors page, with Alert (on for as long as the NVR is shown the
   alert), Battery, Signal, Problem (silent, low battery or weak signal) and an Events entity carrying every event of
   its history, with the same names as the Events page.
@@ -141,7 +149,7 @@ Keep the hub out of reach.
 restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
 A new firmware must stay on the network for a minute; if it crashes, stalls or loses the network first, or the power fails
 during that minute, the hub goes back to the previous firmware and Device Info says so. A reset erases the saved WiFi
-networks, ports, name, web password, fixed address, time and notification settings, and keeps the pictures, the sensor nodes,
+networks, ports, name, web password, fixed address, time, notification and MQTT settings, arms the hub, and keeps the pictures, the sensor nodes,
 and the ESP-NOW key and token that sensors use.
 
 A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, and each node's settings.

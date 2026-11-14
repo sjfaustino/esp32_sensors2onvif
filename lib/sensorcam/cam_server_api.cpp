@@ -376,7 +376,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
         if (!seen.empty()) j.str(seen);
       j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
       j.num("onvifPort", cfg_.onvifPort).num("webPort", cfg_.webPort).num("rtspPort", cfg_.rtspPort).num("streams", streamCount()).num("subscribers", subs_.count());
-      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts);
+      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", cfg_.armed);
     }));
   } else {
     return false;
@@ -582,6 +582,12 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       queueHook(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
       c.out = jsonOk(JSON_OK);
     }
+  } else if (r.is("GET", "/api/arm")) {
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("armed", cfg_.armed); }));
+  } else if (r.is("POST", "/api/arm")) {
+    std::string on = queryParam(r.form(), "armed");
+    if (on != "1" && on != "0") c.out = jsonFail(400, "armed must be 1 or 0");
+    else c.out = saved(setArmed(on == "1", "the web page"), "could not save the setting");
   } else if (r.is("GET", "/api/mqtt")) {
     reply(c, 200, JSON_TYPE, mqttJson());
   } else if (r.is("POST", "/api/mqtt")) {

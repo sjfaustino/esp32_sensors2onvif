@@ -81,6 +81,7 @@ void loadSettings() {
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
     s.mqtt.password = p.getString("mqpw", "").c_str();
+    s.armed = p.getBool("armed", true);
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
     s.timeNtp = p.getBool("ntp", true);
@@ -196,6 +197,10 @@ bool storeMqtt(const CamMqtt& m) {
   return withPrefs("net", [&m](Preferences& p) {
     return putText(p, "mqhost", m.host.c_str()) && p.putUShort("mqport", m.port) == 2 && putText(p, "mquser", m.user.c_str()) && putText(p, "mqpw", m.password.c_str());
   });
+}
+
+bool storeArmed(bool on) {
+  return withPrefs("net", [on](Preferences& p) { return p.putBool("armed", on) == 1; });
 }
 
 // Pictures live on LittleFS, so they survive this.

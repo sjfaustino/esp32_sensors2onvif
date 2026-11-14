@@ -115,6 +115,9 @@ struct CamConfig {
   CamWebhook webhook;
   std::function<bool(const CamWebhook&)> webhookSave;
   CamMqtt mqtt;
+  // Disarmed, alerts are logged but not sent to the NVR or the webhook, as in quiet hours. Kept across restarts.
+  bool armed = true;
+  std::function<bool(bool)> armedSave;
   std::function<bool(const CamMqtt&)> mqttSave;
   std::string firmwareVersion;              // told to Home Assistant
   std::function<int()> localMinute;        // minutes after local midnight, or -1 when the clock is not set; for quiet hours
@@ -149,7 +152,10 @@ class SensorCamServer {
   void saveNow();  // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
-  uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
+  uint32_t memoryFailures() const { return memoryFailures_; }
+  bool armed() const { return cfg_.armed; }
+  // Arms or disarms, saved first; from says where, for the history. False when it could not be saved.
+  bool setArmed(bool on, const std::string& from);  // times memory ran out and only that piece of work was dropped
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
@@ -339,6 +345,8 @@ class SensorCamServer {
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
   void interruptPastEvent(uint32_t now);
   bool quietNow(int id) const;
+  bool disarmedFor(const SensorReport& r, uint32_t now) const;  // the report happened while disarmed
+  uint32_t disarmedAt_ = 0;
   void notifyHook(int id, CamEventKind kind, bool delayed);
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message);
   void queueHook(const std::string& message, const std::string& json);
@@ -375,7 +383,8 @@ class SensorCamServer {
     uint32_t ackSince = 0;
     bool online = false;
     int discovery = 0;  // the next discovery message; -1 once all are sent
-    bool hubTold = false, hubAlert = false, hubNvr = false;
+    bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false;
+    bool subscribed = false;  // to the arm switch's commands
   };
   void serviceMqtt(bool readable, bool writable, uint32_t now);
   void mqttHousekeeping(uint32_t now);

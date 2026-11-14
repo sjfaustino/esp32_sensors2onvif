@@ -25,6 +25,9 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_NVR_BACK: return "NVR listening again";
     case CAM_EVENT_HUB_STARTED: return "hub started";
     case CAM_EVENT_NETWORK_LOST: return "network lost";
+    case CAM_EVENT_DISARMED_ALERT: return "alert while disarmed";
+    case CAM_EVENT_ARMED: return "armed";
+    case CAM_EVENT_DISARMED: return "disarmed";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -40,6 +43,9 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
     case CAM_EVENT_NETWORK_LOST:
       return who + " was off its Wi-Fi network for up to " + (known ? camDurationText(offS) : std::string("an unknown time")) +
              "; alerts in that time reach the NVR as past events once it is back";
+    case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
+    case CAM_EVENT_DISARMED:
+      return who + " was disarmed" + (detail.empty() ? std::string() : " from " + detail) + ": alerts are logged but not sent to the NVR";
     default: return who + ": " + camEventName(kind, true, delayed);
   }
 }

@@ -15,6 +15,7 @@ struct HubSettings {
   bool espNowUnsigned = false;
   CamWebhook webhook;
   CamMqtt mqtt;
+  bool armed = true;  // not in backups, so restoring one never disarms the hub
   bool healthAlarm = false;
   // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
   String staticFor, staticIp, staticMask, staticGateway, staticDns;
@@ -44,6 +45,7 @@ bool storeHealthAlarm(bool on);
 bool storeEspNowUnsigned(bool on);
 bool storeWebhook(const CamWebhook& w);
 bool storeMqtt(const CamMqtt& m);
+bool storeArmed(bool on);
 bool resetSettings();  // erases everything except what the sensors need to keep reporting
 
 std::string backupText();

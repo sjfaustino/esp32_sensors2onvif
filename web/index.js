@@ -319,11 +319,37 @@
       loadHook(true);
       sysTimer = setInterval(() => loadHook(false), 3000);
     }
+    if (view == "sensors") {
+      loadArm();
+      sysTimer = setInterval(loadArm, 5000);
+    }
     if (view == "ha") {
       loadMqtt(true);
       sysTimer = setInterval(() => loadMqtt(false), 3000);
     }
   }
+  // Armed or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
+  async function loadArm() {
+    try {
+      const a = await call("GET", "/api/arm");
+      $("armState").textContent = a.armed ? "armed" : "disarmed: alerts are logged but not sent to the NVR";
+      $("armBtn").textContent = a.armed ? "Disarm" : "Arm";
+      $("armBtn").hidden = false;
+      $("armBtn").dataset.armed = a.armed ? "1" : "0";
+      $("armWarn").hidden = a.armed;
+    } catch (e) {}
+  }
+  $("armBtn").onclick = async () => {
+    const arm = $("armBtn").dataset.armed != "1";
+    if (!arm && !confirm("Disarm the hub? Alerts will be logged but not sent to the NVR, so nothing is recorded."))
+      return;
+    try {
+      await call("POST", "/api/arm", "armed=" + (arm ? 1 : 0));
+    } catch (e) {
+      alert(e.message);
+    }
+    loadArm();
+  };
   async function loadMqtt(all) {
     try {
       const m = await call("GET", "/api/mqtt");
@@ -934,6 +960,7 @@
     .then((r) => r.json())
     .then((i) => {
       $("openWarn").hidden = i.password;
+      $("armWarn").hidden = i.armed !== false;
     })
     .catch(() => {});
   fetch("/api/nvr")

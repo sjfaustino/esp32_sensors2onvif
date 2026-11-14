@@ -9,6 +9,7 @@
 //     of a broker outage are sent once it is back. Each waits for the broker's acknowledgement, and one not acknowledged
 //     is sent again;
 //   - Home Assistant's discovery messages, which create the devices and entities.
+// And it hears one command: the Armed switch, on <base>/armed/set.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -18,14 +19,14 @@
 #include "cam_server.h"
 #include "cam_server_internal.h"
 
-static const int HUB_PARTS = 3;     // the hub's entities: alert, NVR listening, events
+static const int HUB_PARTS = 4;     // the hub's entities: alert, NVR listening, events, armed
 static const int SENSOR_PARTS = 5;  // each sensor's: alert, battery, signal, problem, events
 static const int SLOT_STEPS = SENSOR_PARTS + 1 + SENSOR_PARTS;  // taking an old sensor away (with its state), then telling of the new
 static const int DISCOVERY_STEPS = HUB_PARTS + CAM_MAX_SENSORS * SLOT_STEPS;
 static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events"};
 static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event"};
-static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered"};
-static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost"};
+static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed"};
+static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost", "armed", "disarmed"};
 
 // A sensor in topics and ids: its MAC address in lower-case hex, and its input.
 static std::string sensorKey(const uint8_t mac[6], uint8_t input) {
@@ -88,6 +89,13 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
     mqttConnectedAt_ = time(nullptr);
     for (MqttShown& s : mqttShown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
     mqttResult_ = "connected";
+  } else if (type == CAM_MQTT_PUBLISH) {  // the Armed switch, the one topic the hub subscribes to
+    CamMqttMessage m;
+    std::string topic = mqttBase() + "/armed/set";
+    if (!camMqttReadPublish(p, len, m) || m.topicLen != topic.size() || memcmp(m.topic, topic.data(), m.topicLen) != 0) return;
+    std::string command(m.payload, m.payloadLen);
+    if (command == "ON" || command == "OFF") setArmed(command == "ON", "Home Assistant");
+    mqtt_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {
     uint16_t id = (uint16_t)(p[2] << 8 | p[3]);
     if (mqtt_.ackId && id == mqtt_.ackId) {
@@ -209,15 +217,23 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
     mqtt_.online = true;
     return true;
   }
+  if (!mqtt_.subscribed) {
+    out = camMqttSubscribe(mqttBase() + "/armed/set", mqtt_.nextId);
+    mqtt_.nextId = (uint16_t)(mqtt_.nextId == 0xffff ? 1 : mqtt_.nextId + 1);
+    mqtt_.subscribed = true;
+    return true;
+  }
   bool alert = false;
   for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slots_[id - 1].used && sensors_.active(id) && !sensors_.pastEvent(id));
   bool nvr = nvrListening(now);
-  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr) {
-    std::string json = jsonObject([&](CamJson& j) { j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF"); });
+  bool armed = cfg_.armed;
+  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed) {
+    std::string json = jsonObject([&](CamJson& j) { j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF"); });
     out = camMqttPublish(mqttBase() + "/hub/state", payload(json), true, 0);
     mqtt_.hubTold = true;
     mqtt_.hubAlert = alert;
     mqtt_.hubNvr = nvr;
+    mqtt_.hubArmed = armed;
     return true;
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
@@ -315,9 +331,12 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   };
   if (step < HUB_PARTS) {
     std::string web = "http://" + localIp_() + (cfg_.webPort == 80 ? std::string() : ":" + std::to_string(cfg_.webPort)) + "/";
-    const char* part = step == 0 ? "alert" : step == 1 ? "nvr" : "events";
+    static const char* const PARTS[HUB_PARTS] = {"alert", "nvr", "events", "armed"};
+    static const char* const NAMES[HUB_PARTS] = {"Alert", "NVR listening", "Events", "Armed"};
+    static const char* const COMPONENTS[HUB_PARTS] = {"binary_sensor", "binary_sensor", "event", "switch"};
+    const char* part = PARTS[step];
     std::string id = hubId + "_hub_" + part, json = jsonObject([&](CamJson& j) {
-      common(j, id, step == 0 ? "Alert" : step == 1 ? "NVR listening" : "Events", base + "/hub/" + (step == 2 ? "event" : "state"));
+      common(j, id, NAMES[step], base + "/hub/" + (step == 2 ? "event" : "state"));
       if (step == 0) j.str("device_class", "motion").str("value_template", "{{ value_json.alert }}");
       if (step == 1) j.str("device_class", "connectivity").str("entity_category", "diagnostic").str("value_template", "{{ value_json.nvr }}");
       if (step == 2) {
@@ -325,10 +344,11 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
         for (const char* type : HUB_EVENTS) j.str(type);
         j.end();
       }
+      if (step == 3) j.str("value_template", "{{ value_json.armed }}").str("command_topic", base + "/armed/set").str("icon", "mdi:shield-home");
       j.object("device").array("identifiers").str(hubId).end().str("name", hubName).str("manufacturer", "sensors2onvif").str("model", "ESP32 sensor hub");
       j.str("sw_version", cfg_.firmwareVersion).str("configuration_url", web).end();
     });
-    out = camMqttPublish(std::string("homeassistant/") + (step == 2 ? "event" : "binary_sensor") + "/" + cfg_.serial + "/hub_" + part + "/config", payload(json), true, 0);
+    out = camMqttPublish(std::string("homeassistant/") + COMPONENTS[step] + "/" + cfg_.serial + "/hub_" + part + "/config", payload(json), true, 0);
     return true;
   }
   int i = (step - HUB_PARTS) / SLOT_STEPS, k = (step - HUB_PARTS) % SLOT_STEPS;

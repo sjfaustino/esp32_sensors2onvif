@@ -205,6 +205,23 @@ uint32_t SensorCamServer::holdFor(int id) const {
   return seconds ? seconds * 1000 : cfg_.holdMs;
 }
 
+// A report that happened before the hub was disarmed still counts, and so does one whose time is not known: a false
+// alert is better than a missed one. Disarmed since the start counts from the start, as nothing earlier is known.
+bool SensorCamServer::disarmedFor(const SensorReport& r, uint32_t now) const {
+  if (cfg_.armed || r.age == CAM_AGE_UNKNOWN) return false;
+  return (uint64_t)r.age * 1000 <= (uint64_t)(now - disarmedAt_);
+}
+
+bool SensorCamServer::setArmed(bool on, const std::string& from) {
+  if (on == cfg_.armed) return true;
+  if (!camCall(cfg_.armedSave, on)) return false;
+  cfg_.armed = on;
+  disarmedAt_ = millis_();
+  CamEventKind kind = on ? CAM_EVENT_ARMED : CAM_EVENT_DISARMED;
+  hubEvent(kind, from, CAM_AGE_UNKNOWN, camEventMessage(kind, cfg_.hostName, from, CAM_AGE_UNKNOWN, false));
+  return true;
+}
+
 bool SensorCamServer::quietNow(int id) const { return camQuiet(slots_[id - 1].settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
 
 bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
@@ -230,9 +247,11 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   bool wasReported = h.reported;
   h.reported = r.active;
   bool quiet = r.active && quietNow(id);  // logged, but the NVR is not told
-  if (r.active && late && !quiet) {
+  bool disarmed = r.active && !quiet && disarmedFor(r, now);  // the same
+  bool held = quiet || disarmed;
+  if (r.active && late && !held) {
     queueDelayed(id, r, now);
-  } else if (r.active && !quiet) {
+  } else if (r.active && !held) {
     interruptPastEvent(now);
     // Starts the alert, or extends it, so activations closer together than the hold make one NVR record.
     sensors_.trigger(id, now, reportDirection(r), false, holdFor(id));
@@ -242,8 +261,8 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
   // Repeats and heartbeats that change nothing would push real events out of the log.
   // An activation is logged unless it only repeats one whose alert is still running; a sensor that never reports clear
   // still has each new alert logged.
-  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : CAM_EVENT_REPORT);
-  if (r.active && !quiet && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
+  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? CAM_EVENT_DISARMED_ALERT : CAM_EVENT_REPORT);
+  if (r.active && !held && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
   if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
   return true;
 }
@@ -433,7 +452,7 @@ std::string SensorCamServer::statusJson(uint32_t now) {
       if (!h.heard) continue;
       j.object().str("sensor", slotName(id)).num("last_heard_s", (now - h.heardAt) / 1000).num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).flag("silent", h.silent).end();
     }
-    j.end().num("uptime_s", now / 1000);
+    j.end().num("uptime_s", now / 1000).flag("armed", cfg_.armed);
   });
 }
 
