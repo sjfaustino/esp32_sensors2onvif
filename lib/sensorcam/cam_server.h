@@ -22,6 +22,7 @@ bool camBackupValueValid(const std::string& key, const std::string& value);
 
 // Copies text into a fixed buffer, shortened if needed without splitting a UTF-8 character.
 void camCopyText(char* out, size_t size, const std::string& text);
+void camCopyText(char* out, size_t size, const char* text);  // without using the heap
 
 struct CamSettings {
   uint16_t onvifPort = 0;
@@ -137,6 +138,7 @@ class SensorCamServer {
   void saveNow();  // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
+  uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
@@ -204,6 +206,10 @@ class SensorCamServer {
     uint32_t pollUntil = 0;
     uint32_t pollSub = 0;
     std::string pollHost;
+    // The subscription whose last answered state this reply changed, and the state before, put back if memory runs out
+    // before the reply is ready: otherwise the NVR would never hear of that change.
+    uint32_t undoSub = 0;
+    int undoState = 0;
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
     size_t firmwareLeft = 0;
     const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
@@ -263,6 +269,7 @@ class SensorCamServer {
     const std::string& method;
     const std::string& route;
     const std::string& target;
+    const std::string& headers;
     const char* body;
     size_t bodyLen;
     bool is(const char* m, const char* r) const { return method == m && route == r; }
@@ -276,15 +283,20 @@ class SensorCamServer {
   void apiFiles(const ApiRequest& r);
   std::string espNowJson();
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
-  static void reply(HttpConn& c, int status, const char* type, std::string body);
+  static void reply(HttpConn& c, int status, const char* type, std::string body, const std::string& extraHeaders = std::string());
   void shortOfMemory(HttpConn& c);
+  void undoPull(HttpConn& c);  // see HttpConn::undoSub
+  void housekeeping(uint32_t now);  // alerts, saving, the NVR and video: the part of poll() before waiting
+  void pollOnce(int maxWaitMs);     // waits for the network, then serves the connections
+  void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
+  uint32_t memoryFailures_ = 0;
   int streamCount() const;
   bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
   bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
-  void addEvent(const std::string& sensor, const std::string& text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
+  void addEvent(const char* sensor, const char* text,const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
   void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message);
   bool nvrListening(uint32_t now) const;
   bool roomBesideHistory(size_t bytes) const;  // whether a picture of this size still leaves the event history its room
@@ -304,7 +316,8 @@ class SensorCamServer {
   void serveSnapshot(HttpConn& c);
   void serviceDelayed(uint32_t now);
   std::string statusJson(uint32_t now);
-  std::string eventsJson();
+  std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
+  std::string eventsTag() const;  // changes whenever the Events page's list would, so an unchanged list is not built again
   void handleRtspRequest(RtspConn& c, const std::string& text, uint32_t now);
   void flushRtsp(RtspConn& c, uint32_t now);
   void startNotify(int i, uint32_t now);
@@ -343,7 +356,12 @@ class SensorCamServer {
   uint32_t refused_ = 0;
   CamStorage storage_;
   CamEventLog log_{storage_};  // after storage_, which it uses
-  std::string confirmations_;  // waiting to be sent once the reports are saved: 6 bytes of MAC address, then the message
+  // Waiting to be sent once the reports are saved: 6 bytes of MAC address, then the message. A fixed table, so an alert is
+  // confirmed even when memory has run out.
+  static const int MAX_CONFIRMATIONS = 32;
+  uint8_t confirmations_[MAX_CONFIRMATIONS][6 + CAM_CONFIRMATION_LEN];
+  int confirmCount_ = 0;
+  std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   std::vector<Slot> slots_;
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
   std::string frameFile_;  // the file behind frame_; empty means a built-in picture

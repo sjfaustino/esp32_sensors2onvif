@@ -18,48 +18,90 @@ static std::string padded(const std::string& data, bool bigEndian) {
   return m;
 }
 
-std::string camHmacSha1(const std::string& key, const std::string& data) {
-  std::string k = key.size() > 64 ? camSha1(key) : key;
-  k.resize(64, '\0');
-  std::string inner(64, '\0'), outer(64, '\0');
-  for (int i = 0; i < 64; i++) {
-    inner[i] = (char)(k[i] ^ 0x36);
-    outer[i] = (char)(k[i] ^ 0x5c);
+void CamSha1::block() {
+  uint32_t w[80];
+  for (int i = 0; i < 16; i++) w[i] = (uint32_t)buf_[i * 4] << 24 | (uint32_t)buf_[i * 4 + 1] << 16 | (uint32_t)buf_[i * 4 + 2] << 8 | buf_[i * 4 + 3];
+  for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+  uint32_t a = h_[0], b = h_[1], c = h_[2], d = h_[3], e = h_[4];
+  for (int i = 0; i < 80; i++) {
+    uint32_t f = i < 20 ? (b & c) | (~b & d) : i < 40 ? b ^ c ^ d : i < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d;
+    uint32_t k = i < 20 ? 0x5A827999 : i < 40 ? 0x6ED9EBA1 : i < 60 ? 0x8F1BBCDC : 0xCA62C1D6;
+    uint32_t t = rol(a, 5) + f + e + k + w[i];
+    e = d;
+    d = c;
+    c = rol(b, 30);
+    b = a;
+    a = t;
   }
-  return camSha1(outer + camSha1(inner + data));
+  h_[0] += a;
+  h_[1] += b;
+  h_[2] += c;
+  h_[3] += d;
+  h_[4] += e;
+  used_ = 0;
+}
+
+void CamSha1::add(const void* data, size_t len) {
+  const uint8_t* p = (const uint8_t*)data;
+  total_ += len;
+  while (len) {
+    size_t take = 64 - used_ < len ? 64 - used_ : len;
+    memcpy(buf_ + used_, p, take);
+    used_ += take;
+    p += take;
+    len -= take;
+    if (used_ == 64) block();
+  }
+}
+
+void CamSha1::finish(uint8_t out[20]) {
+  uint64_t bits = total_ * 8;
+  buf_[used_++] = 0x80;
+  if (used_ > 56) {
+    memset(buf_ + used_, 0, 64 - used_);
+    block();
+  }
+  memset(buf_ + used_, 0, 56 - used_);
+  for (int i = 0; i < 8; i++) buf_[56 + i] = (uint8_t)(bits >> (56 - 8 * i));
+  block();
+  for (int i = 0; i < 20; i++) out[i] = (uint8_t)(h_[i / 4] >> (24 - 8 * (i % 4)));
+}
+
+void camHmacSha1(const uint8_t* key, size_t keyLen, const uint8_t* a, size_t aLen, const uint8_t* b, size_t bLen, uint8_t out[20]) {
+  uint8_t k[64] = {0};
+  if (keyLen > 64) {
+    CamSha1 s;
+    s.add(key, keyLen);
+    s.finish(k);
+  } else {
+    memcpy(k, key, keyLen);
+  }
+  uint8_t pad[64], innerHash[20];
+  for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x36;
+  CamSha1 inner;
+  inner.add(pad, 64);
+  inner.add(a, aLen);
+  inner.add(b, bLen);
+  inner.finish(innerHash);
+  for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x5c;
+  CamSha1 outer;
+  outer.add(pad, 64);
+  outer.add(innerHash, 20);
+  outer.finish(out);
+}
+
+std::string camHmacSha1(const std::string& key, const std::string& data) {
+  uint8_t out[20];
+  camHmacSha1((const uint8_t*)key.data(), key.size(), (const uint8_t*)data.data(), data.size(), nullptr, 0, out);
+  return std::string((const char*)out, 20);
 }
 
 std::string camSha1(const std::string& data) {
-  uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
-  std::string m = padded(data, true);
-  for (size_t off = 0; off < m.size(); off += 64) {
-    uint32_t w[80];
-    for (int i = 0; i < 16; i++) {
-      const uint8_t* p = (const uint8_t*)m.data() + off + i * 4;
-      w[i] = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
-    }
-    for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-    uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
-    for (int i = 0; i < 80; i++) {
-      uint32_t f = i < 20 ? (b & c) | (~b & d) : i < 40 ? b ^ c ^ d : i < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d;
-      uint32_t k = i < 20 ? 0x5A827999 : i < 40 ? 0x6ED9EBA1 : i < 60 ? 0x8F1BBCDC : 0xCA62C1D6;
-      uint32_t t = rol(a, 5) + f + e + k + w[i];
-      e = d;
-      d = c;
-      c = rol(b, 30);
-      b = a;
-      a = t;
-    }
-    h[0] += a;
-    h[1] += b;
-    h[2] += c;
-    h[3] += d;
-    h[4] += e;
-  }
-  std::string out;
-  for (uint32_t v : h)
-    for (int s = 24; s >= 0; s -= 8) out += (char)(v >> s);
-  return out;
+  CamSha1 s;
+  s.add(data.data(), data.size());
+  uint8_t out[20];
+  s.finish(out);
+  return std::string((const char*)out, 20);
 }
 
 std::string camMd5Hex(const std::string& data) {

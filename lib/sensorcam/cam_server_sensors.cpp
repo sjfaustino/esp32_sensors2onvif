@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <new>
 #include "cam_auth.h"
 #include "cam_frames.h"
 #include "cam_net.h"
@@ -142,12 +143,12 @@ void SensorCamServer::checkNvr(uint32_t now) {
     if (nvrGone_) hubEvent(CAM_EVENT_NVR_BACK, "", CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_NVR_BACK, cfg_.hostName, "", CAM_AGE_UNKNOWN, false));
     nvrGone_ = false;
   } else if (!nvrGone_ && now - nvrSeenAt_ >= nvrGoneMs_) {
-    nvrGone_ = true;
     hubEvent(CAM_EVENT_NVR_GONE, "", CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_NVR_GONE, cfg_.hostName, "", CAM_AGE_UNKNOWN, false));
+    nvrGone_ = true;  // after, so one that ran out of memory is tried again
   }
-  std::vector<CamDeliveryWatch::Missed> notGot;
-  delivery_.check(now, listening, [&](int id) { return slots_[id - 1].used && sensors_.active(id); }, notGot);
-  for (const CamDeliveryWatch::Missed& m : notGot) {
+  notGot_.clear();
+  delivery_.check(now, listening, [&](int id) { return slots_[id - 1].used && sensors_.active(id); }, notGot_);
+  for (const CamDeliveryWatch::Missed& m : notGot_) {
     waitingDirty_ = true;
     if (!m.log || !slots_[m.id - 1].used) continue;  // a replay that failed again waits again, without a second entry
     SensorReport r;
@@ -168,20 +169,26 @@ void SensorCamServer::healthAlert(int id, CamEventKind kind, uint32_t now) {
   sensors_.trigger(id, now, 0, false, holdFor(id));
 }
 
-void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamEventKind kind) { addEvent(slotName(id), slots_[id - 1].name, r, delayed, kind); }
+// Written straight into the event, without using the heap, so an alert is logged even when memory has run out.
+void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamEventKind kind) {
+  const Slot& s = slots_[id - 1];
+  char sensor[sizeof(CamEvent::sensor)];
+  snprintf(sensor, sizeof(sensor), "%02X-%02X-%02X-%02X-%02X-%02X/%u", s.mac[0], s.mac[1], s.mac[2], s.mac[3], s.mac[4], s.mac[5], (unsigned)s.input);
+  addEvent(sensor, s.name.c_str(), r, delayed, kind);
+}
 
 // The hub's own events: in the history as sensor "hub", and sent as node problems.
 void SensorCamServer::hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message) {
   SensorReport r;  // age 0: it happened when it was logged
-  addEvent("hub", detail, r, false, kind, offS);
+  addEvent("hub", detail.c_str(), r, false, kind, offS);
   notifyHubHook(kind, detail, message);
 }
 
-void SensorCamServer::addEvent(const std::string& sensor, const std::string& text, const SensorReport& r, bool delayed, CamEventKind kind, uint32_t offS) {
+void SensorCamServer::addEvent(const char* sensor, const char* text, const SensorReport& r, bool delayed, CamEventKind kind, uint32_t offS) {
   CamEvent e;
   e.received = time(nullptr);
   e.age = r.age;
-  snprintf(e.sensor, sizeof(e.sensor), "%s", sensor.c_str());
+  snprintf(e.sensor, sizeof(e.sensor), "%s", sensor);
   camCopyText(e.text, sizeof(e.text), text);
   e.offS = offS;
   e.kind = kind;
@@ -291,7 +298,17 @@ void SensorCamServer::noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rs
   entry->messages++;
 }
 
+// Checking, starting and confirming an alert use no heap, so they work even when memory has run out. Anything else that
+// runs out of memory drops only itself: the hub keeps running, and a report left unconfirmed is sent again.
 void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
+  try {
+    espNowReport(mac, data, len, rssi);
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+  }
+}
+
+void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
   SensorReport r;
   CamPacketCheck check = camCheckPacket(mac, data, len, cfg_.espNowKey, r);
   if (check == CAM_PACKET_INVALID) return;
@@ -325,7 +342,11 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
   }
   // Confirmed once it is on storage, so a power cut cannot lose an alert its sensor has stopped resending. Again for a
   // resend, whose sender evidently missed the first confirmation. poll() saves all that arrived together, then sends.
-  if (confirmations_.size() < 32 * (6 + CAM_CONFIRMATION_LEN)) confirmations_ += std::string((const char*)mac, 6) + camConfirmation(mac, r, cfg_.espNowKey);
+  if (confirmCount_ < MAX_CONFIRMATIONS) {
+    uint8_t* slot = confirmations_[confirmCount_++];
+    memcpy(slot, mac, 6);
+    camConfirmationInto(mac, r, cfg_.espNowKey, slot + 6);
+  }
 }
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
@@ -416,42 +437,76 @@ std::string SensorCamServer::statusJson(uint32_t now) {
   });
 }
 
-void camCopyText(char* out, size_t size, const std::string& text) {
+void camCopyText(char* out, size_t size, const std::string& text) { camCopyText(out, size, text.c_str()); }
+
+void camCopyText(char* out, size_t size, const char* text) {
   if (!size) return;
-  size_t n = text.size() < size - 1 ? text.size() : size - 1;
-  if (n < text.size())
+  size_t len = strlen(text);
+  size_t n = len < size - 1 ? len : size - 1;
+  if (n < len)
     while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80) n--;  // text[n] continues a character, so stop before that character starts
-  memcpy(out, text.data(), n);
+  memcpy(out, text, n);
   out[n] = 0;
 }
 
-std::string SensorCamServer::eventsJson() {
-  // Trimmed to what RAM allows, because running out is fatal. About 200 bytes each, doubled while building the reply.
-  int count = log_.count();
-  while (count > 0 && !roomFor((size_t)count * 400)) count /= 2;
-  std::string out;
-  out.reserve((size_t)count * 200 + 8);
+// One event of the Events page's list.
+static void eventJson(std::string& out, const CamEvent& e) {
   CamJson j(out);
-  j.array();
+  bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
+  bool ageKnown = e.age != CAM_AGE_UNKNOWN;
+  bool hub = strcmp(e.sensor, "hub") == 0;
+  j.object().str("sensor", e.sensor).str("name", hub ? "" : e.text).str("event", camEventName(e.kind, e.active, e.delayed));
+  if (hub) j.str("detail", e.text);
+  j.num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
+  j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
+  j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
+  j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery);
+  if (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST) j.num("off_s", e.offS != CAM_AGE_UNKNOWN, e.offS);
+  j.array("targets");
+  for (int i = 0; i < e.targetCount; i++)
+    j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();
+  j.end().end();
+}
+
+// Measured an event at a time first, then built at its exact size, so it needs one block no larger than itself.
+std::string SensorCamServer::eventsJson(bool* whole) {
+  int count = log_.count() < CamEventLog::RECENT ? log_.count() : CamEventLog::RECENT;
+  size_t sizes[CamEventLog::RECENT];
+  std::string one;
   for (int n = 0; n < count; n++) {
-    const CamEvent& e = log_.recent(n);
-    bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
-    bool ageKnown = e.age != CAM_AGE_UNKNOWN;
-    bool hub = strcmp(e.sensor, "hub") == 0;
-    j.object().str("sensor", e.sensor).str("name", hub ? "" : e.text).str("event", camEventName(e.kind, e.active, e.delayed));
-    if (hub) j.str("detail", e.text);
-    j.num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
-    j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
-    j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
-    j.num("age_s", ageKnown, e.age).num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery);
-    if (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST) j.num("off_s", e.offS != CAM_AGE_UNKNOWN, e.offS);
-    j.array("targets");
-    for (int i = 0; i < e.targetCount; i++)
-      j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();
-    j.end().end();
+    one.clear();
+    eventJson(one, log_.recent(n));
+    sizes[n] = one.size();
   }
-  j.finish();
+  auto total = [&](int shown) {  // the brackets, the line break and the commas too
+    size_t bytes = 3;
+    for (int n = 0; n < shown; n++) bytes += sizes[n] + (n ? 1 : 0);
+    return bytes;
+  };
+  int shown = count;
+  while (shown > 0 && !roomFor(total(shown))) shown /= 2;  // the newest that fit in the memory there is
+  if (whole) *whole = shown == count;
+  std::string out;
+  out.reserve(total(shown));
+  out += '[';
+  for (int n = 0; n < shown; n++) {
+    if (n) out += ',';
+    eventJson(out, log_.recent(n));
+  }
+  out += "]\n";
   return out;
+}
+
+std::string SensorCamServer::eventsTag() const {
+  uint32_t h = 2166136261u;  // FNV-1a over the newest event: with the count of events added, it changes with the list
+  if (log_.count()) {
+    uint8_t r[CAM_EVENT_RECORD];
+    camEventEncode(log_.recent(0), r);
+    for (uint8_t b : r) h = (h ^ b) * 16777619u;
+  }
+  char tag[32];
+  snprintf(tag, sizeof(tag), "\"%u-%08x\"", (unsigned)log_.added(), (unsigned)h);
+  return tag;
 }
 
 int SensorCamServer::findSlot(const uint8_t mac[6], uint8_t input) const {

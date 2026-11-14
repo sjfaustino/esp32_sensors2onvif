@@ -29,7 +29,12 @@ While every web connection is busy, or memory is short, the hub does not accept 
 network stack's queue and are served once room frees, rather than being accepted and closed. A sensor's report waits
 a moment instead of being lost. A large reply is sent from its own string, never copied after its headers, and a request
 that still finds no block big enough fails alone with a 507: an out-of-memory abort would restart the hub, and in the
-first minutes after an update would undo it. Video is sent a packet at a time straight from the picture, and files and snapshots are read from storage as they are
+first minutes after an update would undo it. Running out of memory anywhere else also drops only the work that needed
+it: an event push, a reply to the NVR's poll or a webhook message waits for a later pass, and the NVR's poll is still
+owed the change it was not told of. Checking, starting, logging and confirming an ESP-NOW alert use no heap at all, so
+an alert gets through even with no memory left; Device Info counts the work dropped. The Events page's list carries a
+tag, so the page's request every 3 seconds is answered "not changed" until an event is added, and a list that has
+changed is built at its exact size. Video is sent a packet at a time straight from the picture, and files and snapshots are read from storage as they are
 sent, so the only picture-sized buffer is the one the pictures load into; a stream partway through a picture that is
 being replaced drops the rest of that frame, and the next one plays. During a firmware upload the hub closes its video streams and takes no new
 connections until the upload ends: on a board without PSRAM, an upload beside a running stream could use up the memory

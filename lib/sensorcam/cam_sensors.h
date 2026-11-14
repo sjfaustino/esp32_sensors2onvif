@@ -45,6 +45,7 @@ std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int le
 const uint8_t CAM_CONFIRMATION = 3;
 const int CAM_CONFIRMATION_LEN = 7 + CAM_SIGNATURE_LEN;
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key);
+void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]);  // without using the heap
 
 // Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS" and "quiet=FROM-TO" lines,
 // FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR.

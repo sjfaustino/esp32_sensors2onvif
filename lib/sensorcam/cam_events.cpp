@@ -11,6 +11,8 @@ static const char LEGACY_BIN[] = "events.bin";          // that firmware's newes
 static const char CSV_HEADER[] = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
 static const uint8_t RECORD_VERSION = 1;
 static const size_t PENDING_MAX = 128 * CAM_EVENT_RECORD;  // while storage refuses, the oldest waiting ones go first
+// Room kept for events waiting to be saved, so logging an alert needs no memory: they are saved on the next pass.
+static const size_t PENDING_KEPT = 8 * CAM_EVENT_RECORD;
 
 const char* camEventName(uint8_t kind, bool active, bool delayed) {
   switch (kind) {
@@ -149,6 +151,7 @@ void CamEventLog::remember(const CamEvent& e) {
   ring_[next_] = e;
   next_ = (next_ + 1) % RECENT;
   if (count_ < RECENT) count_++;
+  added_++;
 }
 
 // The older firmware kept its newest 64 events as a copy of its memory. Its layout is CamEvent's, without offS on the
@@ -194,15 +197,16 @@ void CamEventLog::load() {
     CamEvent e;
     if (recordAt(i, e)) remember(e);
   }
-  chunk_.clear();
+  std::string().swap(chunk_);
+  pending_.reserve(PENDING_KEPT);
 }
 
 void CamEventLog::add(const CamEvent& e) {
-  remember(e);
   uint8_t r[CAM_EVENT_RECORD];
   camEventEncode(e, r);
   if (pending_.size() >= PENDING_MAX) pending_.erase(0, CAM_EVENT_RECORD);
-  pending_.append((const char*)r, sizeof(r));
+  pending_.append((const char*)r, sizeof(r));  // first, so an event shown is one that will be saved
+  remember(e);
 }
 
 bool CamEventLog::save(bool downloading) {
@@ -215,6 +219,10 @@ bool CamEventLog::save(bool downloading) {
   if (saveFailed_) return false;
   curBytes_ += pending_.size();
   pending_.clear();
+  if (pending_.capacity() > PENDING_KEPT) {  // grown while storage refused: given back, keeping the usual room
+    std::string().swap(pending_);
+    pending_.reserve(PENDING_KEPT);
+  }
   return true;
 }
 
@@ -276,7 +284,10 @@ size_t CamEventLog::csvRead(size_t offset, char* out, size_t len) {
       while (g >= lineStart_ + line_.size()) {
         lineStart_ += line_.size();
         line_.clear();
-        if (lineIndex_ >= allRecords_) return done;  // the end of the history
+        if (lineIndex_ >= allRecords_) {  // the end of the history; read ahead again should a piece be asked for again
+          std::string().swap(chunk_);
+          return done;
+        }
         CamEvent e;
         if (recordAt(lineIndex_++, e)) line_ = camEventCsvLine(e);
       }

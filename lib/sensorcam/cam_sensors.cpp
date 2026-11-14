@@ -31,22 +31,39 @@ bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
   return true;
 }
 
+// Without using the heap, so an alert is checked and confirmed even when memory has run out. out gets the full 20 bytes.
+static void signature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, uint8_t out[20]) {
+  camHmacSha1((const uint8_t*)key.data(), key.size(), mac, 6, d, (size_t)len, out);
+}
+
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
-  return camHmacSha1(key, std::string((const char*)mac, 6) + std::string((const char*)d, len)).substr(0, CAM_SIGNATURE_LEN);
+  uint8_t s[20];
+  signature(mac, d, len, key, s);
+  return std::string((const char*)s, CAM_SIGNATURE_LEN);
 }
 
 CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
   if (!parseSensorPacket(d, len, out)) return CAM_PACKET_INVALID;
   if (d[0] == 1) return CAM_PACKET_UNSIGNED;
-  std::string expected = camPacketSignature(mac, d, len - CAM_SIGNATURE_LEN, key);
+  uint8_t expected[20];
+  signature(mac, d, len - CAM_SIGNATURE_LEN, key, expected);
   uint8_t differ = 0;  // every byte is compared, so the time taken does not reveal how much matched
-  for (int i = 0; i < CAM_SIGNATURE_LEN; i++) differ |= (uint8_t)expected[i] ^ d[len - CAM_SIGNATURE_LEN + i];
+  for (int i = 0; i < CAM_SIGNATURE_LEN; i++) differ |= expected[i] ^ d[len - CAM_SIGNATURE_LEN + i];
   return differ || key.empty() ? CAM_PACKET_BAD_SIGNATURE : CAM_PACKET_SIGNED;
 }
 
-std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key) {
+void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {
   uint8_t d[7] = {CAM_CONFIRMATION, r.input, (uint8_t)r.active, (uint8_t)r.counter, (uint8_t)(r.counter >> 8), (uint8_t)(r.counter >> 16), (uint8_t)(r.counter >> 24)};
-  return std::string((const char*)d, sizeof(d)) + camPacketSignature(sensorMac, d, sizeof(d), key);
+  uint8_t s[20];
+  signature(sensorMac, d, sizeof(d), key, s);
+  memcpy(out, d, sizeof(d));
+  memcpy(out + sizeof(d), s, CAM_SIGNATURE_LEN);
+}
+
+std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key) {
+  uint8_t out[CAM_CONFIRMATION_LEN];
+  camConfirmationInto(sensorMac, r, key, out);
+  return std::string((const char*)out, sizeof(out));
 }
 
 static bool smallNumber(const std::string& s, int& out) {  // digits only, up to 9999

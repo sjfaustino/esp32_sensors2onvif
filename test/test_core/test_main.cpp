@@ -198,6 +198,29 @@ static void hmac_sha1_matches_rfc_2202() {
   TEST_ASSERT_EQUAL_STRING("aa4ae5e15272d00e95705637ce8a3b55ed402112", hex(camHmacSha1(std::string(80, '\xaa'), "Test Using Larger Than Block-Size Key - Hash Key First")).c_str());
 }
 
+// FIPS 180 examples, and the same hash whatever pieces the message arrives in, across block edges.
+static void sha1_in_pieces_matches() {
+  TEST_ASSERT_EQUAL_STRING("a9993e364706816aba3e25717850c26c9cd0d89d", hex(camSha1("abc")).c_str());
+  TEST_ASSERT_EQUAL_STRING("84983e441c3bd26ebaae4aa1f95129e5e54670f1", hex(camSha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")).c_str());
+  TEST_ASSERT_EQUAL_STRING("da39a3ee5e6b4b0d3255bfef95601890afd80709", hex(camSha1("")).c_str());
+  std::string text;
+  for (int i = 0; i < 300; i++) text += (char)(i * 7);
+  for (size_t piece : {1u, 3u, 55u, 56u, 63u, 64u, 65u, 300u}) {
+    CamSha1 s;
+    for (size_t at = 0; at < text.size(); at += piece) s.add(text.data() + at, text.size() - at < piece ? text.size() - at : piece);
+    uint8_t out[20];
+    s.finish(out);
+    TEST_ASSERT_EQUAL_STRING(hex(camSha1(text)).c_str(), camHex(out, 20).c_str());
+  }
+  // Lengths where the padding does and does not need a block of its own, checked against Python's hashlib.
+  TEST_ASSERT_EQUAL_STRING("c1c8bbdc22796e28c0e15163d20899b65621d65a", hex(camSha1(std::string(55, 'a'))).c_str());
+  TEST_ASSERT_EQUAL_STRING("c2db330f6083854c99d4b5bfb6e8f29f201be699", hex(camSha1(std::string(56, 'a'))).c_str());
+  TEST_ASSERT_EQUAL_STRING("03f09f5b158a7a8cdad920bddc29b81c18a551f5", hex(camSha1(std::string(63, 'a'))).c_str());
+  TEST_ASSERT_EQUAL_STRING("0098ba824b5c16427bd7a1122a5a442a25ec644d", hex(camSha1(std::string(64, 'a'))).c_str());
+  TEST_ASSERT_EQUAL_STRING("ee971065aaa017e0632a8ca6c77bb3bf8b1dfc56", hex(camSha1(std::string(119, 'a'))).c_str());
+  TEST_ASSERT_EQUAL_STRING("f34c1488385346a55709ba056ddd08280dd4c6d6", hex(camSha1(std::string(120, 'a'))).c_str());
+}
+
 static void signed_messages_are_checked() {
   const uint8_t mac[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x62};
   uint8_t p[13 + 8] = {2, 1, 1, 90, 4, 3, 2, 1, 0, 0, 0, 0, 0};
@@ -901,6 +924,7 @@ int main() {
   RUN_TEST(backup_values_follow_the_page_rules);
   RUN_TEST(long_names_are_cut_between_characters);
   RUN_TEST(hmac_sha1_matches_rfc_2202);
+  RUN_TEST(sha1_in_pieces_matches);
   RUN_TEST(signed_messages_are_checked);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);

@@ -70,6 +70,7 @@ class CamEventLog {
   bool waiting() const { return !pending_.empty(); }
   bool saveFailed() const { return saveFailed_; }
   int count() const { return count_; }
+  uint32_t added() const { return added_; }  // events remembered since the start, including those read from storage
   const CamEvent& recent(int n) const { return ring_[(next_ - 1 - n + 2 * RECENT) % RECENT]; }  // 0 is the newest
   size_t bytesOnStorage() const { return oldBytes_ + curBytes_; }
 
@@ -84,6 +85,7 @@ class CamEventLog {
   const CamStorage& storage_;
   CamEvent ring_[RECENT];
   int count_ = 0, next_ = 0;
+  uint32_t added_ = 0;
   std::string pending_;  // encoded records not yet on storage
   bool saveFailed_ = false;
   size_t oldBytes_ = 0, curBytes_ = 0;        // whole records in each log; a cut-off record after them is written over

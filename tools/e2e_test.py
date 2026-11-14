@@ -916,6 +916,40 @@ def main():
                 control('memory-normal')
                 check('a reply larger than the memory left fails alone, and the hub keeps running', code == 507 and api('GET', '/api/events')[0] == 200, code)
 
+                # No memory left at all: a radio alert still starts, is logged and is confirmed, and the hub keeps running.
+                dropped = int(control('memory-failures'))
+                control('last-sent')
+                control('memory-gone')
+                control('radio-alert')
+                time.sleep(0.3)  # passes of the hub's loop with no memory at all
+                control('memory-normal')
+                check('an alert with no memory left reaches the NVR, and the hub keeps running', name(1) in status()['active'], status())
+                newest = event_list()[0]
+                check('an alert with no memory left is logged', newest['sensor'] == name(1) and newest['active'] is True and newest['kind'] == 0, newest)
+                sent = wait_until(lambda: control('last-sent'))
+                check('an alert with no memory left is confirmed once saved', sent.startswith('020000000001 030101'), sent)
+                check('the hub counts the work it dropped for lack of memory', int(control('memory-failures')) > dropped)
+                clear(1)
+
+                # The Events page asks every 3 seconds; an unchanged list is answered without being built again.
+                def events_tagged(tag=None):
+                    headers = {'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {}
+                    if tag:
+                        headers['If-None-Match'] = tag
+                    c = http.client.HTTPConnection(HOST, WEB, timeout=15)
+                    c.request('GET', '/api/events', None, headers)
+                    r = c.getresponse()
+                    r.read()
+                    c.close()
+                    return r.status, r.getheader('ETag')
+
+                code, tag = events_tagged()
+                check('the event list carries a tag', code == 200 and tag, tag)
+                check('an unchanged event list is not sent again', events_tagged(tag) == (304, tag), events_tagged(tag))
+                get(f'/sensor?{sid(1)}')
+                clear(1)
+                check('a new event changes the tag', events_tagged(tag)[0] == 200)
+
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')
                 control('nvr-gone-fast')  # the NVR counts as gone after 3 s here, instead of 3 minutes

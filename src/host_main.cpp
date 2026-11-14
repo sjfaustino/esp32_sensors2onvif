@@ -15,14 +15,6 @@
 
 static const char ESPNOW_KEY[] = "test-espnow-key-0123456789";
 
-// Sends a report the way a sensor node would: version 2 signs it, version 1 does not.
-static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key, bool active = false) {
-  uint8_t mac[6] = {2, 0, 0, 0, 0, last};
-  uint8_t p[13 + 8] = {(uint8_t)version, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
-  if (version == 2) memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
-  hub->espNowPacket(mac, p, version == 2 ? 21 : 13, rssi);
-}
-
 static bool setupOn = false;
 static bool firmwareRefused = false;  // the next update cannot start, as on a board short of memory
 static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
@@ -30,14 +22,31 @@ static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: 
 
 // As on the board when memory is short and broken up: a request for a block larger than this fails, as the board's does.
 static std::atomic<size_t> largestBlock{0};  // 0 for no limit
+// As on a board with no memory left at all: every request the hub makes fails. Only the hub's own calls, so this
+// program can still read the test's commands.
+static std::atomic<bool> memoryGone{false};
+static thread_local bool inHub = false;
+struct HubCall {
+  HubCall() { inHub = true; }
+  ~HubCall() { inHub = false; }
+};
 void* operator new(size_t n) {
   size_t limit = largestBlock.load();
-  void* p = limit && n > limit ? nullptr : malloc(n ? n : 1);
+  void* p = (limit && n > limit) || (inHub && memoryGone.load()) ? nullptr : malloc(n ? n : 1);
   if (!p) throw std::bad_alloc();
   return p;
 }
 void operator delete(void* p) noexcept { free(p); }
 void operator delete(void* p, size_t) noexcept { free(p); }
+
+// Sends a report the way a sensor node would: version 2 signs it, version 1 does not.
+static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, int version, const char* key, bool active = false) {
+  uint8_t mac[6] = {2, 0, 0, 0, 0, last};
+  uint8_t p[13 + 8] = {(uint8_t)version, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
+  if (version == 2) memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
+  HubCall call;
+  hub->espNowPacket(mac, p, version == 2 ? 21 : 13, rssi);
+}
 
 // The test's controls, which only this build has: one command per line on standard input, each answered with
 // "done COMMAND" on standard output once it has taken effect, or "unknown COMMAND". A command with an answer gives it
@@ -57,6 +66,11 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     firmwareRefused = command == "firmware-refused";
   } else if (command == "memory-short" || command == "memory-normal") {  // no block above 2 KB, as on a hub short of memory
     largestBlock = command == "memory-short" ? 2048 : 0;
+    memoryGone = false;
+  } else if (command == "memory-gone") {  // no memory at all; memory-normal ends it
+    memoryGone = true;
+  } else if (command == "memory-failures") {  // answered with how often the hub dropped work for lack of memory
+    reply = std::to_string(hub.memoryFailures());
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
     hub.networkLost(125);
   } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes
@@ -69,6 +83,7 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     else if (command == "radio-unsigned") radio(&hub, node, counter++, 55, -61, 1, "");
     else if (command == "radio-forged") radio(&hub, node, counter++, 55, -61, 2, "not-the-key");
     else if (command == "radio-old") radio(&hub, node, counter - 10, 55, -61, 2, ESPNOW_KEY);
+    else if (command == "radio-alert") radio(&hub, node, counter++, 55, -61, 2, ESPNOW_KEY, true);
     else if (command == "radio-restart-alert") radio(&hub, node, 1, 55, -61, 2, ESPNOW_KEY, true);  // a sensor that restarted, firing
     else if (command == "radio-weak")
       for (int i = 0; i < 10; i++) radio(&hub, node, counter++, 55, -90, 2, ESPNOW_KEY);
@@ -207,7 +222,10 @@ int main(int argc, char** argv) {
   printf("ready\n");
   fflush(stdout);
   for (;;) {
-    server.poll(20);
+    {
+      HubCall call;
+      server.poll(20);
+    }
     std::deque<std::string> waiting;
     {
       std::lock_guard<std::mutex> hold(commandLock);

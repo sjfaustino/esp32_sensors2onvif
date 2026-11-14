@@ -68,6 +68,7 @@ bool SensorCamServer::begin() {
   nextFrameAt_ = millis_();
   lastGoodWait_ = nextFrameAt_;
   frameData_.reserve(CAM_MAX_FRAME);
+  notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
   log_.load();
   loadWaiting();
@@ -88,7 +89,8 @@ std::string SensorCamServer::debugLine() {
   for (const RtspConn& c : rtsp_) video += c.fd >= 0;
   for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
-         ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " + std::to_string(push);
+         ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " + std::to_string(push) +
+         ", short of memory " + std::to_string(memoryFailures_);
 }
 
 void SensorCamServer::networkUp() {
@@ -206,11 +208,17 @@ void SensorCamServer::sendBody(HttpConn& c, const char* type, const char* data, 
 
 // The body is kept apart from the headers rather than copied after them, so a large reply never needs a second block
 // of its size.
-void SensorCamServer::reply(HttpConn& c, int status, const char* type, std::string body) {
+void SensorCamServer::reply(HttpConn& c, int status, const char* type, std::string body, const std::string& extraHeaders) {
   c.body = std::move(body);
   c.staticBody = c.body.data();
   c.staticLen = c.body.size();
-  c.out = httpHead(status, type, c.body.size());
+  c.out = httpHead(status, type, c.body.size(), extraHeaders);
+}
+
+void SensorCamServer::undoPull(HttpConn& c) {
+  CamSub* sub = c.undoSub ? subs_.find(c.undoSub) : nullptr;
+  if (sub) sub->lastPull = c.undoState;
+  c.undoSub = 0;
 }
 
 // Memory ran out while answering. Only this request fails: what it was building is let go, and it is told to try
@@ -326,7 +334,11 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
       return "";
     }
     bool initial = sub && sub->lastPull < 0;
-    if (sub) sub->lastPull = state;
+    if (sub) {
+      c.undoSub = sub->id;
+      c.undoState = sub->lastPull;
+      sub->lastPull = state;
+    }
     reply = soapPullMessagesReply(ctx, changed, state == 1, initial);
   } else if (action == "Renew") {
     reply = soapRenewReply(ctx);
@@ -373,11 +385,18 @@ void SensorCamServer::servicePolls(uint32_t now) {
     bool changed = sub && sub->lastPull != state;
     if (sub && !changed && (int32_t)(now - c.pollUntil) < 0) continue;
     bool initial = sub && sub->lastPull < 0;
+    // The state counts as told only once the reply is ready. Without the memory for it, the request waits for the next
+    // pass, still owed this change.
+    try {
+      SoapContext ctx;
+      ctx.host = c.pollHost;
+      ctx.now = time(nullptr);
+      reply(c, 200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
+    } catch (const std::bad_alloc&) {
+      memoryFailures_++;
+      continue;
+    }
     if (sub) sub->lastPull = state;
-    SoapContext ctx;
-    ctx.host = c.pollHost;
-    ctx.now = time(nullptr);
-    reply(c, 200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
     c.pollWaiting = false;
     c.answered = true;
     c.openedAt = now;  // the time limit now covers sending this reply, not the wait before it
@@ -614,7 +633,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.in.resize(contentLength);
     std::string body = handleOnvif(c, headers, c.in, now, status);
     if (status == -1) {  // held until something changes
-      c.in.clear();
+      std::string().swap(c.in);
       return false;
     }
     reply(c, status, "application/soap+xml; charset=utf-8", std::move(body));
@@ -672,9 +691,12 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       try {
         handleHttp(c, now);
       } catch (const std::bad_alloc&) {
+        memoryFailures_++;
+        undoPull(c);
         shortOfMemory(c);
       }
       if (c.fd < 0) return;
+      if (c.answered) std::string().swap(c.in);  // the request is done with, and may be as large as 8 KB
     }
   }
   if (c.answered && !c.discardLeft && (writable || c.outPos == 0)) {
@@ -826,7 +848,13 @@ void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uin
         }
         size_t end = c.in.find("\r\n\r\n");
         if (end == std::string::npos) break;
-        handleRtspRequest(c, c.in.substr(0, end + 2), now);
+        try {
+          handleRtspRequest(c, c.in.substr(0, end + 2), now);
+        } catch (const std::bad_alloc&) {  // the viewer reconnects, as it does after any dropped connection
+          memoryFailures_++;
+          closeRtsp(c);
+          return;
+        }
         c.in.erase(0, end + 4);
       }
       if (c.in.size() > MAX_HEADERS) {
@@ -855,16 +883,18 @@ void SensorCamServer::pushFrames(uint32_t now) {
 // ---- ONVIF event push ----
 
 void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
-  if (n.hook) {
-    hookResult_ = result;
-    hookResultAt_ = time(nullptr);
-  } else if (&n >= notify_ && &n < notify_ + SubTable::SIZE && n.state != NotifyIo::IDLE) {
+  bool hook = n.hook;
+  if (!hook && &n >= notify_ && &n < notify_ + SubTable::SIZE && n.state != NotifyIo::IDLE) {
     // Ending before the whole message was sent means the NVR did not get it. Once it was sent, waiting for the NVR to
     // close is all that is left, so any ending then is a delivery.
     subs_.at((int)(&n - notify_)).pushFailed = n.state != NotifyIo::WAIT_CLOSE;
   }
   if (n.fd >= 0) netClose(n.fd);
   n = NotifyIo();
+  if (hook) {  // last, as the one step that needs memory: running out then loses only the note
+    hookResultAt_ = time(nullptr);
+    hookResult_ = result;
+  }
 }
 
 void SensorCamServer::startNotify(int i, uint32_t now) {
@@ -875,6 +905,15 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
     sub.pending = false;
     return;
   }
+  // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
+  // and is tried again on the next pass.
+  std::string body = soapNotify(sensors_.anyActive(), !sub.initialized, time(nullptr));
+  std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
+                    "\r\nContent-Type: application/soap+xml; charset=utf-8; action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
+                    std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
+  out.reserve(out.size() + body.size());
+  out += body;
+  std::string().swap(body);
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return;  // still pending, so it is tried again on the next pass
   sub.pending = false;
@@ -888,13 +927,8 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
     sub.pushFailed = true;
     return;
   }
-  bool active = sensors_.anyActive();
-  std::string body = soapNotify(active, !sub.initialized, time(nullptr));
   sub.initialized = true;
-  std::string action = "http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify";
-  n.out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
-          "\r\nContent-Type: application/soap+xml; charset=utf-8; action=\"" + action + "\"\r\nContent-Length: " + std::to_string(body.size()) +
-          "\r\nConnection: close\r\n\r\n" + body;
+  n.out.swap(out);
   n.fd = fd;
   n.outPos = 0;
   n.state = NotifyIo::CONNECTING;
@@ -921,6 +955,8 @@ void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, u
     if (sent > 0) n.outPos += sent;
     if (n.outPos >= n.out.size()) {
       // The NVR closes without an HTTP reply, so this only waits for that close. A webhook replies.
+      std::string().swap(n.out);
+      n.outPos = 0;
       n.state = NotifyIo::WAIT_CLOSE;
       n.deadline = now + (n.hook ? CAM_HOOK_WAIT_MS : CAM_NOTIFY_CLOSE_MS);
     }
@@ -929,8 +965,13 @@ void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, u
     char buf[256];
     int got = (int)recv(n.fd, buf, sizeof(buf), 0);
     if (got >= 0 || !netWouldBlock()) {
-      std::string result = got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0 ? "HTTP " + std::string(buf + 9, 3) : std::string("closed without a reply");
-      endNotify(n, result.c_str());
+      char code[16];
+      const char* result = "closed without a reply";
+      if (got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0) {
+        snprintf(code, sizeof(code), "HTTP %.3s", buf + 9);
+        result = code;
+      }
+      endNotify(n, result);
       return;
     }
   }
@@ -955,9 +996,23 @@ void SensorCamServer::serviceDiscovery() {
 
 // ---- main loop ----
 
+// Running out of memory drops only the piece of work that needed it, never the hub: a restart would miss alerts while it
+// lasted. Whatever was dropped is tried again on a later pass, or by the client that asked.
+// The two halves apart, so work that keeps running out of memory cannot stop the connections being served.
 void SensorCamServer::poll(int maxWaitMs) {
-  uint32_t now = millis_();
+  try {
+    housekeeping(millis_());
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+  }
+  try {
+    pollOnce(maxWaitMs);
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+  }
+}
 
+void SensorCamServer::housekeeping(uint32_t now) {
   sensors_.tick(now);
   serviceDelayed(now);
   // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.
@@ -969,11 +1024,10 @@ void SensorCamServer::poll(int maxWaitMs) {
     healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }
   // Reports that arrived since the last pass are saved together, and only then confirmed.
-  if (!confirmations_.empty()) {
+  if (confirmCount_) {
     bool kept = persist();
-    for (size_t i = 0; kept && cfg_.espNowSend && i + 6 + CAM_CONFIRMATION_LEN <= confirmations_.size(); i += 6 + CAM_CONFIRMATION_LEN)
-      cfg_.espNowSend((const uint8_t*)confirmations_.data() + i, (const uint8_t*)confirmations_.data() + i + 6, CAM_CONFIRMATION_LEN);
-    confirmations_.clear();  // unconfirmed, the sensors resend, and each resend tries the save again
+    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++) cfg_.espNowSend(confirmations_[i], confirmations_[i] + 6, CAM_CONFIRMATION_LEN);
+    confirmCount_ = 0;  // unconfirmed, the sensors resend, and each resend tries the save again
   }
   if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap
   if (waitingDirty_) saveWaiting();  // small, and it is what a restart would replay
@@ -995,7 +1049,10 @@ void SensorCamServer::poll(int maxWaitMs) {
   }
   if (hook_.state == NotifyIo::IDLE && hookCount_ && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
   pushFrames(now);
+}
 
+void SensorCamServer::pollOnce(int maxWaitMs) {
+  uint32_t now = millis_();
   fd_set rd, wr;
   FD_ZERO(&rd);
   FD_ZERO(&wr);

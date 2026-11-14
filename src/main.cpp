@@ -571,6 +571,8 @@ static void deviceRows(CamJson& j) {
   add("Memory in use by size", String("under 64 B: ") + pieces.bucketCount[0] + " = " + pieces.bucketBytes[0] / 1024 + " KB; 64-255 B: " +
       pieces.bucketCount[1] + " = " + pieces.bucketBytes[1] / 1024 + " KB; 256 B-1 KB: " + pieces.bucketCount[2] + " = " + pieces.bucketBytes[2] / 1024 +
       " KB; 1-4 KB: " + pieces.bucketCount[3] + " = " + pieces.bucketBytes[3] / 1024 + " KB; larger: " + pieces.bucketCount[4] + " = " + pieces.bucketBytes[4] / 1024 + " KB");
+  uint32_t shortTimes = server ? server->memoryFailures() : 0;
+  add("Work dropped for lack of memory", String((unsigned)shortTimes) + (shortTimes ? " times since the start; the hub kept running" : ""));
   add("ESP-NOW messages dropped while busy", String((unsigned)espNowDropped) + (espNowDropped ? ", which their sensors resend" : ""));
   nvs_stats_t nvs;
   if (nvs_get_stats(nullptr, &nvs) == ESP_OK) add("Settings storage", String(nvs.used_entries) + " of " + nvs.total_entries + " entries used");

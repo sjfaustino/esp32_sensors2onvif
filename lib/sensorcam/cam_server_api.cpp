@@ -214,7 +214,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     c.out = UNAUTHORIZED;
     return;
   }
-  const ApiRequest r{c, method, route, target, body, bodyLen};
+  const ApiRequest r{c, method, route, target, headers, body, bodyLen};
   if (setupRoute) apiSetup(r);
   else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r)) apiFiles(r);
 }
@@ -346,7 +346,16 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
   } else if (r.is("POST", "/api/crash/delete")) {
     c.out = saved(cfg_.crashDelete && cfg_.crashDelete(), "could not delete the crash report");
   } else if (r.is("GET", "/api/events")) {
-    reply(c, 200, JSON_TYPE, eventsJson());
+    // The Events page asks every 3 seconds. The browser sends back the tag of the list it has, so an unchanged list costs
+    // the hub nothing to build.
+    std::string tag = eventsTag();
+    if (headerValue(r.headers, "if-none-match") == tag) {
+      c.out = "HTTP/1.1 304 Not Modified\r\nETag: " + tag + "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
+    } else {
+      bool whole = true;
+      std::string list = eventsJson(&whole);  // a list trimmed for lack of memory gets no tag, so it is asked for again
+      reply(c, 200, JSON_TYPE, std::move(list), whole ? "ETag: " + tag + "\r\nCache-Control: no-cache\r\n" : "Cache-Control: no-store\r\n");
+    }
   } else if (r.is("GET", "/api/espnow")) {
     c.body = espNowJson();
     if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
