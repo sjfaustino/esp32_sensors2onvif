@@ -192,7 +192,14 @@ size_t CamStorage::fileSize(const std::string& path) const {
   return stat(full(path).c_str(), &st) == 0 && !S_ISDIR(st.st_mode) ? (size_t)st.st_size : 0;
 }
 
+#ifdef CAM_TEST_HOOKS
+bool camStorageListsFail = false;
+#endif
+
 bool CamStorage::list(const std::string& path, std::vector<CamFsEntry>& out) const {
+#ifdef CAM_TEST_HOOKS
+  if (camStorageListsFail) return false;
+#endif
   std::string base = full(path);
   DIR* dir = opendir(base.c_str());
   if (!dir) return false;

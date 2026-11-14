@@ -132,6 +132,11 @@ def api(method, path, body=None, auth=True, origin=None):
     return r.status, data
 
 
+def get_json(path):
+    """A page that answers JSON, read with the web password."""
+    return json.loads(api('GET', path)[1])
+
+
 def raw_get(path, host=None, source=None, password=None):
     """A GET with a chosen Host header, from a chosen local address, with a chosen password. Returns the status."""
     c = http.client.HTTPConnection(HOST, WEB, timeout=5, source_address=(source, 0) if source else None)
@@ -176,11 +181,11 @@ def poll(fetch, test, timeout=10, step=0.05):
 
 
 def event_list():
-    return json.loads(api('GET', '/api/events')[1])
+    return get_json('/api/events')
 
 
 def live():
-    return json.loads(api('GET', '/api/live')[1])
+    return get_json('/api/live')
 
 
 def control(command):
@@ -419,19 +424,19 @@ class FakeBroker:
 
 def mqtt_tests(sensor_alert, sensor_clear):
     """Home Assistant through MQTT, against a pretend broker on this PC."""
-    settings = json.loads(api('GET', '/api/mqtt')[1])
+    settings = get_json('/api/mqtt')
     if settings['host']:
         print('SKIP MQTT: the hub already has a broker set, which these tests would replace')
         return
     broker = FakeBroker(LOCAL)
-    serial = json.loads(api('GET', '/api/info')[1])['serial']
+    serial = get_json('/api/info')['serial']
     base = f'sensors2onvif/{serial}'
 
     def key(n):
         return SENSORS[n][0].replace('-', '').lower() + f'_{SENSORS[n][1]}'
 
     def mqtt_page():
-        return json.loads(api('GET', '/api/mqtt')[1])
+        return get_json('/api/mqtt')
 
     check('a broker given by name is refused', api('POST', '/api/mqtt', 'host=broker.lan&port=1883')[0] == 400)
     check('a broker port out of range is refused', api('POST', '/api/mqtt', f'host={LOCAL}&port=70000')[0] == 400)
@@ -524,7 +529,7 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('and armed again once it ends', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_away', timeout=15))
     api('POST', '/api/arm/rearm', 'minutes=60')
     broker.send(f'{base}/armed/set', b'DISARM')
-    off = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)
+    off = poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is False)
     check('Home Assistant can disarm the hub, for the hub\'s re-arm time', off['armed'] is False and off['timed'] and 3500 < (off['left_s'] or 0) <= 3600, off)
     newest = event_list()[0]
     check('disarming is logged, saying from where and for how long', newest['sensor'] == 'hub' and newest['event'] == 'disarmed' and newest['detail'] == 'Home Assistant, for 1 h', newest)
@@ -536,15 +541,15 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('and the sensor does not turn on', (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'OFF', broker.state(f'{base}/{key(1)}/state'))
     sensor_clear(1)
     broker.send(f'{base}/armed/set', b'ARM_AWAY')
-    on = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
+    on = poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is True)
     check('Home Assistant can arm the hub', on['armed'] is True and not on['timed'], on)
     broker.send(f'{base}/armed/set', b'ARM_HOME')
-    home = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['mode'] == 'home')
+    home = poll(lambda: get_json('/api/arm'), lambda a: a['mode'] == 'home')
     check('Home Assistant can arm the hub home', home['mode'] == 'home', home)
     check('the panel shows it armed home', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_home'))
     check('the panel offers arming home', 'arm_home' in panel.get('supported_features', []) and panel.get('payload_arm_home') == 'ARM_HOME', panel)
     broker.send(f'{base}/armed/set', b'ARM_AWAY')
-    poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['mode'] == 'away')
+    poll(lambda: get_json('/api/arm'), lambda a: a['mode'] == 'away')
 
     # Each sensor's test button.
     button = wait_until(lambda: broker.latest(f'homeassistant/button/{serial}/{key(1)}_test/config'))
@@ -558,9 +563,9 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('and the sensor turns on', wait_until(lambda: (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'ON'))
     sensor_clear(1)
     broker.send(f'{base}/armed/set', b'OFF')  # what the switch of earlier firmware sent
-    check('the switch of earlier firmware still works', poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)['armed'] is False)
+    check('the switch of earlier firmware still works', poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is False)['armed'] is False)
     broker.send(f'{base}/armed/set', b'ON')
-    poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
+    poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is True)
     api('POST', '/api/arm/rearm', 'minutes=0')
 
     # A broker that refuses the login says why on the page.
@@ -580,7 +585,7 @@ def arm_tests():
     """Disarmed, alerts are logged but not sent to the NVR; one that happened before the disarm still is."""
     check('arming needs the web password', api('POST', '/api/arm', 'armed=0', auth=False)[0] == 401)
     check('a bad arm value is refused', api('POST', '/api/arm', 'armed=maybe')[0] == 400)
-    check('the hub can be disarmed', api('POST', '/api/arm', 'armed=0')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['armed'] is False)
+    check('the hub can be disarmed', api('POST', '/api/arm', 'armed=0')[0] == 200 and get_json('/api/arm')['armed'] is False)
     newest = event_list()[0]
     check('disarming from the page is logged', newest['event'] == 'disarmed' and newest['detail'] == 'the web page', newest)
     check('/status says the hub is disarmed', status()['armed'] is False)
@@ -608,7 +613,7 @@ def arm_tests():
     check('it reaches the NVR even while disarmed', name(3) in status()['active'], status())
     newest = event_list()[0]
     check('and is logged as a test', newest['sensor'] == name(3) and newest['kind'] == 15 and newest['event'] == 'test alert', newest)
-    overview = json.loads(api('GET', '/api/overview')[1])
+    overview = get_json('/api/overview')
     check('the overview shows the alarm, the alert running and the last alert',
           overview['mode'] == 'disarmed' and [a['sensor'] for a in overview['active']] == [name(3)] and overview['last']['event'] == 'test alert'
           and 'listening' in overview['nvr'] and 'mqtt' in overview and isinstance(overview['problems'], list), overview)
@@ -619,10 +624,10 @@ def arm_tests():
     # Armed home: interior sensors are logged but not sent to the NVR; perimeter ones count as ever.
     check('a bad zone is refused', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=garden')[0] == 400)
     check('a sensor can be marked interior', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=interior')[0] == 200)
-    zoned = [s for n in json.loads(api('GET', '/api/tree')[1])['nodes'] for s in n['sensors'] if f"{n['mac']}/{s['input']}" == name(2)]
+    zoned = [s for n in get_json('/api/tree')['nodes'] for s in n['sensors'] if f"{n['mac']}/{s['input']}" == name(2)]
     check('the sensor list shows it interior', zoned and zoned[0]['interior'] is True, zoned)
     check('a bad mode is refused', api('POST', '/api/arm', 'mode=party')[0] == 400)
-    check('the hub can be armed home', api('POST', '/api/arm', 'mode=home')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['mode'] == 'home')
+    check('the hub can be armed home', api('POST', '/api/arm', 'mode=home')[0] == 200 and get_json('/api/arm')['mode'] == 'home')
     newest = event_list()[0]
     check('arming home is logged', newest['event'] == 'armed home' and newest['detail'] == 'the web page', newest)
     check('/status says armed home', status()['mode'] == 'home' and status()['armed'] is True)
@@ -644,18 +649,29 @@ def arm_tests():
     api('POST', '/api/arm', 'mode=away')
     api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=perimeter')
 
+    # A storage error while the sensor table is rebuilt must not make the hub forget its sensors: their alerts would be
+    # ignored as from unknown senders until the next change.
+    if not DEVICE:
+        control('lists-fail')
+        changed = api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=20')[0]  # a change, so the table is rebuilt
+        code = get(f'/sensor?{sid(1)}')[0]
+        control('lists-work')
+        check('a folder that cannot be read keeps its sensors', changed == 200 and code == 200 and name(1) in status()['active'], (changed, code, status()))
+        clear(1)
+        api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=')
+
     # A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched.
     check('a disarm longer than a week is refused', api('POST', '/api/arm', 'armed=0&for=10081')[0] == 400)
     check('a bad re-arm time is refused', api('POST', '/api/arm/rearm', 'minutes=soon')[0] == 400)
-    check('the re-arm time for Home Assistant can be saved', api('POST', '/api/arm/rearm', 'minutes=480')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['rearm'] == 480)
+    check('the re-arm time for Home Assistant can be saved', api('POST', '/api/arm/rearm', 'minutes=480')[0] == 200 and get_json('/api/arm')['rearm'] == 480)
     api('POST', '/api/arm/rearm', 'minutes=0')
     if not DEVICE:
         control('minutes-fast')  # a minute lasts a second
         api('POST', '/api/arm', 'armed=0&for=2')
-        timed = json.loads(api('GET', '/api/arm')[1])
+        timed = get_json('/api/arm')
         check('a disarm can be for a time', timed['armed'] is False and timed['timed'] and 0 < timed['left_s'] <= 120, timed)
         check('disarming for a time is logged with it', event_list()[0]['detail'] == 'the web page, for 2 min', event_list()[0])
-        check('the hub arms itself again when the time is up', wait_until(lambda: json.loads(api('GET', '/api/arm')[1])['armed'], timeout=10))
+        check('the hub arms itself again when the time is up', wait_until(lambda: get_json('/api/arm')['armed'], timeout=10))
         newest = event_list()[0]
         check('arming by the timer is logged', newest['event'] == 'armed' and newest['detail'] == 'the re-arm timer', newest)
         get(f'/sensor?{sid(1)}')
@@ -664,7 +680,7 @@ def arm_tests():
         api('POST', '/api/arm', 'armed=0&for=1')
         api('POST', '/api/arm', 'armed=0&for=0')  # changed to until armed again
         time.sleep(2)  # longer than the first time given
-        check('a disarm changed to last until armed again does not end by itself', json.loads(api('GET', '/api/arm')[1])['armed'] is False)
+        check('a disarm changed to last until armed again does not end by itself', get_json('/api/arm')['armed'] is False)
         api('POST', '/api/arm', 'armed=1')
 
 
@@ -703,7 +719,7 @@ def pairing_tests():
         return body + signed(key, body)
 
     def node_row(input_number):
-        return next((n for n in json.loads(api('GET', '/api/espnow')[1])['nodes'] if n['node'] == folder and n['input'] == input_number), {})
+        return next((n for n in get_json('/api/espnow')['nodes'] if n['node'] == folder and n['input'] == input_number), {})
 
     check('a hello while pairing is closed gets no answer', say(hello) is None)
     check('opening pairing needs the web password', api('POST', '/api/pairing/open', 'x=1', auth=False)[0] == 401)
@@ -713,17 +729,17 @@ def pairing_tests():
     hub_public = raw(X25519PrivateKey.from_private_bytes(bytes.fromhex(HUB_PAIRING_KEY)).public_key())
     check("a hello while pairing is open is answered: waiting, with the channel and the hub's public key",
           to == mac and len(data) == 43 and data[:3] == bytes([5, 0, 6]) and data[3:35] == hub_public and data[35:] == bytes(8), answer)
-    page = json.loads(api('GET', '/api/pairing')[1])
+    page = get_json('/api/pairing')
     waiting = [w for w in page['waiting'] if w['mac'] == folder]
     check("the node waits for approval, shown with its key's fingerprint", waiting and waiting[0]['fingerprint'] == fingerprint(node_public) and waiting[0]['inputs'] == 2, page)
     check("the page shows the hub's fingerprint", page['hub'] == fingerprint(hub_public) and page['open'] > 100, page)
     check('a report before approval is ignored', say(report(1, 1, b'anything')) is None and not node_row(1))
     check('approval needs the web password', api('POST', '/api/pairing/approve', f'mac={folder}', auth=False)[0] == 401)
     check('the node can be approved', api('POST', '/api/pairing/approve', f'mac={folder}')[0] == 200)
-    tree = json.loads(api('GET', '/api/tree')[1])
+    tree = get_json('/api/tree')
     added = next((n for n in tree['nodes'] if n['mac'] == folder), {})
     check('approval adds the node and its sensors, paired', added.get('paired') is True and [s['input'] for s in added.get('sensors', [])] == [1, 2], added)
-    check('and it leaves the waiting list', not [w for w in json.loads(api('GET', '/api/pairing')[1])['waiting'] if w['mac'] == folder])
+    check('and it leaves the waiting list', not [w for w in get_json('/api/pairing')['waiting'] if w['mac'] == folder])
 
     key = hmac.new(node.exchange(X25519PublicKey.from_public_bytes(hub_public)), b'sensors2onvif node key' + hub_public + node_public, hashlib.sha1).digest()
     to, data = say(hello) or ('', b'')
@@ -750,7 +766,7 @@ def pairing_tests():
     api('POST', '/api/pairing/open', 'x=1')
     say(bytes([4, 1]) + raw(other.public_key()), '020000000056')
     check('another node can be rejected', api('POST', '/api/pairing/reject', 'mac=02-00-00-00-00-56')[0] == 200
-          and not json.loads(api('GET', '/api/pairing')[1])['waiting'])
+          and not get_json('/api/pairing')['waiting'])
     check('approving a node that is not waiting is refused', api('POST', '/api/pairing/approve', 'mac=02-00-00-00-00-56')[0] == 409)
     api('POST', '/api/pairing/close', 'x=1')
     api('DELETE', f'/api/file?path={folder}')
@@ -814,13 +830,13 @@ def file_manager_tests(files, hub_files_free):
         code, data = soap(action, '/onvif/device_service')
         check(f'ONVIF answers {action}', code == 200 and wanted in data, data[:200])
     check('an unsupported ONVIF request is refused', soap('NoSuchRequest', '/onvif/device_service')[0] == 400)
-    check('an unsupported ONVIF request is recorded', 'NoSuchRequest' in json.loads(api('GET', '/api/info')[1])['unsupported'])
+    check('an unsupported ONVIF request is recorded', 'NoSuchRequest' in get_json('/api/info')['unsupported'])
     check('setting the time over ONVIF is refused, because the hub would ignore it', soap('SetSystemDateAndTime', '/onvif/device_service')[0] == 400)
 
     code, device = api('GET', '/api/device')
     rows = dict(json.loads(device)['rows']) if code == 200 else {}
     check('device info is served', 'Firmware version' in rows and 'Picture storage' in rows and 'Sensors' in rows, rows)
-    check('time settings are served', api('GET', '/api/time')[0] == 200 and 'local' in json.loads(api('GET', '/api/time')[1]))
+    check('time settings are served', api('GET', '/api/time')[0] == 200 and 'local' in get_json('/api/time'))
     code, sched = api('GET', '/api/schedule')
     check('restart schedule is served', code == 200 and 'minute' in json.loads(sched), code)
     check('device info needs the web password', not PASSWORD or api('GET', '/api/device', auth=False)[0] == 401)
@@ -830,7 +846,7 @@ def file_manager_tests(files, hub_files_free):
         code, dump = api('GET', '/api/crash')
         check('the crash report downloads whole, read in pieces', code == 200 and dump == bytes(i % 251 for i in range(3000)), (code, len(dump)))
         check('the crash report needs the web password', not PASSWORD or api('GET', '/api/crash', auth=False)[0] == 401)
-        check('the crash report can be deleted', api('POST', '/api/crash/delete', 'x=1')[0] == 200 and json.loads(api('GET', '/api/device')[1]).get('crash') == 0)
+        check('the crash report can be deleted', api('POST', '/api/crash/delete', 'x=1')[0] == 200 and get_json('/api/device').get('crash') == 0)
         check('no crash report to download after deleting', api('GET', '/api/crash')[0] == 404)
 
     if not DEVICE:  # saving Wi-Fi on a real board would move it to another network
@@ -842,7 +858,7 @@ def file_manager_tests(files, hub_files_free):
             check(f'time is refused: {bad[:34]}', api('POST', '/api/time', bad)[0] == 400)
         check('time settings need the web password', api('POST', '/api/time', f'mode=ntp&server=a.b&{zone}', auth=False)[0] == 401)
         check('restart schedule is accepted', api('POST', '/api/schedule', 'on=1&day=3&minute=240')[0] == 200)
-        saved = json.loads(api('GET', '/api/schedule')[1])
+        saved = get_json('/api/schedule')
         check('restart schedule reads back', saved == {'on': True, 'day': 3, 'minute': 240}, saved)
         for bad in ('on=1&day=7&minute=0', 'on=1&day=-2&minute=0', 'on=1&day=0&minute=1440', 'on=1&day=0&minute=x', 'on=1'):
             check(f'restart schedule is refused: {bad}', api('POST', '/api/schedule', bad)[0] == 400)
@@ -858,7 +874,7 @@ def file_manager_tests(files, hub_files_free):
         check('setup page is served', code == 200 and b'Hub Wi-Fi setup' in page and b'async function scan' in page, code)
         check('network list is served', b'test-net' in api('GET', '/api/wifi/scan')[1])
         if not DEVICE:
-            names = [n['ssid'] for n in json.loads(api('GET', '/api/wifi/scan')[1])['networks']]
+            names = [n['ssid'] for n in get_json('/api/wifi/scan')['networks']]
             check('a network name with quotes, a backslash and control characters arrives exactly', names == ['test-net', 'say "hi" \\ to\tall\x01'], names)
         check('short Wi-Fi password is refused', api('POST', '/api/wifi', 'ssid=x&password=short')[0] == 400)
         check('empty Wi-Fi name is refused', api('POST', '/api/wifi', 'ssid=&password=longenough')[0] == 400)
@@ -897,12 +913,12 @@ def file_manager_tests(files, hub_files_free):
 
         check('NVR address needs the web password', api('POST', '/api/nvr', 'ip=192.0.2.7', auth=False)[0] == 401)
         check('NVR address is saved', api('POST', '/api/nvr', 'ip=192.0.2.7')[0] == 200)
-        nvr_info = json.loads(api('GET', '/api/nvr')[1])
+        nvr_info = get_json('/api/nvr')
         check('NVR address reads back', nvr_info['ip'] == '192.0.2.7', nvr_info)
         check('NVR not connected is reported', nvr_info['video'] is False and nvr_info['events'] is False, nvr_info)
         for bad in ('ip=1.2.3', 'ip=999.1.1.1', 'ip=abc'):
             check(f'NVR address is refused: {bad}', api('POST', '/api/nvr', bad)[0] == 400)
-        check('NVR address can be cleared', api('POST', '/api/nvr', 'ip=')[0] == 200 and json.loads(api('GET', '/api/nvr')[1])['ip'] == '')
+        check('NVR address can be cleared', api('POST', '/api/nvr', 'ip=')[0] == 200 and get_json('/api/nvr')['ip'] == '')
         code, net = api('GET', '/api/network')
         check('network details are served', code == 200 and b'"mac"' in net and b'"gateway"' in net, code)
         check('network settings need the web password', api('POST', '/api/network', 'mode=dhcp', auth=False)[0] == 401)
@@ -938,7 +954,7 @@ def file_manager_tests(files, hub_files_free):
     if not DEVICE:
         control('disk-nearly-full')
         check("a picture that would take the event history\'s room is refused", api('PUT', f'/api/file?path={path}', good)[0] == 507)
-        check('the Sensors page says how much is kept for the history', json.loads(api('GET', '/api/tree')[1])['kept'] > 512 * 1024 - 1)
+        check('the Sensors page says how much is kept for the history', get_json('/api/tree')['kept'] > 512 * 1024 - 1)
         control('disk-normal')
     code, back = api('GET', f'/api/file?path={path}')
     check('picture downloads unchanged', code == 200 and back == good, code)
@@ -981,9 +997,9 @@ def file_manager_tests(files, hub_files_free):
     check('thumbnail is saved', api('PUT', f'/api/file?path={jpg}', tiny)[0] == 200)
     check('thumbnail reads back', api('GET', f'/api/file?path={jpg}')[1] == tiny)
     check('bad thumbnail name is refused', api('PUT', f'/api/file?path={path[:-5]}x.jpg', tiny)[0] == 400)
-    listed = [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'] == 'approaching.h264']
+    listed = [f for s in get_json('/api/tree')['nodes'] for n in s['sensors'] for f in n['files'] if f['name'] == 'approaching.h264']
     check('tree says a picture has a thumbnail', any(f['preview'] for f in listed), listed)
-    check('tree does not list thumbnails as pictures', not [f for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
+    check('tree does not list thumbnails as pictures', not [f for s in get_json('/api/tree')['nodes'] for n in s['sensors'] for f in n['files'] if f['name'].endswith('.jpg')])
     get(f'/sensor?{sid(4)}&direction=1')
     check('snapshot shows the picture being sent', wait_until(lambda: snapshot(ONVIF)[2] == tiny))
     # Video is sent straight from the picture, with no buffer per viewer, so all of these work at once. The hub takes
@@ -1026,7 +1042,7 @@ def file_manager_tests(files, hub_files_free):
     check('delete with bad path refused', api('DELETE', '/api/file?path=../x')[0] == 400)
     check('delete of nothing reports it', api('DELETE', f'/api/file?path={name(1)}/rtl.h264')[0] == 404)
 
-    tree = json.loads(api('GET', '/api/tree')[1])
+    tree = get_json('/api/tree')
     by_mac = {s['mac']: s for s in tree['nodes']}
     sensors_b = {s['input']: s for s in by_mac[B]['sensors']}
     check('tree shows nodes and sensors', set(by_mac) >= {A, B} and sorted(s['input'] for s in by_mac[A]['sensors']) == [1, 2, 3], tree)
@@ -1061,7 +1077,7 @@ def test_replacement_all_clear(files):
         half = socket.create_connection((HOST, WEB), timeout=5)
         half.sendall(b'PUT /api/file?path=clear.h264 HTTP/1.1\r\nHost: x\r\nContent-Length: 30000\r\n\r\nabc')
         time.sleep(1.2)  # time for the hub to wrongly accept it
-        check('an upload with no login leaves the picture alone', json.loads(api('GET', '/api/live')[1])['file'] == 'clear.h264')
+        check('an upload with no login leaves the picture alone', get_json('/api/live')['file'] == 'clear.h264')
         half.close()
     check('clear.h264 can be deleted', api('DELETE', '/api/file?path=clear.h264')[0] == 200)
     colour = grab_colour()
@@ -1090,14 +1106,14 @@ def test_signed_messages(node_entry, radio):
     control('radio-old')
     after = node_entry(radio())
     check('a signed message with a lower number is still accepted, so no alert is lost', after['refused'] == before['refused'] and after['counter'] == before['counter'] - 9, (before, after))
-    events = len(json.loads(api('GET', '/api/events')[1]))
+    events = len(get_json('/api/events'))
     control('radio-restart-alert')
     after = node_entry(radio())
-    history = json.loads(api('GET', '/api/events')[1])
+    history = get_json('/api/events')
     check('a sensor that restarts its count at 1 is heard', after['counter'] == 1 and after['refused'] == before['refused'], after)
     check("a restarted sensor's alert reaches the NVR", name(1) in status()['active'] and history[0]['active'] is True and len(history) > events, history[:1])
     control('radio-restart-alert')
-    check('the same report again a moment later is a resend and ignored', len(json.loads(api('GET', '/api/events')[1])) == len(history))
+    check('the same report again a moment later is a resend and ignored', len(get_json('/api/events')) == len(history))
     clear(1)
     return before, events, history
 
@@ -1106,7 +1122,7 @@ def test_weak_signal(node_entry, radio):
     # Weak signal.
     control('radio-weak')
     check('a weak signal is flagged', node_entry(radio())['weak'] is True, node_entry(radio()))
-    check('a weak signal is in the event history', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 4)
+    check('a weak signal is in the event history', get_json('/api/events')[0]['kind'] == 4)
     for _ in range(6):
         control('radio-known')
     check('a good signal clears the flag', node_entry(radio())['weak'] is False, node_entry(radio()))
@@ -1117,14 +1133,14 @@ def test_battery_silence_alerts(label, node_entry, radio):
     # Battery and silence alerts.
     control('radio-low')
     check('low battery is flagged', node_entry(radio())['low'] is True, node_entry(radio()))
-    history = json.loads(api('GET', '/api/events')[1])
+    history = get_json('/api/events')
     check('low battery is in the event history', history and history[0]['kind'] == 2 and history[0]['name'] == label.decode(), history[:1])
-    before_again = len(json.loads(api('GET', '/api/events')[1]))
+    before_again = len(get_json('/api/events'))
     control('radio-low')
-    check('low battery alerts only once', len(json.loads(api('GET', '/api/events')[1])) == before_again)
+    check('low battery alerts only once', len(get_json('/api/events')) == before_again)
     control('radio-known')
     check('a good battery clears the flag', node_entry(radio())['low'] is False, node_entry(radio()))
-    check('the alarm setting is saved', api('POST', '/api/alerts', 'alarm=1')[0] == 200 and json.loads(api('GET', '/api/alerts')[1])['alarm'] is True)
+    check('the alarm setting is saved', api('POST', '/api/alerts', 'alarm=1')[0] == 200 and get_json('/api/alerts')['alarm'] is True)
     control('radio-low')
     wait_until(lambda: node_entry(radio())['state'] == 'active')
     check('a low battery can raise the alarm', node_entry(radio())['state'] == 'active', node_entry(radio()))
@@ -1138,7 +1154,7 @@ def test_per_sensor_settings():
     path = name(1)
 
     def tree_entry():
-        return [n for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]
+        return [n for s in get_json('/api/tree')['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]
 
     check('a sensor can have its own hold', api('POST', f'/api/sensor-settings?path={path}', 'hold=2')[0] == 200)
     check('the Sensors page data shows the hold', tree_entry()['hold'] == 2 and tree_entry()['quiet'] is None, tree_entry())
@@ -1156,7 +1172,7 @@ def test_per_sensor_settings():
     get(f'/sensor?{sid(1)}')
     wait_until(lambda: event_list()[0]['kind'] == 3)  # logged, so the hub has decided
     check('an alert in quiet hours does not reach the NVR', path not in status()['active'])
-    check('an alert in quiet hours is still logged', json.loads(api('GET', '/api/events')[1])[0]['kind'] == 3)
+    check('an alert in quiet hours is still logged', get_json('/api/events')[0]['kind'] == 3)
     code, text = api('GET', f'/api/file?path={path}/settings.txt')
     check("the settings are kept in the sensor's folder", code == 200 and text.startswith(b'quiet='), text)
     check('clearing the settings removes the file', api('POST', f'/api/sensor-settings?path={path}', '')[0] == 200 and api('GET', f'/api/file?path={path}/settings.txt')[0] == 404)
@@ -1215,7 +1231,7 @@ def test_webhook(path):
     alert = json.loads(received[1][1]) if hooks(2) else {}
     check('an alert is sent to the webhook', alert.get('event') == 'alert' and alert.get('sensor') == path and alert.get('name') == 'Front "gate"', received[1:])
     clear(1)
-    hook_state = poll(lambda: json.loads(api('GET', '/api/webhook')[1]), lambda h: h['waiting'] == 0 and h['last'])
+    hook_state = poll(lambda: get_json('/api/webhook'), lambda h: h['waiting'] == 0 and h['last'])
     check('the page shows how the last message went', hook_state['last'] == 'HTTP 200' and hook_state['waiting'] == 0, hook_state)
     api('POST', '/api/webhook', f'url={hook_url}&text=1&alerts=1&problems=0')
     get(f'/sensor?{sid(1)}')
@@ -1536,7 +1552,7 @@ def test_clear_report_does_not_end(nvr):
 def test_live_page():
     # The Live page shows the picture being sent. The picture changes on the next frame after the alert ends.
     time.sleep(1.5)
-    idle = json.loads(api('GET', '/api/live')[1])
+    idle = get_json('/api/live')
     code, idle_frame = api('GET', '/api/live/frame')
     check('Live sends a whole picture', code == 200 and idle_frame.startswith(b'\0\0\0\1') and idle_frame[4] & 0x1F == 7, code)
     get(f'/sensor?{sid(2)}')
@@ -1553,21 +1569,21 @@ def test_live_page():
 
 def test_esp_now_page():
     # The ESP-NOW page lists every sensor node.
-    node_list = json.loads(api('GET', '/api/espnow')[1])
+    node_list = get_json('/api/espnow')
     entry = [n for n in node_list['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
     check('ESP-NOW page lists a sensor that has reported', len(entry) == 1 and entry[0]['state'] == 'idle' and entry[0]['ago'] is not None, node_list)
     quiet = [n for n in node_list['nodes'] if n['node'] == SENSORS[6][0] and n['input'] == SENSORS[6][1]]
     check('ESP-NOW page shows the state of each sensor', len(quiet) == 1 and quiet[0]['state'] in ('never', 'idle'), node_list)
     get(f'/sensor?{sid(2)}')
     wait_until(lambda: name(2) in status()['active'])
-    firing = [n for n in json.loads(api('GET', '/api/espnow')[1])['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
+    firing = [n for n in get_json('/api/espnow')['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
     check('ESP-NOW page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
     clear(2)
     check('ESP-NOW page needs the web password', not PASSWORD or api('GET', '/api/espnow', auth=False)[0] == 401)
 
     if not DEVICE:  # the PC build stands in for the radio
         def radio():
-            return json.loads(api('GET', '/api/espnow')[1])
+            return get_json('/api/espnow')
 
         def node_entry(d):
             return [n for n in d['nodes'] if n['node'] == SENSORS[1][0] and n['input'] == SENSORS[1][1]][0]
@@ -1609,7 +1625,7 @@ def test_esp_now_page():
         label = 'Front "gate"'.encode()
         check('a sensor can be named', api('PUT', f'/api/file?path={name(1)}/name.txt', label)[0] == 200)
         check('the name is shown with the node', node_entry(radio())['name'] == label.decode(), node_entry(radio()))
-        check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in json.loads(api('GET', '/api/tree')[1])['nodes'] for n in s['sensors']))
+        check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in get_json('/api/tree')['nodes'] for n in s['sensors']))
 
         # Battery and silence alerts.
         test_battery_silence_alerts(label, node_entry, radio)
@@ -1742,7 +1758,7 @@ def test_node_past_event_time(s):
     # Each node sets how old an alert must be to count as a past event. Sensor 3 has no pictures.
     node3 = SENSORS[3][0]
     check('a node can have its own past-event time', api('POST', f'/api/node-settings?path={node3}', 'late=300')[0] == 200)
-    check('the Sensors page data shows it', [s for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == node3][0]['late'] == 300)
+    check('the Sensors page data shows it', [s for s in get_json('/api/tree')['nodes'] if s['mac'] == node3][0]['late'] == 300)
     check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\n'))
     get(f'/sensor?{sid(3)}&age=100')
     wait_until(lambda: status()['active'] == [name(3)])
@@ -1759,7 +1775,7 @@ def test_node_past_event_time(s):
     check('a bad past-event time is refused', api('POST', f'/api/node-settings?path={node3}', 'late=0')[0] == 400)
     check('a node can have its own silent time', api('POST', f'/api/node-settings?path={node3}', 'late=300&silent=600')[0] == 200
           and api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\nsilent=600\n'))
-    check('the Sensors page data shows it', [s for s in json.loads(api('GET', '/api/tree')[1])['nodes'] if s['mac'] == node3][0]['silent'] == 600)
+    check('the Sensors page data shows it', [s for s in get_json('/api/tree')['nodes'] if s['mac'] == node3][0]['silent'] == 600)
     check('a silent time under a minute is refused', api('POST', f'/api/node-settings?path={node3}', 'silent=30')[0] == 400)
     check('settings for a node that does not exist are refused', api('POST', '/api/node-settings?path=02-00-00-00-00-77', 'late=60')[0] == 404)
     check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
@@ -1890,9 +1906,9 @@ def test_deleting_folders_and_restart(files, proc, puller, storage):
         check('stored pictures survive a restart', api('GET', f'/api/file?path={name(4)}/active.h264')[1] == files['active.h264'])
         check('a past event waiting at the restart still plays', wait_until(lambda: name(5) in status()['active']), status())
         control('end-alerts')
-        quiet_nodes = poll(lambda: json.loads(api('GET', '/api/espnow')[1])['nodes'], lambda n: n and all(x['state'] == 'silent' for x in n))
+        quiet_nodes = poll(lambda: get_json('/api/espnow')['nodes'], lambda n: n and all(x['state'] == 'silent' for x in n))
         check('a node quiet since the restart is reported silent', quiet_nodes and all(n['state'] == 'silent' for n in quiet_nodes), quiet_nodes)
-        check('going silent after a restart is logged', any(e['kind'] == 1 for e in json.loads(api('GET', '/api/events')[1])))
+        check('going silent after a restart is logged', any(e['kind'] == 1 for e in get_json('/api/events')))
         starts = [e for e in event_list() if e['kind'] == 8]
         check('the start is logged with its reason and how long the hub was off', starts and starts[0]['sensor'] == 'hub' and starts[0]['detail'] == 'PC build started'
               and starts[0]['event'] == 'hub started' and starts[0]['off_s'] is not None and starts[0]['off_s'] < 3600, starts[:2])

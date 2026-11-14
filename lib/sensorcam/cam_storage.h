@@ -41,6 +41,10 @@ struct CamFsEntry {
   uint32_t size = 0;
 };
 
+#ifdef CAM_TEST_HOOKS
+extern bool camStorageListsFail;  // PC builds only: every folder listing fails, as a storage error would
+#endif
+
 class CamStorage {
  public:
   explicit CamStorage(const std::string& root) : root_(root) {}

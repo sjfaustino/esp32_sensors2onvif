@@ -188,7 +188,6 @@ class SensorCamServer {
   // Arms away or home, or disarms for minutes (0 until armed again), saved first; from says where, for the history.
   // False when it could not be saved.
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
-  bool setArmed(bool on, const std::string& from, uint32_t minutes = 0) { return setArmMode(on ? CAM_ARMED_AWAY : CAM_DISARMED, from, minutes); }
   // An alert from sensor id that takes the whole path, whatever the arm mode, and is logged as a test. False for no such sensor.
   bool testAlert(int id);
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
@@ -322,6 +321,7 @@ class SensorCamServer {
   bool sensorFits(const std::string& path) const;  // false when the path would add a sensor beyond the limit
   int sharedSockets() const;  // web connections and event pushes in progress
   int findSlot(const uint8_t mac[6], uint8_t input) const;
+  int slotForPath(const std::string& path) const;  // the sensor whose folder this is, as "AA-BB-CC-DD-EE-FF/1", or 0
   std::string slotName(int id) const;
   const CamFrame& frameToShow(uint32_t now);
   bool loadFrame(const std::string& path);

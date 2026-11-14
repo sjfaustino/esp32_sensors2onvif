@@ -15,16 +15,16 @@
 <div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device Info</div></div>
 </nav>
 <main>
-<p id="openWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
-<p id="armWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page.</p>
-<p id="nvrWarn" hidden style="margin:0 0 12px;padding:8px 10px;border:1px solid #e0b4b0;border-radius:6px;color:#b3261e;font-size:14px">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
+<p id="openWarn" hidden class="warn">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
+<p id="armWarn" hidden class="warn">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page.</p>
+<p id="nvrWarn" hidden class="warn">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
 <div class="view" id="view-overview" hidden><h1>Overview</h1>
 <p class="portForm" style="margin:0 0 4px">Alarm: <b id="armState">…</b></p>
 <p class="portForm" style="margin:0 0 4px"><button id="armAway">Arm away</button> <button id="armHome">Arm home</button> <button id="disarmBtn">Disarm</button> <select id="armFor"></select></p>
 <p class="portForm" style="margin:0 0 10px;font-size:14px">A disarm from Home Assistant lasts <select id="rearmDefault"></select></p>
 <table class="info" id="ovInfo"></table>
-<h2 style="font-family:inherit;margin:18px 0 6px">Alerts now</h2><div class="portMsg" id="ovActive"></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Sensor problems</h2><div class="portMsg" id="ovProblems"></div></div>
+<h2 class="sub">Alerts now</h2><div class="portMsg" id="ovActive"></div>
+<h2 class="sub">Sensor problems</h2><div class="portMsg" id="ovProblems"></div></div>
 <div class="view" id="view-network" hidden><h1>Network</h1>
 <label class="netRow"><span>Connection</span><input id="netType" disabled></label>
 <label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
@@ -41,7 +41,7 @@
 <div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
 <div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
 <div class="portForm"><label>Other names <input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box"></label></div>
-<p style="margin:0 0 6px;font-size:14px">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
+<p class="note">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
 <div class="portForm"><label><input id="protect" type="checkbox"> Password protection (user admin)</label></div>
 <div class="portForm" id="pwRow" hidden><label>Password <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
 <div class="portForm"><button id="saveWeb">Save</button></div>
@@ -49,13 +49,13 @@
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
 <label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low</label>
-<label class="portForm" style="display:block"><input id="espUnsigned" type="checkbox"> Also accept unsigned messages (version 1). Anyone in radio range could then send false alerts.</label>
-<h2 style="font-family:inherit;margin-top:18px">Pairing</h2>
-<p style="margin:0 0 6px;font-size:14px">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
+<label class="portForm block"><input id="espUnsigned" type="checkbox"> Also accept unsigned messages (version 1). Anyone in radio range could then send false alerts.</label>
+<h2 class="sub">Pairing</h2>
+<p class="note">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
 <div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
 <table id="pairWaiting"></table><div class="portMsg" id="pairMsg"></div>
-<h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
-<h2 style="font-family:inherit;margin-top:18px">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
+<h2 class="sub">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
+<h2 class="sub">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>
 <label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
 <div class="portForm"><button id="saveNvr">Save</button></div>
@@ -63,20 +63,20 @@
 <div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
 <div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
 <div class="view" id="view-notify" hidden><h1>Notifications</h1>
-<p style="margin:0 0 6px;font-size:14px">The hub can send each alert to a web address on your network, such as a Home Assistant webhook, Node-RED or a self-hosted ntfy server. Use http:// and an IP address; https and names are not supported.</p>
+<p class="note">The hub can send each alert to a web address on your network, such as a Home Assistant webhook, Node-RED or a self-hosted ntfy server. Use http:// and an IP address; https and names are not supported.</p>
 <label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" placeholder="http://192.168.1.10:8123/api/webhook/hub"></label>
 <label class="netRow"><span>Format</span><select id="hookText"><option value="0">JSON</option><option value="1">Plain text</option></select></label>
-<label class="portForm" style="display:block"><input id="hookAlerts" type="checkbox"> Alerts</label>
-<label class="portForm" style="display:block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal</label>
+<label class="portForm block"><input id="hookAlerts" type="checkbox"> Alerts</label>
+<label class="portForm block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal</label>
 <div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button></div>
 <div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
 <div class="view" id="view-ha" hidden><h1>Home Assistant</h1>
-<p style="margin:0 0 6px;font-size:14px">The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network.</p>
+<p class="note">The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network.</p>
 <label class="netRow"><span>Broker address</span><input id="mqHost" maxlength="15" inputmode="decimal" placeholder="192.168.1.10"></label>
 <label class="netRow"><span>Port</span><input id="mqPort" type="number" min="1" max="65535" placeholder="1883"></label>
 <label class="netRow"><span>User</span><input id="mqUser" maxlength="64" autocapitalize="none" autocomplete="off"></label>
 <label class="netRow"><span>Password</span><input id="mqPw" type="password" maxlength="64" autocomplete="new-password"></label>
-<p style="margin:0 0 6px;font-size:14px">Leave the address empty to turn MQTT off. A password left blank keeps the saved one. The connection is not encrypted, as with the hub's other connections.</p>
+<p class="note">Leave the address empty to turn MQTT off. A password left blank keeps the saved one. The connection is not encrypted, as with the hub's other connections.</p>
 <div class="portForm"><button id="saveMq">Save</button></div>
 <div class="portMsg" id="mqMsg"></div><table class="info" id="mqInfo"></table></div>
 <div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
@@ -85,21 +85,21 @@
 <label class="netRow"><span>Day</span><select id="rbDay"><option value="-1">Every day</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
 <label class="netRow"><span>Time</span><input id="rbTime" type="time"></label>
 <div class="portForm"><button id="saveRb">Save</button></div><div class="portMsg" id="rbMsg"></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Restart now</h2>
+<h2 class="sub">Restart now</h2>
 <div class="portForm"><button id="rebootNow">Restart the hub</button></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Firmware update</h2>
+<h2 class="sub">Firmware update</h2>
 <div class="portForm"><input id="fwFile" type="file" accept=".bin"> <button id="fwSend">Update firmware</button></div>
 <div class="portMsg" id="fwMsg"></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Backup and restore</h2>
-<p style="margin:0 0 6px;font-size:14px">The backup file holds the WiFi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
+<h2 class="sub">Backup and restore</h2>
+<p class="note">The backup file holds the WiFi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
 <div class="portForm"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a> <input id="rsFile" type="file" accept=".txt"> <button id="rsSend">Restore</button></div>
 <div class="portMsg" id="rsMsg"></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Full backup</h2>
-<p style="margin:0 0 6px;font-size:14px">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
+<h2 class="sub">Full backup</h2>
+<p class="note">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
 <div class="portForm"><button id="fbSave">Download full backup</button> <input id="fbFile" type="file" accept=".tar"> <button id="fbLoad">Restore full backup</button></div>
 <div class="portMsg" id="fbMsg"></div>
-<h2 style="font-family:inherit;margin:18px 0 6px">Reset settings</h2>
-<p style="margin:0 0 6px;font-size:14px">Erases the saved WiFi networks, ports, name, web password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
+<h2 class="sub">Reset settings</h2>
+<p class="note">Erases the saved WiFi networks, ports, name, web password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
 <div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
 <div class="view" id="view-time" hidden><h1>Time</h1>
 <label class="netRow"><span>Current time</span><input id="tmNow" disabled></label>

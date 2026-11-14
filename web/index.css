@@ -244,3 +244,24 @@ input[type="number"] {
     width: auto;
   }
 }
+
+/* Short notes under a heading, section headings, and the red warnings at the top of every page. */
+.note {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+h2.sub {
+  font-family: inherit;
+  margin: 18px 0 6px;
+}
+.warn {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid #e0b4b0;
+  border-radius: 6px;
+  color: #b3261e;
+  font-size: 14px;
+}
+.block {
+  display: block;
+}
