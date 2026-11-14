@@ -287,6 +287,9 @@ static CamConfig makeConfig() {
   c.mqttSave = storeMqtt;
   c.armed = settings.armed;
   c.armedSave = storeArmed;
+  c.disarmedUntil = settings.disarmedUntil;
+  c.rearmMinutes = settings.rearmMinutes;
+  c.rearmSave = storeRearm;
   c.firmwareVersion = FIRMWARE_VERSION;
   c.localMinute = [] {
     time_t now = time(nullptr);

@@ -329,10 +329,42 @@
     }
   }
   // Armed or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
+  // A disarm can last a while and then end by itself, so forgetting to arm again cannot leave the house unwatched.
+  const DISARM_TIMES = [
+    [30, "30 minutes"],
+    [60, "1 hour"],
+    [120, "2 hours"],
+    [240, "4 hours"],
+    [480, "8 hours"],
+    [720, "12 hours"],
+    [1440, "1 day"],
+    [0, "until armed again"],
+  ];
+  for (const id of ["armFor", "rearmDefault"])
+    $(id).replaceChildren(
+      ...DISARM_TIMES.map(([m, t]) => el("option", { value: m, textContent: (id == "armFor" ? "for " : "") + t })),
+    );
+  let armWasArmed = null;
+  function timeLeft(s) {
+    const m = Math.ceil(s / 60);
+    return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+  }
   async function loadArm() {
     try {
       const a = await call("GET", "/api/arm");
-      $("armState").textContent = a.armed ? "armed" : "disarmed: alerts are logged but not sent to the NVR";
+      $("armState").textContent = a.armed
+        ? "armed"
+        : "disarmed" +
+          (!a.timed
+            ? " until armed again"
+            : a.left_s != null
+              ? ", arms again in " + timeLeft(a.left_s)
+              : ", arms again soon") +
+          ": alerts are logged but not sent to the NVR";
+      if (armWasArmed !== a.armed) $("armFor").value = a.rearm; // only when the state changes, so a choice being made stays
+      armWasArmed = a.armed;
+      if (document.activeElement != $("rearmDefault")) $("rearmDefault").value = a.rearm;
+      $("armFor").hidden = !a.armed;
       $("armBtn").textContent = a.armed ? "Disarm" : "Arm";
       $("armBtn").hidden = false;
       $("armBtn").dataset.armed = a.armed ? "1" : "0";
@@ -340,11 +372,28 @@
     } catch (e) {}
   }
   $("armBtn").onclick = async () => {
-    const arm = $("armBtn").dataset.armed != "1";
-    if (!arm && !confirm("Disarm the hub? Alerts will be logged but not sent to the NVR, so nothing is recorded."))
+    const arm = $("armBtn").dataset.armed != "1",
+      minutes = $("armFor").value,
+      how = DISARM_TIMES.find(([m]) => m == minutes)[1];
+    if (
+      !arm &&
+      !confirm(
+        "Disarm the hub " +
+          (minutes == 0 ? how : "for " + how) +
+          "? Alerts will be logged but not sent to the NVR, so nothing is recorded.",
+      )
+    )
       return;
     try {
-      await call("POST", "/api/arm", "armed=" + (arm ? 1 : 0));
+      await call("POST", "/api/arm", "armed=" + (arm ? 1 : 0) + "&for=" + minutes);
+    } catch (e) {
+      alert(e.message);
+    }
+    loadArm();
+  };
+  $("rearmDefault").onchange = async () => {
+    try {
+      await call("POST", "/api/arm/rearm", "minutes=" + $("rearmDefault").value);
     } catch (e) {
       alert(e.message);
     }

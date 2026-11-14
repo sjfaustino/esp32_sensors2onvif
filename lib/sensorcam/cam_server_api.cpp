@@ -188,6 +188,7 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   uint32_t ip;
   if (key == "net.onvif" || key == "net.web" || key == "net.rtsp" || key == "net.mqport") return number && n >= 1 && n <= 65535;
   if (key == "net.mqhost") return value.empty() || parseIpv4(value, ip);
+  if (key == "net.rearm") return number && n >= 0 && n <= CAM_MAX_DISARM_MINUTES;
   if (key == "net.mquser" || key == "net.mqpw") return validMqttText(value);
   if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.enuns" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
@@ -587,11 +588,30 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/arm")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("armed", cfg_.armed); }));
+    long long left = disarmSecondsLeft(millis_());
+    bool timed = !cfg_.armed && cfg_.disarmedUntil;
+    c.out = jsonOk(jsonObject([&](CamJson& j) {
+      j.flag("armed", cfg_.armed).flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
+    }));
   } else if (r.is("POST", "/api/arm")) {
-    std::string on = queryParam(r.form(), "armed");
-    if (on != "1" && on != "0") c.out = jsonFail(400, "armed must be 1 or 0");
-    else c.out = saved(setArmed(on == "1", "the web page"), "could not save the setting");
+    std::string form = r.form(), on = queryParam(form, "armed"), forText = queryParam(form, "for");
+    long long minutes = cfg_.rearmMinutes;
+    if (on != "1" && on != "0") {
+      c.out = jsonFail(400, "armed must be 1 or 0");
+    } else if (!forText.empty() && (!wholeNumber(forText, minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES)) {
+      c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
+    } else {
+      c.out = saved(setArmed(on == "1", "the web page", (uint32_t)minutes), "could not save the setting");
+    }
+  } else if (r.is("POST", "/api/arm/rearm")) {
+    long long minutes = -1;
+    if (!wholeNumber(queryParam(r.form(), "minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {
+      c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
+    } else {
+      bool ok = camCall(cfg_.rearmSave, (uint32_t)minutes);
+      if (ok) cfg_.rearmMinutes = (uint32_t)minutes;
+      c.out = saved(ok, "could not save the setting");
+    }
   } else if (r.is("GET", "/api/mqtt")) {
     reply(c, 200, JSON_TYPE, mqttJson());
   } else if (r.is("POST", "/api/mqtt")) {

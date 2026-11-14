@@ -9,7 +9,7 @@
 //     of a broker outage are sent once it is back. Each waits for the broker's acknowledgement, and one not acknowledged
 //     is sent again;
 //   - Home Assistant's discovery messages, which create the devices and entities.
-// And it hears one command: the Armed switch, on <base>/armed/set.
+// And it hears one command: the alarm panel's, on <base>/armed/set. A disarm from there lasts the hub's re-arm time.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -19,7 +19,7 @@
 #include "cam_server.h"
 #include "cam_server_internal.h"
 
-static const int HUB_PARTS = 4;     // the hub's entities: alert, NVR listening, events, armed
+static const int HUB_PARTS = 4;     // the hub's entities: alert, NVR listening, events, the alarm panel
 static const int SENSOR_PARTS = 5;  // each sensor's: alert, battery, signal, problem, events
 static const int SLOT_STEPS = SENSOR_PARTS + 1 + SENSOR_PARTS;  // taking an old sensor away (with its state), then telling of the new
 static const int DISCOVERY_STEPS = HUB_PARTS + CAM_MAX_SENSORS * SLOT_STEPS;
@@ -89,12 +89,14 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
     mqttConnectedAt_ = time(nullptr);
     for (MqttShown& s : mqttShown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
     mqttResult_ = "connected";
-  } else if (type == CAM_MQTT_PUBLISH) {  // the Armed switch, the one topic the hub subscribes to
+  } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, the one topic the hub subscribes to
     CamMqttMessage m;
     std::string topic = mqttBase() + "/armed/set";
     if (!camMqttReadPublish(p, len, m) || m.topicLen != topic.size() || memcmp(m.topic, topic.data(), m.topicLen) != 0) return;
     std::string command(m.payload, m.payloadLen);
-    if (command == "ON" || command == "OFF") setArmed(command == "ON", "Home Assistant");
+    // ON and OFF are what the Armed switch of earlier firmware sent.
+    if (command == "ARM_AWAY" || command == "ON") setArmed(true, "Home Assistant");
+    if (command == "DISARM" || command == "OFF") setArmed(false, "Home Assistant", cfg_.rearmMinutes);
     mqtt_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {
     uint16_t id = (uint16_t)(p[2] << 8 | p[3]);
@@ -227,19 +229,30 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slots_[id - 1].used && sensors_.active(id) && !sensors_.pastEvent(id));
   bool nvr = nvrListening(now);
   bool armed = cfg_.armed;
-  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed) {
-    std::string json = jsonObject([&](CamJson& j) { j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF"); });
+  int64_t until = cfg_.disarmedUntil;
+  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || until != mqtt_.hubUntil) {
+    bool known = !armed && until > 1;
+    std::string json = jsonObject([&](CamJson& j) {
+      j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF");
+      j.str("alarm", !armed ? "disarmed" : alert ? "triggered" : "armed_away").str("rearm_at", known, known ? iso((time_t)until) : std::string());
+    });
     out = camMqttPublish(mqttBase() + "/hub/state", payload(json), true, 0);
     mqtt_.hubTold = true;
     mqtt_.hubAlert = alert;
     mqtt_.hubNvr = nvr;
     mqtt_.hubArmed = armed;
+    mqtt_.hubUntil = until;
     return true;
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
     if (mqttSensorState(i, true, now, out)) return true;
   if (!mqtt_.ackId && mqttEvent(out)) {
     mqtt_.ackSince = now;
+    return true;
+  }
+  if (!mqtt_.oldSwitchGone) {  // earlier firmware had a switch where the alarm panel now is
+    out = camMqttPublish("homeassistant/switch/" + cfg_.serial + "/hub_armed/config", "", true, 0);
+    mqtt_.oldSwitchGone = true;
     return true;
   }
   while (mqtt_.discovery >= 0) {
@@ -331,9 +344,9 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   };
   if (step < HUB_PARTS) {
     std::string web = "http://" + localIp_() + (cfg_.webPort == 80 ? std::string() : ":" + std::to_string(cfg_.webPort)) + "/";
-    static const char* const PARTS[HUB_PARTS] = {"alert", "nvr", "events", "armed"};
-    static const char* const NAMES[HUB_PARTS] = {"Alert", "NVR listening", "Events", "Armed"};
-    static const char* const COMPONENTS[HUB_PARTS] = {"binary_sensor", "binary_sensor", "event", "switch"};
+    static const char* const PARTS[HUB_PARTS] = {"alert", "nvr", "events", "alarm"};
+    static const char* const NAMES[HUB_PARTS] = {"Alert", "NVR listening", "Events", "Alarm"};
+    static const char* const COMPONENTS[HUB_PARTS] = {"binary_sensor", "binary_sensor", "event", "alarm_control_panel"};
     const char* part = PARTS[step];
     std::string id = hubId + "_hub_" + part, json = jsonObject([&](CamJson& j) {
       common(j, id, NAMES[step], base + "/hub/" + (step == 2 ? "event" : "state"));
@@ -344,7 +357,11 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
         for (const char* type : HUB_EVENTS) j.str(type);
         j.end();
       }
-      if (step == 3) j.str("value_template", "{{ value_json.armed }}").str("command_topic", base + "/armed/set").str("icon", "mdi:shield-home");
+      if (step == 3) {  // no code: Home Assistant guards who may use it
+        j.str("value_template", "{{ value_json.alarm }}").str("command_topic", base + "/armed/set").str("payload_arm_away", "ARM_AWAY");
+        j.str("payload_disarm", "DISARM").array("supported_features").str("arm_away").end().flag("code_arm_required", false).flag("code_disarm_required", false);
+        j.str("json_attributes_topic", base + "/hub/state");
+      }
       j.object("device").array("identifiers").str(hubId).end().str("name", hubName).str("manufacturer", "sensors2onvif").str("model", "ESP32 sensor hub");
       j.str("sw_version", cfg_.firmwareVersion).str("configuration_url", web).end();
     });

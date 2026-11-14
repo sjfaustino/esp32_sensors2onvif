@@ -21,6 +21,14 @@
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
 
+const uint32_t CAM_MAX_DISARM_MINUTES = 7 * 1440;
+// A disarm with an end, read back after a restart: until is when it ends in seconds since 1970, or 1 when the clock was
+// not set when it began. Over once that time has passed; and when how long is left cannot be known, because it began
+// without a clock or the clock has not been set within startWaitMs of the start, it is over at once, as a false alert
+// is better than a missed one.
+bool camTimedDisarmOver(int64_t until, time_t wallNow, uint32_t msSinceStart, uint32_t startWaitMs);
+std::string camMinutesText(uint32_t minutes);  // "30 min", "2 h", "1 day"
+
 // Copies text into a fixed buffer, shortened if needed without splitting a UTF-8 character.
 void camCopyText(char* out, size_t size, const std::string& text);
 void camCopyText(char* out, size_t size, const char* text);  // without using the heap
@@ -120,7 +128,10 @@ struct CamConfig {
   CamMqtt mqtt;
   // Disarmed, alerts are logged but not sent to the NVR or the webhook, as in quiet hours. Kept across restarts.
   bool armed = true;
-  std::function<bool(bool)> armedSave;
+  int64_t disarmedUntil = 0;  // see camTimedDisarmOver; 0 for a disarm without an end
+  std::function<bool(bool armed, int64_t until)> armedSave;
+  uint32_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
+  std::function<bool(uint32_t)> rearmSave;
   std::function<bool(const CamMqtt&)> mqttSave;
   std::string firmwareVersion;              // told to Home Assistant
   std::function<int()> localMinute;        // minutes after local midnight, or -1 when the clock is not set; for quiet hours
@@ -155,13 +166,15 @@ class SensorCamServer {
   void saveNow();  // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
-  uint32_t memoryFailures() const { return memoryFailures_; }
+  uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
   bool armed() const { return cfg_.armed; }
-  // Arms or disarms, saved first; from says where, for the history. False when it could not be saved.
-  bool setArmed(bool on, const std::string& from);  // times memory ran out and only that piece of work was dropped
+  // Arms, or disarms for minutes (0 until armed again), saved first; from says where, for the history. False when it
+  // could not be saved.
+  bool setArmed(bool on, const std::string& from, uint32_t minutes = 0);
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
+  void setMinuteMs(uint32_t ms) { minuteMs_ = ms; }  // how long a minute of a timed disarm lasts
 #endif
 
  private:
@@ -362,6 +375,12 @@ class SensorCamServer {
   bool quietNow(int id) const;
   bool disarmedFor(const SensorReport& r, uint32_t now) const;  // the report happened while disarmed
   uint32_t disarmedAt_ = 0;
+  // A timed disarm: when it ends on the millisecond clock, known when it began in this run.
+  bool disarmEndKnown_ = false;
+  uint32_t disarmEndsAt_ = 0;
+  uint32_t minuteMs_ = 60000;
+  void rearmWhenDue(uint32_t now);
+  long long disarmSecondsLeft(uint32_t now) const;  // -1 when not known
   void notifyHook(int id, CamEventKind kind, bool delayed);
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message);
   void queueHook(const std::string& message, const std::string& json);
@@ -413,6 +432,8 @@ class SensorCamServer {
     bool online = false;
     int discovery = 0;  // the next discovery message; -1 once all are sent
     bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false;
+    int64_t hubUntil = 0;
+    bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
     bool subscribed = false;  // to the arm switch's commands
   };
   void serviceMqtt(bool readable, bool writable, uint32_t now);

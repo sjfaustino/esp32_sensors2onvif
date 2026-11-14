@@ -71,6 +71,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     memoryGone = true;
   } else if (command == "memory-failures") {  // answered with how often the hub dropped work for lack of memory
     reply = std::to_string(hub.memoryFailures());
+  } else if (command == "minutes-fast") {  // a minute of a timed disarm lasts a second, so the test need not wait
+    hub.setMinuteMs(1000);
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
     hub.networkLost(125);
   } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes
@@ -201,7 +203,8 @@ int main(int argc, char** argv) {
   cfg.espNowSave = [](bool) { return true; };
   cfg.webhookSave = [](const CamWebhook&) { return true; };
   cfg.mqttSave = [](const CamMqtt&) { return true; };
-  cfg.armedSave = [](bool) { return true; };
+  cfg.armedSave = [](bool, int64_t) { return true; };
+  cfg.rearmSave = [](uint32_t) { return true; };
   cfg.firmwareVersion = "test";
   cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
   cfg.hostName = "hub.local";

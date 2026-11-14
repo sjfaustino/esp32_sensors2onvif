@@ -87,6 +87,8 @@ void loadSettings() {
     s.mqtt.user = p.getString("mquser", "").c_str();
     s.mqtt.password = p.getString("mqpw", "").c_str();
     s.armed = p.getBool("armed", true);
+    s.disarmedUntil = s.armed ? 0 : p.getLong64("armuntil", 0);
+    s.rearmMinutes = p.getUShort("rearm", 0);
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
     s.timeNtp = p.getBool("ntp", true);
@@ -204,8 +206,12 @@ bool storeMqtt(const CamMqtt& m) {
   });
 }
 
-bool storeArmed(bool on) {
-  return withPrefs("net", [on](Preferences& p) { return p.putBool("armed", on) == 1; });
+bool storeArmed(bool on, int64_t until) {
+  return withPrefs("net", [on, until](Preferences& p) { return p.putLong64("armuntil", until) == 8 && p.putBool("armed", on) == 1; });
+}
+
+bool storeRearm(uint32_t minutes) {
+  return withPrefs("net", [minutes](Preferences& p) { return p.putUShort("rearm", (uint16_t)minutes) == 2; });
 }
 
 // Pictures live on LittleFS, so they survive this.
@@ -229,7 +235,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
     {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
-    {"net", "pairkey", 's'}, {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
+    {"net", "pairkey", 's'}, {"net", "rearm", 'u'},   {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
 };
 
 std::string backupText() {

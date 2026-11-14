@@ -497,26 +497,40 @@ def mqtt_tests(sensor_alert, sensor_clear):
     removed = wait_until(lambda: broker.latest(gone_topic)['payload'] == b'' and (broker.latest(f'{base}/020000000098_1/state') or {}).get('payload') == b'')
     check('a sensor deleted is taken away from Home Assistant, with its retained state', removed, broker.latest(gone_topic))
 
-    # The Armed switch.
-    switch = wait_until(lambda: broker.latest(f'homeassistant/switch/{serial}/hub_armed/config'))
-    switch = json.loads(switch['payload']) if switch else {}
-    check('Home Assistant gets an Armed switch', switch.get('command_topic') == f'{base}/armed/set' and switch.get('state_topic') == f'{base}/hub/state', switch)
-    check('the hub listens for the switch', (f'{base}/armed/set', 0) in broker.subscriptions, broker.subscriptions)
-    check('the switch shows the hub armed', (broker.state(f'{base}/hub/state') or {}).get('armed') == 'ON', broker.state(f'{base}/hub/state'))
-    broker.send(f'{base}/armed/set', b'OFF')
+    # The alarm panel.
+    panel = wait_until(lambda: broker.latest(f'homeassistant/alarm_control_panel/{serial}/hub_alarm/config'))
+    panel = json.loads(panel['payload']) if panel else {}
+    check('Home Assistant gets an alarm panel', panel.get('command_topic') == f'{base}/armed/set' and panel.get('state_topic') == f'{base}/hub/state'
+          and panel.get('payload_disarm') == 'DISARM' and panel.get('payload_arm_away') == 'ARM_AWAY', panel)
+    old = broker.latest(f'homeassistant/switch/{serial}/hub_armed/config')
+    check('the Armed switch of earlier firmware is taken away', old and old['payload'] == b'' and old['retain'], old)
+    check('the hub listens for the panel', (f'{base}/armed/set', 0) in broker.subscriptions, broker.subscriptions)
+    check('the panel shows the hub armed', (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_away', broker.state(f'{base}/hub/state'))
+    sensor_alert(1)
+    check('an alert while armed shows the panel triggered', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'triggered'))
+    sensor_clear(1)
+    check('and armed again once it ends', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('alarm') == 'armed_away', timeout=15))
+    api('POST', '/api/arm/rearm', 'minutes=60')
+    broker.send(f'{base}/armed/set', b'DISARM')
     off = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)
-    check('Home Assistant can disarm the hub', off['armed'] is False, off)
+    check('Home Assistant can disarm the hub, for the hub\'s re-arm time', off['armed'] is False and off['timed'] and 3500 < (off['left_s'] or 0) <= 3600, off)
     newest = event_list()[0]
-    check('disarming is logged, saying from where', newest['sensor'] == 'hub' and newest['event'] == 'disarmed' and newest['detail'] == 'Home Assistant', newest)
-    check('the switch shows the hub disarmed', wait_until(lambda: (broker.state(f'{base}/hub/state') or {}).get('armed') == 'OFF'))
+    check('disarming is logged, saying from where and for how long', newest['sensor'] == 'hub' and newest['event'] == 'disarmed' and newest['detail'] == 'Home Assistant, for 1 h', newest)
+    hub_state = wait_until(lambda: (lambda s: s if s and s.get('alarm') == 'disarmed' else None)(broker.state(f'{base}/hub/state')))
+    check('the panel shows the hub disarmed, and when it arms again', hub_state and hub_state.get('rearm_at'), hub_state)
     sensor_alert(1)
     held = wait_until(lambda: [e for e in broker.events(f'{base}/{key(1)}/event') if json.loads(e['payload'])['event_type'] == 'alert while disarmed'])
     check('an alert while disarmed reaches Home Assistant as that event', held)
     check('and the sensor does not turn on', (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'OFF', broker.state(f'{base}/{key(1)}/state'))
     sensor_clear(1)
-    broker.send(f'{base}/armed/set', b'ON')
+    broker.send(f'{base}/armed/set', b'ARM_AWAY')
     on = poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
-    check('Home Assistant can arm the hub', on['armed'] is True, on)
+    check('Home Assistant can arm the hub', on['armed'] is True and not on['timed'], on)
+    broker.send(f'{base}/armed/set', b'OFF')  # what the switch of earlier firmware sent
+    check('the switch of earlier firmware still works', poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)['armed'] is False)
+    broker.send(f'{base}/armed/set', b'ON')
+    poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is True)
+    api('POST', '/api/arm/rearm', 'minutes=0')
 
     # A broker that refuses the login says why on the page.
     broker.refuse = 5
@@ -554,6 +568,29 @@ def arm_tests():
     get(f'/sensor?{sid(1)}')
     check('armed, an alert reaches the NVR again', name(1) in status()['active'], status())
     clear(1)
+
+    # A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched.
+    check('a disarm longer than a week is refused', api('POST', '/api/arm', 'armed=0&for=10081')[0] == 400)
+    check('a bad re-arm time is refused', api('POST', '/api/arm/rearm', 'minutes=soon')[0] == 400)
+    check('the re-arm time for Home Assistant can be saved', api('POST', '/api/arm/rearm', 'minutes=480')[0] == 200 and json.loads(api('GET', '/api/arm')[1])['rearm'] == 480)
+    api('POST', '/api/arm/rearm', 'minutes=0')
+    if not DEVICE:
+        control('minutes-fast')  # a minute lasts a second
+        api('POST', '/api/arm', 'armed=0&for=2')
+        timed = json.loads(api('GET', '/api/arm')[1])
+        check('a disarm can be for a time', timed['armed'] is False and timed['timed'] and 0 < timed['left_s'] <= 120, timed)
+        check('disarming for a time is logged with it', event_list()[0]['detail'] == 'the web page, for 2 min', event_list()[0])
+        check('the hub arms itself again when the time is up', wait_until(lambda: json.loads(api('GET', '/api/arm')[1])['armed'], timeout=10))
+        newest = event_list()[0]
+        check('arming by the timer is logged', newest['event'] == 'armed' and newest['detail'] == 'the re-arm timer', newest)
+        get(f'/sensor?{sid(1)}')
+        check('and alerts reach the NVR again', name(1) in status()['active'], status())
+        clear(1)
+        api('POST', '/api/arm', 'armed=0&for=1')
+        api('POST', '/api/arm', 'armed=0&for=0')  # changed to until armed again
+        time.sleep(2)  # longer than the first time given
+        check('a disarm changed to last until armed again does not end by itself', json.loads(api('GET', '/api/arm')[1])['armed'] is False)
+        api('POST', '/api/arm', 'armed=1')
 
 
 HUB_PAIRING_KEY = 'a8abababababababababababababababababababababababababababababab6b'  # the PC build's, in host_main.cpp

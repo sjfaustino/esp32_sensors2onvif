@@ -783,6 +783,7 @@ void SensorCamServer::poll(int maxWaitMs) {
 }
 
 void SensorCamServer::housekeeping(uint32_t now) {
+  rearmWhenDue(now);  // first, so an alert in this pass already counts
   sensors_.tick(now);
   serviceDelayed(now);
   // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.

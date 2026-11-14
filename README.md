@@ -78,6 +78,12 @@ that happened before the disarm still goes through, and so does one whose time i
 logged as hub events, with where they came from. The setting survives restarts and resets to armed with the other
 settings; it is not in backups, so restoring one never disarms the hub.
 
+A disarm can last a set time, from 30 minutes to a day, after which the hub arms itself again and logs "armed" from the
+re-arm timer, so forgetting to arm it cannot leave the house unwatched. The Sensors page asks how long each time;
+**A disarm from Home Assistant lasts** sets how long one from Home Assistant does. "Until armed again" turns the timer
+off. A timed disarm survives a restart, but if the hub cannot tell how much of it is left, because its clock was not set
+when the disarm began or is not set within two minutes of the restart, it arms itself at once.
+
 ## Notifications
 
 **Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a web address on your network, such as
@@ -100,9 +106,12 @@ address must be an IP address, and the connection is not encrypted.
 
 Home Assistant then shows:
 
-- **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, an Armed switch, and
+- **The hub**, with an Alert sensor that is on while any sensor's alert is, an NVR listening sensor, an Alarm panel, and
   an Events entity for the hub's own events: `hub started`, `network lost`, `NVR not listening`, `NVR listening again`,
-  `armed` and `disarmed`. Anyone who can publish to the broker can use the Armed switch, so give the broker a login.
+  `armed` and `disarmed`. The Alarm panel shows disarmed, armed away, or triggered while an alert is on, works with
+  Home Assistant's alarm cards and keypads, and asks for no code, so limit who can use it in Home Assistant. A disarm from
+  it lasts the hub's re-arm time, and the hub state's `rearm_at` says when it ends. Anyone who can publish to the broker
+  can use the panel too, so give the broker a login. The Armed switch of earlier firmware is taken away.
 - **Each sensor** as its own device, named as on the Sensors page, with Alert (on for as long as the NVR is shown the
   alert), Battery, Signal, Problem (silent, low battery or weak signal) and an Events entity carrying every event of
   its history, with the same names as the Events page.

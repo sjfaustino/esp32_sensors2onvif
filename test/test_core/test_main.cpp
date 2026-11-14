@@ -294,6 +294,24 @@ static void x25519_matches_rfc_7748() {
   TEST_ASSERT_EQUAL_STRING(camHex(s1, 32).c_str(), camHex(s2, 32).c_str());
 }
 
+// After a restart: a timed disarm ends when its time has passed, and at once when how long is left cannot be known.
+static void a_timed_disarm_ends_safely_after_a_restart() {
+  const time_t now = 1800000000;  // a clock that is set
+  const uint32_t wait = 120000;
+  TEST_ASSERT_FALSE(camTimedDisarmOver(0, now, 0, wait));          // no end: until armed again
+  TEST_ASSERT_FALSE(camTimedDisarmOver(now + 60, now, 0, wait));   // a minute left
+  TEST_ASSERT_TRUE(camTimedDisarmOver(now - 1, now, 0, wait));     // over while the hub was off
+  TEST_ASSERT_TRUE(camTimedDisarmOver(1, now, 0, wait));           // began without a clock
+  TEST_ASSERT_FALSE(camTimedDisarmOver(now + 60, 0, 1000, wait));  // no clock yet: waits for it a while
+  TEST_ASSERT_TRUE(camTimedDisarmOver(now + 60, 0, wait, wait));   // and arms once it has waited long enough
+  TEST_ASSERT_EQUAL_STRING("30 min", camMinutesText(30).c_str());
+  TEST_ASSERT_EQUAL_STRING("2 h", camMinutesText(120).c_str());
+  TEST_ASSERT_EQUAL_STRING("1 day", camMinutesText(1440).c_str());
+  TEST_ASSERT_EQUAL_STRING("7 days", camMinutesText(10080).c_str());
+  TEST_ASSERT_TRUE(camBackupValueValid("net.rearm", "720"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.rearm", "10081"));
+}
+
 static void signed_messages_are_checked() {
   const uint8_t mac[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x62};
   uint8_t p[13 + 8] = {2, 1, 1, 90, 4, 3, 2, 1, 0, 0, 0, 0, 0};
@@ -1001,6 +1019,7 @@ int main() {
   RUN_TEST(signed_messages_are_checked);
   RUN_TEST(mqtt_packets_match_the_standard);
   RUN_TEST(x25519_matches_rfc_7748);
+  RUN_TEST(a_timed_disarm_ends_safely_after_a_restart);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(quiet_hours_cross_midnight);

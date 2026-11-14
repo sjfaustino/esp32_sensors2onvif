@@ -212,14 +212,52 @@ bool SensorCamServer::disarmedFor(const SensorReport& r, uint32_t now) const {
   return (uint64_t)r.age * 1000 <= (uint64_t)(now - disarmedAt_);
 }
 
-bool SensorCamServer::setArmed(bool on, const std::string& from) {
-  if (on == cfg_.armed) return true;
-  if (!camCall(cfg_.armedSave, on)) return false;
+std::string camMinutesText(uint32_t m) {
+  if (m && m % 1440 == 0) return std::to_string(m / 1440) + (m == 1440 ? " day" : " days");
+  if (m && m % 60 == 0) return std::to_string(m / 60) + " h";
+  return std::to_string(m) + " min";
+}
+
+bool camTimedDisarmOver(int64_t until, time_t wallNow, uint32_t msSinceStart, uint32_t startWaitMs) {
+  if (until <= 0) return false;  // no end
+  if (until == 1) return true;   // began without a clock, so how long is left is not known
+  if (wallNow >= CAM_CLOCK_VALID_AFTER) return (int64_t)wallNow >= until;
+  return msSinceStart >= startWaitMs;
+}
+
+// A disarm can be given an end, or have its end changed, while disarmed; arming always ends it.
+bool SensorCamServer::setArmed(bool on, const std::string& from, uint32_t minutes) {
+  if (on && cfg_.armed) return true;
+  if (on) minutes = 0;
+  time_t t = time(nullptr);
+  int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
+  if (!on && !cfg_.armed && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
+  if (!camCall(cfg_.armedSave, on, until)) return false;
+  uint32_t now = millis_();
+  if (cfg_.armed && !on) disarmedAt_ = now;  // a change of end keeps when the disarm began
   cfg_.armed = on;
-  disarmedAt_ = millis_();
+  cfg_.disarmedUntil = until;
+  disarmEndKnown_ = minutes != 0;
+  disarmEndsAt_ = now + minutes * minuteMs_;
+  std::string detail = minutes ? from + ", for " + camMinutesText(minutes) : from;
   CamEventKind kind = on ? CAM_EVENT_ARMED : CAM_EVENT_DISARMED;
-  hubEvent(kind, from, CAM_AGE_UNKNOWN, camEventMessage(kind, cfg_.hostName, from, CAM_AGE_UNKNOWN, false));
+  hubEvent(kind, detail, CAM_AGE_UNKNOWN, camEventMessage(kind, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
   return true;
+}
+
+void SensorCamServer::rearmWhenDue(uint32_t now) {
+  if (cfg_.armed || !cfg_.disarmedUntil) return;
+  bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
+                             : camTimedDisarmOver(cfg_.disarmedUntil, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
+  if (due) setArmed(true, "the re-arm timer");  // if it cannot be saved, it is tried again on the next pass
+}
+
+long long SensorCamServer::disarmSecondsLeft(uint32_t now) const {
+  if (cfg_.armed || !cfg_.disarmedUntil) return -1;
+  if (disarmEndKnown_) return (int32_t)(disarmEndsAt_ - now) > 0 ? (disarmEndsAt_ - now + 999) / 1000 : 0;
+  time_t t = time(nullptr);
+  if (cfg_.disarmedUntil > 1 && t >= CAM_CLOCK_VALID_AFTER) return cfg_.disarmedUntil > t ? cfg_.disarmedUntil - t : 0;
+  return -1;
 }
 
 bool SensorCamServer::quietNow(int id) const { return camQuiet(slots_[id - 1].settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
