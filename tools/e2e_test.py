@@ -556,6 +556,94 @@ def arm_tests():
     clear(1)
 
 
+HUB_PAIRING_KEY = 'a8abababababababababababababababababababababababababababababab6b'  # the PC build's, in host_main.cpp
+
+
+def pairing_tests():
+    """A node pairs with public keys: this test plays the node, with real X25519 keys."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+
+    def raw(key):
+        return key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+
+    def fingerprint(public):
+        h = hashlib.sha1(public).hexdigest().upper()
+        return f'{h[0:4]}-{h[4:8]}-{h[8:12]}'
+
+    mac, folder = '020000000055', '02-00-00-00-00-55'
+    node = X25519PrivateKey.generate()
+    node_public = raw(node.public_key())
+    hello = bytes([4, 2]) + node_public
+
+    def say(data, sender=mac):
+        """Sends a message as the node, and returns the hub's immediate answer as (to, bytes), or None."""
+        control('last-sent')
+        control(f'radio-raw {sender} {data.hex()}')
+        sent = control('last-sent')
+        return (sent.split(' ')[0], bytes.fromhex(sent.split(' ')[1])) if sent else None
+
+    def signed(key, data):
+        return hmac.new(key, bytes.fromhex(mac) + data, hashlib.sha1).digest()[:8]
+
+    def report(input_number, counter, key):
+        body = bytes([2, input_number, 1, 80]) + counter.to_bytes(4, 'little') + bytes(4) + bytes([0])
+        return body + signed(key, body)
+
+    def node_row(input_number):
+        return next((n for n in json.loads(api('GET', '/api/espnow')[1])['nodes'] if n['node'] == folder and n['input'] == input_number), {})
+
+    check('a hello while pairing is closed gets no answer', say(hello) is None)
+    check('opening pairing needs the web password', api('POST', '/api/pairing/open', 'x=1', auth=False)[0] == 401)
+    check('pairing can be opened', api('POST', '/api/pairing/open', 'x=1')[0] == 200)
+    answer = say(hello)
+    to, data = answer or ('', b'')
+    hub_public = raw(X25519PrivateKey.from_private_bytes(bytes.fromhex(HUB_PAIRING_KEY)).public_key())
+    check("a hello while pairing is open is answered: waiting, with the channel and the hub's public key",
+          to == mac and len(data) == 43 and data[:3] == bytes([5, 0, 6]) and data[3:35] == hub_public and data[35:] == bytes(8), answer)
+    page = json.loads(api('GET', '/api/pairing')[1])
+    waiting = [w for w in page['waiting'] if w['mac'] == folder]
+    check("the node waits for approval, shown with its key's fingerprint", waiting and waiting[0]['fingerprint'] == fingerprint(node_public) and waiting[0]['inputs'] == 2, page)
+    check("the page shows the hub's fingerprint", page['hub'] == fingerprint(hub_public) and page['open'] > 100, page)
+    check('a report before approval is ignored', say(report(1, 1, b'anything')) is None and not node_row(1))
+    check('approval needs the web password', api('POST', '/api/pairing/approve', f'mac={folder}', auth=False)[0] == 401)
+    check('the node can be approved', api('POST', '/api/pairing/approve', f'mac={folder}')[0] == 200)
+    tree = json.loads(api('GET', '/api/tree')[1])
+    added = next((n for n in tree['nodes'] if n['mac'] == folder), {})
+    check('approval adds the node and its sensors, paired', added.get('paired') is True and [s['input'] for s in added.get('sensors', [])] == [1, 2], added)
+    check('and it leaves the waiting list', not [w for w in json.loads(api('GET', '/api/pairing')[1])['waiting'] if w['mac'] == folder])
+
+    key = hmac.new(node.exchange(X25519PublicKey.from_public_bytes(hub_public)), b'sensors2onvif node key' + hub_public + node_public, hashlib.sha1).digest()
+    to, data = say(hello) or ('', b'')
+    check("once approved, the hello is answered as paired, signed with the node's own key", len(data) == 43 and data[1] == 1 and data[35:] == signed(key, data[:35]), data.hex())
+
+    control('last-sent')
+    control(f'radio-raw {mac} {report(1, 7, key).hex()}')
+    check("a report signed with the node's own key is accepted", f'{folder}/1' in status()['active'], status())
+    sent = wait_until(lambda: control('last-sent'))
+    expected = bytes([3, 1, 1]) + (7).to_bytes(4, 'little')
+    check("and confirmed, signed with the node's own key", sent == f'{mac} ' + (expected + signed(key, expected)).hex(), sent)
+    control('end-alerts')
+    control(f'radio-raw {mac} {report(2, 8, b"test-espnow-key-0123456789").hex()}')
+    check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
+    api('POST', '/api/espnow', 'unsigned=1')
+    control(f'radio-raw {mac} {bytes([1, 2, 1, 80, 9, 0, 0, 0, 0, 0, 0, 0, 0]).hex()}')
+    api('POST', '/api/espnow', 'unsigned=0')
+    check('and so is an unsigned one, even when unsigned messages are allowed', node_row(2).get('refusal') == 'not signed', node_row(2))
+    check('the ESP-NOW page shows the node has its own key', node_row(1).get('paired') is True)
+
+    other = X25519PrivateKey.generate()
+    api('POST', '/api/pairing/close', 'x=1')
+    check('a hello with a different key outside pairing gets no answer', say(bytes([4, 2]) + raw(other.public_key())) is None)
+    api('POST', '/api/pairing/open', 'x=1')
+    say(bytes([4, 1]) + raw(other.public_key()), '020000000056')
+    check('another node can be rejected', api('POST', '/api/pairing/reject', 'mac=02-00-00-00-00-56')[0] == 200
+          and not json.loads(api('GET', '/api/pairing')[1])['waiting'])
+    check('approving a node that is not waiting is refused', api('POST', '/api/pairing/approve', 'mac=02-00-00-00-00-56')[0] == 409)
+    api('POST', '/api/pairing/close', 'x=1')
+    api('DELETE', f'/api/file?path={folder}')
+
+
 def file_manager_tests(files, hub_files_free):
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
@@ -571,14 +659,14 @@ def file_manager_tests(files, hub_files_free):
     check('an ONVIF request over 8 KB is dropped before it is held', dropped_after(ONVIF, b'POST /onvif/device_service HTTP/1.1\r\nContent-Length: 8193\r\n\r\n<'))
     own_site = f'http://{HOST}' + ('' if WEB == 80 else f':{WEB}')
     check('another site cannot use a logged-in browser', api('POST', '/api/restore', b'hello', origin='http://evil.example')[0] == 403)
-    check('the hub\'s own page is not refused as another site', api('POST', '/api/restore', b'hello', origin=own_site)[0] == 400)
+    check("the hub\'s own page is not refused as another site", api('POST', '/api/restore', b'hello', origin=own_site)[0] == 400)
 
     code, page = api('GET', '/')
     check('page is served', code == 200 and b'SensorCam files' in page, code)
     check('page is sent gzipped', last_encoding == 'gzip', last_encoding)
     if not DEVICE:
         # Another site pointing its own name at the hub is refused; the hub's own names are not.
-        check('a page under another site\'s name is refused', raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)
+        check("a page under another site\'s name is refused", raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)
         check('a look-alike name is refused', raw_get('/api/info', host='hub.local.attacker.example', password=PASSWORD) == 421)
         check('a sensor report under any name is never refused for its name', raw_get('/sensor?mac=02-00-00-00-00-77', host='sensor.made.up.name') == 404)
         for own in ('127.0.0.1:18080', 'hub.local', 'HUB.local:18080', 'hub.lan', 'hub'):
@@ -737,7 +825,7 @@ def file_manager_tests(files, hub_files_free):
     check('valid picture is accepted', api('PUT', f'/api/file?path={path}', good)[0] == 200)
     if not DEVICE:
         control('disk-nearly-full')
-        check('a picture that would take the event history\'s room is refused', api('PUT', f'/api/file?path={path}', good)[0] == 507)
+        check("a picture that would take the event history\'s room is refused", api('PUT', f'/api/file?path={path}', good)[0] == 507)
         check('the Sensors page says how much is kept for the history', json.loads(api('GET', '/api/tree')[1])['kept'] > 512 * 1024 - 1)
         control('disk-normal')
     code, back = api('GET', f'/api/file?path={path}')
@@ -1212,6 +1300,8 @@ def main():
 
                 mqtt_tests(lambda n: get(f'/sensor?{sid(n)}'), clear)
                 arm_tests()
+                if not DEVICE:  # the board's radio cannot be driven from here
+                    pairing_tests()
 
                 # Alerts the NVR did not get. Nothing subscribes from 192.0.2.8, so with that as the NVR's address it is not listening.
                 api('POST', '/api/nvr', 'ip=192.0.2.8')
@@ -1441,13 +1531,13 @@ def main():
             check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\n'))
             get(f'/sensor?{sid(3)}&age=100')
             wait_until(lambda: status()['active'] == [name(3)])
-            check('an alert younger than the node\'s time is live', status()['active'] == [name(3)] and json.loads(get('/events')[1])[0]['delayed'] is False, json.loads(get('/events')[1])[0])
+            check("an alert younger than the node\'s time is live", status()['active'] == [name(3)] and json.loads(get('/events')[1])[0]['delayed'] is False, json.loads(get('/events')[1])[0])
             colour = grab_colour()
             check('a live alert with no pictures shows the built-in alert', colour == 'red', colour)
             clear(3)
             get(f'/sensor?{sid(3)}&age=400')
             wait_until(lambda: status()['active'] == [name(3)])
-            check('an alert older than the node\'s time is a past event', json.loads(get('/events')[1])[0]['delayed'] is True and status()['active'] == [name(3)], json.loads(get('/events')[1])[0])
+            check("an alert older than the node\'s time is a past event", json.loads(get('/events')[1])[0]['delayed'] is True and status()['active'] == [name(3)], json.loads(get('/events')[1])[0])
             colour = grab_colour()
             check('a past event with no pictures shows the built-in past-event picture', colour == 'amber', colour)
             clear(3)
@@ -1534,7 +1624,7 @@ def main():
             while time.time() < end:
                 watched()
                 time.sleep(0.2)
-            check('a deleted sensor\'s delayed alert does not play as another sensor', f'{newcomer}/1' not in shown and status()['delayed_waiting'] == 0, shown)
+            check("a deleted sensor\'s delayed alert does not play as another sensor", f'{newcomer}/1' not in shown and status()['delayed_waiting'] == 0, shown)
             api('DELETE', f'/api/file?path={newcomer}')
 
             # Late alerts from one sensor close together are one record, as they would have been live.

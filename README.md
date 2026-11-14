@@ -303,6 +303,52 @@ false all-clear, because a clear report never ends an alert. A missed intruder i
 Version 1 messages carry no signature, so anything within radio range that knows a listed MAC address could send a false
 alert. The hub refuses them unless **Also accept unsigned messages** is ticked on the ESP-NOW page.
 
+### Pairing a node
+
+A node can instead pair with the hub: it finds the hub by itself and gets a key of its own, which no one listening to the
+radio can learn, and nothing secret is typed in or printed. Its reports and confirmations are then exactly as above, but
+signed with its own 20-byte key instead of the ESP-NOW key, and the hub accepts only that key from it, never the shared
+one and never an unsigned message. A stolen node then gives away its own key only.
+
+The node makes an X25519 key pair (RFC 7748) when it is first set up, keeps the private key, and has the fingerprint of
+its public key on a label: the first 6 bytes of the public key's SHA-1, in upper-case hex, as `4F2A-91C7-03BD`. To pair:
+
+1. On the ESP-NOW page, press **Allow new nodes to pair for 2 minutes**.
+2. The node sends a **hello** to the broadcast address `FF:FF:FF:FF:FF:FF`, on channel 1, then 2 and so on, waiting about
+   100 ms on each for an answer, and repeats every few seconds until it is paired.
+3. The hub lists the node with its fingerprint. Approve it once the fingerprint matches the label: that check is what stops
+   anything else from pairing in its place. The hub makes a folder for each of its inputs.
+4. The node's next hello is answered as paired, signed with its key. It keeps the hub's MAC address, the channel and the
+   hub's public key, and starts reporting.
+
+| Hello, node to hub, 34 bytes | |
+|---|---|
+| 1 | `4` |
+| 1 | The number of inputs, `1` to `16` |
+| 32 | The node's public key |
+
+| Answer, hub to node, 43 bytes | |
+|---|---|
+| 1 | `5` |
+| 1 | `0` waiting for approval, `1` paired |
+| 1 | The hub's Wi-Fi channel |
+| 32 | The hub's public key |
+| 8 | When paired, the first 8 bytes of HMAC-SHA1, keyed with the node's key, over the node's own 6-byte MAC address followed by the 35 bytes above; while waiting, zeros |
+
+The node's key is HMAC-SHA1, keyed with the 32-byte X25519 secret the two share, over the text
+`sensors2onvif node key` followed by the hub's public key and then the node's: 20 bytes. The node works it out from its
+private key and the hub's public key in the answer, and checks the paired answer's signature with it.
+
+A paired hello is answered at any time, not only while pairing is open, so a node that stops getting confirmations can
+search the channels again with it and learn where the hub has moved. Any other hello is answered only while pairing is
+open. A node that keeps a hub should trust only that hub's public key afterwards, and pair again only when someone asks it
+to: something that answered its first hello in the hub's place could otherwise take its alerts. After approval, check
+that the node starts reporting: one that paired with something else stays "Not heard yet" on the hub.
+
+The hub's key pair is made once and kept by a settings reset and in backups; the page shows its fingerprint. The node's
+key is in `pairing.txt` in its folder, which a full backup includes, and deleting the node's folder unpairs it. Nodes set
+up with the shared ESP-NOW key keep working as before.
+
 ## Sensor input over HTTP
 
 Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.

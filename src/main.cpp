@@ -273,6 +273,8 @@ static CamConfig makeConfig() {
   c.healthAlarm = settings.healthAlarm;
   c.healthSave = storeHealthAlarm;
   c.espNowKey = settings.espNowKey.c_str();
+  c.pairingKey = settings.pairingKey.c_str();
+  c.wifiChannel = [] { return (int)WiFi.channel(); };
   c.espNowSend = sendToNode;
   c.startReason = lastRestartText();
   c.snapshotSecret = settings.snapshotKey.c_str();

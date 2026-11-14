@@ -71,7 +71,9 @@ bool SensorCamServer::begin() {
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
   log_.load();
-  mqttEventsSent_ = log_.added();  // the run before sent those
+  mqttEventsSent_ = log_.added();
+  pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
+  if (pairingReady_) camX25519Public(hubPublic_, hubPrivate_);  // tens of milliseconds on the board, once  // the run before sent those
   loadWaiting();
   std::string alive;
   if (storage_.readFile(ALIVE_FILE, alive, 16) && alive.size() == 8) {  // seconds since 1970, little-endian

@@ -10,6 +10,7 @@
 #include "cam_soap.h"
 #include "cam_storage.h"
 #include "cam_subs.h"
+#include "cam_x25519.h"
 
 void setUp() {}
 void tearDown() {}
@@ -264,6 +265,33 @@ static void mqtt_packets_match_the_standard() {
   TEST_ASSERT_TRUE(camBackupValueValid("net.mquser", "home assistant"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.mqpw", "line\nbreak"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.mqpw", std::string(65, 'a')));
+}
+
+// RFC 7748's test vectors: section 5.2, and the key agreement of section 6.1.
+static void x25519_matches_rfc_7748() {
+  auto bytes = [](const char* hexText, uint8_t out[32]) {
+    for (int i = 0; i < 32; i++) {
+      unsigned v = 0;
+      sscanf(hexText + 2 * i, "%2x", &v);
+      out[i] = (uint8_t)v;
+    }
+  };
+  uint8_t k[32], u[32], out[32];
+  bytes("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4", k);
+  bytes("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u);
+  camX25519(out, k, u);
+  TEST_ASSERT_EQUAL_STRING("c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552", camHex(out, 32).c_str());
+  uint8_t alice[32], bob[32], alicePub[32], bobPub[32], s1[32], s2[32];
+  bytes("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", alice);
+  bytes("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", bob);
+  camX25519Public(alicePub, alice);
+  camX25519Public(bobPub, bob);
+  TEST_ASSERT_EQUAL_STRING("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a", camHex(alicePub, 32).c_str());
+  TEST_ASSERT_EQUAL_STRING("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f", camHex(bobPub, 32).c_str());
+  camX25519(s1, alice, bobPub);
+  camX25519(s2, bob, alicePub);
+  TEST_ASSERT_EQUAL_STRING("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742", camHex(s1, 32).c_str());
+  TEST_ASSERT_EQUAL_STRING(camHex(s1, 32).c_str(), camHex(s2, 32).c_str());
 }
 
 static void signed_messages_are_checked() {
@@ -972,6 +1000,7 @@ int main() {
   RUN_TEST(sha1_in_pieces_matches);
   RUN_TEST(signed_messages_are_checked);
   RUN_TEST(mqtt_packets_match_the_standard);
+  RUN_TEST(x25519_matches_rfc_7748);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(quiet_hours_cross_midnight);

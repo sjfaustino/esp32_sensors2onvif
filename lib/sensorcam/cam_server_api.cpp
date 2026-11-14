@@ -64,7 +64,7 @@ std::string SensorCamServer::treeJson() {
     CamNodeSettings node;
     std::string nodeText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
-    j.object().str("mac", s.name).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS).array("sensors");
+    j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS).array("sensors");
     uint8_t mac[6];
     camParseMac(s.name, mac);
     std::vector<CamFsEntry> inputs;
@@ -192,6 +192,10 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.enuns" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
   if (key == "net.enkey") return value.size() >= 16 && validToken(value);
+  if (key == "net.pairkey") {
+    uint8_t k[CAM_X25519_LEN];
+    return camParseHex(value, k, sizeof(k));
+  }
   if (key == "net.hook") return validHookUrl(value);
   if (key == "net.tzoff") return number && validOffset(n);
   if (key == "net.tzdst") return number && n >= 0 && n <= 2;
@@ -225,7 +229,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   const ApiRequest r{c, method, route, target, headers, body, bodyLen};
   if (setupRoute) apiSetup(r);
-  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r)) apiFiles(r);
+  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r) && !apiPairing(r)) apiFiles(r);
 }
 
 void SensorCamServer::apiSetup(const ApiRequest& r) {
@@ -314,7 +318,7 @@ std::string SensorCamServer::espNowJson() {
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
     j.object().flag("low", h.lowBattery).str("name", slots_[id - 1].name).str("node", name.substr(0, name.find('/'))).num("input", slots_[id - 1].input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
-    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).end();
+    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", slots_[id - 1].paired).end();
   }
   j.end().array("unknown");
   for (const UnknownSender& u : unknown_) {

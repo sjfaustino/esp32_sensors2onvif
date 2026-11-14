@@ -515,7 +515,8 @@
       await add("text.json");
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
-        if (s.late) await add(s.mac + "/settings.txt");
+        if (s.late || s.silent) await add(s.mac + "/settings.txt");
+        if (s.paired) await add(s.mac + "/pairing.txt");
         for (const n of s.sensors) {
           const base = s.mac + "/" + n.input;
           files.push([base + "/.sensor", new Uint8Array(0)]);
@@ -633,7 +634,20 @@
       };
       $("espNodes").replaceChildren(
         ...(j.nodes.length
-          ? [headRow(["Name", "Node", "Sensor", "State", "Last heard", "Battery", "Signal", "Report no.", "Refused"])]
+          ? [
+              headRow([
+                "Name",
+                "Node",
+                "Sensor",
+                "State",
+                "Last heard",
+                "Battery",
+                "Signal",
+                "Report no.",
+                "Refused",
+                "Key",
+              ]),
+            ]
           : []),
         ...j.nodes.map((n) =>
           el(
@@ -649,6 +663,7 @@
               n.rssi == null ? "-" : n.rssi + " dBm" + (n.weak ? " (weak)" : ""),
               n.counter == null ? "-" : n.counter,
               n.refused ? n.refused + " (" + n.refusal + ")" : "-",
+              n.paired ? "its own" : "shared",
             ].map((v) => el("td", { textContent: v })),
           ),
         ),
@@ -682,11 +697,79 @@
           ),
         ),
       );
+      loadPairing();
       $("espNone").textContent = j.unknown.length
         ? "These are ignored until added under Sensors Manager > Sensors."
         : "None since the hub last started.";
     } catch (e) {}
   }
+  // Nodes waiting for approval, each with its key's fingerprint to compare with the node's label.
+  async function loadPairing() {
+    try {
+      const p = await call("GET", "/api/pairing");
+      $("pairOpen").disabled = !p.ready;
+      $("pairState").textContent = !p.ready
+        ? "Not available on this hub."
+        : (p.open ? "Open for " + p.open + " s more. " : "Closed. ") + "The hub's fingerprint is " + p.hub + ".";
+      $("pairWaiting").replaceChildren(
+        ...(p.waiting.length ? [headRow(["Node", "Sensors", "Fingerprint", "Last heard", "Signal", ""])] : []),
+        ...p.waiting.map((n) =>
+          el(
+            "tr",
+            null,
+            ...[
+              n.mac +
+                (n.paired ? " (paired before, with another key)" : n.known ? " (added before, without pairing)" : ""),
+              n.inputs,
+              n.fingerprint,
+              heardAgo(n.ago),
+              n.rssi == null ? "-" : n.rssi + " dBm",
+            ].map((v) => el("td", { textContent: v })),
+            el(
+              "td",
+              null,
+              el("button", {
+                textContent: "Approve",
+                onclick: async () => {
+                  if (!confirm("Approve " + n.mac + "? Only if its label shows the fingerprint " + n.fingerprint + "."))
+                    return;
+                  try {
+                    await call("POST", "/api/pairing/approve", "mac=" + n.mac);
+                    $("pairMsg").textContent = "Paired " + n.mac + ". It starts reporting once it hears the hub again.";
+                    loadEsp();
+                    load();
+                  } catch (e) {
+                    $("pairMsg").textContent = e.message;
+                  }
+                },
+              }),
+              " ",
+              el("button", {
+                className: "del",
+                textContent: "Reject",
+                onclick: async () => {
+                  try {
+                    await call("POST", "/api/pairing/reject", "mac=" + n.mac);
+                    loadPairing();
+                  } catch (e) {
+                    $("pairMsg").textContent = e.message;
+                  }
+                },
+              }),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {}
+  }
+  $("pairOpen").onclick = async () => {
+    try {
+      await call("POST", "/api/pairing/open", "x=1");
+      loadPairing();
+    } catch (e) {
+      $("pairMsg").textContent = e.message;
+    }
+  };
   function setEsp(on) {
     clearInterval(espTimer);
     if (on) {

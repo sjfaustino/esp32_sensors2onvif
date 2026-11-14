@@ -41,6 +41,10 @@
 <div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
 <label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low</label>
 <label class="portForm" style="display:block"><input id="espUnsigned" type="checkbox"> Also accept unsigned messages (version 1). Anyone in radio range could then send false alerts.</label>
+<h2 style="font-family:inherit;margin-top:18px">Pairing</h2>
+<p style="margin:0 0 6px;font-size:14px">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
+<div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
+<table id="pairWaiting"></table><div class="portMsg" id="pairMsg"></div>
 <h2 style="font-family:inherit;margin-top:18px">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
 <h2 style="font-family:inherit;margin-top:18px">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>

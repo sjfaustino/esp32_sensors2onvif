@@ -9,6 +9,7 @@
 #include "cam_delivery.h"
 #include "cam_events.h"
 #include "cam_json.h"
+#include "cam_pairing.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
 #include "cam_soap.h"
@@ -107,7 +108,9 @@ struct CamConfig {
   std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot" or "reset"; restarts shortly after replying
   std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
-  std::string espNowKey;                    // signs version 2 ESP-NOW messages
+  std::string espNowKey;                    // signs version 2 ESP-NOW messages from nodes not paired
+  std::string pairingKey;                   // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
+  std::function<int()> wifiChannel;         // told to nodes in the pairing answer
   // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
   std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
   bool espNowUnsigned = false;              // also accept unsigned version 1 messages
@@ -196,6 +199,18 @@ class SensorCamServer {
     std::string name;  // from name.txt in the sensor's folder
     CamSensorSettings settings;  // from settings.txt
     CamNodeSettings node;        // from settings.txt in the node's folder, the same for each of its sensors
+    // From pairing.txt in the node's folder: its own key, which its reports must be signed with instead of the shared one.
+    bool paired = false;
+    std::string key;
+    uint8_t nodePublic[CAM_X25519_LEN] = {0};
+  };
+  struct PairRequest {  // a node that said hello while pairing was open, waiting for approval
+    bool used = false;
+    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+    uint8_t inputs = 1;
+    uint8_t publicKey[CAM_X25519_LEN] = {0};
+    uint32_t heardAt = 0;
+    int8_t rssi = 0;
   };
   struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
     bool used = false;
@@ -354,6 +369,20 @@ class SensorCamServer {
   std::string webhookJson();
   bool apiSensors(const ApiRequest& r);
   void serviceDiscovery();
+
+  // ---- pairing nodes: cam_server_pairing.cpp ----
+  static const int MAX_PAIR_REQUESTS = 8;
+  void helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
+  bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
+  int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
+  bool apiPairing(const ApiRequest& r);
+  std::string pairingJson();
+  bool approveNode(const uint8_t mac[6], std::string& error);
+  bool pairingReady_ = false;
+  uint8_t hubPrivate_[CAM_X25519_LEN] = {0}, hubPublic_[CAM_X25519_LEN] = {0};
+  bool pairingOpen_ = false;
+  uint32_t pairingUntil_ = 0;
+  PairRequest pairRequests_[MAX_PAIR_REQUESTS];
 
   // ---- MQTT, for Home Assistant: cam_server_mqtt.cpp ----
   struct MqttShown {  // a sensor's state as last published, so only a change is sent

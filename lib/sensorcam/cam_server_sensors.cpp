@@ -328,10 +328,18 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
 }
 
 void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
+  if (len >= 1 && data[0] == CAM_HELLO) {
+    helloPacket(mac, data, len, rssi);
+    return;
+  }
   SensorReport r;
-  CamPacketCheck check = camCheckPacket(mac, data, len, cfg_.espNowKey, r);
-  if (check == CAM_PACKET_INVALID) return;
+  if (!parseSensorPacket(data, len, r)) return;
+  // A paired node signs with its own key, and only that key is accepted from it; the others share the ESP-NOW key.
   int id = findSlot(mac, r.input);
+  bool paired = id && slots_[id - 1].paired;
+  const std::string& key = paired ? slots_[id - 1].key : cfg_.espNowKey;
+  CamPacketCheck check = camCheckPacket(mac, data, len, key, r);
+  if (check == CAM_PACKET_INVALID) return;
   if (id == 0) {
     noteUnknown(mac, r.input, rssi);
     return;
@@ -339,9 +347,9 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   Health& h = health_[id - 1];
   // The report number is never a reason to refuse a correctly signed report: a sensor that restarts its count must
   // not lose an alert. The price is that a recorded report could be played back to make a false alert.
-  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                    ? "wrong signature"
-                        : check == CAM_PACKET_UNSIGNED && !cfg_.espNowUnsigned ? "not signed"
-                                                                               : nullptr;
+  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE                                ? "wrong signature"
+                        : check == CAM_PACKET_UNSIGNED && (paired || !cfg_.espNowUnsigned) ? "not signed"
+                                                                                           : nullptr;
   if (refusal) {
     h.refused++;
     h.refusal = refusal;
@@ -364,7 +372,7 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   if (confirmCount_ < MAX_CONFIRMATIONS) {
     uint8_t* slot = confirmations_[confirmCount_++];
     memcpy(slot, mac, 6);
-    camConfirmationInto(mac, r, cfg_.espNowKey, slot + 6);
+    camConfirmationInto(mac, r, key, slot + 6);
   }
 }
 
@@ -574,8 +582,12 @@ void SensorCamServer::rescan() {
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
     CamNodeSettings node;  // a damaged file means the defaults
-    std::string nodeText;
+    std::string nodeText, pairingText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
+    uint8_t nodePublic[CAM_X25519_LEN], nodeKey[CAM_NODE_KEY_LEN];
+    // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
+    // shows on the ESP-NOW page as refused, rather than being trusted with a key that may not be its own.
+    bool paired = storage_.readFile(s.name + "/pairing.txt", pairingText, 256) && camParsePairing(pairingText, nodePublic, nodeKey);
     for (const CamFsEntry& e : inputs) {
       if (!e.dir || camClassifyPath(s.name + "/" + e.name) != CAM_PATH_SENSOR) continue;
       uint8_t input = (uint8_t)atoi(e.name.c_str());
@@ -598,6 +610,9 @@ void SensorCamServer::rescan() {
         if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
         slots_[id - 1].settings = settings;
         slots_[id - 1].node = node;
+        slots_[id - 1].paired = paired;
+        slots_[id - 1].key = paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
+        if (paired) memcpy(slots_[id - 1].nodePublic, nodePublic, CAM_X25519_LEN);
       }
     }
   }

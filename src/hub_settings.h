@@ -11,6 +11,7 @@ struct HubSettings {
   String hubName, webPassword, sensorToken;
   String extraHosts;  // other names the web port answers to, comma-separated
   String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
+  String pairingKey;  // the hub's X25519 private key, for pairing nodes; made once, kept by a reset, and in backups
   String snapshotKey;  // keys the snapshot address's token; never shown, and not in backups
   bool espNowUnsigned = false;
   CamWebhook webhook;

@@ -34,6 +34,10 @@ const uint32_t CAM_MQTT_WAIT_MS = 10000;       // chosen: to connect, to be acce
 const uint32_t CAM_MQTT_RETRY_MS = 15000;      // chosen: after a failed connection, before the next
 const uint32_t CAM_MQTT_SIGNAL_MS = 60000;     // chosen: a sensor's signal strength alone is published at most this often
 
+// ---- pairing nodes ----
+const uint32_t CAM_PAIR_WINDOW_MS = 120000;           // chosen: how long new nodes may say hello after the button is pressed
+const uint32_t CAM_PAIR_FORGET_MS = 10UL * 60 * 1000;  // chosen: a node waiting for approval that stops saying hello is dropped
+
 // ---- the hub itself ----
 const uint32_t CAM_ALIVE_EVERY_MS = 10UL * 60 * 1000;  // chosen: how often the time is saved, so a restart can say how long it was off
 const uint32_t CAM_START_CLOCK_WAIT_MS = 120000;       // chosen: "hub started" waits this long for the clock

@@ -71,6 +71,13 @@ alert starts, and goes back in the queue to play in full afterwards. Late alerts
 have live. Up to 16 records wait; beyond that a late alert joins a waiting one from the same sensor, or else the newest
 waiting record, which then stands for several sensors and shows the built-in "PAST EVENT, CHECK LOGS".
 
+## Pairing
+
+`lib/sensorcam/cam_x25519.cpp` is X25519 after TweetNaCl, checked against RFC 7748's vectors. It is slow, tens of
+milliseconds on the board, and runs only when the hub starts and when a node is approved; reports never use it. A paired
+node's key is read from its `pairing.txt` into its sensors' rows when the sensor table is rebuilt, so checking its reports
+picks the key by the sender and needs no memory, as before.
+
 ## Passwords and names
 
 `CamLoginGuard` (`lib/sensorcam/cam_auth.h`) counts wrong passwords per address, on the web page, ONVIF and RTSP: ten in

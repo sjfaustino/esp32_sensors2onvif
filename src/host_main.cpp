@@ -77,6 +77,14 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     hub.setNvrGoneMs(command == "nvr-gone-fast" ? 3000 : 3 * 60 * 1000);
   } else if (command == "auth-on" || command == "auth-off") {
     hub.setOnvifPassword(command == "auth-on" ? "onvif-secret" : "");
+  } else if (command.compare(0, 10, "radio-raw ") == 0) {  // "radio-raw MAC DATA", both hex: any message, as the radio would deliver it
+    std::string mac = command.substr(10, 12), data = command.size() > 23 ? command.substr(23) : "";
+    uint8_t from[6], bytes[250];
+    if (data.size() % 2 || data.size() / 2 > sizeof(bytes) || mac.size() != 12) return false;
+    for (int i = 0; i < 6; i++) from[i] = (uint8_t)strtoul(mac.substr(2 * i, 2).c_str(), nullptr, 16);
+    for (size_t i = 0; i < data.size() / 2; i++) bytes[i] = (uint8_t)strtoul(data.substr(2 * i, 2).c_str(), nullptr, 16);
+    HubCall call;
+    hub.espNowPacket(from, bytes, (int)data.size() / 2, -55);
   } else if (command.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
     uint8_t node = command == "radio-unknown" ? 0x99 : 1;
     if (command == "radio-huge") radio(&hub, node, 2147483700UL, 55, -61, 2, ESPNOW_KEY);  // above the largest signed 32-bit number
@@ -161,6 +169,8 @@ int main(int argc, char** argv) {
   cfg.crashDelete = [] { crashLeft = 0; return true; };
   cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
   cfg.espNowKey = ESPNOW_KEY;
+  cfg.pairingKey = "a8abababababababababababababababababababababababababababababab6b";  // fixed, so the test knows the hub's key
+  cfg.wifiChannel = [] { return 6; };
   cfg.espNowSend = [](const uint8_t mac[6], const uint8_t* data, int len) {
     char hex[3];
     lastSent.clear();

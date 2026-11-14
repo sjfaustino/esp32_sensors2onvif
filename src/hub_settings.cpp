@@ -67,6 +67,11 @@ void loadSettings() {
       s.espNowKey = randomHex(4);
       p.putString("enkey", s.espNowKey);
     }
+    s.pairingKey = p.getString("pairkey", "");
+    if (s.pairingKey.length() != 64) {  // made once and kept: paired nodes keep their keys either way, but the hub's fingerprint stays the same
+      s.pairingKey = randomHex(8);
+      p.putString("pairkey", s.pairingKey);
+    }
     s.snapshotKey = p.getString("snapkey", "");
     if (s.snapshotKey.length() < 16) {  // made once and kept; a settings reset makes a new one
       s.snapshotKey = randomHex(4);
@@ -206,9 +211,9 @@ bool storeArmed(bool on) {
 // Pictures live on LittleFS, so they survive this.
 bool resetSettings() {
   bool ok = true;
-  String token = settings.sensorToken, key = settings.espNowKey;  // the sensors are kept, so the secrets they send with are kept too
+  String token = settings.sensorToken, key = settings.espNowKey, pair = settings.pairingKey;  // the sensors are kept, so the secrets they send with are kept too
   for (const char* space : {"wifi", "net"}) ok = withPrefs(space, [](Preferences& p) { return p.clear(); }) && ok;
-  return ok && withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key); });
+  return ok && withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key) && putText(p, "pairkey", pair); });
 }
 
 // ---- backup and restore ----
@@ -224,7 +229,7 @@ static const BackupKey BACKUP_KEYS[] = {
     {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
     {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
     {"net", "enkey", 's'},   {"net", "enuns", 'b'},     {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
-    {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
+    {"net", "pairkey", 's'}, {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
 };
 
 std::string backupText() {
