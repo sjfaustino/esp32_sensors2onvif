@@ -188,6 +188,8 @@ class SensorCamServer {
   // False when it could not be saved.
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
   bool setArmed(bool on, const std::string& from, uint32_t minutes = 0) { return setArmMode(on ? CAM_ARMED_AWAY : CAM_DISARMED, from, minutes); }
+  // An alert from sensor id that takes the whole path, whatever the arm mode, and is logged as a test. False for no such sensor.
+  bool testAlert(int id);
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();                 // ends every alert now, without waiting for its hold
   void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
@@ -453,7 +455,7 @@ class SensorCamServer {
     bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false, hubHome = false;
     int64_t hubUntil = 0;
     bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
-    bool subscribed = false;  // to the arm switch's commands
+    int subscribed = 0;  // topics subscribed to: the alarm panel's, then the test buttons'
     bool healthTold = false;
     uint32_t healthAt = 0;
   };
@@ -469,6 +471,8 @@ class SensorCamServer {
   std::string mqttBase() const;  // the hub's topics start with this
   uint32_t sensorsTag() const;   // changes when a sensor is added, deleted or renamed
   std::string mqttJson();
+  std::string mqttState() const;  // as the page shows it
+  std::string overviewJson(uint32_t now);
   MqttIo mqtt_;
   MqttShown mqttShown_[CAM_MAX_SENSORS];
   MqttTold mqttTold_[CAM_MAX_SENSORS];

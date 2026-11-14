@@ -608,6 +608,14 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       CamArmMode m = mode == "away" ? CAM_ARMED_AWAY : mode == "home" ? CAM_ARMED_HOME : CAM_DISARMED;
       c.out = saved(setArmMode(m, "the web page", (uint32_t)minutes), "could not save the setting");
     }
+  } else if (r.is("POST", "/api/test-alert")) {
+    uint8_t mac[6];
+    std::string path = queryParam(r.target, "path");
+    size_t slash = path.find('/');
+    int id = camClassifyPath(path) == CAM_PATH_SENSOR && camParseMac(path.substr(0, slash), mac) ? findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1)) : 0;
+    c.out = testAlert(id) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
+  } else if (r.is("GET", "/api/overview")) {
+    reply(c, 200, JSON_TYPE, overviewJson(millis_()));
   } else if (r.is("POST", "/api/arm/rearm")) {
     long long minutes = -1;
     if (!wholeNumber(queryParam(r.form(), "minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {

@@ -11,7 +11,7 @@
 // because it means a recording is missing. A message there is no memory for is counted as dropped, and the alert goes on.
 void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
-  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_DELIVERED ? w.alerts || w.problems : w.problems;
+  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_DELIVERED || kind == CAM_EVENT_TEST_ALERT ? w.alerts || w.problems : w.problems;
   if (w.url.empty() || !wanted) return;
   try {
     std::string event = camEventName(kind, true, delayed);

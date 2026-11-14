@@ -253,6 +253,21 @@ bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint3
   return true;
 }
 
+bool SensorCamServer::testAlert(int id) {
+  if (id < 1 || id > CAM_MAX_SENSORS || !slots_[id - 1].used) return false;
+  uint32_t now = millis_();
+  interruptPastEvent(now);
+  bool wasActive = sensors_.active(id);
+  sensors_.trigger(id, now, 0, false, holdFor(id));
+  if (!wasActive) startAlert(id, false, now);  // checked as delivered, as a real one is: that is part of what is tested
+  SensorReport r;
+  r.active = true;
+  r.battery = health_[id - 1].battery;
+  logEvent(id, r, false, CAM_EVENT_TEST_ALERT);
+  notifyHook(id, CAM_EVENT_TEST_ALERT, false);
+  return true;
+}
+
 void SensorCamServer::rearmWhenDue(uint32_t now) {
   if (cfg_.armed || !cfg_.disarmedUntil) return;
   bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
@@ -492,6 +507,42 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
   }
   status = 200;
   return JSON_OK;
+}
+
+// The overview page: what someone checking the hub wants at a glance.
+std::string SensorCamServer::overviewJson(uint32_t now) {
+  long long left = disarmSecondsLeft(now);
+  CamArmMode mode = armMode();
+  const CamEvent* last = nullptr;  // the newest alert, whatever became of it
+  for (int n = 0; n < log_.count() && !last; n++) {
+    const CamEvent& e = log_.recent(n);
+    bool alert = (e.kind == CAM_EVENT_REPORT && e.active) || e.kind == CAM_EVENT_QUIET_ALERT || e.kind == CAM_EVENT_DISARMED_ALERT ||
+                 e.kind == CAM_EVENT_HOME_ALERT || e.kind == CAM_EVENT_TEST_ALERT || e.kind == CAM_EVENT_NOT_DELIVERED;
+    if (alert) last = &e;
+  }
+  return jsonObject([&](CamJson& j) {
+    j.str("mode", mode == CAM_DISARMED ? "disarmed" : mode == CAM_ARMED_HOME ? "home" : "away").flag("timed", mode == CAM_DISARMED && cfg_.disarmedUntil);
+    j.num("left_s", left >= 0, left).array("active");
+    for (int id = 1; id <= sensors_.count(); id++)
+      if (slots_[id - 1].used && sensors_.active(id)) j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).flag("past", sensors_.pastEvent(id)).end();
+    j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", streamCount()).end();
+    j.str("mqtt", mqttState()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hookResult_).end().array("problems");
+    for (int id = 1; id <= sensors_.count(); id++) {
+      const Health& h = health_[id - 1];
+      if (!slots_[id - 1].used) continue;
+      const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
+      if (problem) j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).str("problem", problem).end();
+    }
+    j.end();
+    if (last) {
+      bool clockOk = last->received >= CAM_CLOCK_VALID_AFTER;
+      j.object("last").str("sensor", last->sensor).str("name", last->text).str("event", camEventName(last->kind, last->active, last->delayed));
+      j.str("received", clockOk, clockOk ? iso(last->received) : std::string()).end();
+    } else {
+      j.null("last");
+    }
+    j.num("dropped", memoryFailures_).num("uptime_s", now / 1000);
+  });
 }
 
 std::string SensorCamServer::statusJson(uint32_t now) {

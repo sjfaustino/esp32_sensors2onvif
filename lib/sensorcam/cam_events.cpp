@@ -30,6 +30,7 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_DISARMED: return "disarmed";
     case CAM_EVENT_HOME_ALERT: return "alert while armed home";
     case CAM_EVENT_ARMED_HOME: return "armed home";
+    case CAM_EVENT_TEST_ALERT: return "test alert";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }

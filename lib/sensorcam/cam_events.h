@@ -27,6 +27,7 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_DISARMED = 12,
   CAM_EVENT_HOME_ALERT = 13,  // an interior sensor's alert while armed home: logged, not sent to the NVR
   CAM_EVENT_ARMED_HOME = 14,
+  CAM_EVENT_TEST_ALERT = 15,  // asked for on the page or in Home Assistant: a real alert, marked as a test
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
 const char* camEventName(uint8_t kind, bool active, bool delayed);

@@ -209,6 +209,24 @@ function settingsPanel(base, n) {
       zone,
       ". Mark the sensors inside the house as interior, so the hub can be armed home at night.",
     ),
+    el(
+      "p",
+      null,
+      el("button", {
+        textContent: "Send test alert",
+        onclick: () => {
+          if (
+            confirm(
+              "Send a test alert from this sensor? It goes to the NVR, Notifications and Home Assistant, whatever the alarm is set to, and is logged as a test.",
+            )
+          )
+            act(
+              () => call("POST", "/api/test-alert?path=" + base, "x=1"),
+              "Sent a test alert. Check that the NVR recorded it.",
+            );
+        },
+      }),
+    ),
     el("button", {
       textContent: "Save alert settings",
       onclick: () =>

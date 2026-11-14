@@ -72,7 +72,7 @@ quiet hours in local time. During quiet hours that sensor's alerts are logged as
 NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
 `settings.txt` in the sensor's folder.
 
-The whole hub can be disarmed, on the Sensors page or from Home Assistant. Disarmed, every alert is logged as "alert while
+The whole hub can be disarmed, on the Overview page or from Home Assistant. Disarmed, every alert is logged as "alert while
 disarmed" but is not sent to the NVR or to Notifications, and every page says so at the top. A late report of something
 that happened before the disarm still goes through, and so does one whose time is not known. Arming and disarming are
 logged as hub events, with where they came from. The setting survives restarts and resets to armed with the other
@@ -84,10 +84,19 @@ NVR, while perimeter sensors count as when armed away. A late report counts if w
 still counted: for an interior sensor, before the hub left armed away; for a perimeter one, before it was disarmed.
 
 A disarm can last a set time, from 30 minutes to a day, after which the hub arms itself again and logs "armed" from the
-re-arm timer, armed away, so forgetting to arm it cannot leave the house unwatched. The Sensors page asks how long each time;
+re-arm timer, armed away, so forgetting to arm it cannot leave the house unwatched. The Overview page asks how long each time;
 **A disarm from Home Assistant lasts** sets how long one from Home Assistant does. "Until armed again" turns the timer
 off. A timed disarm survives a restart, but if the hub cannot tell how much of it is left, because its clock was not set
 when the disarm began or is not set within two minutes of the restart, it arms itself at once.
+
+**Alarm > Overview**, the page the hub opens on, shows at a glance whether it is armed, any alert running now, whether
+the NVR is listening, how the Home Assistant connection and the last notification went, the last alert, and any sensor
+that is silent, on a low battery, on a weak signal or having messages refused. The arm controls are there too.
+
+**Send test alert**, in each sensor's Alert settings and as a button on each sensor in Home Assistant, makes a real alert
+from that sensor, whatever the alarm is set to: the NVR records it with that sensor's picture, the hub checks the NVR got
+it, and Notifications and Home Assistant get it as `test alert`. Use it after changing the NVR, the network or an
+automation, and check that a recording appeared. It is logged as a test, so it is never mistaken for a real alert.
 
 ## Notifications
 
@@ -124,7 +133,7 @@ Home Assistant then shows:
   memory that keeps shrinking over days shows long before it matters.
 - **Each sensor** as its own device, named as on the Sensors page, with Alert (on for as long as the NVR is shown the
   alert), Battery, Signal, Problem (silent, low battery or weak signal) and an Events entity carrying every event of
-  its history, with the same names as the Events page.
+  its history, with the same names as the Events page, and a Send test alert button.
 
 The hub leaves "offline" with the broker as its last will, so Home Assistant marks the hub and every sensor unavailable
 the moment the hub's connection drops: from a power cut, a crash, or someone keeping it off the network. An automation on

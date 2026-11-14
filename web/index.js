@@ -319,9 +319,9 @@
       loadHook(true);
       sysTimer = setInterval(() => loadHook(false), 3000);
     }
-    if (view == "sensors") {
-      loadArm();
-      sysTimer = setInterval(loadArm, 5000);
+    if (view == "overview") {
+      loadOverview();
+      sysTimer = setInterval(loadOverview, 3000);
     }
     if (view == "ha") {
       loadMqtt(true);
@@ -370,6 +370,45 @@
       $("armAway").disabled = a.mode == "away";
       $("armHome").disabled = a.mode == "home";
       $("armWarn").hidden = a.mode != "disarmed";
+    } catch (e) {}
+  }
+  // What someone checking the hub wants at a glance. Each line says what is wrong, if anything.
+  async function loadOverview() {
+    loadArm();
+    try {
+      const o = await call("GET", "/api/overview");
+      const who = (s) => (s.name ? s.name + " (" + s.sensor + ")" : s.sensor);
+      fill("ovInfo", [
+        [
+          "NVR",
+          !o.nvr.set
+            ? "No address set, so the hub cannot tell whether the NVR is listening"
+            : o.nvr.listening
+              ? "Listening" + (o.nvr.streams ? ", watching the video" : "")
+              : "Not listening: alerts are not reaching it",
+        ],
+        ["Home Assistant", o.mqtt],
+        [
+          "Notifications",
+          !o.webhook.set ? "Not set up" : o.webhook.last ? "Last message: " + o.webhook.last : "Nothing sent yet",
+        ],
+        [
+          "Last alert",
+          o.last
+            ? who(o.last) +
+              ", " +
+              o.last.event +
+              (o.last.received ? ", " + new Date(o.last.received).toLocaleString() : "")
+            : "None in the history",
+        ],
+        ["Work dropped for lack of memory", o.dropped],
+      ]);
+      $("ovActive").textContent = o.active.length
+        ? o.active.map((a) => who(a) + (a.past ? " (a past event replaying)" : "")).join(", ")
+        : "None.";
+      $("ovProblems").textContent = o.problems.length
+        ? o.problems.map((p) => who(p) + ": " + p.problem).join("; ")
+        : "None.";
     } catch (e) {}
   }
   async function setMode(mode, minutes) {
@@ -1054,7 +1093,7 @@
     f.nextElementSibling.classList.toggle("show", on);
   }
   function show(view) {
-    if (!$("view-" + view)) view = "sensors";
+    if (!$("view-" + view)) view = "overview";
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id != "view-" + view));
     items.forEach((i) => {
       const on = i.dataset.view == view;

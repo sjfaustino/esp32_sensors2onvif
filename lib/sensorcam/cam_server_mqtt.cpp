@@ -9,7 +9,8 @@
 //     of a broker outage are sent once it is back. Each waits for the broker's acknowledgement, and one not acknowledged
 //     is sent again;
 //   - Home Assistant's discovery messages, which create the devices and entities.
-// And it hears one command: the alarm panel's, on <base>/armed/set. A disarm from there lasts the hub's re-arm time.
+// And it hears two commands: the alarm panel's, on <base>/armed/set, where a disarm lasts the hub's re-arm time; and each
+// sensor's test button, on <base>/<sensor>/test.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -39,13 +40,13 @@ static const HealthPart HEALTH[] = {
     {"started", "Last started", nullptr, "timestamp", nullptr},
 };
 static const int HEALTH_PARTS = sizeof(HEALTH) / sizeof(HEALTH[0]);
-static const int SENSOR_PARTS = 5;  // each sensor's: alert, battery, signal, problem, events
+static const int SENSOR_PARTS = 6;  // each sensor's: alert, battery, signal, problem, events, test button
 static const int SLOT_STEPS = SENSOR_PARTS + 1 + SENSOR_PARTS;  // taking an old sensor away (with its state), then telling of the new
 static const int HUB_STEPS = HUB_PARTS + HEALTH_PARTS;
 static const int DISCOVERY_STEPS = HUB_STEPS + CAM_MAX_SENSORS * SLOT_STEPS;
-static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events"};
-static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event"};
-static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed", "alert while armed home"};
+static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events", "test"};
+static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event", "button"};
+static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed", "alert while armed home", "test alert"};
 static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost", "armed", "armed home", "disarmed"};
 
 // A sensor in topics and ids: its MAC address in lower-case hex, and its input.
@@ -109,10 +110,21 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
     mqttConnectedAt_ = time(nullptr);
     for (MqttShown& s : mqttShown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
     mqttResult_ = "connected";
-  } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, the one topic the hub subscribes to
+  } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, or a sensor's test button
     CamMqttMessage m;
-    std::string topic = mqttBase() + "/armed/set";
-    if (!camMqttReadPublish(p, len, m) || m.topicLen != topic.size() || memcmp(m.topic, topic.data(), m.topicLen) != 0) return;
+    if (!camMqttReadPublish(p, len, m)) return;
+    std::string topic(m.topic, m.topicLen), base = mqttBase() + "/";
+    if (topic.compare(0, base.size(), base) != 0) return;
+    topic.erase(0, base.size());
+    if (topic.size() > 5 && topic.compare(topic.size() - 5, 5, "/test") == 0) {  // <sensor>/test, the sensor as its MAC address in hex, _, its input
+      std::string key = topic.substr(0, topic.size() - 5);
+      uint8_t mac[6];
+      size_t underscore = key.find('_');
+      bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6);
+      if (parsed) testAlert(findSlot(mac, (uint8_t)atoi(key.c_str() + 13)));
+      return;
+    }
+    if (topic != "armed/set") return;
     std::string command(m.payload, m.payloadLen);
     // ON and OFF are what the Armed switch of earlier firmware sent.
     if (command == "ARM_AWAY" || command == "ON") setArmMode(CAM_ARMED_AWAY, "Home Assistant");
@@ -240,10 +252,10 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
     mqtt_.online = true;
     return true;
   }
-  if (!mqtt_.subscribed) {
-    out = camMqttSubscribe(mqttBase() + "/armed/set", mqtt_.nextId);
+  if (mqtt_.subscribed < 2) {
+    out = camMqttSubscribe(mqttBase() + (mqtt_.subscribed == 0 ? "/armed/set" : "/+/test"), mqtt_.nextId);
     mqtt_.nextId = (uint16_t)(mqtt_.nextId == 0xffff ? 1 : mqtt_.nextId + 1);
-    mqtt_.subscribed = true;
+    mqtt_.subscribed++;
     return true;
   }
   bool alert = false;
@@ -436,8 +448,13 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   int part = k - SENSOR_PARTS - 1;
   std::string key = sensorKey(s.mac, s.input), id = hubId + "_" + key + "_" + SENSOR_PART[part], sensor = slotName(i + 1);
   std::string json = jsonObject([&](CamJson& j) {
-    static const char* const NAMES[SENSOR_PARTS] = {"Alert", "Battery", "Signal", "Problem", "Events"};
-    common(j, id, NAMES[part], base + "/" + key + (part == 4 ? "/event" : "/state"));
+    static const char* const NAMES[SENSOR_PARTS] = {"Alert", "Battery", "Signal", "Problem", "Events", "Send test alert"};
+    if (part == 5) {  // a button reads nothing, so it has a command topic instead of a state topic
+      j.str("name", NAMES[part]).str("unique_id", id).str("availability_topic", base + "/status").str("command_topic", base + "/" + key + "/test");
+      j.str("payload_press", "PRESS").str("icon", "mdi:bell-ring-outline");
+    } else {
+      common(j, id, NAMES[part], base + "/" + key + (part == 4 ? "/event" : "/state"));
+    }
     if (part == 0) j.str("device_class", "motion").str("value_template", "{{ value_json.alert }}");
     if (part == 1) j.str("device_class", "battery").str("unit_of_measurement", "%").str("state_class", "measurement").str("entity_category", "diagnostic").str("value_template", "{{ value_json.battery }}");
     if (part == 2) j.str("device_class", "signal_strength").str("unit_of_measurement", "dBm").str("state_class", "measurement").str("entity_category", "diagnostic").str("value_template", "{{ value_json.rssi }}");
@@ -459,13 +476,18 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   return true;
 }
 
+std::string SensorCamServer::mqttState() const {
+  if (cfg_.mqtt.host.empty()) return "not set up";
+  return mqtt_.state == MqttIo::READY ? "connected" : mqtt_.state != MqttIo::OFF ? "connecting" : mqttResult_;
+}
+
 std::string SensorCamServer::mqttJson() {
   const CamMqtt& m = cfg_.mqtt;
   bool ready = mqtt_.state == MqttIo::READY, clockOk = mqttConnectedAt_ >= CAM_CLOCK_VALID_AFTER;
   uint32_t waiting = log_.added() - mqttEventsSent_;
   return jsonObject([&](CamJson& j) {
     j.str("host", m.host).num("port", m.port).str("user", m.user).flag("password", !m.password.empty());
-    j.flag("connected", ready).str("state", m.host.empty() ? std::string("not set up") : ready ? std::string("connected") : mqtt_.state != MqttIo::OFF ? std::string("connecting") : mqttResult_);
+    j.flag("connected", ready).str("state", mqttState());
     j.str("since", ready && clockOk, ready && clockOk ? iso(mqttConnectedAt_) : std::string()).num("waiting", m.host.empty() ? 0 : waiting).num("lost", mqttEventsLost_);
     j.str("topic", mqttBase()).str("hub", cfg_.hostName.substr(0, cfg_.hostName.find('.')));
   });

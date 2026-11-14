@@ -545,6 +545,18 @@ def mqtt_tests(sensor_alert, sensor_clear):
     check('the panel offers arming home', 'arm_home' in panel.get('supported_features', []) and panel.get('payload_arm_home') == 'ARM_HOME', panel)
     broker.send(f'{base}/armed/set', b'ARM_AWAY')
     poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['mode'] == 'away')
+
+    # Each sensor's test button.
+    button = wait_until(lambda: broker.latest(f'homeassistant/button/{serial}/{key(1)}_test/config'))
+    button = json.loads(button['payload']) if button else {}
+    check('Home Assistant gets a test button for each sensor', button.get('command_topic') == f'{base}/{key(1)}/test' and button.get('payload_press') == 'PRESS', button)
+    check('the hub listens for the test buttons', (f'{base}/+/test', 0) in broker.subscriptions, broker.subscriptions)
+    before = len(broker.events(f'{base}/{key(1)}/event'))
+    broker.send(f'{base}/{key(1)}/test', b'PRESS')
+    tested = wait_until(lambda: [e for e in broker.events(f'{base}/{key(1)}/event')[before:] if json.loads(e['payload'])['event_type'] == 'test alert'])
+    check('pressing it sends a test alert, which comes back as that event', tested)
+    check('and the sensor turns on', wait_until(lambda: (broker.state(f'{base}/{key(1)}/state') or {}).get('alert') == 'ON'))
+    sensor_clear(1)
     broker.send(f'{base}/armed/set', b'OFF')  # what the switch of earlier firmware sent
     check('the switch of earlier firmware still works', poll(lambda: json.loads(api('GET', '/api/arm')[1]), lambda a: a['armed'] is False)['armed'] is False)
     broker.send(f'{base}/armed/set', b'ON')
@@ -587,6 +599,22 @@ def arm_tests():
     get(f'/sensor?{sid(1)}')
     check('armed, an alert reaches the NVR again', name(1) in status()['active'], status())
     clear(1)
+
+    # A test alert takes the whole path, whatever the arm mode, and is logged as a test.
+    check('a test alert needs the web password', api('POST', f'/api/test-alert?path={name(3)}', 'x=1', auth=False)[0] == 401)
+    check('a test alert for no such sensor is refused', api('POST', '/api/test-alert?path=02-00-00-00-00-77/9', 'x=1')[0] == 404)
+    api('POST', '/api/arm', 'mode=disarmed&for=0')
+    check('a test alert can be sent', api('POST', f'/api/test-alert?path={name(3)}', 'x=1')[0] == 200)
+    check('it reaches the NVR even while disarmed', name(3) in status()['active'], status())
+    newest = event_list()[0]
+    check('and is logged as a test', newest['sensor'] == name(3) and newest['kind'] == 15 and newest['event'] == 'test alert', newest)
+    overview = json.loads(api('GET', '/api/overview')[1])
+    check('the overview shows the alarm, the alert running and the last alert',
+          overview['mode'] == 'disarmed' and [a['sensor'] for a in overview['active']] == [name(3)] and overview['last']['event'] == 'test alert'
+          and 'listening' in overview['nvr'] and 'mqtt' in overview and isinstance(overview['problems'], list), overview)
+    check('the overview needs the web password', api('GET', '/api/overview', auth=False)[0] == 401)
+    clear(3)
+    api('POST', '/api/arm', 'mode=away')
 
     # Armed home: interior sensors are logged but not sent to the NVR; perimeter ones count as ever.
     check('a bad zone is refused', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=garden')[0] == 400)
