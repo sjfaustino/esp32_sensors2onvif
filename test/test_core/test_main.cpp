@@ -2,6 +2,7 @@
 #include <string.h>
 #include <string>
 #include "cam_auth.h"
+#include "cam_events.h"
 #include "cam_frames.h"
 #include "cam_mqtt.h"
 #include "cam_rtp.h"
@@ -292,6 +293,24 @@ static void x25519_matches_rfc_7748() {
   camX25519(s2, bob, alicePub);
   TEST_ASSERT_EQUAL_STRING("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742", camHex(s1, 32).c_str());
   TEST_ASSERT_EQUAL_STRING(camHex(s1, 32).c_str(), camHex(s2, 32).c_str());
+}
+
+// Every event kind has a name of its own, so none is shown or sent as a plain "alert", and every name is in the list
+// Home Assistant is told to expect.
+static void every_event_kind_has_its_own_name() {
+  std::vector<const char*> names = camEventNames();
+  for (int kind = 1; kind < CAM_EVENT_KIND_COUNT; kind++) {
+    const char* name = camEventName((uint8_t)kind, true, false);
+    TEST_ASSERT_TRUE_MESSAGE(strcmp(name, "alert") != 0, ("kind " + std::to_string(kind) + " has no name in camEventName").c_str());
+    for (int variant = 0; variant < 4; variant++) {
+      const char* each = camEventName((uint8_t)kind, (variant & 1) == 0, (variant & 2) != 0);
+      bool listed = false;
+      for (const char* n : names) listed = listed || strcmp(n, each) == 0;
+      TEST_ASSERT_TRUE_MESSAGE(listed, each);
+    }
+  }
+  for (size_t i = 0; i < names.size(); i++)
+    for (size_t k = i + 1; k < names.size(); k++) TEST_ASSERT_TRUE(strcmp(names[i], names[k]) != 0);
 }
 
 // After a restart: a timed disarm ends when its time has passed, and at once when how long is left cannot be known.
@@ -1026,6 +1045,7 @@ int main() {
   RUN_TEST(mqtt_packets_match_the_standard);
   RUN_TEST(x25519_matches_rfc_7748);
   RUN_TEST(a_timed_disarm_ends_safely_after_a_restart);
+  RUN_TEST(every_event_kind_has_its_own_name);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(quiet_hours_cross_midnight);

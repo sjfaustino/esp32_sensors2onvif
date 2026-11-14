@@ -86,9 +86,11 @@ void loadSettings() {
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
     s.mqtt.password = p.getString("mqpw", "").c_str();
-    s.armed = p.getBool("armed", true);
-    s.disarmedUntil = s.armed ? 0 : p.getLong64("armuntil", 0);
-    s.armedHome = s.armed && p.getBool("armhome", false);
+    // armmode; firmware before it kept "armed" and "armhome", which say the same
+    bool armed = p.getBool("armed", true);
+    uint8_t mode = p.getUChar("armmode", !armed ? CAM_DISARMED : p.getBool("armhome", false) ? CAM_ARMED_HOME : CAM_ARMED_AWAY);
+    s.armMode = mode <= CAM_ARMED_HOME ? (CamArmMode)mode : CAM_ARMED_AWAY;
+    s.disarmedUntil = s.armMode == CAM_DISARMED ? p.getLong64("armuntil", 0) : 0;
     s.rearmMinutes = p.getUShort("rearm", 0);
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
@@ -207,9 +209,12 @@ bool storeMqtt(const CamMqtt& m) {
   });
 }
 
-bool storeArmed(bool on, bool home, int64_t until) {
-  return withPrefs("net", [on, home, until](Preferences& p) {
-    return p.putLong64("armuntil", until) == 8 && p.putBool("armhome", home) == 1 && p.putBool("armed", on) == 1;
+// armmode is what this firmware reads. "armed" and "armhome" are written too, so an update that is undone leaves the
+// earlier firmware in the same mode.
+bool storeArmed(CamArmMode mode, int64_t until) {
+  return withPrefs("net", [mode, until](Preferences& p) {
+    return p.putLong64("armuntil", until) == 8 && p.putUChar("armmode", mode) == 1 && p.putBool("armhome", mode == CAM_ARMED_HOME) == 1 &&
+           p.putBool("armed", mode != CAM_DISARMED) == 1;
   });
 }
 

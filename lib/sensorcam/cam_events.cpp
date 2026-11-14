@@ -35,6 +35,18 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
   }
 }
 
+std::vector<const char*> camEventNames() {
+  std::vector<const char*> names;
+  for (int kind = 0; kind < CAM_EVENT_KIND_COUNT; kind++)
+    for (int variant = 0; variant < 4; variant++) {
+      const char* name = camEventName((uint8_t)kind, (variant & 1) == 0, (variant & 2) != 0);
+      bool seen = false;
+      for (const char* n : names) seen = seen || strcmp(n, name) == 0;
+      if (!seen) names.push_back(name);
+    }
+  return names;
+}
+
 std::string camEventMessage(uint8_t kind, const std::string& who, const std::string& detail, uint32_t offS, bool delayed) {
   bool known = offS != CAM_AGE_UNKNOWN;
   switch (kind) {

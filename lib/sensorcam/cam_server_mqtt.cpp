@@ -46,8 +46,8 @@ static const int HUB_STEPS = HUB_PARTS + HEALTH_PARTS;
 static const int DISCOVERY_STEPS = HUB_STEPS + CAM_MAX_SENSORS * SLOT_STEPS;
 static const char* const SENSOR_PART[SENSOR_PARTS] = {"alert", "battery", "signal", "problem", "events", "test"};
 static const char* const SENSOR_COMPONENT[SENSOR_PARTS] = {"binary_sensor", "sensor", "sensor", "binary_sensor", "event", "button"};
-static const char* const SENSOR_EVENTS[] = {"alert", "delayed alert", "clear", "alert in quiet hours", "went silent", "low battery", "weak signal", "alert not delivered", "delayed alert not delivered", "alert while disarmed", "alert while armed home", "test alert"};
-static const char* const HUB_EVENTS[] = {"NVR not listening", "NVR listening again", "hub started", "network lost", "armed", "armed home", "disarmed"};
+// Both kinds of events entity are told every name camEventName gives, so no event can arrive that Home Assistant was
+// not told to expect, which would make it refuse the event.
 
 // A sensor in topics and ids: its MAC address in lower-case hex, and its input.
 static std::string sensorKey(const uint8_t mac[6], uint8_t input) {
@@ -261,7 +261,7 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   bool alert = false;
   for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slots_[id - 1].used && sensors_.active(id) && !sensors_.pastEvent(id));
   bool nvr = nvrListening(now);
-  bool armed = cfg_.armed, home = cfg_.armedHome;
+  bool armed = this->armed(), home = armMode() == CAM_ARMED_HOME;
   int64_t until = cfg_.disarmedUntil;
   if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome || until != mqtt_.hubUntil) {
     bool known = !armed && until > 1;
@@ -404,7 +404,7 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
       if (step == 1) j.str("device_class", "connectivity").str("entity_category", "diagnostic").str("value_template", "{{ value_json.nvr }}");
       if (step == 2) {
         j.array("event_types");
-        for (const char* type : HUB_EVENTS) j.str(type);
+        for (const char* type : camEventNames()) j.str(type);
         j.end();
       }
       if (step == 3) {  // no code: Home Assistant guards who may use it
@@ -461,7 +461,7 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     if (part == 3) j.str("device_class", "problem").str("value_template", "{{ value_json.problem }}").str("json_attributes_topic", base + "/" + key + "/state");
     if (part == 4) {
       j.array("event_types");
-      for (const char* type : SENSOR_EVENTS) j.str(type);
+      for (const char* type : camEventNames()) j.str(type);
       j.end();
     }
     j.object("device").array("identifiers").str(hubId + "_" + key).end().str("name", s.name.empty() ? "Sensor " + sensor : s.name);

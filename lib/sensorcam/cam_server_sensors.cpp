@@ -210,12 +210,14 @@ uint32_t SensorCamServer::holdFor(int id) const {
 // kept from before the start counts from the start, as nothing earlier is known.
 CamEventKind SensorCamServer::heldAs(int id, const SensorReport& r, uint32_t now) const {
   bool interior = slots_[id - 1].settings.interior;
-  bool held = !cfg_.armed || (cfg_.armedHome && interior);
+  bool held = armMode() == CAM_DISARMED || (armMode() == CAM_ARMED_HOME && interior);
   if (!held || r.age == CAM_AGE_UNKNOWN) return CAM_EVENT_REPORT;
   uint32_t offAt = interior ? interiorOffAt_ : perimeterOffAt_;
   if ((uint64_t)r.age * 1000 > (uint64_t)(now - offAt)) return CAM_EVENT_REPORT;
-  return cfg_.armed ? CAM_EVENT_HOME_ALERT : CAM_EVENT_DISARMED_ALERT;
+  return armed() ? CAM_EVENT_HOME_ALERT : CAM_EVENT_DISARMED_ALERT;
 }
+
+const char* camArmModeName(CamArmMode mode) { return mode == CAM_DISARMED ? "disarmed" : mode == CAM_ARMED_HOME ? "home" : "away"; }
 
 std::string camMinutesText(uint32_t m) {
   if (m && m % 1440 == 0) return std::to_string(m / 1440) + (m == 1440 ? " day" : " days");
@@ -238,12 +240,11 @@ bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint3
   time_t t = time(nullptr);
   int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
   if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
-  if (!camCall(cfg_.armedSave, mode != CAM_DISARMED, mode == CAM_ARMED_HOME, until)) return false;
+  if (!camCall(cfg_.armedSave, mode, until)) return false;
   uint32_t now = millis_();
   if (was == CAM_ARMED_AWAY) interiorOffAt_ = now;  // a change of end keeps when a disarm began
   if (was != CAM_DISARMED && mode == CAM_DISARMED) perimeterOffAt_ = now;
-  cfg_.armed = mode != CAM_DISARMED;
-  cfg_.armedHome = mode == CAM_ARMED_HOME;
+  cfg_.armMode = mode;
   cfg_.disarmedUntil = until;
   disarmEndKnown_ = minutes != 0;
   disarmEndsAt_ = now + minutes * minuteMs_;
@@ -269,14 +270,14 @@ bool SensorCamServer::testAlert(int id) {
 }
 
 void SensorCamServer::rearmWhenDue(uint32_t now) {
-  if (cfg_.armed || !cfg_.disarmedUntil) return;
+  if (armed() || !cfg_.disarmedUntil) return;
   bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
                              : camTimedDisarmOver(cfg_.disarmedUntil, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
   if (due) setArmMode(CAM_ARMED_AWAY, "the re-arm timer");  // away, the safer; if it cannot be saved, it is tried again on the next pass
 }
 
 long long SensorCamServer::disarmSecondsLeft(uint32_t now) const {
-  if (cfg_.armed || !cfg_.disarmedUntil) return -1;
+  if (armed() || !cfg_.disarmedUntil) return -1;
   if (disarmEndKnown_) return (int32_t)(disarmEndsAt_ - now) > 0 ? (disarmEndsAt_ - now + 999) / 1000 : 0;
   time_t t = time(nullptr);
   if (cfg_.disarmedUntil > 1 && t >= CAM_CLOCK_VALID_AFTER) return cfg_.disarmedUntil > t ? cfg_.disarmedUntil - t : 0;
@@ -521,7 +522,7 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
     if (alert) last = &e;
   }
   return jsonObject([&](CamJson& j) {
-    j.str("mode", mode == CAM_DISARMED ? "disarmed" : mode == CAM_ARMED_HOME ? "home" : "away").flag("timed", mode == CAM_DISARMED && cfg_.disarmedUntil);
+    j.str("mode", camArmModeName(mode)).flag("timed", mode == CAM_DISARMED && cfg_.disarmedUntil);
     j.num("left_s", left >= 0, left).array("active");
     for (int id = 1; id <= sensors_.count(); id++)
       if (slots_[id - 1].used && sensors_.active(id)) j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).flag("past", sensors_.pastEvent(id)).end();
@@ -558,7 +559,7 @@ std::string SensorCamServer::statusJson(uint32_t now) {
       if (!h.heard) continue;
       j.object().str("sensor", slotName(id)).num("last_heard_s", (now - h.heardAt) / 1000).num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).flag("silent", h.silent).end();
     }
-    j.end().num("uptime_s", now / 1000).flag("armed", cfg_.armed).str("mode", armMode() == CAM_DISARMED ? "disarmed" : armMode() == CAM_ARMED_HOME ? "home" : "away");
+    j.end().num("uptime_s", now / 1000).flag("armed", armed()).str("mode", camArmModeName(armMode()));
   });
 }
 
@@ -672,13 +673,18 @@ uint32_t SensorCamServer::sensorsTag() const {
 void SensorCamServer::rescan() {
   uint32_t before = sensorsTag();
   bool seen[CAM_MAX_SENSORS] = {false};
+  // A folder that cannot be read changes nothing: forgetting its sensors would ignore their alerts as coming from
+  // unknown senders until the next change. A deleted folder is still noticed, as it is simply not listed.
   std::vector<CamFsEntry> nodes;
-  storage_.list("", nodes);
+  if (!storage_.list("", nodes)) return;
   for (const CamFsEntry& s : nodes) {
     uint8_t mac[6];
     if (!s.dir || !camParseMac(s.name, mac)) continue;
     std::vector<CamFsEntry> inputs;
-    storage_.list(s.name, inputs);
+    if (!storage_.list(s.name, inputs)) {
+      for (int i = 0; i < CAM_MAX_SENSORS; i++) seen[i] = seen[i] || (slots_[i].used && memcmp(slots_[i].mac, mac, 6) == 0);
+      continue;
+    }
     CamNodeSettings node;  // a damaged file means the defaults
     std::string nodeText, pairingText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();

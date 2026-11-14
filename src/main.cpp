@@ -286,10 +286,9 @@ static CamConfig makeConfig() {
   c.webhookSave = storeWebhook;
   c.mqtt = settings.mqtt;
   c.mqttSave = storeMqtt;
-  c.armed = settings.armed;
+  c.armMode = settings.armMode;
   c.armedSave = storeArmed;
   c.disarmedUntil = settings.disarmedUntil;
-  c.armedHome = settings.armedHome;
   c.rearmMinutes = settings.rearmMinutes;
   c.rearmSave = storeRearm;
   c.firmwareVersion = FIRMWARE_VERSION;

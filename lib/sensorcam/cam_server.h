@@ -85,7 +85,8 @@ struct CamHealth {
   uint64_t uptimeS = 0;
 };
 
-enum CamArmMode { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
+enum CamArmMode : uint8_t { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
+const char* camArmModeName(CamArmMode mode);  // "disarmed", "away" or "home", as the API gives it
 
 struct CamAddress {
   bool dhcp = true;
@@ -140,10 +141,10 @@ struct CamConfig {
   std::function<bool(const CamWebhook&)> webhookSave;
   CamMqtt mqtt;
   // Disarmed, alerts are logged but not sent to the NVR or the webhook, as in quiet hours. Kept across restarts.
-  bool armed = true;
-  bool armedHome = false;     // armed home rather than away: interior sensors are logged but not sent to the NVR
+  // Armed home, interior sensors are logged but not sent to the NVR.
+  CamArmMode armMode = CAM_ARMED_AWAY;
   int64_t disarmedUntil = 0;  // see camTimedDisarmOver; 0 for a disarm without an end
-  std::function<bool(bool armed, bool home, int64_t until)> armedSave;
+  std::function<bool(CamArmMode mode, int64_t until)> armedSave;
   uint32_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
   std::function<bool(uint32_t)> rearmSave;
   std::function<bool(const CamMqtt&)> mqttSave;
@@ -182,8 +183,8 @@ class SensorCamServer {
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
   uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
-  bool armed() const { return cfg_.armed; }
-  CamArmMode armMode() const { return !cfg_.armed ? CAM_DISARMED : cfg_.armedHome ? CAM_ARMED_HOME : CAM_ARMED_AWAY; }
+  bool armed() const { return cfg_.armMode != CAM_DISARMED; }
+  CamArmMode armMode() const { return cfg_.armMode; }
   // Arms away or home, or disarms for minutes (0 until armed again), saved first; from says where, for the history.
   // False when it could not be saved.
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);

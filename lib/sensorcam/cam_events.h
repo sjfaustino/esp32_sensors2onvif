@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <string>
+#include <vector>
 #include "cam_sensors.h"
 #include "cam_storage.h"
 
@@ -28,9 +29,12 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_HOME_ALERT = 13,  // an interior sensor's alert while armed home: logged, not sent to the NVR
   CAM_EVENT_ARMED_HOME = 14,
   CAM_EVENT_TEST_ALERT = 15,  // asked for on the page or in Home Assistant: a real alert, marked as a test
+  CAM_EVENT_KIND_COUNT        // not a kind: one more than the last, so code can go through them all
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
 const char* camEventName(uint8_t kind, bool active, bool delayed);
+// Every name camEventName can give, each once, in the order of the kinds: what Home Assistant is told to expect.
+std::vector<const char*> camEventNames();
 
 // The one wording of each event's notification. who is the sensor, as "Gate (AA-BB-CC-DD-EE-01/1)", or for the hub's own
 // events the hub's name. detail and offS are those of a hub event.

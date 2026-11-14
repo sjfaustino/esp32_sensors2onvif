@@ -382,7 +382,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
         if (!seen.empty()) j.str(seen);
       j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
       j.num("onvifPort", cfg_.onvifPort).num("webPort", cfg_.webPort).num("rtspPort", cfg_.rtspPort).num("streams", streamCount()).num("subscribers", subs_.count());
-      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", cfg_.armed);
+      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", armed());
     }));
   } else {
     return false;
@@ -591,9 +591,9 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     }
   } else if (r.is("GET", "/api/arm")) {
     long long left = disarmSecondsLeft(millis_());
-    bool timed = !cfg_.armed && cfg_.disarmedUntil;
+    bool timed = !armed() && cfg_.disarmedUntil;
     c.out = jsonOk(jsonObject([&](CamJson& j) {
-      j.flag("armed", cfg_.armed).str("mode", armMode() == CAM_DISARMED ? "disarmed" : armMode() == CAM_ARMED_HOME ? "home" : "away");
+      j.flag("armed", armed()).str("mode", camArmModeName(armMode()));
       j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
     }));
   } else if (r.is("POST", "/api/arm")) {
