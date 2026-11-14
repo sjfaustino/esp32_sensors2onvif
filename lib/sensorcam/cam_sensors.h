@@ -73,6 +73,25 @@ const uint32_t CAM_MIN_SILENT_S = 60, CAM_MAX_SILENT_S = 7 * 86400;
 bool camParseNodeSettings(const std::string& text, CamNodeSettings& out);  // false for anything the page would refuse
 std::string camNodeSettingsText(const CamNodeSettings& s);
 
+// What a node says about itself. It sends this with its regular reports, so the hub learns it again after any change; the
+// hub keeps it as about.txt in the node's folder. On the air: CAM_NODE_INFO, how often it reports in seconds (u32, 0 when
+// it does not say), flags (bit 0: saving its battery, so reporting less often), the length (0 to 24) and text of its
+// sensor's kind, the same for its firmware version, then a report's 8-byte signature. Texts are printable ASCII.
+const uint8_t CAM_NODE_INFO = 6;
+const int CAM_NODE_TEXT_MAX = 24;
+struct CamNodeInfo {
+  uint32_t everyS = 0;
+  bool saving = false;
+  std::string sensor, version;
+  bool operator==(const CamNodeInfo& o) const { return everyS == o.everyS && saving == o.saving && sensor == o.sensor && version == o.version; }
+};
+CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, CamNodeInfo& out);
+bool camParseNodeInfo(const std::string& text, CamNodeInfo& out);
+std::string camNodeInfoText(const CamNodeInfo& info);
+// The silent time worked out from how often a node reports: a quarter longer, and at least 10 minutes longer, so one late
+// report is not enough. 0 when the node does not say. Its own setting on the Sensors page comes first.
+uint32_t camAutoSilentS(uint32_t everyS);
+
 // Direction of the nearest target, which is the one shown in the picture.
 uint8_t reportDirection(const SensorReport& r);
 

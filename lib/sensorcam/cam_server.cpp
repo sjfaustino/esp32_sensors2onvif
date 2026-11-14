@@ -789,8 +789,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {
     Health& h = health_[i];
-    uint32_t silentMs = slots_[i].node.silentS ? slots_[i].node.silentS * 1000 : cfg_.silentMs;
-    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= silentMs) continue;
+    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= silentMsFor(i + 1)) continue;
     h.silent = true;
     healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }

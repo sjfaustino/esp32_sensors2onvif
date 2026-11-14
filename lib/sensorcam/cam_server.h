@@ -230,6 +230,7 @@ class SensorCamServer {
     std::string name;  // from name.txt in the sensor's folder
     CamSensorSettings settings;  // from settings.txt
     CamNodeSettings node;        // from settings.txt in the node's folder, the same for each of its sensors
+    CamNodeInfo info;            // what the node last said about itself, from about.txt in its folder
     // From pairing.txt in the node's folder: its own key, which its reports must be signed with instead of the shared one.
     bool paired = false;
     std::string key;
@@ -320,6 +321,7 @@ class SensorCamServer {
   bool sensorFits(const std::string& path) const;  // false when the path would add a sensor beyond the limit
   int sharedSockets() const;  // web connections and event pushes in progress
   int findSlot(const uint8_t mac[6], uint8_t input) const;
+  uint32_t silentMsFor(int id) const;
   int slotForPath(const std::string& path) const;  // the sensor whose folder this is, as "AA-BB-CC-DD-EE-FF/1", or 0
   std::string slotName(int id) const;
   const CamFrame& frameToShow(uint32_t now);
@@ -414,6 +416,7 @@ class SensorCamServer {
   // ---- pairing nodes: cam_server_pairing.cpp ----
   static const int MAX_PAIR_REQUESTS = 8;
   void helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
+  void nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len);
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
   bool apiPairing(const ApiRequest& r);

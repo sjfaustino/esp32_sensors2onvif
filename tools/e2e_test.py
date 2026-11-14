@@ -760,6 +760,32 @@ def pairing_tests():
     check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
     check('the ESP-NOW page shows the node has its own key', node_row(1).get('paired') is True)
 
+    def info(every, saving, sensor, version, key=key):
+        body = bytes([6]) + every.to_bytes(4, 'little') + bytes([saving, len(sensor)]) + sensor + bytes([len(version)]) + version
+        return body + signed(key, body)
+
+    def tree_node():
+        return next((n for n in get_json('/api/tree')['nodes'] if n['mac'] == folder), {})
+
+    check('before it says how often it reports, the node is silent after the default', node_row(1).get('silentAfter') == 3 * 3600, node_row(1))
+    say(info(7200, 0, b'RCWL-0516', b'3f2a1b0'))
+    row = node_row(1)
+    check("the node's info shows on the ESP-NOW page, for each of its sensors",
+          (row.get('every'), row.get('sensor'), row.get('version'), row.get('saving')) == (7200, 'RCWL-0516', '3f2a1b0', False) and node_row(2).get('sensor') == 'RCWL-0516', row)
+    check('its silent time follows from how often it reports', row.get('silentAfter') == 7200 + 1800, row)
+    check('the Sensors page shows both', (tree_node().get('every'), tree_node().get('autoSilent')) == (7200, 9000), tree_node())
+    check('it is kept in the node folder', api('GET', f'/api/file?path={folder}/about.txt') == (200, b'every=7200\nsaving=0\nsensor=RCWL-0516\nversion=3f2a1b0\n'))
+    say(info(6 * 3600, 1, b'RCWL-0516', b'3f2a1b0'))
+    check('a node saving its battery reports less often, and the silent time follows', (node_row(1).get('saving'), node_row(1).get('silentAfter')) == (True, 6 * 3600 + 5400), node_row(1))
+    api('POST', f'/api/node-settings?path={folder}', 'silent=600')
+    check("the node's own setting comes first", node_row(1).get('silentAfter') == 600 and tree_node().get('autoSilent') == 6 * 3600 + 5400, node_row(1))
+    api('POST', f'/api/node-settings?path={folder}', 'silent=')
+    check('and emptied, the node is followed again', node_row(1).get('silentAfter') == 6 * 3600 + 5400, node_row(1))
+    say(info(60, 0, b'forged', b'x', b'test-espnow-key-0123456789'))
+    check('info signed with the wrong key is refused', node_row(1).get('sensor') == 'RCWL-0516' and node_row(1).get('refusal') == 'wrong signature', node_row(1))
+    say(info(60, 0, b'bad\nline', b'x'))
+    check('info with a line break in its text is ignored', node_row(1).get('sensor') == 'RCWL-0516', node_row(1))
+
     other = X25519PrivateKey.generate()
     api('POST', '/api/pairing/close', 'x=1')
     check('a hello with a different key outside pairing gets no answer', say(bytes([4, 2]) + raw(other.public_key())) is None)

@@ -46,8 +46,9 @@ Events pages. Updating from older firmware keeps its history.
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
 silence and low battery. A sensor that is unplugged, smashed or taken is only noticed once it has been silent that long,
-so set **Report this node silent after** under its Node settings to a little over the time between its regular reports,
-from 1 minute to 7 days, and have the node report that often.
+so it should be a little over the time between the node's regular reports. A node that says how often it reports (see
+"Node info" below) sets it for you; otherwise, or to change it, set **Report this node silent after** under its Node
+settings, from 1 minute to 7 days.
 
 The hub cannot report its own death: while it has no power or no Wi-Fi, nothing reaches the NVR, and the hub logs how long
 it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
@@ -408,7 +409,23 @@ the hub has the alert, not that the NVR got it or recorded it; the hub reports d
 
 Devices that cache alerts should send them oldest first and keep resending each until it is confirmed.
 They should also report their current state regularly, a little more often than their node's **Report this node silent
-after** time, 3 hours unless set, so that a sensor that stops reporting is noticed.
+after** time, so that a sensor that stops reporting is noticed.
+
+**Node info.** A node can also tell the hub about itself, with each regular report, so the hub learns of any change. It is signed like a
+report, gets no confirmation, and is sent once per node, not per input:
+
+| Bytes | Field |
+|---|---|
+| 1 | `6`, node info |
+| 4 | How often the node reports with nothing to report, in seconds; `0` when it does not say |
+| 1 | `1` while the node is saving its battery, so reporting less often; else `0` |
+| 1 + n | The length, 0 to 24, then the text of its sensor's kind, such as `RCWL-0516` |
+| 1 + n | The same for its firmware version |
+| 8 | The signature, as a report's |
+
+Texts are printable ASCII. The ESP-NOW page shows them, and the hub keeps them in the node's folder as `about.txt`.
+**Report this node silent after** is then a quarter longer than the node's report time, and at least 10 minutes longer,
+and follows the node when that changes. Set on the Sensors page, it comes first. A node that never says uses 3 hours.
 
 An alert lasts its hold time, 10 seconds or the sensor's own alert time, from the sensor's latest activation. Another
 activation before then extends it, so a person moving about makes one NVR record rather than several. A clear report is

@@ -386,6 +386,37 @@ static void node_settings_round_trip_and_refuse_bad_values() {
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseNodeSettings(text, s), text);
 }
 
+static void node_info_is_read_signed_and_kept() {
+  const uint8_t mac[6] = {2, 0, 0, 0, 0, 9};
+  const std::string key = "node-key";
+  uint8_t m[64] = {CAM_NODE_INFO, 0x20, 0x1C, 0, 0, 1, 3, 'P', 'I', 'R', 2, 'v', '1'};  // every 7200 s, saving
+  int len = 13;
+  memcpy(m + len, camPacketSignature(mac, m, len, key).data(), CAM_SIGNATURE_LEN);
+  CamNodeInfo info;
+  TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
+  TEST_ASSERT_EQUAL(7200, info.everyS);
+  TEST_ASSERT_TRUE(info.saving);
+  TEST_ASSERT_EQUAL_STRING("PIR", info.sensor.c_str());
+  TEST_ASSERT_EQUAL_STRING("v1", info.version.c_str());
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, "other", info));
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN - 1, key, info));  // a text runs past the end
+  m[6] = 30;  // longer than a text may be
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
+  m[6] = 3, m[8] = '\n';
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
+
+  CamNodeInfo back;
+  info.sensor = "PIR";
+  TEST_ASSERT_TRUE(camParseNodeInfo(camNodeInfoText(info), back));
+  TEST_ASSERT_TRUE(back == info);
+  TEST_ASSERT_FALSE(camParseNodeInfo("colour=red\n", back));
+
+  TEST_ASSERT_EQUAL(0, camAutoSilentS(0));
+  TEST_ASSERT_EQUAL(300 + 600, camAutoSilentS(300));      // at least 10 minutes over
+  TEST_ASSERT_EQUAL(7200 + 1800, camAutoSilentS(7200));   // or a quarter over
+  TEST_ASSERT_EQUAL(CAM_MAX_SILENT_S, camAutoSilentS(30 * 86400));
+}
+
 static void quiet_hours_cross_midnight() {
   CamSensorSettings night, day, none;
   night.quietFrom = 22 * 60, night.quietTo = 7 * 60;
@@ -1048,6 +1079,7 @@ int main() {
   RUN_TEST(every_event_kind_has_its_own_name);
   RUN_TEST(sensor_settings_round_trip_and_refuse_bad_values);
   RUN_TEST(node_settings_round_trip_and_refuse_bad_values);
+  RUN_TEST(node_info_is_read_signed_and_kept);
   RUN_TEST(quiet_hours_cross_midnight);
   RUN_TEST(a_sensor_can_have_its_own_hold);
   RUN_TEST(rtp_time_follows_the_clock_when_frames_are_skipped);

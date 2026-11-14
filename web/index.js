@@ -729,7 +729,7 @@
       const STATES = {
         active: "Active",
         idle: "Idle",
-        silent: "Silent (no report for 3 hours)",
+        silent: "Silent",
         never: "Not heard yet",
       };
       $("espNodes").replaceChildren(
@@ -746,6 +746,8 @@
                 "Report no.",
                 "Refused",
                 "Key",
+                "Sensor type",
+                "Firmware",
               ]),
             ]
           : []),
@@ -757,13 +759,15 @@
               n.name || "-",
               n.node,
               n.input,
-              STATES[n.state],
+              STATES[n.state] + (n.state == "silent" ? " (no report for " + Math.round(n.silentAfter / 60) + " minutes)" : ""),
               heardAgo(n.ago),
-              n.battery == null ? "-" : n.battery + "%" + (n.low ? " (low)" : ""),
+              (n.battery == null ? "-" : n.battery + "%" + (n.low ? " (low)" : "")) + (n.saving ? ", saving it" : ""),
               n.rssi == null ? "-" : n.rssi + " dBm" + (n.weak ? " (weak)" : ""),
               n.counter == null ? "-" : n.counter,
               n.refused ? n.refused + " (" + n.refusal + ")" : "-",
               n.paired ? "its own" : "shared",
+              n.sensor || "-",
+              n.version || "-",
             ].map((v) => el("td", { textContent: v })),
           ),
         ),

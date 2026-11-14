@@ -42,13 +42,70 @@ std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, 
   return std::string((const char*)s, CAM_SIGNATURE_LEN);
 }
 
-CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
-  if (!parseSensorPacket(d, len, out)) return CAM_PACKET_INVALID;
+static CamPacketCheck checkSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
   uint8_t expected[20];
   signature(mac, d, len - CAM_SIGNATURE_LEN, key, expected);
   uint8_t differ = 0;  // every byte is compared, so the time taken does not reveal how much matched
   for (int i = 0; i < CAM_SIGNATURE_LEN; i++) differ |= expected[i] ^ d[len - CAM_SIGNATURE_LEN + i];
   return differ || key.empty() ? CAM_PACKET_BAD_SIGNATURE : CAM_PACKET_SIGNED;
+}
+
+CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
+  return parseSensorPacket(d, len, out) ? checkSignature(mac, d, len, key) : CAM_PACKET_INVALID;
+}
+
+static bool printable(const std::string& t) {
+  for (char ch : t)
+    if (ch < 0x20 || ch > 0x7E) return false;
+  return t.size() <= (size_t)CAM_NODE_TEXT_MAX;
+}
+
+CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, CamNodeInfo& out) {
+  int body = len - CAM_SIGNATURE_LEN, at = 6;
+  if (body < 8 || d[0] != CAM_NODE_INFO || d[5] > 1) return CAM_PACKET_INVALID;
+  CamNodeInfo info;
+  info.everyS = readU32(d + 1);
+  info.saving = d[5] == 1;
+  for (std::string* text : {&info.sensor, &info.version}) {
+    if (at >= body || at + 1 + d[at] > body) return CAM_PACKET_INVALID;
+    text->assign((const char*)d + at + 1, d[at]);
+    at += 1 + d[at];
+    if (!printable(*text)) return CAM_PACKET_INVALID;
+  }
+  if (at != body) return CAM_PACKET_INVALID;
+  out = info;
+  return checkSignature(mac, d, len, key);
+}
+
+bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
+  CamNodeInfo info;
+  for (size_t at = 0; at < text.size();) {
+    size_t end = text.find('\n', at);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(at, end - at);
+    at = end + 1;
+    if (line.empty()) continue;
+    size_t eq = line.find('=');
+    std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
+    if (!printable(value)) return false;
+    if (key == "every") info.everyS = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+    else if (key == "saving") info.saving = value == "1";
+    else if (key == "sensor") info.sensor = value;
+    else if (key == "version") info.version = value;
+    else return false;
+  }
+  out = info;
+  return true;
+}
+
+std::string camNodeInfoText(const CamNodeInfo& i) {
+  return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n";
+}
+
+uint32_t camAutoSilentS(uint32_t everyS) {
+  if (!everyS) return 0;
+  uint64_t s = (uint64_t)everyS + (everyS / 4 > 600 ? everyS / 4 : 600);
+  return s < CAM_MIN_SILENT_S ? CAM_MIN_SILENT_S : s > CAM_MAX_SILENT_S ? CAM_MAX_SILENT_S : (uint32_t)s;
 }
 
 void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {

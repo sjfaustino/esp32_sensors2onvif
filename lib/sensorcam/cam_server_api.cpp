@@ -60,13 +60,16 @@ std::string SensorCamServer::treeJson() {
   j.object().num("used", used).num("total", total).num("kept", historyRoom()).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
-    if (!makeRoom(80)) return std::string();
+    if (!makeRoom(128)) return std::string();
     CamNodeSettings node;
     std::string nodeText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
-    j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS).array("sensors");
     uint8_t mac[6];
     camParseMac(s.name, mac);
+    int any = findNode(mac);
+    uint32_t every = any ? slots_[any - 1].info.everyS : 0;
+    j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS);
+    j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every)).array("sensors");
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
     for (const CamFsEntry& n : inputs) {
@@ -303,7 +306,7 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
 std::string SensorCamServer::espNowJson() {
   int known = 0;
   for (const Slot& s : slots_) known += s.used;
-  size_t room = (size_t)known * 330 + MAX_UNKNOWN * 120 + 256;  // the longest possible entries
+  size_t room = (size_t)known * 520 + MAX_UNKNOWN * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
@@ -320,7 +323,9 @@ std::string SensorCamServer::espNowJson() {
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
     j.object().flag("low", h.lowBattery).str("name", slots_[id - 1].name).str("node", name.substr(0, name.find('/'))).num("input", slots_[id - 1].input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
-    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", slots_[id - 1].paired).end();
+    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", slots_[id - 1].paired);
+    const CamNodeInfo& info = slots_[id - 1].info;
+    j.num("every", info.everyS != 0, info.everyS).num("silentAfter", silentMsFor(id) / 1000).flag("saving", info.saving).str("sensor", info.sensor).str("version", info.version).end();
   }
   j.end().array("unknown");
   for (const UnknownSender& u : unknown_) {

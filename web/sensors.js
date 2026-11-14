@@ -263,7 +263,7 @@ function nodePanel(s) {
     min: 1,
     max: 10080,
     value: s.silent ? Math.round(s.silent / 60) : "",
-    placeholder: "180",
+    placeholder: String(Math.round((s.autoSilent || 10800) / 60)),
     style: "width:7em",
   });
   const seconds = () => (silent.value ? String(Math.round(silent.value * 60)) : "");
@@ -283,7 +283,10 @@ function nodePanel(s) {
       null,
       "Report this node silent after ",
       silent,
-      " minutes without a message. A disabled or stolen sensor is noticed only then, so keep it short: a little over the time between the node's regular reports. Empty uses 180 minutes.",
+      " minutes without a message. A disabled or stolen sensor is noticed only then, so keep it short: a little over the time between the node's regular reports. " +
+        (s.every
+          ? "The node says it reports every " + Math.round(s.every / 60) + " minutes, so empty uses " + Math.round(s.autoSilent / 60) + " minutes, and follows the node if that changes."
+          : "Empty uses 180 minutes."),
     ),
     el("button", {
       textContent: "Save node settings",

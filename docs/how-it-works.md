@@ -79,6 +79,10 @@ milliseconds on the board, and runs only when the hub starts and when a node is 
 node's key is read from its `pairing.txt` into its sensors' rows when the sensor table is rebuilt, so checking its reports
 picks the key by the sender and needs no memory, as before.
 
+A node's info (message 6) is read the same way, from its `about.txt`, into each of its sensors' rows. It arrives with
+every regular report but is written only when it differs, so flash is not worn. The silent check asks `silentMsFor`: the
+node's own setting, else a quarter over its report time, else the hub's 3 hours.
+
 ## Passwords and names
 
 `CamLoginGuard` (`lib/sensorcam/cam_auth.h`) counts wrong passwords per address, on the web page, ONVIF and RTSP: ten in

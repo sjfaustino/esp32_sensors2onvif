@@ -299,6 +299,10 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     helloPacket(mac, data, len, rssi);
     return;
   }
+  if (len >= 1 && data[0] == CAM_NODE_INFO) {
+    nodeInfoPacket(mac, data, len);
+    return;
+  }
   SensorReport r;
   if (!parseSensorPacket(data, len, r)) return;
   // A paired node signs with its own key, and only that key is accepted from it; the others share the ESP-NOW key.
@@ -339,6 +343,25 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     memcpy(slot, mac, 6);
     camConfirmationInto(mac, r, key, slot + 6);
   }
+}
+
+// Kept on storage only when it changes, so the silent time it sets survives a restart of the hub.
+void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len) {
+  int id = findNode(mac);
+  if (!id) return;
+  CamNodeInfo info;
+  CamPacketCheck check = camCheckNodeInfo(mac, data, len, slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey, info);
+  if (check == CAM_PACKET_INVALID) return;
+  if (check == CAM_PACKET_BAD_SIGNATURE) {
+    health_[id - 1].refused++;
+    health_[id - 1].refusal = "wrong signature";
+    return;
+  }
+  if (info == slots_[id - 1].info) return;
+  std::string text = camNodeInfoText(info);
+  storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());
+  for (Slot& s : slots_)
+    if (s.used && memcmp(s.mac, mac, 6) == 0) s.info = info;
 }
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
@@ -421,6 +444,13 @@ int SensorCamServer::findSlot(const uint8_t mac[6], uint8_t input) const {
   return 0;
 }
 
+// The node's own setting, or else worked out from how often the node says it reports, or else the hub's default.
+uint32_t SensorCamServer::silentMsFor(int id) const {
+  const Slot& s = slots_[id - 1];
+  uint32_t auto_ = camAutoSilentS(s.info.everyS);
+  return s.node.silentS ? s.node.silentS * 1000 : auto_ ? auto_ * 1000 : cfg_.silentMs;
+}
+
 int SensorCamServer::slotForPath(const std::string& path) const {
   uint8_t mac[6];
   size_t slash = path.find('/');
@@ -475,6 +505,9 @@ void SensorCamServer::rescan() {
     CamNodeSettings node;  // a damaged file means the defaults
     std::string nodeText, pairingText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
+    CamNodeInfo info;  // likewise: a damaged file is as if the node had said nothing
+    std::string infoText;
+    if (!storage_.readFile(s.name + "/about.txt", infoText, 256) || !camParseNodeInfo(infoText, info)) info = CamNodeInfo();
     uint8_t nodePublic[CAM_X25519_LEN], nodeKey[CAM_NODE_KEY_LEN];
     // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
     // shows on the ESP-NOW page as refused, rather than being trusted with a key that may not be its own.
@@ -501,6 +534,7 @@ void SensorCamServer::rescan() {
         if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
         slots_[id - 1].settings = settings;
         slots_[id - 1].node = node;
+        slots_[id - 1].info = info;
         slots_[id - 1].paired = paired;
         slots_[id - 1].key = paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
         if (paired) memcpy(slots_[id - 1].nodePublic, nodePublic, CAM_X25519_LEN);
