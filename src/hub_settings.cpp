@@ -251,25 +251,11 @@ bool forgetKeys() {
 
 // ---- backup and restore ----
 
-struct BackupKey {
-  const char* space;
-  const char* key;
-  char type;  // s text, u 16-bit number, i number, b true or false
-};
-static const BackupKey BACKUP_KEYS[] = {
-    {"wifi", "ssid", 's'},  {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
-    {"net", "web", 'u'},    {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
-    {"net", "ipfor", 's'},  {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
-    {"net", "nvrip", 's'},  {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
-    {"net", "rben", 'b'},   {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
-    {"net", "hook", 's'},   {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hookdy", 'i'},
-    {"net", "hosts", 's'},  {"net", "pairkey", 's'},   {"net", "rearm", 'u'},  {"net", "mqhost", 's'},     {"net", "mqport", 'u'},
-    {"net", "mquser", 's'}, {"net", "mqpw", 's'},
-};
+using BackupKey = CamBackupKey;  // the list, CAM_BACKUP_KEYS, is in cam_server.h beside the check of each value
 
 std::string backupText() {
   std::string out = "sensorcam-backup 1\n";
-  for (const BackupKey& k : BACKUP_KEYS) {
+  for (const BackupKey& k : CAM_BACKUP_KEYS) {
     withPrefs(k.space, [&](Preferences& p) {
       if (!p.isKey(k.key)) return true;
       String value = k.type == 's'   ? p.getString(k.key, "")
@@ -307,7 +293,7 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
     size_t eq = line.find('=');
     if (eq == std::string::npos) return false;
     const BackupKey* found = nullptr;
-    for (const BackupKey& k : BACKUP_KEYS)
+    for (const BackupKey& k : CAM_BACKUP_KEYS)
       if (line.compare(0, eq, std::string(k.space) + "." + k.key) == 0) found = &k;
     if (!found) return false;
     std::string value;

@@ -21,6 +21,26 @@
 
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
+bool camBackupKeyKnown(const std::string& key);  // whether camBackupValueValid checks this key at all
+
+// The settings a backup holds, by their place in the hub's flash, and their kind: s text, u 16-bit number, i number,
+// b true or false. A key camBackupValueValid does not check makes every backup holding it unreadable, so a unit test
+// goes through them all: add a setting here and its check there.
+struct CamBackupKey {
+  const char* space;
+  const char* key;
+  char type;
+};
+inline const CamBackupKey CAM_BACKUP_KEYS[] = {
+    {"wifi", "ssid", 's'},  {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
+    {"net", "web", 'u'},    {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
+    {"net", "ipfor", 's'},  {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
+    {"net", "nvrip", 's'},  {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
+    {"net", "rben", 'b'},   {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
+    {"net", "hook", 's'},   {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hookdy", 'i'},
+    {"net", "hosts", 's'},  {"net", "pairkey", 's'},   {"net", "rearm", 'u'},  {"net", "mqhost", 's'},     {"net", "mqport", 'u'},
+    {"net", "mquser", 's'}, {"net", "mqpw", 's'},
+};
 
 const uint32_t CAM_MAX_DISARM_MINUTES = 7 * 1440;
 // A disarm with an end, read back after a restart: until is when it ends in seconds since 1970, or 1 when the clock was

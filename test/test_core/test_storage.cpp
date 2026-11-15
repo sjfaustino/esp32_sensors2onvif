@@ -131,6 +131,12 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_FALSE(camBackupValueValid("wifi.password", "short"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.ntp", "2"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.unknown", "1"));
+  // Every setting a backup holds is checked, or no backup holding it could be restored.
+  for (const CamBackupKey& k : CAM_BACKUP_KEYS) TEST_ASSERT_TRUE_MESSAGE(camBackupKeyKnown(std::string(k.space) + "." + k.key), k.key);
+  TEST_ASSERT_FALSE(camBackupKeyKnown("net.unknown"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.hookdy", "-1"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.hookdy", "450"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.hookdy", "1440"));
 }
 
 static void a_node_image_is_told_from_other_files() {

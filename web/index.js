@@ -695,7 +695,7 @@
       await add("text.json");
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
-        if (s.late || s.silent) await add(s.mac + "/settings.txt");
+        if (s.late || s.silent || s.reportEvery || s.repeat) await add(s.mac + "/settings.txt"); // any of its settings
         if (s.paired) await add(s.mac + "/pairing.txt");
         for (const n of s.sensors) {
           const base = s.mac + "/" + n.input;

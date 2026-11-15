@@ -326,7 +326,9 @@ only if a key may have got out. A settings backup made before brings the old key
 A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, and each node's settings.
 Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
 pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the
-settings backup, it holds the passwords in plain text.
+settings backup, it holds the passwords in plain text, and the keys too: the hub's pairing key, the ESP-NOW key and, in a
+full backup, each paired node's own key. Anyone with one could pose as the hub to the nodes, or as a node to the hub, so
+keep backups as safe as the hub itself, and use **New keys** if one gets out.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive

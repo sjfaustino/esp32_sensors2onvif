@@ -199,7 +199,8 @@ static bool validMqttText(const std::string& s) {
   return ok;
 }
 
-bool camBackupValueValid(const std::string& key, const std::string& value) {
+// 1 for a good value, 0 for a bad one, -1 for a key it does not know, which no backup may hold.
+static int backupCheck(const std::string& key, const std::string& value) {
   long long n = 0;
   bool number = wholeNumber(value, n);
   uint32_t ip;
@@ -209,6 +210,7 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   if (key == "net.mquser" || key == "net.mqpw") return validMqttText(value);
   if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
+  if (key == "net.hookdy") return number && n >= -1 && n <= 1439;  // the daily check's minute; -1 for none
   if (key == "net.enkey") return value.size() >= 16 && validToken(value);
   if (key == "net.pairkey") {
     uint8_t k[CAM_X25519_LEN];
@@ -228,8 +230,11 @@ bool camBackupValueValid(const std::string& key, const std::string& value) {
   if (key == "net.hosts") return camHostListValid(value);
   if (key == "wifi.ssid" || key == "wifi.ssid2" || key == "net.ipfor") return value.size() <= 32;
   if (key == "wifi.password" || key == "wifi.password2") return value.empty() || (value.size() >= 8 && value.size() <= 63);
-  return false;
+  return -1;
 }
+
+bool camBackupValueValid(const std::string& key, const std::string& value) { return backupCheck(key, value) == 1; }
+bool camBackupKeyKnown(const std::string& key) { return backupCheck(key, "") != -1; }
 
 static std::string peerText(uint32_t peer) {
   const uint8_t* b = (const uint8_t*)&peer;
