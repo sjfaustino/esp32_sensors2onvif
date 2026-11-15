@@ -6,13 +6,15 @@ static std::string hex(const std::string& raw) { return camHex((const uint8_t*)r
 static void hmac_sha1_matches_rfc_2202() {
   TEST_ASSERT_EQUAL_STRING("b617318655057264e28bc0b6fb378c8ef146be00", hex(camHmacSha1(std::string(20, '\x0b'), "Hi There")).c_str());
   TEST_ASSERT_EQUAL_STRING("effcdf6ae5eb2fa2d27416d5f184df9c259a7c79", hex(camHmacSha1("Jefe", "what do ya want for nothing?")).c_str());
-  TEST_ASSERT_EQUAL_STRING("aa4ae5e15272d00e95705637ce8a3b55ed402112", hex(camHmacSha1(std::string(80, '\xaa'), "Test Using Larger Than Block-Size Key - Hash Key First")).c_str());
+  TEST_ASSERT_EQUAL_STRING("aa4ae5e15272d00e95705637ce8a3b55ed402112",
+                           hex(camHmacSha1(std::string(80, '\xaa'), "Test Using Larger Than Block-Size Key - Hash Key First")).c_str());
 }
 
 // FIPS 180 examples, and the same hash whatever pieces the message arrives in, across block edges.
 static void sha1_in_pieces_matches() {
   TEST_ASSERT_EQUAL_STRING("a9993e364706816aba3e25717850c26c9cd0d89d", hex(camSha1("abc")).c_str());
-  TEST_ASSERT_EQUAL_STRING("84983e441c3bd26ebaae4aa1f95129e5e54670f1", hex(camSha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")).c_str());
+  TEST_ASSERT_EQUAL_STRING("84983e441c3bd26ebaae4aa1f95129e5e54670f1",
+                           hex(camSha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")).c_str());
   TEST_ASSERT_EQUAL_STRING("da39a3ee5e6b4b0d3255bfef95601890afd80709", hex(camSha1("")).c_str());
   std::string text;
   for (int i = 0; i < 300; i++) text += (char)(i * 7);
@@ -82,7 +84,7 @@ static void wrong_passwords_lock_out_quick_and_slow_guessing() {
   TEST_ASSERT_TRUE(g.allowed(7, t));  // nine wrong: still allowed
   g.note(7, false, t);
   TEST_ASSERT_FALSE(g.allowed(7, t + 59000));  // the tenth locks it for a minute
-  TEST_ASSERT_TRUE(g.allowed(8, t));          // only that address
+  TEST_ASSERT_TRUE(g.allowed(8, t));           // only that address
   TEST_ASSERT_TRUE(g.allowed(7, t + 60000));
   g.note(7, false, t + 60000);  // waiting out the lock does not start the count again: the next lock is twice as long
   TEST_ASSERT_FALSE(g.allowed(7, t + 60000 + 119000));

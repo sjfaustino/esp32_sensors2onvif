@@ -16,10 +16,10 @@
 static const char ESPNOW_KEY[] = "test-espnow-key-0123456789";
 
 static bool setupOn = false;
-static bool firmwareRefused = false;  // the next update cannot start, as on a board short of memory
+static bool firmwareRefused = false;            // the next update cannot start, as on a board short of memory
 static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
-static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
-static std::string allSent;   // every one since "all-sent" was last asked, each as lastSent, joined by ";"
+static std::string lastSent;                    // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
+static std::string allSent;                     // every one since "all-sent" was last asked, each as lastSent, joined by ";"
 
 // As on the board when memory is short and broken up: a request for a block larger than this fails, as the board's does.
 static std::atomic<size_t> largestBlock{0};  // 0 for no limit
@@ -102,16 +102,22 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     hub.espNowPacket(from, bytes, (int)data.size() / 2, -55);
   } else if (command.compare(0, 6, "radio-") == 0) {  // this build has no radio, so the test delivers reports this way
     uint8_t node = command == "radio-unknown" ? 0x99 : 1;
-    if (command == "radio-huge") radio(&hub, node, 2147483700UL, 55, -61, ESPNOW_KEY);  // above the largest signed 32-bit number
-    else if (command == "radio-forged") radio(&hub, node, counter++, 55, -61, "not-the-key");
-    else if (command == "radio-old") radio(&hub, node, counter - 10, 55, -61, ESPNOW_KEY);
-    else if (command == "radio-alert") radio(&hub, node, counter++, 55, -61, ESPNOW_KEY, true);
-    else if (command == "radio-restart-alert") radio(&hub, node, 1, 55, -61, ESPNOW_KEY, true);  // a sensor that restarted, firing
+    if (command == "radio-huge")
+      radio(&hub, node, 2147483700UL, 55, -61, ESPNOW_KEY);  // above the largest signed 32-bit number
+    else if (command == "radio-forged")
+      radio(&hub, node, counter++, 55, -61, "not-the-key");
+    else if (command == "radio-old")
+      radio(&hub, node, counter - 10, 55, -61, ESPNOW_KEY);
+    else if (command == "radio-alert")
+      radio(&hub, node, counter++, 55, -61, ESPNOW_KEY, true);
+    else if (command == "radio-restart-alert")
+      radio(&hub, node, 1, 55, -61, ESPNOW_KEY, true);  // a sensor that restarted, firing
     else if (command == "radio-weak")
       for (int i = 0; i < 10; i++) radio(&hub, node, counter++, 55, -90, ESPNOW_KEY);
     else if (command == "radio-known" || command == "radio-unknown" || command == "radio-low")
       radio(&hub, node, counter++, command == "radio-low" ? 10 : 55, -61, ESPNOW_KEY);
-    else return false;
+    else
+      return false;
   } else {
     return false;
   }
@@ -168,8 +174,10 @@ int main(int argc, char** argv) {
   cfg.backupText = [] { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); };
   cfg.restoreText = [](const std::string& text) { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; };
   cfg.healthSave = [](bool) { return true; };
-  cfg.nvrSave =[](const std::string&) { return true; };
-  cfg.timeInfo = [](CamJson& j) { j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00"); };
+  cfg.nvrSave = [](const std::string&) { return true; };
+  cfg.timeInfo = [](CamJson& j) {
+    j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00");
+  };
   cfg.timeSave = [](const CamTime&) { return true; };
   cfg.scheduleSave = [](const CamSchedule&) { return true; };
   cfg.deviceRows = [](CamJson& j) { j.array().str("Firmware version").str("test").end(); };
@@ -180,7 +188,10 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < len; i++) out[i] = (char)((offset + i) % 251);
     return offset + len <= crashLeft;
   };
-  cfg.crashDelete = [] { crashLeft = 0; return true; };
+  cfg.crashDelete = [] {
+    crashLeft = 0;
+    return true;
+  };
   cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
   cfg.espNowKey = ESPNOW_KEY;
   cfg.pairingKey = "a8abababababababababababababababababababababababababababababab6b";  // fixed, so the test knows the hub's key

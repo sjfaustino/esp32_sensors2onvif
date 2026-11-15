@@ -15,9 +15,7 @@
 
 static const char* const STATE_NAMES[CAM_DIRECTIONS] = {"active", "approaching", "away", "ltr", "rtl"};
 
-std::string camStateFile(int direction, bool delayed) {
-  return std::string(STATE_NAMES[direction]) + (delayed ? "-delayed" : "") + ".h264";
-}
+std::string camStateFile(int direction, bool delayed) { return std::string(STATE_NAMES[direction]) + (delayed ? "-delayed" : "") + ".h264"; }
 
 static bool validStateFile(const std::string& name) {
   for (int d = 0; d < CAM_DIRECTIONS; d++)
@@ -37,9 +35,12 @@ bool camParseMac(const std::string& t, uint8_t mac[6]) {
     uint8_t value = 0;
     for (int j = 0; j < 2; j++) {
       char c = t[i * 3 + j];
-      if (c >= '0' && c <= '9') value = (uint8_t)(value * 16 + (c - '0'));
-      else if (c >= 'A' && c <= 'F') value = (uint8_t)(value * 16 + (c - 'A' + 10));
-      else return false;
+      if (c >= '0' && c <= '9')
+        value = (uint8_t)(value * 16 + (c - '0'));
+      else if (c >= 'A' && c <= 'F')
+        value = (uint8_t)(value * 16 + (c - 'A' + 10));
+      else
+        return false;
     }
     if (i < 5 && t[i * 3 + 2] != '-') return false;
     mac[i] = value;
@@ -75,7 +76,8 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() == 1 && parts[0] == "clear.jpg") return CAM_PATH_PREVIEW;
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_NODE;
-  if (parts.size() == 2 && (parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt")) return CAM_PATH_TEXT;  // the node's own settings, key, what it said of itself, and its battery
+  if (parts.size() == 2 && (parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt"))
+    return CAM_PATH_TEXT;  // the node's own settings, key, what it said of itself, and its battery
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
   if (parts[2] == "text.json" || parts[2] == "name.txt" || parts[2] == "settings.txt") return CAM_PATH_TEXT;
@@ -155,12 +157,14 @@ size_t spsCoreBits(const uint8_t* d, size_t bytes) {
   r.ue();  // seq_parameter_set_id
   r.ue();  // log2_max_frame_num
   uint32_t poc = r.ue();
-  if (poc == 0) r.ue();
-  else if (poc != 2) return 0;
-  r.ue();   // max_num_ref_frames
-  r.bit();  // gaps_in_frame_num_allowed
-  r.ue();   // width
-  r.ue();   // height
+  if (poc == 0)
+    r.ue();
+  else if (poc != 2)
+    return 0;
+  r.ue();                 // max_num_ref_frames
+  r.bit();                // gaps_in_frame_num_allowed
+  r.ue();                 // width
+  r.ue();                 // height
   if (!r.bit()) r.bit();  // frame_mbs_only, mb_adaptive
   r.bit();                // direct_8x8
   if (r.bit())

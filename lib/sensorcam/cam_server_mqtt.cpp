@@ -20,14 +20,14 @@
 #include "cam_server.h"
 #include "cam_server_internal.h"
 
-static const int HUB_PARTS = 4;     // the hub's entities: alert, NVR listening, events, the alarm panel
+static const int HUB_PARTS = 4;  // the hub's entities: alert, NVR listening, events, the alarm panel
 // The hub's health, each a diagnostic sensor reading one member of <base>/hub/health.
 struct HealthPart {
   const char* part;
   const char* name;
-  const char* unit;          // nullptr for none
-  const char* deviceClass;   // nullptr for none
-  const char* stateClass;    // nullptr for none
+  const char* unit;         // nullptr for none
+  const char* deviceClass;  // nullptr for none
+  const char* stateClass;   // nullptr for none
 };
 static const HealthPart HEALTH[] = {
     {"free_kb", "Free memory", "kB", "data_size", "measurement"},
@@ -40,7 +40,7 @@ static const HealthPart HEALTH[] = {
     {"started", "Last started", nullptr, "timestamp", nullptr},
 };
 static const int HEALTH_PARTS = sizeof(HEALTH) / sizeof(HEALTH[0]);
-static const int SENSOR_PARTS = 6;  // each sensor's: alert, battery, signal, problem, events, test button
+static const int SENSOR_PARTS = 6;                              // each sensor's: alert, battery, signal, problem, events, test button
 static const int SLOT_STEPS = SENSOR_PARTS + 1 + SENSOR_PARTS;  // taking an old sensor away (with its state), then telling of the new
 static const int HUB_STEPS = HUB_PARTS + HEALTH_PARTS;
 static const int DISCOVERY_STEPS = HUB_STEPS + CAM_MAX_SENSORS * SLOT_STEPS;
@@ -67,7 +67,8 @@ void SensorCamServer::startMqtt(uint32_t now) {
     return;
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind.
-  std::string hello = camMqttConnect("sensors2onvif-" + cfg_.serial, cfg_.mqtt.user, cfg_.mqtt.password, mqttBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
+  std::string hello =
+      camMqttConnect("sensors2onvif-" + cfg_.serial, cfg_.mqtt.user, cfg_.mqtt.password, mqttBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return;  // tried again on the next pass
   netNonblock(fd);
@@ -265,11 +266,16 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   bool nvr = nvrListening(now);
   bool armed = this->armed(), home = armMode() == CAM_ARMED_HOME;
   int64_t until = cfg_.disarmedUntil;
-  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome || until != mqtt_.hubUntil) {
+  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome ||
+      until != mqtt_.hubUntil) {
     bool known = !armed && until > 1;
     std::string json = jsonObject([&](CamJson& j) {
       j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF");
-      j.str("alarm", !armed ? "disarmed" : alert ? "triggered" : home ? "armed_home" : "armed_away").str("rearm_at", known, known ? iso((time_t)until) : std::string());
+      j.str("alarm", !armed  ? "disarmed"
+                     : alert ? "triggered"
+                     : home  ? "armed_home"
+                             : "armed_away")
+          .str("rearm_at", known, known ? iso((time_t)until) : std::string());
     });
     out = camMqttPublish(mqttBase() + "/hub/state", payload(json), true, 0);
     mqtt_.hubTold = true;
@@ -335,7 +341,10 @@ bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std:
   if (!changed && h.silent == s.silent && h.lowBattery == s.low && h.weak == s.weak && h.battery == s.battery && !signal) return false;
   std::string json = jsonObject([&](CamJson& j) {
     j.str("alert", alert ? "ON" : "OFF").num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).num("rssi", h.rssi != 0, h.rssi);
-    j.str("problem", h.silent || h.lowBattery || h.weak ? "ON" : "OFF").flag("silent", h.silent).flag("low_battery", h.lowBattery).flag("weak_signal", h.weak);
+    j.str("problem", h.silent || h.lowBattery || h.weak ? "ON" : "OFF")
+        .flag("silent", h.silent)
+        .flag("low_battery", h.lowBattery)
+        .flag("weak_signal", h.weak);
   });
   out = camMqttPublish(mqttBase() + "/" + sensorKey(slots_[i].mac, slots_[i].input) + "/state", payload(json), true, 0);
   s.told = true;
@@ -400,38 +409,47 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     static const char* const NAMES[HUB_PARTS] = {"Alert", "NVR listening", "Events", "Alarm"};
     static const char* const COMPONENTS[HUB_PARTS] = {"binary_sensor", "binary_sensor", "event", "alarm_control_panel"};
     const char* part = PARTS[step];
-    std::string id = hubId + "_hub_" + part, json = jsonObject([&](CamJson& j) {
-      common(j, id, NAMES[step], base + "/hub/" + (step == 2 ? "event" : "state"));
-      if (step == 0) j.str("device_class", "motion").str("value_template", "{{ value_json.alert }}");
-      if (step == 1) j.str("device_class", "connectivity").str("entity_category", "diagnostic").str("value_template", "{{ value_json.nvr }}");
-      if (step == 2) {
-        j.array("event_types");
-        for (const char* type : camEventNames()) j.str(type);
-        j.end();
-      }
-      if (step == 3) {  // no code: Home Assistant guards who may use it
-        j.str("value_template", "{{ value_json.alarm }}").str("command_topic", base + "/armed/set").str("payload_arm_away", "ARM_AWAY");
-        j.str("payload_arm_home", "ARM_HOME").str("payload_disarm", "DISARM").array("supported_features").str("arm_away").str("arm_home").end();
-        j.flag("code_arm_required", false).flag("code_disarm_required", false);
-        j.str("json_attributes_topic", base + "/hub/state");
-      }
-      j.object("device").array("identifiers").str(hubId).end().str("name", hubName).str("manufacturer", "sensors2onvif").str("model", "ESP32 sensor hub");
-      j.str("sw_version", cfg_.firmwareVersion).str("configuration_url", web).end();
-    });
+    std::string
+        id = hubId + "_hub_" + part,
+        json = jsonObject([&](CamJson& j) {
+          common(j, id, NAMES[step], base + "/hub/" + (step == 2 ? "event" : "state"));
+          if (step == 0) j.str("device_class", "motion").str("value_template", "{{ value_json.alert }}");
+          if (step == 1) j.str("device_class", "connectivity").str("entity_category", "diagnostic").str("value_template", "{{ value_json.nvr }}");
+          if (step == 2) {
+            j.array("event_types");
+            for (const char* type : camEventNames()) j.str(type);
+            j.end();
+          }
+          if (step == 3) {  // no code: Home Assistant guards who may use it
+            j.str("value_template", "{{ value_json.alarm }}").str("command_topic", base + "/armed/set").str("payload_arm_away", "ARM_AWAY");
+            j.str("payload_arm_home", "ARM_HOME").str("payload_disarm", "DISARM").array("supported_features").str("arm_away").str("arm_home").end();
+            j.flag("code_arm_required", false).flag("code_disarm_required", false);
+            j.str("json_attributes_topic", base + "/hub/state");
+          }
+          j.object("device")
+              .array("identifiers")
+              .str(hubId)
+              .end()
+              .str("name", hubName)
+              .str("manufacturer", "sensors2onvif")
+              .str("model", "ESP32 sensor hub");
+          j.str("sw_version", cfg_.firmwareVersion).str("configuration_url", web).end();
+        });
     out = camMqttPublish(std::string("homeassistant/") + COMPONENTS[step] + "/" + cfg_.serial + "/hub_" + part + "/config", payload(json), true, 0);
     return true;
   }
   if (step < HUB_STEPS) {  // the hub's health
     if (!cfg_.healthInfo) return false;
     const HealthPart& p = HEALTH[step - HUB_PARTS];
-    std::string id = hubId + "_hub_" + p.part, json = jsonObject([&](CamJson& j) {
-      common(j, id, p.name, base + "/hub/health");
-      j.str("value_template", std::string("{{ value_json.") + p.part + " }}").str("entity_category", "diagnostic");
-      if (p.unit) j.str("unit_of_measurement", p.unit);
-      if (p.deviceClass) j.str("device_class", p.deviceClass);
-      if (p.stateClass) j.str("state_class", p.stateClass);
-      j.object("device").array("identifiers").str(hubId).end().end();
-    });
+    std::string id = hubId + "_hub_" + p.part,
+                json = jsonObject([&](CamJson& j) {
+                  common(j, id, p.name, base + "/hub/health");
+                  j.str("value_template", std::string("{{ value_json.") + p.part + " }}").str("entity_category", "diagnostic");
+                  if (p.unit) j.str("unit_of_measurement", p.unit);
+                  if (p.deviceClass) j.str("device_class", p.deviceClass);
+                  if (p.stateClass) j.str("state_class", p.stateClass);
+                  j.object("device").array("identifiers").str(hubId).end().end();
+                });
     out = camMqttPublish("homeassistant/sensor/" + cfg_.serial + "/hub_" + p.part + "/config", payload(json), true, 0);
     return true;
   }
@@ -441,8 +459,10 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   if (k <= SENSOR_PARTS) {  // a sensor deleted, or replaced in its slot: its entities and its retained state are taken away
     if (!t.used || (s.used && memcmp(t.mac, s.mac, 6) == 0 && t.input == s.input)) return false;
     std::string key = sensorKey(t.mac, t.input);
-    out = k < SENSOR_PARTS ? camMqttPublish(std::string("homeassistant/") + SENSOR_COMPONENT[k] + "/" + cfg_.serial + "/" + key + "_" + SENSOR_PART[k] + "/config", "", true, 0)
-                           : camMqttPublish(base + "/" + key + "/state", "", true, 0);
+    out = k < SENSOR_PARTS
+              ? camMqttPublish(std::string("homeassistant/") + SENSOR_COMPONENT[k] + "/" + cfg_.serial + "/" + key + "_" + SENSOR_PART[k] + "/config",
+                               "", true, 0)
+              : camMqttPublish(base + "/" + key + "/state", "", true, 0);
     if (k == SENSOR_PARTS) t.used = false;
     return true;
   }
@@ -458,9 +478,20 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
       common(j, id, NAMES[part], base + "/" + key + (part == 4 ? "/event" : "/state"));
     }
     if (part == 0) j.str("device_class", "motion").str("value_template", "{{ value_json.alert }}");
-    if (part == 1) j.str("device_class", "battery").str("unit_of_measurement", "%").str("state_class", "measurement").str("entity_category", "diagnostic").str("value_template", "{{ value_json.battery }}");
-    if (part == 2) j.str("device_class", "signal_strength").str("unit_of_measurement", "dBm").str("state_class", "measurement").str("entity_category", "diagnostic").str("value_template", "{{ value_json.rssi }}");
-    if (part == 3) j.str("device_class", "problem").str("value_template", "{{ value_json.problem }}").str("json_attributes_topic", base + "/" + key + "/state");
+    if (part == 1)
+      j.str("device_class", "battery")
+          .str("unit_of_measurement", "%")
+          .str("state_class", "measurement")
+          .str("entity_category", "diagnostic")
+          .str("value_template", "{{ value_json.battery }}");
+    if (part == 2)
+      j.str("device_class", "signal_strength")
+          .str("unit_of_measurement", "dBm")
+          .str("state_class", "measurement")
+          .str("entity_category", "diagnostic")
+          .str("value_template", "{{ value_json.rssi }}");
+    if (part == 3)
+      j.str("device_class", "problem").str("value_template", "{{ value_json.problem }}").str("json_attributes_topic", base + "/" + key + "/state");
     if (part == 4) {
       j.array("event_types");
       for (const char* type : camEventNames()) j.str(type);
@@ -469,7 +500,8 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     j.object("device").array("identifiers").str(hubId + "_" + key).end().str("name", s.name.empty() ? "Sensor " + sensor : s.name);
     j.str("model", "Sensor input " + std::to_string(s.input)).str("via_device", hubId).end();
   });
-  out = camMqttPublish(std::string("homeassistant/") + SENSOR_COMPONENT[part] + "/" + cfg_.serial + "/" + key + "_" + SENSOR_PART[part] + "/config", payload(json), true, 0);
+  out = camMqttPublish(std::string("homeassistant/") + SENSOR_COMPONENT[part] + "/" + cfg_.serial + "/" + key + "_" + SENSOR_PART[part] + "/config",
+                       payload(json), true, 0);
   if (part == SENSOR_PARTS - 1) {
     t.used = true;
     memcpy(t.mac, s.mac, 6);
@@ -490,7 +522,9 @@ std::string SensorCamServer::mqttJson() {
   return jsonObject([&](CamJson& j) {
     j.str("host", m.host).num("port", m.port).str("user", m.user).flag("password", !m.password.empty());
     j.flag("connected", ready).str("state", mqttState());
-    j.str("since", ready && clockOk, ready && clockOk ? iso(mqttConnectedAt_) : std::string()).num("waiting", m.host.empty() ? 0 : waiting).num("lost", mqttEventsLost_);
+    j.str("since", ready && clockOk, ready && clockOk ? iso(mqttConnectedAt_) : std::string())
+        .num("waiting", m.host.empty() ? 0 : waiting)
+        .num("lost", mqttEventsLost_);
     j.str("topic", mqttBase()).str("hub", cfg_.hostName.substr(0, cfg_.hostName.find('.')));
   });
 }

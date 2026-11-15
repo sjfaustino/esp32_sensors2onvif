@@ -19,7 +19,6 @@
 #include "cam_subs.h"
 #include "cam_timing.h"
 
-
 // Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
 bool camBackupValueValid(const std::string& key, const std::string& value);
 
@@ -39,19 +38,19 @@ struct CamSettings {
   uint16_t onvifPort = 0;
   uint16_t webPort = 0;
   uint16_t rtspPort = 0;
-  std::string name;      // empty keeps the current name
+  std::string name;  // empty keeps the current name
   bool passwordOn = false;
-  std::string password;  // empty keeps the current password while protection stays on
+  std::string password;     // empty keeps the current password while protection stays on
   bool hostsGiven = false;  // otherwise the other names are kept
-  std::string hosts;         // other names the web port answers to, comma-separated
+  std::string hosts;        // other names the web port answers to, comma-separated
 };
 
 struct CamTime {
   bool ntp = true;
-  std::string server;      // empty keeps the current NTP server
-  int offsetMinutes = 0;   // east of UTC. Only display and the scheduled restart use it; the NVR always gets UTC.
-  int dst = 0;             // 0 none, 1 Europe, 2 United States
-  long long epoch = 0;     // manual mode: the time to set, or 0 to leave the clock alone
+  std::string server;     // empty keeps the current NTP server
+  int offsetMinutes = 0;  // east of UTC. Only display and the scheduled restart use it; the NVR always gets UTC.
+  int dst = 0;            // 0 none, 1 Europe, 2 United States
+  long long epoch = 0;    // manual mode: the time to set, or 0 to leave the clock alone
 };
 
 struct CamSchedule {
@@ -62,17 +61,17 @@ struct CamSchedule {
 
 // Messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
 struct CamWebhook {
-  std::string url;        // http:// with an IPv4 address; empty sends nothing
-  bool text = false;      // plain text instead of JSON
-  bool alerts = true;     // sensor alerts
-  bool problems = true;   // silent nodes, low batteries and weak signals
+  std::string url;       // http:// with an IPv4 address; empty sends nothing
+  bool text = false;     // plain text instead of JSON
+  bool alerts = true;    // sensor alerts
+  bool problems = true;  // silent nodes, low batteries and weak signals
 };
 
 // An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.
 struct CamMqtt {
   std::string host;  // the broker's IPv4 address; empty turns MQTT off
   uint16_t port = 1883;
-  std::string user;      // empty logs in without a user name or password
+  std::string user;  // empty logs in without a user name or password
   std::string password;
 };
 
@@ -109,12 +108,12 @@ struct CamConfig {
   std::string setupAddress = "192.168.4.1";    // where visitors to the setup network are sent
   std::function<void(CamJson&)> wifiNetworks;  // the setup page's members: name, current, backup, scanning, networks
   std::function<bool(const std::string& ssid, const std::string& password, bool backup)> wifiSave;
-  uint16_t onvifPort = 8899;  // ONVIF requests only
-  uint16_t webPort = 80;      // the file manager, sensor input, status and events
-  uint16_t captivePort = 80;  // answered only while the setup network is open, because phones probe it; 0 for none
+  uint16_t onvifPort = 8899;                             // ONVIF requests only
+  uint16_t webPort = 80;                                 // the file manager, sensor input, status and events
+  uint16_t captivePort = 80;                             // answered only while the setup network is open, because phones probe it; 0 for none
   std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
-  std::string onvifPassword;  // when set, ONVIF and RTSP need the user admin and this password
-  bool healthAlarm = false;   // a silent node or low battery also raises an NVR alarm
+  std::string onvifPassword;                             // when set, ONVIF and RTSP need the user admin and this password
+  bool healthAlarm = false;                              // a silent node or low battery also raises an NVR alarm
   std::function<bool(bool)> healthSave;
   std::function<bool(size_t size)> firmwareBegin;
   std::function<bool(const uint8_t* data, size_t len)> firmwareWrite;
@@ -122,19 +121,19 @@ struct CamConfig {
   std::function<std::string()> backupText;
   std::function<bool(const std::string& text)> restoreText;
   std::function<void(SoapContext&)> onvifNetwork;  // fills in the hub's network details for ONVIF clients
-  std::function<void(CamJson&)> timeInfo;      // the Time page's members
+  std::function<void(CamJson&)> timeInfo;          // the Time page's members
   std::function<bool(const CamTime&)> timeSave;
   CamSchedule schedule;
   std::function<bool(const CamSchedule&)> scheduleSave;
-  std::function<void(CamJson&)> deviceRows;    // ["label","value"] arrays for the Device Info page
-  std::function<size_t()> crashSize;           // bytes of the crash report the chip saved to flash; 0 when there is none
+  std::function<void(CamJson&)> deviceRows;  // ["label","value"] arrays for the Device Info page
+  std::function<size_t()> crashSize;         // bytes of the crash report the chip saved to flash; 0 when there is none
   std::function<bool(size_t offset, char* out, size_t len)> crashRead;
   std::function<bool()> crashDelete;
   std::function<bool(const std::string& action)> maintenance;  // "reboot", "reset" or "newkeys"; restarts shortly after replying
-  std::function<void(CamJson&)> espNowInfo;  // members for the ESP-NOW page: the hub's mac and channel
-  std::string espNowKey;                    // signs the ESP-NOW messages of nodes not paired
-  std::string pairingKey;                   // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
-  std::function<int()> wifiChannel;         // told to nodes in the pairing answer
+  std::function<void(CamJson&)> espNowInfo;                    // members for the ESP-NOW page: the hub's mac and channel
+  std::string espNowKey;                                       // signs the ESP-NOW messages of nodes not paired
+  std::string pairingKey;                                      // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
+  std::function<int()> wifiChannel;                            // told to nodes in the pairing answer
   // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
   std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
   CamWebhook webhook;
@@ -148,26 +147,26 @@ struct CamConfig {
   uint32_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
   std::function<bool(uint32_t)> rearmSave;
   std::function<bool(const CamMqtt&)> mqttSave;
-  std::string firmwareVersion;              // told to Home Assistant
+  std::string firmwareVersion;                 // told to Home Assistant
   std::function<void(CamHealth&)> healthInfo;  // for Home Assistant's diagnostic sensors; unset sends none
-  std::function<int()> localMinute;        // minutes after local midnight, or -1 when the clock is not set; for quiet hours
-  std::string nvrIp;  // only for the connection status on the NVR page; the hub never contacts the NVR
+  std::function<int()> localMinute;            // minutes after local midnight, or -1 when the clock is not set; for quiet hours
+  std::string nvrIp;                           // only for the connection status on the NVR page; the hub never contacts the NVR
   std::function<bool(const std::string& ip)> nvrSave;
-  std::function<void(CamJson&)> addressInfo;            // the Network page's members
-  std::function<bool(const CamAddress&)> addressSave;    // stores DHCP or a fixed address; applies after a restart
+  std::function<void(CamJson&)> addressInfo;           // the Network page's members
+  std::function<bool(const CamAddress&)> addressSave;  // stores DHCP or a fixed address; applies after a restart
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
   uint32_t holdMs = 10000;
   uint32_t silentMs = 3UL * 3600UL * 1000UL;  // a known sensor quiet for this long is reported as silent
-  std::string sensorToken;  // when set, /sensor requires token=<value>
+  std::string sensorToken;                    // when set, /sensor requires token=<value>
   std::string serial = "000000000000";
-  std::string startReason;  // why the hub last started, for the "hub started" event
-  bool startPlanned = false;  // asked for: an update, the restart button, new settings; not a crash or a power cut
+  std::string startReason;     // why the hub last started, for the "hub started" event
+  bool startPlanned = false;   // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
   uint32_t sealStart = 0;      // random at each start: the first number of the hub's sealed messages
   std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
-  bool watchNvr = true;     // log and send alerts the NVR was not listening for
+  bool watchNvr = true;        // log and send alerts the NVR was not listening for
 };
 
 class SensorCamServer {
@@ -178,14 +177,14 @@ class SensorCamServer {
   void networkUp();          // call after each Wi-Fi (re)connect
   // Milliseconds since the socket wait last worked. A large value means the server has stopped serving.
   uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
-  std::string debugLine();   // counters for the serial heartbeat
-  void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }  // for the PC tests
+  std::string debugLine();                                                                 // counters for the serial heartbeat
+  void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }    // for the PC tests
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
-  void saveNow();  // writes any events not yet saved; call before a restart
-  void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
-  bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
+  void saveNow();                                                                          // writes any events not yet saved; call before a restart
+  void networkLost(uint32_t seconds);                               // call on rejoining Wi-Fi after being off it, without a restart
+  bool updating() const { return firmwareOwner_ != nullptr; }       // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }  // see nvrListening
-  uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
+  uint32_t memoryFailures() const { return memoryFailures_; }       // times memory ran out and only that piece of work was dropped
   bool armed() const { return cfg_.armMode != CAM_DISARMED; }
   CamArmMode armMode() const { return cfg_.armMode; }
   // Arms away or home, or disarms for minutes (0 until armed again), saved first; from says where, for the history.
@@ -193,9 +192,9 @@ class SensorCamServer {
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
   // An alert from sensor id that takes the whole path, whatever the arm mode, and is logged as a test. False for no such sensor.
   bool testAlert(int id);
-#ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
-  void endAlerts();                 // ends every alert now, without waiting for its hold
-  void setNvrGoneMs(uint32_t ms);  // how soon the NVR counts as gone, instead of 3 minutes
+#ifdef CAM_TEST_HOOKS                                // only in the PC builds, for the tests
+  void endAlerts();                                  // ends every alert now, without waiting for its hold
+  void setNvrGoneMs(uint32_t ms);                    // how soon the NVR counts as gone, instead of 3 minutes
   void setMinuteMs(uint32_t ms) { minuteMs_ = ms; }  // how long a minute of a timed disarm lasts
 #endif
 
@@ -214,11 +213,11 @@ class SensorCamServer {
     bool silent = false;
     uint8_t battery = CAM_BATTERY_UNKNOWN;
     bool counterSeen = false;
-    uint32_t counter = 0;      // the last report number, used only to ignore resends
-    uint32_t counterAt = 0;    // when it arrived
+    uint32_t counter = 0;    // the last report number, used only to ignore resends
+    uint32_t counterAt = 0;  // when it arrived
     bool counterActive = false;
-    bool reported = false;     // the state the sensor last reported, for the event history
-    int8_t rssi = 0;  // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
+    bool reported = false;  // the state the sensor last reported, for the event history
+    int8_t rssi = 0;        // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
     bool lowBattery = false;
     int16_t rssiAvg8 = 0;  // smoothed signal, in eighths of a dBm
     uint8_t rssiCount = 0;
@@ -239,9 +238,9 @@ class SensorCamServer {
     int64_t batteryAt = 0;  // the newest reading in battery.txt
     int daysLeft = -1;      // how long its battery will last, from that file; -1 unknown
     // Only in memory:
-    uint32_t walkUntil = 0;   // the end of a walk test started on the page, on the hub's clock in seconds since 1970
-    bool sealed = false;      // its last report was sealed, so no one listening could read it
-    bool runningOut = false;  // its battery is forecast to run out within a week, and that was logged
+    uint32_t walkUntil = 0;                                   // the end of a walk test started on the page, on the hub's clock in seconds since 1970
+    bool sealed = false;                                      // its last report was sealed, so no one listening could read it
+    bool runningOut = false;                                  // its battery is forecast to run out within a week, and that was logged
     uint32_t updateOffset = 0, updateSize = 0, updateAt = 0;  // how far a firmware update has got, and when it last asked
     bool updating = false;
     // The numbers the hub last gave it for its next report, the newest and the one before. A paired node's report that
@@ -253,7 +252,7 @@ class SensorCamServer {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
-    std::string name;  // from name.txt in the sensor's folder
+    std::string name;            // from name.txt in the sensor's folder
     CamSensorSettings settings;  // from settings.txt
     int node = 0;                // its node in nodes_, from 1
   };
@@ -283,10 +282,10 @@ class SensorCamServer {
     bool answered = false;
     const char* staticBody = nullptr;  // sent after out without being copied into it: flash data, or the borrowed buffer
     size_t staticLen = 0;
-    std::string body;  // a reply too large to copy; staticBody points into it
+    std::string body;            // a reply too large to copy; staticBody points into it
     bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
     size_t bodyWanted = 0;
-    size_t discardLeft = 0;  // body still to read and drop, so a refusal arrives as a reply rather than a reset
+    size_t discardLeft = 0;    // body still to read and drop, so a refusal arrives as a reply rather than a reset
     bool pollWaiting = false;  // a PullMessages held until something changes or pollUntil
     uint32_t pollUntil = 0;
     uint32_t pollSub = 0;
@@ -299,7 +298,7 @@ class SensorCamServer {
     bool nodeImage = false;       // to a node firmware file instead
     size_t firmwareLeft = 0;
     const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
-    std::function<bool(size_t, char*, size_t)> reader;  // this reply's own piece reader, a file or the picture; pull points at it
+    std::function<bool(size_t, char*, size_t)> reader;                 // this reply's own piece reader, a file or the picture; pull points at it
     // A body of unknown length, read piece by piece until it gives nothing, then ended by closing the connection.
     const std::function<size_t(size_t, char*, size_t)>* stream = nullptr;
   };
@@ -309,8 +308,8 @@ class SensorCamServer {
     uint32_t activityAt = 0;
     std::string in, out;  // out holds the RTSP replies; video goes through packet
     size_t outPos = 0;
-    RtpSend video;                     // the frame being sent, packet by packet
-    uint8_t packet[RTP_PACKET_MAX];    // the packet being sent, which may go out in parts
+    RtpSend video;                   // the frame being sent, packet by packet
+    uint8_t packet[RTP_PACKET_MAX];  // the packet being sent, which may go out in parts
     size_t packetLen = 0, packetPos = 0;
     bool playing = false;
     bool closeAfterSend = false;
@@ -339,9 +338,9 @@ class SensorCamServer {
   bool handleHttp(HttpConn& c, uint32_t now);
   std::string handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status);
   std::string handleSensor(const std::string& target, int& status);
-  void rescan();  // rebuilds the sensor table from the folders on storage
+  void rescan();                                   // rebuilds the sensor table from the folders on storage
   bool sensorFits(const std::string& path) const;  // false when the path would add a sensor beyond the limit
-  int sharedSockets() const;  // web connections and event pushes in progress
+  int sharedSockets() const;                       // web connections and event pushes in progress
   int findSlot(const uint8_t mac[6], uint8_t input) const;
   uint32_t silentMsFor(int id) const;
   int slotForPath(const std::string& path) const;  // the sensor whose folder this is, as "AA-BB-CC-DD-EE-FF/1", or 0
@@ -373,7 +372,7 @@ class SensorCamServer {
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
   static void reply(HttpConn& c, int status, const char* type, std::string body, const std::string& extraHeaders = std::string());
   void shortOfMemory(HttpConn& c);
-  void undoPull(HttpConn& c);  // see HttpConn::undoSub
+  void undoPull(HttpConn& c);       // see HttpConn::undoSub
   void housekeeping(uint32_t now);  // alerts, saving, the NVR and video: the part of poll() before waiting
   void pollOnce(int maxWaitMs);     // waits for the network, then serves the connections
   void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed = false);
@@ -384,14 +383,14 @@ class SensorCamServer {
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now, bool present = true);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
-  void addEvent(const char* sensor, const char* text,const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
+  void addEvent(const char* sensor, const char* text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
   void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message, bool flag = false);
   bool nvrListening(uint32_t now) const;
   bool roomBesideHistory(size_t bytes) const;  // whether a picture of this size still leaves the event history its room
   size_t historyRoom() const;                  // the storage the event history may still need
   void checkNvr(uint32_t now);
   void noteHubStart(uint32_t now);
-  static const int RESTART_LOOP_STARTS = 3;  // unplanned starts within an hour that count as restarting often
+  static const int RESTART_LOOP_STARTS = 3;                                  // unplanned starts within an hour that count as restarting often
   void startAlert(int id, bool delayed, uint32_t now, bool replay = false);  // an alert that is a new NVR record, to be checked as delivered
   void healthAlert(int id, CamEventKind kind, uint32_t now);
   bool persist();
@@ -406,7 +405,7 @@ class SensorCamServer {
   void serviceDelayed(uint32_t now);
   std::string statusJson(uint32_t now);
   std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
-  std::string eventsTag() const;  // changes whenever the Events page's list would, so an unchanged list is not built again
+  std::string eventsTag() const;                  // changes whenever the Events page's list would, so an unchanged list is not built again
   void handleRtspRequest(RtspConn& c, const std::string& text, uint32_t now);
   void flushRtsp(RtspConn& c, uint32_t now);
   void startNotify(int i, uint32_t now);
@@ -441,9 +440,9 @@ class SensorCamServer {
   void nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len);
   void sealedPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
   void firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len);
-  CamForNode forNode(int id) const;  // what goes to a node with each confirmation
+  CamForNode forNode(int id) const;     // what goes to a node with each confirmation
   HttpConn* nodeImageOwner_ = nullptr;  // the upload of a node firmware file under way
-  uint32_t sealNumber_ = 0;  // for the hub's sealed messages; set at random at the start
+  uint32_t sealNumber_ = 0;             // for the hub's sealed messages; set at random at the start
   const CamNodeImage* imageFor(uint16_t chip) const { return nodeImages_.forChip(chip); }
   void finishNodeImage(HttpConn& c, bool ok);
   bool updateReady(int id) const;
@@ -453,7 +452,7 @@ class SensorCamServer {
   bool apiNodeImages(const ApiRequest& r);
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
-  Node* nodeByMac(const uint8_t mac[6]);      // nullptr for a node without a folder
+  Node* nodeByMac(const uint8_t mac[6]);     // nullptr for a node without a folder
   Node& nodeOf(int id) { return nodes_[slots_[id - 1].node - 1]; }
   const Node& nodeOf(int id) const { return nodes_[slots_[id - 1].node - 1]; }
   const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
@@ -498,7 +497,7 @@ class SensorCamServer {
     bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false, hubHome = false;
     int64_t hubUntil = 0;
     bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
-    int subscribed = 0;  // topics subscribed to: the alarm panel's, then the test buttons'
+    int subscribed = 0;          // topics subscribed to: the alarm panel's, then the test buttons'
     bool healthTold = false;
     uint32_t healthAt = 0;
   };
@@ -554,13 +553,13 @@ class SensorCamServer {
   int confirmCount_ = 0;
   std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   std::vector<Slot> slots_;
-  std::vector<Node> nodes_;  // as many as there can be sensors
-  std::string frameKey_;  // what frame_ currently shows; empty forces a reload
-  std::string frameFile_;  // the file behind frame_; empty means a built-in picture
+  std::vector<Node> nodes_;     // as many as there can be sensors
+  std::string frameKey_;        // what frame_ currently shows; empty forces a reload
+  std::string frameFile_;       // the file behind frame_; empty means a built-in picture
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
-  uint32_t liveSeq_ = 0;  // changes whenever the picture being sent changes, so the Live page fetches only new ones
+  uint32_t liveSeq_ = 0;        // changes whenever the picture being sent changes, so the Live page fetches only new ones
   const CamFrame* frame_ = nullptr;
-  std::string frameData_;  // the picture loaded from storage, in one buffer reserved at boot
+  std::string frameData_;    // the picture loaded from storage, in one buffer reserved at boot
   uint32_t pictureGen_ = 0;  // changes whenever frameData_ is about to be overwritten, so a reply reading it stops
   void releasePicture();     // before frameData_ is overwritten: nothing may still be reading the old picture
   bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
@@ -573,16 +572,16 @@ class SensorCamServer {
   bool waitingDirty_ = false;  // the alerts waiting for an NVR record changed since they were saved
   bool waitingSaveFailed_ = false;
   CamDelayedQueue delayed_;
-  int playingId_ = 0;   // the sensor whose past event is playing, and that past event
+  int playingId_ = 0;  // the sensor whose past event is playing, and that past event
   CamDelayed playing_;
-  CamDeliveryWatch delivery_;  // whether each alert reached the NVR, and those it missed
+  CamDeliveryWatch delivery_;    // whether each alert reached the NVR, and those it missed
   bool pendingChanged_ = false;  // a new alert awaits its check; saved with the report that started it
   uint32_t nextDelayedAt_ = 0;
   bool delayedGap_ = false;
   NotifyIo hook_;
   CamHookQueue hooks_;
   std::function<size_t(size_t, char*, size_t)> csvRead_;  // streams the whole history for a download
-  uint32_t nvrSeenAt_ = 0;  // when the NVR was last listening, or the hub started
+  uint32_t nvrSeenAt_ = 0;                                // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;
   uint32_t nvrGoneMs_ = CAM_NVR_GONE_MS;  // a test may shorten it
   uint32_t beganAt_ = 0;

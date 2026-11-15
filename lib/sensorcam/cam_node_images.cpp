@@ -23,10 +23,14 @@ void CamNodeImages::load() {
       size_t eq = line.find('=');
       if (eq == std::string::npos) continue;
       std::string key = line.substr(0, eq), value = line.substr(eq + 1);
-      if (key == "chip") image.chip = (uint16_t)atoi(value.c_str());
-      else if (key == "version") image.version = value;
-      else if (key == "number") image.number = (uint32_t)strtoul(value.c_str(), nullptr, 10);
-      else if (key == "size") image.size = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+      if (key == "chip")
+        image.chip = (uint16_t)atoi(value.c_str());
+      else if (key == "version")
+        image.version = value;
+      else if (key == "number")
+        image.number = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+      else if (key == "size")
+        image.size = (uint32_t)strtoul(value.c_str(), nullptr, 10);
     }
     if (image.version.empty() || !image.number || storage_.fileSize(imagePath(image.chip)) != image.size || forChip(image.chip)) continue;
     images_.push_back(image);
@@ -51,7 +55,8 @@ bool CamNodeImages::remove(uint16_t chip) {
 
 void CamNodeImages::json(CamJson& j) const {
   j.array("nodeFirmware");
-  for (const CamNodeImage& i : images_) j.object().num("chip", i.chip).str("name", camChipName(i.chip)).str("version", i.version).num("size", i.size).end();
+  for (const CamNodeImage& i : images_)
+    j.object().num("chip", i.chip).str("name", camChipName(i.chip)).str("version", i.version).num("size", i.size).end();
   j.end();
 }
 
@@ -83,8 +88,8 @@ CamNodeImages::Result CamNodeImages::finish(bool complete, CamNodeImage& image) 
     storage_.removeTree(UPLOAD);
     return NOT_AN_IMAGE;
   }
-  std::string text = "chip=" + std::to_string(image.chip) + "\nversion=" + image.version + "\nnumber=" + std::to_string(image.number) + "\nsize=" +
-                     std::to_string(image.size) + "\n";
+  std::string text = "chip=" + std::to_string(image.chip) + "\nversion=" + image.version + "\nnumber=" + std::to_string(image.number) +
+                     "\nsize=" + std::to_string(image.size) + "\n";
   // The old description is removed before the file is replaced, and the new one written after: a power cut between
   // leaves a file with no description, which is ignored, never a file described as another.
   storage_.removeTree(describePath(image.chip));

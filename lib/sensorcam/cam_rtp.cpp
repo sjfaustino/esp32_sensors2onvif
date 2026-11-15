@@ -4,8 +4,8 @@
 static const size_t RTP_MTU = 1400;
 static const uint32_t SSRC = 0x53454E53;
 
-static size_t writePacket(uint8_t* out, RtpState& st, int channel, bool marker, const uint8_t* head, size_t headLen,
-                          const uint8_t* body, size_t bodyLen) {
+static size_t writePacket(uint8_t* out, RtpState& st, int channel, bool marker, const uint8_t* head, size_t headLen, const uint8_t* body,
+                          size_t bodyLen) {
   size_t rtpLen = 12 + headLen + bodyLen;
   uint8_t h[16] = {'$',
                    (uint8_t)channel,
@@ -103,6 +103,6 @@ std::string cameraSdp() {
   std::string profile = camHex(sps.data + 1, 3);
   return std::string("v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=SensorCam\r\nt=0 0\r\na=control:*\r\nm=video 0 RTP/AVP 96\r\n") +
          "c=IN IP4 0.0.0.0\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 packetization-mode=1;profile-level-id=" + profile +
-         ";sprop-parameter-sets=" + base64(sps.data, sps.len) + "," + base64(pps.data, pps.len) +
-         "\r\na=framerate:" + std::to_string(CAM_FPS) + "\r\na=control:track1\r\n";
+         ";sprop-parameter-sets=" + base64(sps.data, sps.len) + "," + base64(pps.data, pps.len) + "\r\na=framerate:" + std::to_string(CAM_FPS) +
+         "\r\na=control:track1\r\n";
 }

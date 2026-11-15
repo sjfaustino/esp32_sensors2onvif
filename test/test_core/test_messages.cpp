@@ -13,7 +13,7 @@ static void signed_messages_are_checked() {
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "", r));
   const uint8_t other[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x63};
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(other, p, sizeof(p), "key-1", r));  // copied to another node
-  p[3] = 10;  // altered after signing
+  p[3] = 10;                                                                                     // altered after signing
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckPacket(mac, p, sizeof(p), "key-1", r));
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckPacket(mac, p, 13, "key-1", r));  // without its signature
   p[0] = 1;
@@ -42,7 +42,7 @@ static void node_info_is_read_signed_and_kept() {
   TEST_ASSERT_EQUAL_STRING("v1", info.version.c_str());
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, "other", info));
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN - 1, key, info));  // a text runs past the end
-  m[17] = 30;  // longer than a text may be
+  m[17] = 30;                                                                                               // longer than a text may be
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
   m[17] = 3, m[19] = '\n';
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
@@ -57,8 +57,8 @@ static void node_info_is_read_signed_and_kept() {
   TEST_ASSERT_FALSE(camParseNodeInfo("colour=red\n", back));
 
   TEST_ASSERT_EQUAL(0, camAutoSilentS(0));
-  TEST_ASSERT_EQUAL(300 + 600, camAutoSilentS(300));      // at least 10 minutes over
-  TEST_ASSERT_EQUAL(7200 + 1800, camAutoSilentS(7200));   // or a quarter over
+  TEST_ASSERT_EQUAL(300 + 600, camAutoSilentS(300));     // at least 10 minutes over
+  TEST_ASSERT_EQUAL(7200 + 1800, camAutoSilentS(7200));  // or a quarter over
   TEST_ASSERT_EQUAL(CAM_MAX_SILENT_S, camAutoSilentS(30 * 86400));
 }
 
@@ -91,11 +91,10 @@ static void parses_report_with_no_targets() {
 }
 
 static void parses_three_targets_and_picks_nearest() {
-  const uint8_t p[] = {2, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3,
-                       0x90, 0x01, 1,    // 400 cm, approaching
-                       0x96, 0x00, 2,    // 150 cm, moving away
-                       0xFF, 0xFF, 3,    // unknown distance
-                       0, 0, 0, 0, 0, 0, 0, 0};  // the signature, unchecked here
+  const uint8_t p[] = {2,    1,    1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0x90, 0x01, 1,  // 400 cm, approaching
+                       0x96, 0x00, 2,                                                              // 150 cm, moving away
+                       0xFF, 0xFF, 3,                                                              // unknown distance
+                       0,    0,    0, 0,    0, 0, 0, 0};                                           // the signature, unchecked here
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(3, r.targetCount);
@@ -110,7 +109,10 @@ static void rejects_malformed_reports() {
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(good, sizeof(good), r));
   uint8_t bad[sizeof(good)];
-  struct { int index; uint8_t value; } changes[] = {{0, 1}, {0, 3}, {1, 0}, {2, 2}, {16, 4}, {16, 2}, {19, 5}};
+  struct {
+    int index;
+    uint8_t value;
+  } changes[] = {{0, 1}, {0, 3}, {1, 0}, {2, 2}, {16, 4}, {16, 2}, {19, 5}};
   for (auto& c : changes) {
     memcpy(bad, good, sizeof(good));
     bad[c.index] = c.value;
@@ -136,7 +138,8 @@ static void confirmation_is_signed_for_that_sensor() {
   e.fresh = 0x5EED0001;
   std::string c = camConfirmation(mac, r, e, "key");
   TEST_ASSERT_EQUAL(CAM_CONFIRMATION_LEN, (int)c.size());
-  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01\x0D\x0C\x0B\x0A\x10\x0E\x00\x00\x04\x00\x65\x0E\x0B\x0A\x03\x01\x00\xED\x5E", c.data(), CAM_CONFIRMATION_BODY);
+  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01\x0D\x0C\x0B\x0A\x10\x0E\x00\x00\x04\x00\x65\x0E\x0B\x0A\x03\x01\x00\xED\x5E", c.data(),
+                           CAM_CONFIRMATION_BODY);
   TEST_ASSERT_TRUE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(mac, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
   TEST_ASSERT_FALSE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(other, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
 }
@@ -180,7 +183,8 @@ static void firmware_goes_in_signed_parts() {
   int len = camFirmwarePart(mac, 9, 1000, 400, data, sizeof(data), key, out);
   TEST_ASSERT_EQUAL(CAM_FIRMWARE_PART_LEN_MAX, len);  // cut to the most a part holds
   TEST_ASSERT_EQUAL_MEMORY("\x09\x09\x00\x00\x00\xE8\x03\x00\x00\x90\x01\x00\x00", out, CAM_FIRMWARE_PART_HEAD);
-  TEST_ASSERT_TRUE(std::string((const char*)out + len - CAM_SIGNATURE_LEN, CAM_SIGNATURE_LEN) == camPacketSignature(mac, out, len - CAM_SIGNATURE_LEN, key));
+  TEST_ASSERT_TRUE(std::string((const char*)out + len - CAM_SIGNATURE_LEN, CAM_SIGNATURE_LEN) ==
+                   camPacketSignature(mac, out, len - CAM_SIGNATURE_LEN, key));
 }
 
 // Every parser of what arrives from outside, fed seeds and many changed copies of them: none may throw, which on the

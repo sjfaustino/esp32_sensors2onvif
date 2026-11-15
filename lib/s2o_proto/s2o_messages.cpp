@@ -96,7 +96,8 @@ void s2oConfirmationBody(const S2oReport& r, const S2oForNode& e, uint8_t d[S2O_
 }
 
 bool s2oReadConfirmation(const uint8_t* d, int len, const S2oReport& r, S2oForNode& e) {
-  if (len != S2O_CONFIRMATION_BODY || d[0] != S2O_CONFIRMATION || d[1] != r.input || d[2] != (r.active ? 1 : 0) || get32(d + 3) != r.counter) return false;
+  if (len != S2O_CONFIRMATION_BODY || d[0] != S2O_CONFIRMATION || d[1] != r.input || d[2] != (r.active ? 1 : 0) || get32(d + 3) != r.counter)
+    return false;
   e.hubTime = get32(d + 7);
   e.everyS = get32(d + 11);
   e.repeatS = get16(d + 15);
@@ -186,8 +187,10 @@ void s2oAnswer(const uint8_t nodeMac[6], uint8_t state, uint8_t channel, const u
   out[1] = state;
   out[2] = channel;
   memcpy(out + 3, hubPublic, S2O_X25519_LEN);
-  if (nodeKey) s2oAddSignature({nodeKey, S2O_NODE_KEY_LEN}, nodeMac, out, S2O_ANSWER_BODY);
-  else memset(out + S2O_ANSWER_BODY, 0, S2O_SIG_LEN);
+  if (nodeKey)
+    s2oAddSignature({nodeKey, S2O_NODE_KEY_LEN}, nodeMac, out, S2O_ANSWER_BODY);
+  else
+    memset(out + S2O_ANSWER_BODY, 0, S2O_SIG_LEN);
 }
 
 bool s2oReadAnswer(const uint8_t* d, int len, uint8_t& state, uint8_t& channel, uint8_t hubPublic[S2O_X25519_LEN]) {

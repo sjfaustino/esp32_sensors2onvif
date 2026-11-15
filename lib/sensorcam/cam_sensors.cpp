@@ -14,7 +14,9 @@ static CamPacketCheck checkSignature(const uint8_t mac[6], const uint8_t* d, int
   return s2oSignatureOk(keyOf(key), mac, d, len) ? CAM_PACKET_SIGNED : CAM_PACKET_BAD_SIGNATURE;
 }
 
-bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) { return len > CAM_SIGNATURE_LEN && s2oReadReport(d, len - CAM_SIGNATURE_LEN, out); }
+bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
+  return len > CAM_SIGNATURE_LEN && s2oReadReport(d, len - CAM_SIGNATURE_LEN, out);
+}
 
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
   uint8_t s[CAM_SIGNATURE_LEN];
@@ -61,24 +63,33 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
     std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
     if (!printable(value)) return false;
     unsigned long n = strtoul(value.c_str(), nullptr, 10);
-    if (key == "every") info.everyS = (uint32_t)n;
-    else if (key == "saving") info.saving = value == "1";
-    else if (key == "restart") info.restart = n < CAM_RESTART_KINDS ? (uint8_t)n : CAM_RESTART_UNKNOWN;
-    else if (key == "restarts") info.restarts = (uint16_t)n;
-    else if (key == "chip") info.chip = (uint16_t)n;
-    else if (key == "refused") info.refused = (uint32_t)n;
-    else if (key == "sensor") info.sensor = value;
-    else if (key == "version") info.version = value;
-    else return false;
+    if (key == "every")
+      info.everyS = (uint32_t)n;
+    else if (key == "saving")
+      info.saving = value == "1";
+    else if (key == "restart")
+      info.restart = n < CAM_RESTART_KINDS ? (uint8_t)n : CAM_RESTART_UNKNOWN;
+    else if (key == "restarts")
+      info.restarts = (uint16_t)n;
+    else if (key == "chip")
+      info.chip = (uint16_t)n;
+    else if (key == "refused")
+      info.refused = (uint32_t)n;
+    else if (key == "sensor")
+      info.sensor = value;
+    else if (key == "version")
+      info.version = value;
+    else
+      return false;
   }
   out = info;
   return true;
 }
 
 std::string camNodeInfoText(const CamNodeInfo& i) {
-  return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nrestart=" + std::to_string(i.restart) + "\nrestarts=" +
-         std::to_string(i.restarts) + "\nchip=" + std::to_string(i.chip) + "\nrefused=" + std::to_string(i.refused) + "\nsensor=" + i.sensor +
-         "\nversion=" + i.version + "\n";
+  return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nrestart=" + std::to_string(i.restart) +
+         "\nrestarts=" + std::to_string(i.restarts) + "\nchip=" + std::to_string(i.chip) + "\nrefused=" + std::to_string(i.refused) +
+         "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n";
 }
 
 const char* camRestartName(uint8_t reason) {
@@ -106,7 +117,8 @@ uint32_t camAutoSilentS(uint32_t everyS) {
   return s < CAM_MIN_SILENT_S ? CAM_MIN_SILENT_S : s > CAM_MAX_SILENT_S ? CAM_MAX_SILENT_S : (uint32_t)s;
 }
 
-void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {
+void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key,
+                         uint8_t out[CAM_CONFIRMATION_LEN]) {
   camConfirmationBody(r, extra, out);
   s2oAddSignature(keyOf(key), sensorMac, out, CAM_CONFIRMATION_BODY);
 }
@@ -130,8 +142,8 @@ CamPacketCheck camCheckFirmwareAsk(const uint8_t mac[6], const uint8_t* d, int l
   return s2oReadAsk(d, len, out.image, out.offset) ? checkSignature(mac, d, len, key) : CAM_PACKET_INVALID;
 }
 
-int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen, const std::string& key,
-                    uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]) {
+int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen,
+                    const std::string& key, uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]) {
   return s2oPart(keyOf(key), nodeMac, image, size, offset, part, partLen, out);
 }
 
@@ -235,11 +247,16 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
     for (char ch : value)
       if (ch < '0' || ch > '9') return false;
     uint32_t n = (uint32_t)atol(value.c_str());
-    if (key == "late" && n >= 1 && n <= CAM_MAX_LATE_S) s.lateS = n;
-    else if (key == "silent" && n >= CAM_MIN_SILENT_S && n <= CAM_MAX_SILENT_S) s.silentS = n;
-    else if (key == "every" && n >= CAM_MIN_EVERY_S && n <= CAM_MAX_EVERY_S) s.everyS = n;
-    else if (key == "repeat" && n >= 1 && n <= CAM_MAX_REPEAT_S) s.repeatS = n;
-    else return false;
+    if (key == "late" && n >= 1 && n <= CAM_MAX_LATE_S)
+      s.lateS = n;
+    else if (key == "silent" && n >= CAM_MIN_SILENT_S && n <= CAM_MAX_SILENT_S)
+      s.silentS = n;
+    else if (key == "every" && n >= CAM_MIN_EVERY_S && n <= CAM_MAX_EVERY_S)
+      s.everyS = n;
+    else if (key == "repeat" && n >= 1 && n <= CAM_MAX_REPEAT_S)
+      s.repeatS = n;
+    else
+      return false;
   }
   out = s;
   return true;
@@ -310,9 +327,9 @@ int camBatteryDaysLeft(const std::vector<CamBatteryPoint>& points) {
     if (p.t < first) first = p.t;
   }
   if (n < 4 || last - first < 3 * 86400) return -1;
-  double slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);  // percent a day
+  double slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);                      // percent a day
   if (!(slope < 0) || -slope * (double)(last - first) / 86400.0 < 3) return -1;  // not clearly going down: noise, or a solar panel keeping up
-  double now = (sy - slope * sx) / n;  // the line's value at the last reading
+  double now = (sy - slope * sx) / n;                                            // the line's value at the last reading
   double days = now / -slope;
   return days < 0 ? 0 : days > 9999 ? 9999 : (int)days;
 }
@@ -374,7 +391,8 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
   return false;
 }
 
-void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several, bool replay) {
+void CamDelayedQueue::add(const uint8_t mac[6], uint8_t input, uint8_t direction, bool timeKnown, uint32_t happenedAt, uint32_t holdMs, bool several,
+                          bool replay) {
   CamDelayed* same = nullptr;
   for (int n = 0; n < count_; n++) {
     CamDelayed& d = slot(n);

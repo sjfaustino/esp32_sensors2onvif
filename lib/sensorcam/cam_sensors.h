@@ -33,10 +33,13 @@ const uint8_t CAM_CONFIRMATION = S2O_CONFIRMATION;
 const int CAM_CONFIRMATION_BODY = S2O_CONFIRMATION_BODY;
 const int CAM_CONFIRMATION_LEN = S2O_CONFIRMATION_LEN;
 using CamForNode = S2oForNode;
-inline void camConfirmationBody(const SensorReport& r, const CamForNode& extra, uint8_t out[CAM_CONFIRMATION_BODY]) { s2oConfirmationBody(r, extra, out); }
+inline void camConfirmationBody(const SensorReport& r, const CamForNode& extra, uint8_t out[CAM_CONFIRMATION_BODY]) {
+  s2oConfirmationBody(r, extra, out);
+}
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key);
 // Without using the heap. out gets the body and its signature.
-void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]);
+void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key,
+                         uint8_t out[CAM_CONFIRMATION_LEN]);
 
 // A sealed message hides what a report says from anyone listening; see s2o_messages.h.
 const uint8_t CAM_SEALED = S2O_SEALED;
@@ -61,8 +64,8 @@ struct CamFirmwareAsk {
 };
 CamPacketCheck camCheckFirmwareAsk(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, CamFirmwareAsk& out);
 // Its length.
-int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen, const std::string& key,
-                    uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]);
+int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen,
+                    const std::string& key, uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]);
 
 // A node firmware file put on the hub: an ESP32 app image, with its chip in the header and its version after the text
 // CAM_NODE_IMAGE_MARK, as the node's firmware has it. Its number is the FNV-1a hash of the whole file, never 0.
@@ -120,9 +123,20 @@ const uint8_t CAM_NODE_INFO = S2O_INFO;
 const int CAM_NODE_TEXT_MAX = S2O_TEXT_MAX;
 const int CAM_NODE_INFO_HEAD = S2O_INFO_HEAD;
 const int CAM_NODE_INFO_MAX = S2O_INFO_MAX;
-enum CamNodeRestart { CAM_RESTART_UNKNOWN, CAM_RESTART_POWER, CAM_RESTART_BUTTON, CAM_RESTART_SOFTWARE, CAM_RESTART_CRASH, CAM_RESTART_WATCHDOG, CAM_RESTART_BROWNOUT, CAM_RESTART_KINDS };
+enum CamNodeRestart {
+  CAM_RESTART_UNKNOWN,
+  CAM_RESTART_POWER,
+  CAM_RESTART_BUTTON,
+  CAM_RESTART_SOFTWARE,
+  CAM_RESTART_CRASH,
+  CAM_RESTART_WATCHDOG,
+  CAM_RESTART_BROWNOUT,
+  CAM_RESTART_KINDS
+};
 const char* camRestartName(uint8_t reason);  // "brownout", for the page and the log
-inline bool camRestartIsFault(uint8_t reason) { return reason == CAM_RESTART_CRASH || reason == CAM_RESTART_WATCHDOG || reason == CAM_RESTART_BROWNOUT; }
+inline bool camRestartIsFault(uint8_t reason) {
+  return reason == CAM_RESTART_CRASH || reason == CAM_RESTART_WATCHDOG || reason == CAM_RESTART_BROWNOUT;
+}
 const uint16_t CAM_RESPONSE_UNKNOWN = S2O_RESPONSE_UNKNOWN, CAM_CHIP_UNKNOWN = S2O_CHIP_UNKNOWN;
 struct CamNodeInfo {
   uint32_t everyS = 0;

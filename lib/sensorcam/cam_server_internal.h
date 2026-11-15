@@ -13,7 +13,7 @@
 // client while six connections at the limit still cannot use up the hub's memory.
 static const size_t MAX_REQUEST = 8 * 1024;
 static const size_t MAX_HEADERS = 4096;  // larger would let a client with no login use up the memory the hub needs
-static const int MAX_WAITING_POLLS = 2;         // the rest of the connections stay free for the web page and the NVR
+static const int MAX_WAITING_POLLS = 2;  // the rest of the connections stay free for the web page and the NVR
 static const size_t MAX_FIRMWARE = 3 * 1024 * 1024;
 static const uint8_t LOW_BATTERY_PERCENT = 20;
 static const char WAITING_FILE[] = "waiting.bin";  // alerts that still need an NVR record, replayed after a restart
@@ -24,9 +24,10 @@ static const char HTML_TYPE[] = "text/html; charset=utf-8";
 static const char JSON_OK[] = "{\"ok\":true}\n";
 // The web pages are stored gzipped. no-cache: a browser must not show an old page after the firmware changes.
 static const char PAGE_HEADERS[] = "Content-Encoding: gzip\r\nCache-Control: no-cache\r\n";
-static const char UNAUTHORIZED[] = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+static const char UNAUTHORIZED[] =
+    "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 static const size_t HISTORY_ROOM = 64 * 1024;  // beyond the event logs: the waiting alerts, settings files and room to rewrite them
-static const int WEAK_SIGNAL_DBM = -80;     // smoothed ESP-NOW signal below this is reported as weak
+static const int WEAK_SIGNAL_DBM = -80;        // smoothed ESP-NOW signal below this is reported as weak
 static const char ALIVE_FILE[] = "alive.bin";
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
@@ -51,7 +52,8 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
                      : status == 422 ? "Unprocessable Entity"
                      : status == 507 ? "Insufficient Storage"
                                      : "Not Found";
-  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type + "\r\n" + extraHeaders + "Content-Length: " + std::to_string(length) + "\r\nConnection: close\r\n\r\n";
+  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type + "\r\n" + extraHeaders +
+         "Content-Length: " + std::to_string(length) + "\r\nConnection: close\r\n\r\n";
 }
 
 inline std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }

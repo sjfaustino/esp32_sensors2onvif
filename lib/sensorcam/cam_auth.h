@@ -5,7 +5,7 @@
 #include "cam_timing.h"
 #include "s2o_sha1.h"
 
-std::string camSha1(const std::string& data);    // the raw 20 bytes
+std::string camSha1(const std::string& data);                              // the raw 20 bytes
 std::string camHmacSha1(const std::string& key, const std::string& data);  // the raw 20 bytes
 
 // SHA-1 fed in pieces, and HMAC-SHA1 over a then b, without using the heap, so an alert can be checked when memory has
@@ -22,7 +22,8 @@ bool camWsseValid(const std::string& soapBody, const std::string& user, const st
 
 // One value from an Authorization header, such as response in: Digest username="a", response="b"
 std::string camAuthParam(const std::string& header, const char* name);
-bool camDigestValid(const std::string& authorization, const std::string& method, const std::string& user, const std::string& password, const std::string& realm, const std::string& nonce);
+bool camDigestValid(const std::string& authorization, const std::string& method, const std::string& user, const std::string& password,
+                    const std::string& realm, const std::string& nonce);
 bool camBasicValid(const std::string& authorization, const std::string& user, const std::string& password);
 
 // A value derived from the password and a secret kept on the hub, for a snapshot address that a client can fetch

@@ -89,7 +89,8 @@ static void node_settings_round_trip_and_refuse_bad_values() {
   TEST_ASSERT_EQUAL(3600, s.everyS);
   TEST_ASSERT_EQUAL(4, s.repeatS);
   TEST_ASSERT_EQUAL_STRING("every=3600\nrepeat=4\n", camNodeSettingsText(s).c_str());
-  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n", "silent=59\n", "silent=604801\n", "every=59\n", "every=86401\n", "repeat=0\n", "repeat=61\n"};
+  const char* bad[] = {"late=0\n",    "late=86401\n",    "late=\n",    "late=-5\n",     "late=1x\n",  "late=99999999999\n", "hold=5\n",
+                       "silent=59\n", "silent=604801\n", "every=59\n", "every=86401\n", "repeat=0\n", "repeat=61\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseNodeSettings(text, s), text);
 }
 
@@ -119,11 +120,11 @@ static void a_sensor_can_have_its_own_hold() {
 
 static void motion_repeats_true_faster_than_nvr_latch() {
   MotionSignal s(1000);
-  TEST_ASSERT_TRUE(s.update(false, 0));   // first state always goes out
+  TEST_ASSERT_TRUE(s.update(false, 0));  // first state always goes out
   TEST_ASSERT_FALSE(s.update(false, 5000));
   TEST_ASSERT_TRUE(s.update(true, 5100));  // rising edge
   TEST_ASSERT_FALSE(s.update(true, 5900));
-  TEST_ASSERT_TRUE(s.update(true, 6100));  // repeat
+  TEST_ASSERT_TRUE(s.update(true, 6100));   // repeat
   TEST_ASSERT_TRUE(s.update(false, 6200));  // falling edge
   TEST_ASSERT_FALSE(s.update(false, 9000));
 }
@@ -146,7 +147,7 @@ static void a_full_past_event_queue_still_records_every_sensor() {
   CamDelayedQueue q;
   uint8_t a[6] = {2, 0, 0, 0, 0, 1}, b[6] = {2, 0, 0, 0, 0, 2}, c[6] = {2, 0, 0, 0, 0, 3};
   for (int i = 0; i < CamDelayedQueue::SIZE; i++) q.add(a, 1, 1, true, 100000u * (i + 1), 8000);
-  q.add(a, 1, 3, false, 0, 8000);  // the same sensor joins one of its own records
+  q.add(a, 1, 3, false, 0, 8000);     // the same sensor joins one of its own records
   q.add(b, 1, 1, true, 50000, 8000);  // another sensor joins the newest record, which then stands for several
   q.add(c, 1, 2, true, 60000, 8000);  // and stays standing for several
   TEST_ASSERT_EQUAL(CamDelayedQueue::SIZE, q.count());

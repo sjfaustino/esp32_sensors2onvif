@@ -48,8 +48,8 @@ struct S2oReport {
   uint8_t input = 1;  // 1 to 255
   bool active = false;
   uint8_t battery = S2O_BATTERY_UNKNOWN;  // percent; above 100 is unknown
-  uint32_t counter = 0;  // a new number for each new report; the same again for a resend
-  uint32_t age = 0;      // seconds since it happened; 0 when live
+  uint32_t counter = 0;                   // a new number for each new report; the same again for a resend
+  uint32_t age = 0;                       // seconds since it happened; 0 when live
   uint32_t fresh = 0;
   uint8_t targetCount = 0;
   S2oTarget targets[S2O_MAX_TARGETS];
@@ -86,8 +86,16 @@ bool s2oReadConfirmation(const uint8_t* body, int len, const S2oReport& r, S2oFo
 // 6, report time (u32), flags (1: saving its battery), why it last restarted, restarts (u16), how long the last alert
 // took in ms (u16), chip (u16), the update it refused (u32), then its sensor's kind and firmware version, each as a
 // length and printable text of up to S2O_TEXT_MAX. Then the signature. Not confirmed.
-enum S2oRestart { S2O_RESTART_UNKNOWN, S2O_RESTART_POWER, S2O_RESTART_BUTTON, S2O_RESTART_SOFTWARE, S2O_RESTART_CRASH, S2O_RESTART_WATCHDOG,
-                  S2O_RESTART_BROWNOUT, S2O_RESTART_KINDS };
+enum S2oRestart {
+  S2O_RESTART_UNKNOWN,
+  S2O_RESTART_POWER,
+  S2O_RESTART_BUTTON,
+  S2O_RESTART_SOFTWARE,
+  S2O_RESTART_CRASH,
+  S2O_RESTART_WATCHDOG,
+  S2O_RESTART_BROWNOUT,
+  S2O_RESTART_KINDS
+};
 struct S2oInfo {
   uint32_t everyS = 0;
   bool saving = false;

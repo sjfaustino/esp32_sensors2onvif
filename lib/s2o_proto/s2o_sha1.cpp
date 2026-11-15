@@ -5,7 +5,8 @@ static uint32_t rol(uint32_t v, int n) { return (v << n) | (v >> (32 - n)); }
 
 void S2oSha1::block() {
   uint32_t w[80];
-  for (int i = 0; i < 16; i++) w[i] = (uint32_t)buf_[i * 4] << 24 | (uint32_t)buf_[i * 4 + 1] << 16 | (uint32_t)buf_[i * 4 + 2] << 8 | buf_[i * 4 + 3];
+  for (int i = 0; i < 16; i++)
+    w[i] = (uint32_t)buf_[i * 4] << 24 | (uint32_t)buf_[i * 4 + 1] << 16 | (uint32_t)buf_[i * 4 + 2] << 8 | buf_[i * 4 + 3];
   for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
   uint32_t a = h_[0], b = h_[1], c = h_[2], d = h_[3], e = h_[4];
   for (int i = 0; i < 80; i++) {

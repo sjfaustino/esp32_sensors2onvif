@@ -51,9 +51,20 @@ enum RestartCause : uint32_t {
   RESTART_NEW_KEYS,
   RESTART_CAUSES
 };
-static const char* const RESTART_TEXT[RESTART_CAUSES] = {
-    "Software restart",  "WiFi lost for 5 minutes",   "Low memory",     "Server stalled",  "Router stopped answering", "New WiFi settings", "New web, port or address settings",
-    "Fixed address could not reach the router", "Scheduled restart", "Settings reset", "Restart button", "Firmware update", "Settings restored", "New keys"};
+static const char* const RESTART_TEXT[RESTART_CAUSES] = {"Software restart",
+                                                         "WiFi lost for 5 minutes",
+                                                         "Low memory",
+                                                         "Server stalled",
+                                                         "Router stopped answering",
+                                                         "New WiFi settings",
+                                                         "New web, port or address settings",
+                                                         "Fixed address could not reach the router",
+                                                         "Scheduled restart",
+                                                         "Settings reset",
+                                                         "Restart button",
+                                                         "Firmware update",
+                                                         "Settings restored",
+                                                         "New keys"};
 
 static bool restartPending = false;
 static uint32_t restartRequestedAt = 0;
@@ -84,9 +95,12 @@ static void tryNetwork(int i) {
   wifiTryAt = millis();
   WiFi.disconnect(false);
   IPAddress ip, mask, gateway, dns;
-  usingStatic = settings.staticFor.length() && settings.staticFor == settings.wifiSsid[i] && ip.fromString(settings.staticIp) && mask.fromString(settings.staticMask) && gateway.fromString(settings.staticGateway);
-  if (usingStatic) WiFi.config(ip, gateway, mask, dns.fromString(settings.staticDns) ? dns : gateway);
-  else WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+  usingStatic = settings.staticFor.length() && settings.staticFor == settings.wifiSsid[i] && ip.fromString(settings.staticIp) &&
+                mask.fromString(settings.staticMask) && gateway.fromString(settings.staticGateway);
+  if (usingStatic)
+    WiFi.config(ip, gateway, mask, dns.fromString(settings.staticDns) ? dns : gateway);
+  else
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.begin(settings.wifiSsid[i].c_str(), settings.wifiPassword[i].c_str());
 }
 
@@ -124,7 +138,8 @@ static void networksInfo(CamJson& j) {
   int16_t n = WiFi.scanComplete();
   if (n < 0 && n != WIFI_SCAN_RUNNING) WiFi.scanNetworks(true);
   j.flag("scanning", n < 0).array("networks");
-  for (int i = 0; i < n && i < 20; i++) j.object().str("ssid", WiFi.SSID(i).c_str()).num("rssi", WiFi.RSSI(i)).flag("open", WiFi.encryptionType(i) == WIFI_AUTH_OPEN).end();
+  for (int i = 0; i < n && i < 20; i++)
+    j.object().str("ssid", WiFi.SSID(i).c_str()).num("rssi", WiFi.RSSI(i)).flag("open", WiFi.encryptionType(i) == WIFI_AUTH_OPEN).end();
   if (n >= 0) WiFi.scanDelete();
   j.end();
 }
@@ -431,7 +446,8 @@ struct SensorMessage {
 // A message longer than the queue's room is dropped without a word, so each one the hub reads must fit.
 static_assert(sizeof(SensorMessage::data) >= 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN, "a report with every target must fit");
 static_assert(sizeof(SensorMessage::data) >= CAM_HELLO_LEN, "a pairing hello must fit");
-static_assert(sizeof(SensorMessage::data) >= CAM_SEALED_EXTRA + 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN, "a sealed report with every target must fit");
+static_assert(sizeof(SensorMessage::data) >= CAM_SEALED_EXTRA + 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN,
+              "a sealed report with every target must fit");
 static QueueHandle_t sensorQueue;
 static volatile uint32_t espNowDropped = 0;  // arrived while the queue was full; their senders resend, since nothing confirmed them
 
@@ -503,14 +519,13 @@ static void hubHealth(CamHealth& h) {
   h.uptimeS = esp_timer_get_time() / 1000000ULL;
 }
 
-static void hubDeviceRows(CamJson& j) {
-  deviceRows(j, {firmwareUnproven, lastRestartText(), server ? server->memoryFailures() : 0, espNowDropped});
-}
+static void hubDeviceRows(CamJson& j) { deviceRows(j, {firmwareUnproven, lastRestartText(), server ? server->memoryFailures() : 0, espNowDropped}); }
 
 void setup() {
   deviceInfoBegin();
   esp_ota_img_states_t firmwareState;
-  firmwareUnproven = esp_ota_get_state_partition(esp_ota_get_running_partition(), &firmwareState) == ESP_OK && firmwareState == ESP_OTA_IMG_PENDING_VERIFY;
+  firmwareUnproven =
+      esp_ota_get_state_partition(esp_ota_get_running_partition(), &firmwareState) == ESP_OK && firmwareState == ESP_OTA_IMG_PENDING_VERIFY;
   lastRestartCause = esp_reset_reason() == ESP_RST_SW ? restartCause : 0;
   restartCause = 0;
   Serial.begin(115200);
@@ -518,13 +533,15 @@ void setup() {
   if (!settings.webPassword.length()) Serial.println("No hub password is set: the web page, ONVIF and RTSP are open to anyone on the network.");
   WiFi.persistent(false);  // the settings are kept in one place only, in hub_settings.cpp
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);  // power save loses multicast and adds latency
+  WiFi.setSleep(false);          // power save loses multicast and adds latency
   WiFi.setAutoReconnect(false);  // loop() chooses between the main and backup networks itself
   WiFi.setHostname(settings.hubName.c_str());
-  WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
-    wifiDrops = wifiDrops + 1;
-    wifiDropReason = info.wifi_sta_disconnected.reason;
-  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.onEvent(
+      [](WiFiEvent_t, WiFiEventInfo_t info) {
+        wifiDrops = wifiDrops + 1;
+        wifiDropReason = info.wifi_sta_disconnected.reason;
+      },
+      ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   if (settings.wifiSsid[0].length()) tryNetwork(0);
   applyTime();
 
@@ -546,8 +563,10 @@ void setup() {
 
   sensorQueue = xQueueCreate(32, sizeof(SensorMessage));
   espNowStarted = sensorQueue && esp_now_init() == ESP_OK;
-  if (espNowStarted) esp_now_register_recv_cb(onEspNow);
-  else Serial.println("ESP-NOW failed to start; HTTP sensor input still works.");
+  if (espNowStarted)
+    esp_now_register_recv_cb(onEspNow);
+  else
+    Serial.println("ESP-NOW failed to start; HTTP sensor input still works.");
 
   enableLoopWDT();  // an unattended hub must restart itself if the main loop ever stalls
 }
@@ -619,8 +638,9 @@ static void proveFirmware(bool connected) {
     updateProof.mark = 0;
     Serial.println("The new firmware has proved itself and is kept.");
   } else if (millis() > FIRMWARE_PROOF_DEADLINE_MS) {
-    Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n",
-                  !espNowStarted ? "started ESP-NOW" : !connected ? "stayed on the network" : "got the NVR listening again");
+    Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n", !espNowStarted ? "started ESP-NOW"
+                                                                                                       : !connected   ? "stayed on the network"
+                                                                                                                    : "got the NVR listening again");
     if (server) server->saveNow();
     updateProof.mark = 0;
     esp_ota_mark_app_invalid_rollback_and_reboot();
@@ -656,7 +676,9 @@ static void restartWhenScheduled() {
   time_t now = time(nullptr);
   struct tm local;
   localtime_r(&now, &local);
-  if (clockSet() && (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == settings.schedule.minute) restartFor(RESTART_SCHEDULED);
+  if (clockSet() && (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) &&
+      local.tm_hour * 60 + local.tm_min == settings.schedule.minute)
+    restartFor(RESTART_SCHEDULED);
 }
 
 // Connected, but cut off: a wrong fixed address, or a router that stopped answering.
@@ -680,9 +702,12 @@ static void printHeartbeat() {
   static uint32_t printedAt = 0;
   if (millis() - printedAt <= 10000) return;
   printedAt = millis();
-  Serial.printf("ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap %u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
-                WiFi.localIP().toString().c_str(), settings.onvifPort, settings.webPort, settings.rtspPort, WiFi.macAddress().c_str(), WiFi.channel(), (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops,
-                (unsigned)wifiDropReason, ESP.getFreeHeap(), largestBlock(), (int)esp_reset_reason(), (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
+  Serial.printf(
+      "ONVIF on %s:%u, web port %u, RTSP port %u, ESP-NOW to %s on Wi-Fi channel %d, status %d, RSSI %d, drops %u, last drop reason %u, free heap "
+      "%u, largest block %u, last reset reason %d cause %u, ping ok %u lost %u, setup %s, %s\n",
+      WiFi.localIP().toString().c_str(), settings.onvifPort, settings.webPort, settings.rtspPort, WiFi.macAddress().c_str(), WiFi.channel(),
+      (int)WiFi.status(), WiFi.RSSI(), (unsigned)wifiDrops, (unsigned)wifiDropReason, ESP.getFreeHeap(), largestBlock(), (int)esp_reset_reason(),
+      (unsigned)lastRestartCause, (unsigned)pingReplies, (unsigned)pingLost, setupOpen ? "open" : "off", server->debugLine().c_str());
 }
 
 void loop() {

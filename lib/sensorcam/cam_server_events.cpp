@@ -72,7 +72,10 @@ static void eventJson(std::string& out, const CamEvent& e) {
   if (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST) j.num("off_s", e.offS != CAM_AGE_UNKNOWN, e.offS);
   j.array("targets");
   for (int i = 0; i < e.targetCount; i++)
-    j.object().num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm).num("direction", e.targets[i].direction).end();
+    j.object()
+        .num("distance_cm", e.targets[i].distanceCm != CAM_DISTANCE_UNKNOWN, e.targets[i].distanceCm)
+        .num("direction", e.targets[i].direction)
+        .end();
   j.end().end();
 }
 
@@ -132,7 +135,8 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
     j.str("mode", camArmModeName(mode)).flag("timed", mode == CAM_DISARMED && cfg_.disarmedUntil);
     j.num("left_s", left >= 0, left).array("active");
     for (int id = 1; id <= sensors_.count(); id++)
-      if (slots_[id - 1].used && sensors_.active(id)) j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).flag("past", sensors_.pastEvent(id)).end();
+      if (slots_[id - 1].used && sensors_.active(id))
+        j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).flag("past", sensors_.pastEvent(id)).end();
     j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", streamCount()).end();
     j.str("mqtt", mqttState()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hooks_.result()).end().array("problems");
     for (int id = 1; id <= sensors_.count(); id++) {
@@ -164,7 +168,12 @@ std::string SensorCamServer::statusJson(uint32_t now) {
     for (int id = 1; id <= sensors_.count(); id++) {
       const Health& h = health_[id - 1];
       if (!h.heard) continue;
-      j.object().str("sensor", slotName(id)).num("last_heard_s", (now - h.heardAt) / 1000).num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery).flag("silent", h.silent).end();
+      j.object()
+          .str("sensor", slotName(id))
+          .num("last_heard_s", (now - h.heardAt) / 1000)
+          .num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery)
+          .flag("silent", h.silent)
+          .end();
     }
     j.end().num("uptime_s", now / 1000).flag("armed", armed()).str("mode", camArmModeName(armMode()));
   });

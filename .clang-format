@@ -1,0 +1,12 @@
+# The C++ style of the hub and its nodes. Apply with clang-format 19: clang-format -i lib/*/*.cpp lib/*/*.h src/*.cpp ...
+BasedOnStyle: Google
+ColumnLimit: 150
+IndentWidth: 2
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+SortIncludes: false
+ReflowComments: true
+DerivePointerAlignment: false
+PointerAlignment: Left

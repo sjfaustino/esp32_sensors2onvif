@@ -57,7 +57,13 @@ std::string SensorCamServer::treeJson() {
     clearSize = s.size;
   }
   CamJson j(out);
-  j.object().num("used", used).num("total", total).num("kept", historyRoom()).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
+  j.object()
+      .num("used", used)
+      .num("total", total)
+      .num("kept", historyRoom())
+      .num("clear", clear, clearSize)
+      .flag("clearPreview", hasFile(root, "clear.jpg"))
+      .array("nodes");
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
     if (!makeRoom(320)) return std::string();  // the longest node entry before its sensors
@@ -68,7 +74,11 @@ std::string SensorCamServer::treeJson() {
     camParseMac(s.name, mac);
     int any = findNode(mac);
     uint32_t every = any ? nodeOf(any).info.everyS : 0;
-    j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS);
+    j.object()
+        .str("mac", s.name)
+        .flag("paired", storage_.exists(s.name + "/pairing.txt"))
+        .num("late", node.lateS != 0, node.lateS)
+        .num("silent", node.silentS != 0, node.silentS);
     j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every));
     j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
     time_t t = time(nullptr);
@@ -80,13 +90,15 @@ std::string SensorCamServer::treeJson() {
       std::string base = s.name + "/" + n.name;
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
       int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
-      if (!slot) continue;  // beyond the sensor limit, so it does nothing
+      if (!slot) continue;                        // beyond the sensor limit, so it does nothing
       if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
       const CamSensorSettings& set = slots_[slot - 1].settings;
       j.object().num("input", atoi(n.name.c_str())).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
       j.flag("interior", set.interior);
-      if (set.quietFrom >= 0) j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
-      else j.null("quiet");
+      if (set.quietFrom >= 0)
+        j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
+      else
+        j.null("quiet");
       j.array("files");
       std::vector<CamFsEntry> items;
       storage_.list(base, items);
@@ -227,7 +239,8 @@ static std::string peerText(uint32_t peer) {
   return std::to_string(b[0]) + "." + std::to_string(b[1]) + "." + std::to_string(b[2]) + "." + std::to_string(b[3]);
 }
 
-void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen) {
+void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body,
+                                size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
   bool inSetup = camCall(cfg_.setupActive);
@@ -237,8 +250,10 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     return;
   }
   const ApiRequest r{c, method, route, target, headers, body, bodyLen};
-  if (setupRoute) apiSetup(r);
-  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r) && !apiPairing(r) && !apiNodeImages(r)) apiFiles(r);
+  if (setupRoute)
+    apiSetup(r);
+  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r) && !apiPairing(r) && !apiNodeImages(r))
+    apiFiles(r);
 }
 
 void SensorCamServer::apiSetup(const ApiRequest& r) {
@@ -250,8 +265,10 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
   } else if (r.is("POST", "/api/wifi")) {
     std::string form = r.form();
     std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
-    if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63))) c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
-    else c.out = saved(camCall(cfg_.wifiSave, ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
+    if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63)))
+      c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
+    else
+      c.out = saved(camCall(cfg_.wifiSave, ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
   } else {
     c.out = jsonFail(404, "not found");
   }
@@ -263,8 +280,10 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
     sendBody(c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, PAGE_HEADERS);
   } else if (r.is("GET", "/api/tree")) {
     c.body = treeJson();
-    if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
-    else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
+    if (c.body.empty())
+      c.out = jsonFail(507, "the hub is short of memory; try again");
+    else
+      sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/live")) {
     if (!frame_) frameToShow(millis_());
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.num("seq", liveSeq_).str("file", frameFile_.empty() ? std::string("built-in") : frameFile_); }));
@@ -316,8 +335,10 @@ std::string SensorCamServer::espNowJson() {
   out.reserve(room);
   CamJson j(out);
   j.object();
-  if (cfg_.espNowInfo) cfg_.espNowInfo(j);
-  else j.str("mac", "").num("channel", 0);
+  if (cfg_.espNowInfo)
+    cfg_.espNowInfo(j);
+  else
+    j.str("mac", "").num("channel", 0);
   j.str("key", cfg_.espNowKey).array("nodes");
   uint32_t now = millis_();
   for (int id = 1; id <= sensors_.count(); id++) {
@@ -325,21 +346,37 @@ std::string SensorCamServer::espNowJson() {
     const Health& h = health_[id - 1];
     std::string name = slotName(id);
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
-    j.object().flag("low", h.lowBattery).str("name", slots_[id - 1].name).str("node", name.substr(0, name.find('/'))).num("input", slots_[id - 1].input);
+    j.object()
+        .flag("low", h.lowBattery)
+        .str("name", slots_[id - 1].name)
+        .str("node", name.substr(0, name.find('/')))
+        .num("input", slots_[id - 1].input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
-    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", nodeOf(id).paired);
+    j.num("rssi", h.rssi != 0, h.rssi)
+        .num("counter", h.counterSeen, h.counter)
+        .flag("weak", h.weak)
+        .num("refused", h.refused)
+        .str("refusal", h.refusal)
+        .flag("paired", nodeOf(id).paired);
     const Node& node = nodeOf(id);
     const CamNodeInfo& info = node.info;
-    j.num("every", info.everyS != 0, info.everyS).num("silentAfter", silentMsFor(id) / 1000).flag("saving", info.saving).str("sensor", info.sensor).str("version", info.version);
+    j.num("every", info.everyS != 0, info.everyS)
+        .num("silentAfter", silentMsFor(id) / 1000)
+        .flag("saving", info.saving)
+        .str("sensor", info.sensor)
+        .str("version", info.version);
     bool told = !info.version.empty();
-    j.str("restart", told ? camRestartName(info.restart) : "").num("restarts", told, info.restarts).flag("restartFault", told && camRestartIsFault(info.restart));
-    j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs).str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
+    j.str("restart", told ? camRestartName(info.restart) : "")
+        .num("restarts", told, info.restarts)
+        .flag("restartFault", told && camRestartIsFault(info.restart));
+    j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs)
+        .str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
     j.num("daysLeft", node.daysLeft >= 0, node.daysLeft).flag("sealed", node.sealed);
     const CamNodeImage* image = imageFor(info.chip);
     std::string update = node.updating && node.updateSize ? "updating, " + std::to_string((uint64_t)node.updateOffset * 100 / node.updateSize) + "%"
-                         : updateReady(id)          ? "update ready"
+                         : updateReady(id)                ? "update ready"
                          : image && info.refused == image->number ? "update undone"
-                                                                        : "";
+                                                                  : "";
     j.str("update", update).end();
   }
   j.end();
@@ -347,7 +384,13 @@ std::string SensorCamServer::espNowJson() {
   j.array("unknown");
   for (const UnknownSender& u : unknown_) {
     if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
-    j.object().str("mac", camMacText(u.mac)).num("input", u.input).num("ago", (now - u.heardAt) / 1000).num("rssi", u.rssi != 0, u.rssi).num("messages", u.messages).end();
+    j.object()
+        .str("mac", camMacText(u.mac))
+        .num("input", u.input)
+        .num("ago", (now - u.heardAt) / 1000)
+        .num("rssi", u.rssi != 0, u.rssi)
+        .num("messages", u.messages)
+        .end();
   }
   j.finish();
   return out;
@@ -395,15 +438,21 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
     }
   } else if (r.is("GET", "/api/espnow")) {
     c.body = espNowJson();
-    if (c.body.empty()) c.out = jsonFail(507, "the hub is short of memory; try again");
-    else sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
+    if (c.body.empty())
+      c.out = jsonFail(507, "the hub is short of memory; try again");
+    else
+      sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/info")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.array("unsupported");
       for (const std::string& seen : unsupported_)
         if (!seen.empty()) j.str(seen);
       j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
-      j.num("onvifPort", cfg_.onvifPort).num("webPort", cfg_.webPort).num("rtspPort", cfg_.rtspPort).num("streams", streamCount()).num("subscribers", subs_.count());
+      j.num("onvifPort", cfg_.onvifPort)
+          .num("webPort", cfg_.webPort)
+          .num("rtspPort", cfg_.rtspPort)
+          .num("streams", streamCount())
+          .num("subscribers", subs_.count());
       j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", armed());
     }));
   } else {
@@ -422,9 +471,13 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
     t.ntp = queryParam(form, "mode") != "manual";
     t.server = queryParam(form, "server");
     long long offset = 0, dst = 0, epoch = 0;
-    bool ok = wholeNumber(queryParam(form, "offset"), offset) && validOffset(offset) && wholeNumber(queryParam(form, "dst"), dst) && dst >= 0 && dst <= 2;
-    if (t.ntp) ok = ok && validNtpServer(t.server);
-    else ok = ok && (t.server.empty() || validNtpServer(t.server)) && (epochText.empty() || (wholeNumber(epochText, epoch) && epoch > (long long)CAM_CLOCK_VALID_AFTER && epoch < 4102444800LL));
+    bool ok =
+        wholeNumber(queryParam(form, "offset"), offset) && validOffset(offset) && wholeNumber(queryParam(form, "dst"), dst) && dst >= 0 && dst <= 2;
+    if (t.ntp)
+      ok = ok && validNtpServer(t.server);
+    else
+      ok = ok && (t.server.empty() || validNtpServer(t.server)) &&
+           (epochText.empty() || (wholeNumber(epochText, epoch) && epoch > (long long)CAM_CLOCK_VALID_AFTER && epoch < 4102444800LL));
     if (!ok) {
       c.out = jsonFail(400, "check the timezone, the NTP server name and the date and time");
     } else {
@@ -438,7 +491,8 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
   } else if (r.is("POST", "/api/schedule")) {
     std::string form = r.form();
     long long day = 0, minute = 0;
-    if (!wholeNumber(queryParam(form, "day"), day) || day < -1 || day > 6 || !wholeNumber(queryParam(form, "minute"), minute) || minute < 0 || minute > 1439) {
+    if (!wholeNumber(queryParam(form, "day"), day) || day < -1 || day > 6 || !wholeNumber(queryParam(form, "minute"), minute) || minute < 0 ||
+        minute > 1439) {
       c.out = jsonFail(400, "check the day and the time");
     } else {
       CamSchedule s;
@@ -452,12 +506,16 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
   } else if (r.is("POST", "/api/reboot")) {
     c.out = saved(camCall(cfg_.maintenance, "reboot"), "could not do that");
   } else if (r.is("POST", "/api/reset")) {
-    if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
-    else c.out = saved(camCall(cfg_.maintenance, "reset"), "could not do that");
+    if (queryParam(r.form(), "confirm") != "yes")
+      c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
+    else
+      c.out = saved(camCall(cfg_.maintenance, "reset"), "could not do that");
   } else if (r.is("POST", "/api/newkeys")) {
     // Every node and HTTP sensor stops being heard until set up again, so a stray request must not do it.
-    if (queryParam(r.form(), "confirm") != "yes") c.out = jsonFail(400, "not confirmed");
-    else c.out = saved(camCall(cfg_.maintenance, "newkeys"), "could not do that");
+    if (queryParam(r.form(), "confirm") != "yes")
+      c.out = jsonFail(400, "not confirmed");
+    else
+      c.out = saved(camCall(cfg_.maintenance, "newkeys"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
   } else if (r.is("POST", "/api/alerts")) {
@@ -467,7 +525,9 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
   } else if (r.is("GET", "/api/backup")) {
     c.out = httpResponse(200, "text/plain", camCall(cfg_.backupText));
   } else if (r.is("POST", "/api/restore")) {
-    c.out = camCall(cfg_.restoreText, std::string(r.body, r.bodyLen)) ? jsonOk(JSON_OK) : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
+    c.out = camCall(cfg_.restoreText, std::string(r.body, r.bodyLen))
+                ? jsonOk(JSON_OK)
+                : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
   } else {
     return false;
   }
@@ -510,8 +570,10 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     a.mask = queryParam(form, "mask");
     a.gateway = queryParam(form, "gateway");
     a.dns = queryParam(form, "dns");
-    if (!a.dhcp && !validAddress(a)) c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
-    else c.out = saved(camCall(cfg_.addressSave, a), "could not save the address");
+    if (!a.dhcp && !validAddress(a))
+      c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
+    else
+      c.out = saved(camCall(cfg_.addressSave, a), "could not save the address");
   } else if (r.is("POST", "/api/settings")) {
     std::string form = r.form();
     auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
@@ -564,7 +626,8 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     if (!sensor) {
       c.out = jsonFail(404, "no such sensor");
     } else if (!camParseSensorSettings(text, s)) {
-      c.out = jsonFail(400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter");
+      c.out = jsonFail(
+          400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter");
     } else {
       std::string file = path + "/settings.txt", clean = camSensorSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
@@ -581,7 +644,9 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path)) {
       c.out = jsonFail(404, "no such node");
     } else if (!camParseNodeSettings(text, s)) {
-      c.out = jsonFail(400, "the past-event time must be 1 to 86400 seconds, the silent time 60 to 604800, the report time 60 to 86400, and the repeat time 1 to 60");
+      c.out = jsonFail(
+          400,
+          "the past-event time must be 1 to 86400 seconds, the silent time 60 to 604800, the report time 60 to 86400, and the repeat time 1 to 60");
     } else {
       std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
@@ -689,8 +754,9 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
     log_.save(downloadingHistory());
     log_.csvBegin();  // made from the log as it is sent, piece by piece, so its size is not known in advance
-    c.out = "HTTP/1.1 200 OK\r\nContent-Type: text/csv; charset=utf-8\r\nContent-Disposition: attachment; filename=\"hub-events.csv\"\r\n"
-            "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+    c.out =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/csv; charset=utf-8\r\nContent-Disposition: attachment; filename=\"hub-events.csv\"\r\n"
+        "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
     c.stream = &csvRead_;
   } else {
     return false;
@@ -730,8 +796,10 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
     rescan();
     c.out = saved(ok, "could not create the folder");
   } else if (fileRoute && method == "PUT" && isPreview) {
-    if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0) c.out = jsonFail(422, "not a JPEG");
-    else c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the preview; storage may be full");
+    if (bodyLen < 4 || memcmp(body, "\xFF\xD8\xFF", 3) != 0)
+      c.out = jsonFail(422, "not a JPEG");
+    else
+      c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the preview; storage may be full");
   } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
     if (!sendFile(c, path, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264")) c.out = jsonFail(404, "no such file");
   } else if (fileRoute && method == "PUT" && isText) {

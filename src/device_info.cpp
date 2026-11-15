@@ -121,7 +121,8 @@ static String pieceList(const uint32_t* top) {
 static String uptimeText() {
   uint64_t s = esp_timer_get_time() / 1000000ULL;
   char b[32];
-  snprintf(b, sizeof(b), "%lud %02luh %02lum %02lus", (unsigned long)(s / 86400), (unsigned long)(s % 86400 / 3600), (unsigned long)(s % 3600 / 60), (unsigned long)(s % 60));
+  snprintf(b, sizeof(b), "%lud %02luh %02lum %02lus", (unsigned long)(s / 86400), (unsigned long)(s % 86400 / 3600), (unsigned long)(s % 3600 / 60),
+           (unsigned long)(s % 60));
   return b;
 }
 
@@ -130,7 +131,9 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Device name", settings.hubName);
   add("Firmware version", FIRMWARE_VERSION);
   add("Firmware built", __DATE__ " " __TIME__);
-  add("Firmware check", status.firmwareUnproven ? "New firmware, being checked" : esp_ota_get_last_invalid_partition() ? "The last update failed and was undone" : "Good");
+  add("Firmware check", status.firmwareUnproven                ? "New firmware, being checked"
+                        : esp_ota_get_last_invalid_partition() ? "The last update failed and was undone"
+                                                               : "Good");
   add("Serial number", macSerial().c_str());
   add("Chip", String(ESP.getChipModel()) + " revision " + ESP.getChipRevision());
   add("CPU", String(ESP.getChipCores()) + " cores at " + ESP.getCpuFreqMHz() + " MHz");
@@ -150,9 +153,11 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   heap_caps_walk(MALLOC_CAP_DEFAULT, countPiece, &pieces);
   add("Free memory pieces", String(pieces.freeCount) + "; the largest " + pieceList(pieces.freeTop));
   add("Memory in use", String(pieces.usedCount) + " pieces, " + pieces.usedFrom1k + " of 1 KB or more; the largest " + pieceList(pieces.usedTop));
-  add("Memory in use by size", String("under 64 B: ") + pieces.bucketCount[0] + " = " + pieces.bucketBytes[0] / 1024 + " KB; 64-255 B: " +
-      pieces.bucketCount[1] + " = " + pieces.bucketBytes[1] / 1024 + " KB; 256 B-1 KB: " + pieces.bucketCount[2] + " = " + pieces.bucketBytes[2] / 1024 +
-      " KB; 1-4 KB: " + pieces.bucketCount[3] + " = " + pieces.bucketBytes[3] / 1024 + " KB; larger: " + pieces.bucketCount[4] + " = " + pieces.bucketBytes[4] / 1024 + " KB");
+  add("Memory in use by size", String("under 64 B: ") + pieces.bucketCount[0] + " = " + pieces.bucketBytes[0] / 1024 +
+                                   " KB; 64-255 B: " + pieces.bucketCount[1] + " = " + pieces.bucketBytes[1] / 1024 +
+                                   " KB; 256 B-1 KB: " + pieces.bucketCount[2] + " = " + pieces.bucketBytes[2] / 1024 +
+                                   " KB; 1-4 KB: " + pieces.bucketCount[3] + " = " + pieces.bucketBytes[3] / 1024 +
+                                   " KB; larger: " + pieces.bucketCount[4] + " = " + pieces.bucketBytes[4] / 1024 + " KB");
   uint32_t shortTimes = status.memoryFailures;
   add("Work dropped for lack of memory", String((unsigned)shortTimes) + (shortTimes ? " times since the start; the hub kept running" : ""));
   add("ESP-NOW messages dropped while busy", String((unsigned)status.espNowDropped) + (status.espNowDropped ? ", which their sensors resend" : ""));

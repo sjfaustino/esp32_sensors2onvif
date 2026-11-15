@@ -282,8 +282,10 @@ Keep the hub out of reach.
 
 **Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
 restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
-A new firmware must stay on the network for a minute; if it crashes, stalls or loses the network first, or the power fails
-during that minute, the hub goes back to the previous firmware and Device Info says so. A reset erases the saved WiFi
+A new firmware is kept only once it has done the hub's work: stayed on the network for a minute, started ESP-NOW, and,
+if the NVR was listening when the update began, got it listening again. If it crashes, stalls or loses the network
+first, the power fails meanwhile, or it has not managed within 10 minutes, the hub goes back to the previous firmware
+and Device Info says so. A reset erases the saved WiFi
 networks, ports, name, web password, fixed address, time, notification and MQTT settings, arms the hub, and keeps the pictures, the sensor nodes,
 and the ESP-NOW key and token that sensors use.
 
@@ -392,8 +394,9 @@ on LittleFS.
 
 ## Sensor input over ESP-NOW
 
-Each device sends this message unicast to the MAC address the serial console prints. It is little-endian and 13 bytes,
-plus 3 for each target, plus the 8-byte signature.
+Each device sends this message unicast to the MAC address the serial console prints. It is little-endian and 17 bytes,
+plus 3 for each target, plus the 8-byte signature. The messages are written once, in `lib/s2o_proto`, which the hub
+and the node firmware (esp32_sensor_node) both build from.
 
 | Bytes | Field |
 |---|---|
@@ -403,6 +406,7 @@ plus 3 for each target, plus the 8-byte signature.
 | 1 | Battery percent, `0xFF` when unknown or mains powered. Other values above 100 also count as unknown. |
 | 4 | Event counter. A resend of the same event repeats it, and the hub ignores a repeat within a minute. It need not survive the sensor's restarts. |
 | 4 | Age in seconds, `0` when live, `0xFFFFFFFF` when unknown |
+| 4 | Fresh: the number from the hub's last confirmation, `0` when the device has none (see below) |
 | 1 | Number of targets, `0` to `3` |
 | 2 per target | Distance in cm, `0xFFFF` when unknown |
 | 1 per target | Direction: `0` unknown, `1` approaching, `2` moving away, `3` left to right, `4` right to left |
@@ -417,7 +421,7 @@ sends start failing, because a router on automatic channel selection can move.
 Once it has accepted a report and saved it, the hub sends a **confirmation** back to that MAC address, usually within
 100 ms; wait at least 300 ms before resending. A sensor should resend a report, with the same number, until the
 confirmation arrives: delivery by ESP-NOW only means the radio got it. A resend is confirmed again. Messages that are
-refused, malformed or from a device without a folder get no confirmation. The confirmation is 30 bytes. With it comes
+refused, malformed or from a device without a folder get no confirmation. The confirmation is 34 bytes. With it comes
 what the hub has for the node; a sensor that needs none of it can read just the first 7 bytes and check the signature.
 
 | Bytes | Field |
@@ -430,8 +434,9 @@ what the hub has for the node; a sensor that needs none of it can read just the 
 | 4 | How often the node should report with nothing to report, in seconds, as set on the hub; `0` for the node's own |
 | 2 | How often it should report while a sensor stays on, in seconds, as set on the hub; `0` for its own |
 | 4 | The end of a walk test started on the hub, on the hub's time; `0` for none |
-| 1 | Flags: `1` when a firmware update is ready for the node |
-| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 22 bytes above |
+| 1 | Flags: `1` when a firmware update is ready for the node; `2` asking the node to prove it is there (see below) |
+| 4 | The fresh number for the node's next report |
+| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 26 bytes above |
 
 The repeat time is kept below the shortest alert time of the node's sensors, so the alert does not lapse between repeats.
 A node's clock can run some percent fast or slow while it sleeps. A node that keeps alerts for hours can measure its rate
@@ -484,8 +489,13 @@ The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NO
 carried in backups. The hub refuses a message with a wrong signature or none; the ESP-NOW page counts those it can read. The report
 number is never a reason to refuse a correctly signed message, so a sensor that restarts its count, or loses it with a
 battery change, is never ignored. It is used only to ignore a resend: the same number and state again within a minute.
-The cost is that someone who records a sensor's message could play it back later to make a false alert, though not a
-false all-clear, because a clear report never ends an alert. A missed intruder is worse than a false alert.
+Someone who records a sensor's message can play it back later. That makes a false alert, never a false all-clear,
+because a clear report never ends an alert; a missed intruder is worse than a false alert. A paired node goes further,
+so that a recording cannot keep a stolen node looking alive: each confirmation gives it a new fresh number, which it
+puts in its next report. A report from a paired node that carries neither of the last two numbers the hub gave it
+still raises its alert, but does not count as the node being there, nor is its battery reading taken; its
+confirmation asks for proof (flag `2`), and the node reports again at once with the new number. That happens once
+after the node or the hub lost power. Nodes on the shared key are taken at their word, as before.
 
 **Sealed messages.** A report says which sensor fired, whether it is on and the battery level, which anyone listening
 could read. Sealed, only the hub can. A node may seal any report or node info, and the hub then seals its confirmation:
@@ -611,7 +621,10 @@ pio run -e host
 python tools/e2e_test.py
 ```
 
-`tools/e2e_test.py` can also test a flashed board. Its header explains how.
+`tools/e2e_test.py` can also test a flashed board. Its header explains how. Its parts are the `tools/e2e_*.py` files
+beside it, and the unit tests are a file per subject in `test/test_core`. The unit tests include a fuzz test that feeds
+every parser of what arrives from outside thousands of changed inputs. The C++ follows `.clang-format`; check it with
+clang-format 19 as the CI does.
 
 ## How it works
 

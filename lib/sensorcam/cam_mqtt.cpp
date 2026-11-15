@@ -28,7 +28,7 @@ std::string camMqttConnect(const std::string& clientId, const std::string& user,
                            const std::string& willMessage, uint16_t keepAliveS) {
   std::string body;
   putText(body, "MQTT");
-  body += (char)4;  // protocol level: 3.1.1
+  body += (char)4;                            // protocol level: 3.1.1
   uint8_t flags = 0x02 | 0x04 | 0x08 | 0x20;  // clean session, a will at QoS 1, retained
   if (!user.empty()) flags |= 0x80 | 0x40;
   body += (char)flags;

@@ -6,7 +6,7 @@
 std::string iso(time_t t);  // UTC, e.g. 2026-11-08T17:00:00Z
 
 // ---- request parsing ----
-std::string soapAction(const std::string& body);       // local name of the first element in Body
+std::string soapAction(const std::string& body);           // local name of the first element in Body
 std::string soapConsumerAddress(const std::string& body);  // Subscribe's ConsumerReference address
 std::string xmlFirstText(const std::string& xml, const char* localName);
 
@@ -50,6 +50,6 @@ std::string soapUnsubscribeReply();
 std::string soapNotify(bool active, bool initial, time_t now);
 
 // ---- WS-Discovery ----
-std::string discoveryProbeMatch(const std::string& relatesTo, const std::string& ip, uint16_t onvifPort,
-                                const std::string& serial, uint32_t messageNo);
+std::string discoveryProbeMatch(const std::string& relatesTo, const std::string& ip, uint16_t onvifPort, const std::string& serial,
+                                uint32_t messageNo);
 std::string discoveryHello(const std::string& ip, uint16_t onvifPort, const std::string& serial, uint32_t messageNo);

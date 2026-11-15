@@ -11,7 +11,9 @@
 // because it means a recording is missing. A message there is no memory for is counted as dropped, and the alert goes on.
 void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
-  bool wanted = kind == CAM_EVENT_REPORT ? w.alerts : kind == CAM_EVENT_NOT_DELIVERED || kind == CAM_EVENT_TEST_ALERT ? w.alerts || w.problems : w.problems;
+  bool wanted = kind == CAM_EVENT_REPORT                                          ? w.alerts
+                : kind == CAM_EVENT_NOT_DELIVERED || kind == CAM_EVENT_TEST_ALERT ? w.alerts || w.problems
+                                                                                  : w.problems;
   if (w.url.empty() || !wanted) return;
   try {
     std::string event = camEventName(kind, true, delayed);
@@ -57,9 +59,9 @@ void SensorCamServer::startHook(uint32_t now) {
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind; the message waits.
   const std::string& body = hooks_.oldest();
-  std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) + "\r\nContent-Type: " +
-                    (cfg_.webhook.text ? "text/plain; charset=utf-8" : JSON_TYPE) + "\r\nContent-Length: " + std::to_string(body.size()) +
-                    "\r\nConnection: close\r\n\r\n";
+  std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
+                    "\r\nContent-Type: " + (cfg_.webhook.text ? "text/plain; charset=utf-8" : JSON_TYPE) +
+                    "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
   out.reserve(out.size() + body.size());
   out += body;
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);

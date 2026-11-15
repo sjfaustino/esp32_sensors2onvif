@@ -14,10 +14,23 @@ static void classifies_storage_paths() {
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/settings.txt"));  // the node's own settings
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/name.txt"));
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/text.json"));
-  const char* bad[] = {"", "/", "..", "../x", "clear.h264/x", "aa-bb-cc-dd-ee-01", "AA:BB:CC:DD:EE:01", "AA-BB-CC-DD-EE-01/",
-                       "AA-BB-CC-DD-EE-01/0", "AA-BB-CC-DD-EE-01/256", "AA-BB-CC-DD-EE-01/01", "AA-BB-CC-DD-EE-01/..",
-                       "AA-BB-CC-DD-EE-01/1/..", "AA-BB-CC-DD-EE-01/1/evil.h264", "AA-BB-CC-DD-EE-01/1/active.h264.tmp",
-                       "AA-BB-CC-DD-EE-01/1/active.h264/x", "../AA-BB-CC-DD-EE-01/1/active.h264"};
+  const char* bad[] = {"",
+                       "/",
+                       "..",
+                       "../x",
+                       "clear.h264/x",
+                       "aa-bb-cc-dd-ee-01",
+                       "AA:BB:CC:DD:EE:01",
+                       "AA-BB-CC-DD-EE-01/",
+                       "AA-BB-CC-DD-EE-01/0",
+                       "AA-BB-CC-DD-EE-01/256",
+                       "AA-BB-CC-DD-EE-01/01",
+                       "AA-BB-CC-DD-EE-01/..",
+                       "AA-BB-CC-DD-EE-01/1/..",
+                       "AA-BB-CC-DD-EE-01/1/evil.h264",
+                       "AA-BB-CC-DD-EE-01/1/active.h264.tmp",
+                       "AA-BB-CC-DD-EE-01/1/active.h264/x",
+                       "../AA-BB-CC-DD-EE-01/1/active.h264"};
   for (const char* p : bad) TEST_ASSERT_EQUAL_MESSAGE(CAM_PATH_INVALID, camClassifyPath(p), p);
 }
 
@@ -57,9 +70,11 @@ static void splits_picture_files() {
 }
 
 static void accepts_sps_differing_only_in_vui() {
-  uint8_t hub[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x70, 0x11, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
+  uint8_t hub[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x70, 0x11, 0x00, 0x00,
+                   0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
   // The header ffmpeg.wasm produced in a real browser.
-  uint8_t browser[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x61, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
+  uint8_t browser[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x61, 0x00, 0x00,
+                       0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
   CamNal a{hub, sizeof(hub)}, b{browser, sizeof(browser)};
   TEST_ASSERT_FALSE(camSameNal(a, b));
   TEST_ASSERT_TRUE(camCompatibleSps(a, b));

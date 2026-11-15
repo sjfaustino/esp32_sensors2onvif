@@ -49,7 +49,8 @@ void SensorCamServer::saveWaiting() {
   };
   out += (char)1;
   out += (char)0;  // the count, filled in below
-  for (int n = 0; n < delayed_.count(); n++) add(delayed_.at(n).mac, delayed_.at(n).input, delayed_.at(n).direction, delayed_.at(n).several, false, delayed_.at(n).replay);
+  for (int n = 0; n < delayed_.count(); n++)
+    add(delayed_.at(n).mac, delayed_.at(n).input, delayed_.at(n).direction, delayed_.at(n).several, false, delayed_.at(n).replay);
   const CamDelayedQueue& missed = delivery_.missed();
   for (int n = 0; n < missed.count(); n++) add(missed.at(n).mac, missed.at(n).input, 0, missed.at(n).several, true, true);
   for (int id = 1; id <= sensors_.count(); id++) {
@@ -71,8 +72,10 @@ void SensorCamServer::loadWaiting() {
     const uint8_t* p = (const uint8_t*)in.data() + 6 + i * 9;
     int id = findSlot(p, p[6]);
     if (!id) continue;  // deleted since
-    if (p[8] & 2) delivery_.keepMissed(p, p[6], p[8] & 1, holdFor(id), now);
-    else delayed_.add(p, p[6], p[7], false, now, holdFor(id), p[8] & 1, (p[8] & 4) != 0);  // old times mean nothing on a new millis() clock
+    if (p[8] & 2)
+      delivery_.keepMissed(p, p[6], p[8] & 1, holdFor(id), now);
+    else
+      delayed_.add(p, p[6], p[7], false, now, holdFor(id), p[8] & 1, (p[8] & 4) != 0);  // old times mean nothing on a new millis() clock
   }
   waitingDirty_ = count > 0;
 }
@@ -216,7 +219,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now, b
   bool wasActive = sensors_.active(id);
   bool wasReported = h.reported;
   h.reported = r.active;
-  bool quiet = r.active && quietNow(id);  // logged, but the NVR is not told
+  bool quiet = r.active && quietNow(id);                                               // logged, but the NVR is not told
   CamEventKind heldKind = r.active && !quiet ? heldAs(id, r, now) : CAM_EVENT_REPORT;  // the same, for the arm mode
   bool disarmed = heldKind != CAM_EVENT_REPORT;
   bool held = quiet || disarmed;
@@ -232,7 +235,8 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now, b
   // Repeats and heartbeats that change nothing would push real events out of the log.
   // An activation is logged unless it only repeats one whose alert is still running; a sensor that never reports clear
   // still has each new alert logged.
-  if (late || (r.active ? !wasReported || !wasActive : wasReported)) logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? heldKind : CAM_EVENT_REPORT);
+  if (late || (r.active ? !wasReported || !wasActive : wasReported))
+    logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? heldKind : CAM_EVENT_REPORT);
   if (r.active && !held && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
   if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
   return true;
@@ -462,7 +466,8 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
   node.updateSize = image.size;
   uint8_t out[CAM_FIRMWARE_PART_LEN_MAX];
   if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
-    int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(), key, out);
+    int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(),
+                            key, out);
     cfg_.espNowSend(mac, out, n);
     node.updateOffset = 0;
     return;
@@ -637,9 +642,7 @@ int SensorCamServer::slotForPath(const std::string& path) const {
   return findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1));
 }
 
-std::string SensorCamServer::slotName(int id) const {
-  return camMacText(slots_[id - 1].mac) + "/" + std::to_string(slots_[id - 1].input);
-}
+std::string SensorCamServer::slotName(int id) const { return camMacText(slots_[id - 1].mac) + "/" + std::to_string(slots_[id - 1].input); }
 
 bool SensorCamServer::sensorFits(const std::string& path) const {
   uint8_t mac[6];

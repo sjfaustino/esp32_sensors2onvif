@@ -22,17 +22,17 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_NVR_GONE = 6,       // the hub's own events from here on
   CAM_EVENT_NVR_BACK = 7,
   CAM_EVENT_HUB_STARTED = 8,
-  CAM_EVENT_NETWORK_LOST = 9,  // the hub was off its Wi-Fi network for a while, without restarting
+  CAM_EVENT_NETWORK_LOST = 9,     // the hub was off its Wi-Fi network for a while, without restarting
   CAM_EVENT_DISARMED_ALERT = 10,  // an alert while the hub was disarmed: logged, not sent to the NVR
   CAM_EVENT_ARMED = 11,           // hub events; the detail says from where
   CAM_EVENT_DISARMED = 12,
   CAM_EVENT_HOME_ALERT = 13,  // an interior sensor's alert while armed home: logged, not sent to the NVR
   CAM_EVENT_ARMED_HOME = 14,
-  CAM_EVENT_TEST_ALERT = 15,  // asked for on the page or in Home Assistant: a real alert, marked as a test
-  CAM_EVENT_RESTART_LOOP = 16,  // several unplanned starts within an hour; a hub start's "active" says it was unplanned
-  CAM_EVENT_NODE_FAULT = 17,    // a node restarted for a fault: a crash, its watchdog or a brownout
+  CAM_EVENT_TEST_ALERT = 15,           // asked for on the page or in Home Assistant: a real alert, marked as a test
+  CAM_EVENT_RESTART_LOOP = 16,         // several unplanned starts within an hour; a hub start's "active" says it was unplanned
+  CAM_EVENT_NODE_FAULT = 17,           // a node restarted for a fault: a crash, its watchdog or a brownout
   CAM_EVENT_BATTERY_RUNNING_OUT = 18,  // a node's battery is forecast to run out within a week
-  CAM_EVENT_KIND_COUNT        // not a kind: one more than the last, so code can go through them all
+  CAM_EVENT_KIND_COUNT                 // not a kind: one more than the last, so code can go through them all
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
 const char* camEventName(uint8_t kind, bool active, bool delayed);
@@ -66,11 +66,11 @@ struct CamEvent {
 const size_t CAM_EVENT_RECORD = 96;
 void camEventEncode(const CamEvent& e, uint8_t out[CAM_EVENT_RECORD]);
 bool camEventDecode(const uint8_t in[CAM_EVENT_RECORD], CamEvent& out);  // false for a damaged record
-std::string camEventCsvLine(const CamEvent& e);                         // with its line break
+std::string camEventCsvLine(const CamEvent& e);                          // with its line break
 
 class CamEventLog {
  public:
-  static const int RECENT = 64;                // the newest, kept in memory for the Events page
+  static const int RECENT = 64;               // the newest, kept in memory for the Events page
   static const size_t FILE_MAX = 256 * 1024;  // then the log becomes the older log, so about 5400 events are kept
 
   explicit CamEventLog(const CamStorage& storage) : storage_(storage) {}
@@ -101,7 +101,7 @@ class CamEventLog {
   uint32_t added_ = 0;
   std::string pending_;  // encoded records not yet on storage
   bool saveFailed_ = false;
-  size_t oldBytes_ = 0, curBytes_ = 0;        // whole records in each log; a cut-off record after them is written over
+  size_t oldBytes_ = 0, curBytes_ = 0;  // whole records in each log; a cut-off record after them is written over
   // The download in progress: a snapshot of the sizes, and where it has got to.
   size_t legacyOld_ = 0, legacyCur_ = 0, oldRecords_ = 0, allRecords_ = 0;
   size_t lineStart_ = 0, lineIndex_ = 0;  // the line being handed out, and the record after it

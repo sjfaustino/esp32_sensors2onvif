@@ -9,15 +9,15 @@ struct HubSettings {
   String wifiSsid[2], wifiPassword[2];  // [0] is the main network, [1] the backup
   uint16_t onvifPort = 0, webPort = 0, rtspPort = 0;
   String hubName, webPassword, sensorToken;
-  String extraHosts;  // other names the web port answers to, comma-separated
-  String espNowKey;  // sensor nodes sign their ESP-NOW messages with it
-  String pairingKey;  // the hub's X25519 private key, for pairing nodes; made once, kept by a reset, and in backups
+  String extraHosts;   // other names the web port answers to, comma-separated
+  String espNowKey;    // sensor nodes sign their ESP-NOW messages with it
+  String pairingKey;   // the hub's X25519 private key, for pairing nodes; made once, kept by a reset, and in backups
   String snapshotKey;  // keys the snapshot address's token; never shown, and not in backups
   CamWebhook webhook;
   CamMqtt mqtt;
   CamArmMode armMode = CAM_ARMED_AWAY;  // not in backups, so restoring one never disarms the hub
-  int64_t disarmedUntil = 0;  // a timed disarm's end: see camTimedDisarmOver
-  uint16_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
+  int64_t disarmedUntil = 0;            // a timed disarm's end: see camTimedDisarmOver
+  uint16_t rearmMinutes = 0;            // how long a disarm from Home Assistant lasts; 0 until armed again
   bool healthAlarm = false;
   // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
   String staticFor, staticIp, staticMask, staticGateway, staticDns;
@@ -49,7 +49,8 @@ bool storeMqtt(const CamMqtt& m);
 bool storeArmed(CamArmMode mode, int64_t until);
 bool storeRearm(uint32_t minutes);
 bool resetSettings();
-bool forgetKeys();  // the sensor token, ESP-NOW key, pairing key and snapshot secret; loadSettings makes new ones  // erases everything except what the sensors need to keep reporting
+bool forgetKeys();  // the sensor token, ESP-NOW key, pairing key and snapshot secret; loadSettings makes new ones  // erases everything except what
+                    // the sensors need to keep reporting
 
 std::string backupText();
 bool restoreText(const std::string& text);  // all or nothing

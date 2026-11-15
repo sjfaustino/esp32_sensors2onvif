@@ -118,8 +118,10 @@ bool storeSettings(const CamSettings& s) {
   return withPrefs("net", [&](Preferences& p) {
     bool done = p.putUShort("onvif", s.onvifPort) == 2 && p.putUShort("web", s.webPort) == 2 && p.putUShort("rtsp", s.rtspPort) == 2;
     if (!s.name.empty()) done = done && putText(p, "name", s.name.c_str());
-    if (!s.passwordOn) done = done && putText(p, "webpw", "");
-    else if (!s.password.empty()) done = done && putText(p, "webpw", s.password.c_str());
+    if (!s.passwordOn)
+      done = done && putText(p, "webpw", "");
+    else if (!s.password.empty())
+      done = done && putText(p, "webpw", s.password.c_str());
     if (s.hostsGiven) done = done && putText(p, "hosts", s.hosts.c_str());
     return done;
   });
@@ -137,7 +139,8 @@ void forgetPorts() {
 bool storeWifi() {
   const HubSettings& s = settings;
   return withPrefs("wifi", [&](Preferences& p) {
-    return putText(p, "ssid", s.wifiSsid[0]) && putText(p, "password", s.wifiPassword[0]) && putText(p, "ssid2", s.wifiSsid[1]) && putText(p, "password2", s.wifiPassword[1]);
+    return putText(p, "ssid", s.wifiSsid[0]) && putText(p, "password", s.wifiPassword[0]) && putText(p, "ssid2", s.wifiSsid[1]) &&
+           putText(p, "password2", s.wifiPassword[1]);
   });
 }
 
@@ -163,7 +166,9 @@ bool rememberWifi(const std::string& ssid, const std::string& password, bool bac
 
 bool storeTime(const CamTime& t) {
   String server = t.server.empty() ? settings.ntpServer : String(t.server.c_str());
-  bool ok = withPrefs("net", [&](Preferences& p) { return p.putBool("ntp", t.ntp) == 1 && p.putInt("tzoff", t.offsetMinutes) == 4 && p.putInt("tzdst", t.dst) == 4 && putText(p, "ntpsrv", server); });
+  bool ok = withPrefs("net", [&](Preferences& p) {
+    return p.putBool("ntp", t.ntp) == 1 && p.putInt("tzoff", t.offsetMinutes) == 4 && p.putInt("tzdst", t.dst) == 4 && putText(p, "ntpsrv", server);
+  });
   if (!ok) return false;
   settings.timeNtp = t.ntp;
   settings.ntpServer = server;
@@ -173,7 +178,8 @@ bool storeTime(const CamTime& t) {
 }
 
 bool storeSchedule(const CamSchedule& s) {
-  bool ok = withPrefs("net", [&](Preferences& p) { return p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4; });
+  bool ok = withPrefs(
+      "net", [&](Preferences& p) { return p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4; });
   if (ok) settings.schedule = s;
   return ok;
 }
@@ -185,7 +191,8 @@ bool storeNvr(const std::string& ip) {
 bool storeAddress(const CamAddress& a, const String& network) {
   return withPrefs("net", [&](Preferences& p) {
     if (a.dhcp) return p.remove("ipfor") || !p.isKey("ipfor");
-    return putText(p, "ipfor", network) && putText(p, "ip", a.ip.c_str()) && putText(p, "mask", a.mask.c_str()) && putText(p, "gw", a.gateway.c_str()) && putText(p, "dns", a.dns.c_str());
+    return putText(p, "ipfor", network) && putText(p, "ip", a.ip.c_str()) && putText(p, "mask", a.mask.c_str()) &&
+           putText(p, "gw", a.gateway.c_str()) && putText(p, "dns", a.dns.c_str());
   });
 }
 
@@ -199,13 +206,15 @@ bool storeHealthAlarm(bool on) {
 
 bool storeWebhook(const CamWebhook& w) {
   return withPrefs("net", [&w](Preferences& p) {
-    return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1;
+    return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 &&
+           p.putBool("hookpr", w.problems) == 1;
   });
 }
 
 bool storeMqtt(const CamMqtt& m) {
   return withPrefs("net", [&m](Preferences& p) {
-    return putText(p, "mqhost", m.host.c_str()) && p.putUShort("mqport", m.port) == 2 && putText(p, "mquser", m.user.c_str()) && putText(p, "mqpw", m.password.c_str());
+    return putText(p, "mqhost", m.host.c_str()) && p.putUShort("mqport", m.port) == 2 && putText(p, "mquser", m.user.c_str()) &&
+           putText(p, "mqpw", m.password.c_str());
   });
 }
 
@@ -225,9 +234,11 @@ bool storeRearm(uint32_t minutes) {
 // Pictures live on LittleFS, so they survive this.
 bool resetSettings() {
   bool ok = true;
-  String token = settings.sensorToken, key = settings.espNowKey, pair = settings.pairingKey;  // the sensors are kept, so the secrets they send with are kept too
+  String token = settings.sensorToken, key = settings.espNowKey,
+         pair = settings.pairingKey;  // the sensors are kept, so the secrets they send with are kept too
   for (const char* space : {"wifi", "net"}) ok = withPrefs(space, [](Preferences& p) { return p.clear(); }) && ok;
-  return ok && withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key) && putText(p, "pairkey", pair); });
+  return ok &&
+         withPrefs("net", [&](Preferences& p) { return putText(p, "token", token) && putText(p, "enkey", key) && putText(p, "pairkey", pair); });
 }
 
 bool forgetKeys() {
@@ -245,12 +256,14 @@ struct BackupKey {
   char type;  // s text, u 16-bit number, i number, b true or false
 };
 static const BackupKey BACKUP_KEYS[] = {
-    {"wifi", "ssid", 's'},    {"wifi", "password", 's'}, {"wifi", "ssid2", 's'},  {"wifi", "password2", 's'}, {"net", "onvif", 'u'}, {"net", "web", 'u'},
-    {"net", "rtsp", 'u'},     {"net", "name", 's'},      {"net", "webpw", 's'},   {"net", "token", 's'},      {"net", "ipfor", 's'}, {"net", "ip", 's'},
-    {"net", "mask", 's'},     {"net", "gw", 's'},        {"net", "dns", 's'},     {"net", "nvrip", 's'},      {"net", "ntp", 'b'},   {"net", "ntpsrv", 's'},
-    {"net", "tzoff", 'i'},    {"net", "tzdst", 'i'},     {"net", "rben", 'b'},    {"net", "rbday", 'i'},      {"net", "rbmin", 'i'}, {"net", "hlth", 'b'},
-    {"net", "enkey", 's'},   {"net", "hook", 's'},    {"net", "hooktx", 'b'},     {"net", "hookal", 'b'}, {"net", "hookpr", 'b'}, {"net", "hosts", 's'},
-    {"net", "pairkey", 's'}, {"net", "rearm", 'u'},   {"net", "mqhost", 's'},  {"net", "mqport", 'u'},    {"net", "mquser", 's'},  {"net", "mqpw", 's'},
+    {"wifi", "ssid", 's'},   {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
+    {"net", "web", 'u'},     {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
+    {"net", "ipfor", 's'},   {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
+    {"net", "nvrip", 's'},   {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
+    {"net", "rben", 'b'},    {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
+    {"net", "hook", 's'},    {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hosts", 's'},
+    {"net", "pairkey", 's'}, {"net", "rearm", 'u'},     {"net", "mqhost", 's'}, {"net", "mqport", 'u'},     {"net", "mquser", 's'},
+    {"net", "mqpw", 's'},
 };
 
 std::string backupText() {
@@ -258,7 +271,10 @@ std::string backupText() {
   for (const BackupKey& k : BACKUP_KEYS) {
     withPrefs(k.space, [&](Preferences& p) {
       if (!p.isKey(k.key)) return true;
-      String value = k.type == 's' ? p.getString(k.key, "") : k.type == 'u' ? String(p.getUShort(k.key, 0)) : k.type == 'i' ? String(p.getInt(k.key, 0)) : String(p.getBool(k.key, false) ? 1 : 0);
+      String value = k.type == 's'   ? p.getString(k.key, "")
+                     : k.type == 'u' ? String(p.getUShort(k.key, 0))
+                     : k.type == 'i' ? String(p.getInt(k.key, 0))
+                                     : String(p.getBool(k.key, false) ? 1 : 0);
       out += std::string(k.space) + "." + k.key + "=";
       char hex[4];
       for (size_t i = 0; i < value.length(); i++) {

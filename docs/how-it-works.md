@@ -72,6 +72,15 @@ alert starts, and goes back in the queue to play in full afterwards. Late alerts
 have live. Up to 16 records wait; beyond that a late alert joins a waiting one from the same sensor, or else the newest
 waiting record, which then stands for several sensors and shows the built-in "PAST EVENT, CHECK LOGS".
 
+## Where things are
+
+`lib/s2o_proto` holds every ESP-NOW message, SHA-1 and X25519, with no heap and no Arduino, and is the one copy the
+nodes build too, from a checkout beside this one. `lib/sensorcam` is the hub. `SensorCamServer` is still the hub's
+centre: the HTTP, ONVIF and RTSP servers share its one select loop and its sensor table, and splitting those apart would
+cost the PC build its one-process test harness. What has its own class has a clear edge: `CamNodeImages` (node
+firmware files), `CamHookQueue` (the webhook's waiting messages), `CamEventLog`, `CamDeliveryWatch`, `SubTable` and
+`SensorBoard`. Per-node data is in `nodes_`, one entry per node folder, which each sensor's `Slot` points to.
+
 ## Pairing
 
 `lib/sensorcam/cam_x25519.cpp` is X25519 after TweetNaCl, checked against RFC 7748's vectors. It is slow, tens of
@@ -82,6 +91,10 @@ picks the key by the sender and needs no memory, as before.
 A node's info (message 6) is read the same way, from its `about.txt`, into each of its sensors' rows. It arrives with
 every regular report but is written only when it differs, so flash is not worn. The silent check asks `silentMsFor`: the
 node's own setting, else a quarter over its report time, else the hub's 3 hours.
+
+A paired node's fresh number lives in its `Node` entry: the newest and the one before, so a confirmation lost on the
+air costs nothing. It changes with every report that is not a resend, and is only in memory, so after a restart of the
+hub every node proves itself once.
 
 A sealed message (7) is opened with the key of the node it comes from, found by its MAC address alone, and the message
 inside gets a signature made with that key appended, so `espNowReport` checks it as if it had come plain; `sealed` then

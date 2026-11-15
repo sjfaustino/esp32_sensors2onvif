@@ -59,7 +59,8 @@ class CamJson {
   CamJson& object(const char* k) { return key(k).object(); }
   CamJson& array(const char* k) { return key(k).array(); }
   // null when the value is not known.
-  CamJson& num(const char* k, bool known, long long v) { return known ? num(k, v) : null(k); }  CamJson& str(const char* k, bool known, const std::string& v) { return known ? str(k, v) : null(k); }
+  CamJson& num(const char* k, bool known, long long v) { return known ? num(k, v) : null(k); }
+  CamJson& str(const char* k, bool known, const std::string& v) { return known ? str(k, v) : null(k); }
 
   CamJson& flag(const char* k, const char* v) = delete;  // a text would turn silently into true
 

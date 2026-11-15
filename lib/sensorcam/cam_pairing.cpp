@@ -52,9 +52,12 @@ bool camParsePairing(const std::string& text, uint8_t publicKey[CAM_X25519_LEN],
     at = end + 1;
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
-    if (line.compare(0, 7, "public=") == 0) havePublic = camParseHex(line.substr(7), publicKey, CAM_X25519_LEN);
-    else if (line.compare(0, 4, "key=") == 0) haveKey = camParseHex(line.substr(4), key, CAM_NODE_KEY_LEN);
-    else return false;
+    if (line.compare(0, 7, "public=") == 0)
+      havePublic = camParseHex(line.substr(7), publicKey, CAM_X25519_LEN);
+    else if (line.compare(0, 4, "key=") == 0)
+      haveKey = camParseHex(line.substr(4), key, CAM_NODE_KEY_LEN);
+    else
+      return false;
   }
   return havePublic && haveKey;
 }

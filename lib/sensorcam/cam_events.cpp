@@ -5,9 +5,9 @@
 
 static const char LOG[] = "events.log";
 static const char LOG_OLD[] = "events-old.log";
-static const char LEGACY_CSV[] = "events.csv";          // the history of firmware before this log; read, never written
+static const char LEGACY_CSV[] = "events.csv";  // the history of firmware before this log; read, never written
 static const char LEGACY_CSV_OLD[] = "events-old.csv";
-static const char LEGACY_BIN[] = "events.bin";          // that firmware's newest events, converted once
+static const char LEGACY_BIN[] = "events.bin";  // that firmware's newest events, converted once
 static const char CSV_HEADER[] = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n";
 static const uint8_t RECORD_VERSION = 1;
 static const size_t PENDING_MAX = 128 * CAM_EVENT_RECORD;  // while storage refuses, the oldest waiting ones go first
@@ -57,13 +57,15 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
     case CAM_EVENT_NVR_GONE: return "The NVR is not listening to " + who + ": alerts are not reaching it";
     case CAM_EVENT_NVR_BACK: return "The NVR is listening to " + who + " again";
     case CAM_EVENT_HUB_STARTED:
-      return who + " started (" + (detail.empty() ? std::string("unknown") : detail) + ")" + (known ? ", after being off for up to " + camDurationText(offS) : "");
+      return who + " started (" + (detail.empty() ? std::string("unknown") : detail) + ")" +
+             (known ? ", after being off for up to " + camDurationText(offS) : "");
     case CAM_EVENT_NETWORK_LOST:
       return who + " was off its Wi-Fi network for up to " + (known ? camDurationText(offS) : std::string("an unknown time")) +
              "; alerts in that time reach the NVR as past events once it is back";
     case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
     case CAM_EVENT_RESTART_LOOP: return who + " has restarted by itself " + detail + ": something keeps stopping it, so alerts may be missed";
-    case CAM_EVENT_NODE_FAULT: return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the ESP-NOW page";
+    case CAM_EVENT_NODE_FAULT:
+      return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the ESP-NOW page";
     case CAM_EVENT_BATTERY_RUNNING_OUT: return who + ": the battery will run out within a week";
     case CAM_EVENT_ARMED_HOME:
       return who + " was armed home" + (detail.empty() ? std::string() : " from " + detail) + ": interior sensors are logged but not sent to the NVR";
@@ -158,7 +160,8 @@ std::string camEventCsvLine(const CamEvent& e) {
   static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
   std::string what = camEventName(e.kind, e.active, e.delayed);
-  if (e.offS != CAM_AGE_UNKNOWN && (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST)) what += " for up to " + camDurationText(e.offS);
+  if (e.offS != CAM_AGE_UNKNOWN && (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST))
+    what += " for up to " + camDurationText(e.offS);
   int nearest = -1;
   for (int i = 0; i < e.targetCount; i++)
     if (nearest < 0 || e.targets[i].distanceCm < e.targets[nearest].distanceCm) nearest = i;
@@ -170,8 +173,9 @@ std::string camEventCsvLine(const CamEvent& e) {
     if (t.distanceCm != CAM_DISTANCE_UNKNOWN) distance = metres;
     if (t.direction < CAM_DIRECTIONS) direction = DIRECTIONS[t.direction];
   }
-  return (clockOk ? iso(e.received) : std::string()) + "," + (clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string()) + "," + e.sensor + "," +
-         csvText(e.text) + "," + what + "," + (e.battery == CAM_BATTERY_UNKNOWN ? std::string() : std::to_string(e.battery)) + "," + distance + "," + direction + "\n";
+  return (clockOk ? iso(e.received) : std::string()) + "," + (clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string()) + "," +
+         e.sensor + "," + csvText(e.text) + "," + what + "," + (e.battery == CAM_BATTERY_UNKNOWN ? std::string() : std::to_string(e.battery)) + "," +
+         distance + "," + direction + "\n";
 }
 
 // ---- the log ----
@@ -193,8 +197,9 @@ static void convertLegacy(const CamStorage& storage) {
   if (storage.readFile(LEGACY_BIN, blob, sizeof(header) + CamEventLog::RECENT * sizeof(CamEvent)) && blob.size() >= sizeof(header)) {
     memcpy(header, blob.data(), sizeof(header));
     size_t size = header[1];
-    bool ok = header[0] == 0x31564543 && (size == sizeof(CamEvent) || size == OLD_SIZE) && blob.size() == sizeof(header) + size * CamEventLog::RECENT &&
-              header[2] <= (uint32_t)CamEventLog::RECENT && header[3] < (uint32_t)CamEventLog::RECENT;
+    bool ok = header[0] == 0x31564543 && (size == sizeof(CamEvent) || size == OLD_SIZE) &&
+              blob.size() == sizeof(header) + size * CamEventLog::RECENT && header[2] <= (uint32_t)CamEventLog::RECENT &&
+              header[3] < (uint32_t)CamEventLog::RECENT;
     std::string records;
     for (uint32_t i = 0; ok && i < header[2]; i++) {  // oldest first
       size_t at = (header[3] + CamEventLog::RECENT - header[2] + i) % CamEventLog::RECENT;

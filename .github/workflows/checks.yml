@@ -35,6 +35,11 @@ jobs:
           Get-ChildItem web/*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
           npx --yes prettier@3.3.3 --print-width 120 --end-of-line lf --check web/*.js web/*.css
 
+      - name: C++ style
+        run: |
+          pip install clang-format==19.1.7
+          clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.h' | Where-Object { $_ -notmatch '_data.cpp$' })
+
       - name: Unit tests
         run: pio test -e native
 

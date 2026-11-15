@@ -39,7 +39,7 @@ class CamDeliveryWatch {
     missed_.add(mac, input, 0, false, now, holdMs, several, true);
   }
   void forget(int id) { pending_[id - 1] = CamPendingCheck(); }  // the sensor is gone
-  void forgetChecks() {  // alerts from before now are not checked
+  void forgetChecks() {                                          // alerts from before now are not checked
     for (CamPendingCheck& p : pending_) p = CamPendingCheck();
   }
   const CamPendingCheck& pending(int id) const { return pending_[id - 1]; }

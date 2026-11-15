@@ -61,12 +61,14 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
     std::string auth = headerValue(text, "authorization");
     bool allowed = logins_.allowed(c.peer, now);
-    bool ok = allowed && (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword));
+    bool ok = allowed &&
+              (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword));
     if (!auth.empty() && allowed) logins_.note(c.peer, ok, now);
     if (ok) {
       c.authed = true;
     } else {
-      c.out += "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + RTSP_REALM + "\", nonce=\"" + c.nonce + "\"\r\nWWW-Authenticate: Basic realm=\"" + RTSP_REALM + "\"\r\n\r\n";
+      c.out += "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + RTSP_REALM + "\", nonce=\"" + c.nonce +
+               "\"\r\nWWW-Authenticate: Basic realm=\"" + RTSP_REALM + "\"\r\n\r\n";
       return;
     }
   }

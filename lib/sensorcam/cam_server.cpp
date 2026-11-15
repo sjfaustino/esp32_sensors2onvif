@@ -12,8 +12,15 @@
 #include "cam_server_internal.h"
 
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
-    : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(CAM_REPEAT_TRUE_MS),
-      storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), nodes_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
+    : cfg_(cfg),
+      localIp_(localIp),
+      millis_(millisFn),
+      sensors_(CAM_MAX_SENSORS, cfg.holdMs),
+      signal_(CAM_REPEAT_TRUE_MS),
+      storage_(cfg.fsRoot),
+      slots_(CAM_MAX_SENSORS),
+      nodes_(CAM_MAX_SENSORS),
+      health_(CAM_MAX_SENSORS) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
   sealNumber_ = cfg.sealStart;
 }
@@ -63,7 +70,8 @@ bool SensorCamServer::begin() {
   netInit();
   onvifListen_ = listenOn(cfg_.onvifPort);
   webListen_ = listenOn(cfg_.webPort);
-  if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort) captiveListen_ = listenOn(cfg_.captivePort);
+  if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort)
+    captiveListen_ = listenOn(cfg_.captivePort);
   rtspListen_ = listenOn(cfg_.rtspPort);
   openDiscovery();
   nextFrameAt_ = millis_();
@@ -94,8 +102,8 @@ std::string SensorCamServer::debugLine() {
   for (const RtspConn& c : rtsp_) video += c.fd >= 0;
   for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
-         ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " + std::to_string(push) +
-         ", short of memory " + std::to_string(memoryFailures_);
+         ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " +
+         std::to_string(push) + ", short of memory " + std::to_string(memoryFailures_);
 }
 
 void SensorCamServer::networkUp() {
@@ -198,8 +206,9 @@ void SensorCamServer::undoPull(HttpConn& c) {
 // Memory ran out while answering. Only this request fails: what it was building is let go, and it is told to try
 // again. A hub that stopped here would miss alerts while it restarted, and a new firmware would be undone.
 void SensorCamServer::shortOfMemory(HttpConn& c) {
-  static const char REPLY[] = "HTTP/1.1 507 Insufficient Storage\r\nContent-Type: application/json\r\nContent-Length: 50\r\nConnection: close\r\n\r\n"
-                              "{\"ok\":false,\"error\":\"the hub is short of memory\"}\n";
+  static const char REPLY[] =
+      "HTTP/1.1 507 Insufficient Storage\r\nContent-Type: application/json\r\nContent-Length: 50\r\nConnection: close\r\n\r\n"
+      "{\"ok\":false,\"error\":\"the hub is short of memory\"}\n";
   static_assert(sizeof("{\"ok\":false,\"error\":\"the hub is short of memory\"}\n") - 1 == 50, "the length above must match");
   if (c.toFrameBuffer) {
     uploading_ = nullptr;
@@ -261,7 +270,8 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   if (!cfg_.onvifPassword.empty()) {
     ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword);
     // ONVIF allows these before logging in. A client needs the clock to build its login.
-    static const char* const OPEN[] = {"GetSystemDateAndTime", "GetCapabilities", "GetServices", "GetServiceCapabilities", "GetHostname", "GetEndpointReference", "GetWsdlUrl"};
+    static const char* const OPEN[] = {"GetSystemDateAndTime", "GetCapabilities",      "GetServices", "GetServiceCapabilities",
+                                       "GetHostname",          "GetEndpointReference", "GetWsdlUrl"};
     bool open = false;
     for (const char* name : OPEN) open = open || action == name;
     bool presented = !open && !xmlFirstText(body, "Password").empty(), allowed = logins_.allowed(c.peer, now);
@@ -465,7 +475,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   // Sensor reports are left out: their token already guards them, and a sensor set up with any name for the hub must
   // never have an alert refused.
   bool sensorReport = isGet && target.compare(0, 8, "/sensor?") == 0;
-  if (c.web && !sensorReport && !knownHost(headerValue(headers, "host"))) return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network Manager > HTTP > Other names");
+  if (c.web && !sensorReport && !knownHost(headerValue(headers, "host")))
+    return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network Manager > HTTP > Other names");
   if (isApi && !isGet) {  // a browser names the site a request came from, so another site cannot use this browser's login
     std::string origin = headerValue(headers, "origin");
     if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");
@@ -475,7 +486,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     // A refused firmware is read to its end before the reply, as the browser reports a reply that comes while it is
     // still sending as a bare network error, without the reason.
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
-    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength)) return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
+    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength))
+      return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;
     c.firmwareActive = true;
     // Video is what uses the network's memory most, and an update that runs out of it stops the hub. The NVR
@@ -490,7 +502,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   }
   if (method == "PUT" && target == "/api/node-firmware") {  // to storage, read through as it arrives, as it is far larger than memory
     if (!authorized(c, headers)) return needLogin(CAM_MAX_NODE_IMAGE);
-    if (!contentLength || contentLength > CAM_MAX_NODE_IMAGE) return refuse(413, "that file is not the right size for a node's firmware", CAM_MAX_NODE_IMAGE);
+    if (!contentLength || contentLength > CAM_MAX_NODE_IMAGE)
+      return refuse(413, "that file is not the right size for a node's firmware", CAM_MAX_NODE_IMAGE);
     if (firmwareOwner_ || nodeImageOwner_) return refuse(507, "the hub is busy with another update; try again", CAM_MAX_NODE_IMAGE);
     if (!nodeImages_.begin()) return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
     startNodeImage(c, contentLength);
@@ -548,8 +561,10 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
       frameKey_.clear();
     }
   } else if (isSnapshot) {
-    if (!cfg_.onvifPassword.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword))) c.out = httpResponse(403, "text/plain", "not authorized\n");
-    else serveSnapshot(c);
+    if (!cfg_.onvifPassword.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword)))
+      c.out = httpResponse(403, "text/plain", "not authorized\n");
+    else
+      serveSnapshot(c);
   } else if (isGet && (target.compare(0, 7, "/status") == 0 || target.compare(0, 7, "/events") == 0) && !authorized(c, headers)) {
     c.out = UNAUTHORIZED;
   } else if (isGet && target.compare(0, 7, "/sensor") == 0) {
@@ -697,7 +712,8 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
   // and is tried again on the next pass.
   std::string body = soapNotify(sensors_.anyActive(), !sub.initialized, time(nullptr));
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
-                    "\r\nContent-Type: application/soap+xml; charset=utf-8; action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
+                    "\r\nContent-Type: application/soap+xml; charset=utf-8; "
+                    "action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
   out.reserve(out.size() + body.size());
   out += body;
@@ -816,11 +832,12 @@ void SensorCamServer::housekeeping(uint32_t now) {
   // Reports that arrived since the last pass are saved together, and only then confirmed.
   if (confirmCount_) {
     bool kept = persist();
-    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++) cfg_.espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
+    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++)
+      cfg_.espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
     confirmCount_ = 0;  // unconfirmed, the sensors resend, and each resend tries the save again
   }
   if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap
-  if (waitingDirty_) saveWaiting();  // small, and it is what a restart would replay
+  if (waitingDirty_) saveWaiting();                     // small, and it is what a restart would replay
   if (!startNoted_) noteHubStart(now);
   if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= CAM_ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
   if (cfg_.watchNvr) checkNvr(now);
@@ -874,8 +891,10 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   }
   for (NotifyIo& n : notify_) {
     if (n.state == NotifyIo::IDLE) continue;
-    if (n.state == NotifyIo::WAIT_CLOSE) add(n.fd, rd);
-    else add(n.fd, wr);
+    if (n.state == NotifyIo::WAIT_CLOSE)
+      add(n.fd, rd);
+    else
+      add(n.fd, wr);
   }
   if (hook_.state != NotifyIo::IDLE) add(hook_.fd, hook_.state == NotifyIo::WAIT_CLOSE ? rd : wr);
   if (mqtt_.fd >= 0) {

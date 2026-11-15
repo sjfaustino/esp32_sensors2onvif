@@ -33,7 +33,7 @@ static void full_table_replaces_oldest() {
 static void other_clients_cannot_push_out_the_nvr() {
   SubTable t;
   t.protect(9);
-  uint32_t nvr = t.addPush("http://9/a", 9, 0).id;  // the oldest of all
+  uint32_t nvr = t.addPush("http://9/a", 9, 0).id;     // the oldest of all
   for (int i = 0; i < 50; i++) t.addPull(5, 100 + i);  // another client subscribing again and again
   TEST_ASSERT_NOT_NULL(t.find(nvr));
   TEST_ASSERT_EQUAL(SubTable::SIZE, t.count());
@@ -41,7 +41,8 @@ static void other_clients_cannot_push_out_the_nvr() {
 
 static const char SUBSCRIBE[] =
     "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"a\"><s:Header><Security><UsernameToken><Created>x</Created></UsernameToken></Security></s:Header>"
-    "<s:Body xmlns:w=\"b\"><w:Subscribe><w:ConsumerReference><a:Address> http://192.0.2.5:8180/onvif_notify_server/ </a:Address></w:ConsumerReference>"
+    "<s:Body xmlns:w=\"b\"><w:Subscribe><w:ConsumerReference><a:Address> http://192.0.2.5:8180/onvif_notify_server/ "
+    "</a:Address></w:ConsumerReference>"
     "<w:InitialTerminationTime>PT60S</w:InitialTerminationTime></w:Subscribe></s:Body></s:Envelope>";
 
 static void parses_action_after_security_header() { TEST_ASSERT_EQUAL_STRING("Subscribe", soapAction(SUBSCRIBE).c_str()); }
@@ -77,10 +78,13 @@ static void parses_headers_and_query() {
 // NVRs format their requests differently; the same meaning must read the same.
 static void xml_is_read_as_xml() {
   const char* forms[] = {
-      "<s:Envelope><s:Body><tev:Subscribe><wsnt:ConsumerReference><wsa:Address>http://10.0.0.5/e</wsa:Address></wsnt:ConsumerReference></tev:Subscribe></s:Body></s:Envelope>",
-      "<?xml version=\"1.0\"?>\r\n<Envelope>\n  <Body>\n    <Subscribe>\n      <ConsumerReference>\n        <Address>\n http://10.0.0.5/e \n</Address>\n"
+      "<s:Envelope><s:Body><tev:Subscribe><wsnt:ConsumerReference><wsa:Address>http://10.0.0.5/e</wsa:Address></wsnt:ConsumerReference></"
+      "tev:Subscribe></s:Body></s:Envelope>",
+      "<?xml version=\"1.0\"?>\r\n<Envelope>\n  <Body>\n    <Subscribe>\n      <ConsumerReference>\n        <Address>\n http://10.0.0.5/e "
+      "\n</Address>\n"
       "      </ConsumerReference>\n    </Subscribe>\n  </Body>\n</Envelope>",
-      "<s:Envelope xmlns:s=\"a>b\"><!-- a > comment --><s:Body note='1>0'><Subscribe><ConsumerReference><Address><![CDATA[http://10.0.0.5/e]]></Address>"
+      "<s:Envelope xmlns:s=\"a>b\"><!-- a > comment --><s:Body "
+      "note='1>0'><Subscribe><ConsumerReference><Address><![CDATA[http://10.0.0.5/e]]></Address>"
       "</ConsumerReference></Subscribe></s:Body></s:Envelope>",
       "<!DOCTYPE x [<!ENTITY y \"z\">]><Envelope><Body><Subscribe><ConsumerReference><Address>http://10.0.0.5/<!-- -->e</Address></ConsumerReference>"
       "</Subscribe></Body></Envelope>",
@@ -100,8 +104,15 @@ static void answers_every_call_the_nvr_made() {
   c.rtspPort = 8554;
   c.serial = "abc";
   c.now = 1800000000;
-  const char* calls[] = {"GetSystemDateAndTime", "GetCapabilities", "GetProfiles", "GetDeviceInformation", "GetStreamUri",
-                         "GetVideoEncoderConfiguration", "GetVideoEncoderConfigurationOptions", "GetAudioSources", "SetSynchronizationPoint"};
+  const char* calls[] = {"GetSystemDateAndTime",
+                         "GetCapabilities",
+                         "GetProfiles",
+                         "GetDeviceInformation",
+                         "GetStreamUri",
+                         "GetVideoEncoderConfiguration",
+                         "GetVideoEncoderConfigurationOptions",
+                         "GetAudioSources",
+                         "SetSynchronizationPoint"};
   for (const char* call : calls) TEST_ASSERT_FALSE_MESSAGE(soapDeviceReply(call, c).empty(), call);
   TEST_ASSERT_TRUE(soapDeviceReply("NoSuchAction", c).empty());
 }
@@ -186,13 +197,38 @@ static void rtp_reassembles_to_the_original_nals() {
 // The bytes MQTT 3.1.1 specifies, worked out by hand from the standard.
 static void mqtt_packets_match_the_standard() {
   std::string c = camMqttConnect("c", "", "", "w", "x", 60);
-  TEST_ASSERT_EQUAL_STRING("1013" "00044d51545404" "2e" "003c" "000163" "000177" "000178", camHex((const uint8_t*)c.data(), c.size()).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "1013"
+      "00044d51545404"
+      "2e"
+      "003c"
+      "000163"
+      "000177"
+      "000178",
+      camHex((const uint8_t*)c.data(), c.size()).c_str());
   c = camMqttConnect("c", "u", "p", "w", "x", 60);
-  TEST_ASSERT_EQUAL_STRING("1019" "00044d51545404" "ee" "003c" "000163" "000177" "000178" "000175" "000170", camHex((const uint8_t*)c.data(), c.size()).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "1019"
+      "00044d51545404"
+      "ee"
+      "003c"
+      "000163"
+      "000177"
+      "000178"
+      "000175"
+      "000170",
+      camHex((const uint8_t*)c.data(), c.size()).c_str());
   std::string p = camMqttPublish("t", "hi", true, 0);
-  TEST_ASSERT_EQUAL_STRING("3105000174" "6869", camHex((const uint8_t*)p.data(), p.size()).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "3105000174"
+      "6869",
+      camHex((const uint8_t*)p.data(), p.size()).c_str());
   p = camMqttPublish("t", "hi", false, 0x0102);
-  TEST_ASSERT_EQUAL_STRING("3207000174" "0102" "6869", camHex((const uint8_t*)p.data(), p.size()).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "3207000174"
+      "0102"
+      "6869",
+      camHex((const uint8_t*)p.data(), p.size()).c_str());
   p = camMqttPublish("t", std::string(200, 'a'), false, 0);  // a length of 203 takes two bytes
   TEST_ASSERT_EQUAL_STRING("30cb01", camHex((const uint8_t*)p.data(), 3).c_str());
   TEST_ASSERT_EQUAL(206, (int)p.size());
@@ -204,7 +240,12 @@ static void mqtt_packets_match_the_standard() {
   TEST_ASSERT_EQUAL(-1, (int)camMqttPacketSize(broken, sizeof(broken)));
   TEST_ASSERT_EQUAL_STRING("c000", camHex((const uint8_t*)camMqttPing().data(), 2).c_str());
   std::string s = camMqttSubscribe("t", 1);
-  TEST_ASSERT_EQUAL_STRING("8206" "0001" "000174" "00", camHex((const uint8_t*)s.data(), s.size()).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "8206"
+      "0001"
+      "000174"
+      "00",
+      camHex((const uint8_t*)s.data(), s.size()).c_str());
   // A command from Home Assistant, at QoS 0 and at QoS 1, read back to its topic and payload.
   for (uint16_t id : {0, 7}) {
     std::string in = camMqttPublish("a/set", "OFF", false, id);
