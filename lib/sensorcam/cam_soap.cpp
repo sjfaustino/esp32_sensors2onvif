@@ -1,4 +1,5 @@
 #include "cam_soap.h"
+#include "cam_number.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,8 +93,8 @@ std::string unescapeXml(const std::string& s) {
   for (size_t i = 0; i < s.size(); i++) {
     size_t semi = s[i] == '&' ? s.find(';', i) : std::string::npos;
     std::string name = semi != std::string::npos && semi - i <= 8 ? s.substr(i + 1, semi - i - 1) : std::string();
-    long code =
-        name.size() > 1 && name[0] == '#' ? (name[1] == 'x' ? strtol(name.c_str() + 2, nullptr, 16) : strtol(name.c_str() + 1, nullptr, 10)) : 0;
+    long code = 0;
+    if (name.size() > 1 && name[0] == '#') camNumber(name.substr(name[1] == 'x' ? 2 : 1), code, name[1] == 'x' ? 16 : 10);
     const char* named = name == "amp" ? "&" : name == "lt" ? "<" : name == "gt" ? ">" : name == "quot" ? "\"" : name == "apos" ? "'" : nullptr;
     if (named)
       out += named;
@@ -181,9 +182,7 @@ bool parseHttpUrl(const std::string& url, HttpUrl& out) {
   out.host = authority.substr(0, colon);
   out.port = 80;
   if (colon != std::string::npos) {
-    int port = atoi(authority.c_str() + colon + 1);
-    if (port <= 0 || port > 65535) return false;
-    out.port = (uint16_t)port;
+    if (!camNumberIn(authority.substr(colon + 1), (uint16_t)1, (uint16_t)65535, out.port)) return false;
   }
   return !out.host.empty();
 }

@@ -95,6 +95,18 @@ def test_per_sensor_settings():
     check('a bad hold is refused', api('POST', f'/api/sensor-settings?path={path}', 'hold=0')[0] == 400)
     check('quiet hours need two different times', api('POST', f'/api/sensor-settings?path={path}', 'from=60&to=60')[0] == 400)
     check('settings for a sensor that does not exist are refused', api('POST', '/api/sensor-settings?path=02-00-00-00-00-77/1', 'hold=5')[0] == 404)
+    # Input 257 is not input 1 cut down to fit: an alert never lands on another sensor.
+    for bad in ('257', '0', '1x', '+1', ' 1'):
+        st, reply = get(f'/sensor?mac={SENSORS[1][0]}&input={bad.replace(" ", "%20")}')
+        check(f'a sensor report with input {bad!r} is refused', st == 400 and 'input must be' in reply, (st, reply))
+    c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+    c.putrequest('POST', '/api/walk-test')
+    c.putheader('Content-Length', '12x')
+    c.endheaders()
+    r = c.getresponse()
+    r.read()
+    c.close()
+    check('a Content-Length that is not a number is refused', r.status == 400, r.status)
     minute = int(time.time() // 60 % 1440)
     api('POST', f'/api/sensor-settings?path={path}', f'from={(minute - 2) % 1440}&to={(minute + 3) % 1440}')
     check('the Sensors page data shows the quiet hours', tree_entry()['quiet'] == [(minute - 2) % 1440, (minute + 3) % 1440], tree_entry())

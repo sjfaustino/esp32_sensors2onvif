@@ -1,4 +1,5 @@
 #include "cam_storage.h"
+#include "cam_number.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,10 +56,8 @@ std::string camMacText(const uint8_t m[6]) {
 }
 
 static bool validSensorNumber(const std::string& s) {
-  if (s.empty() || s.size() > 3 || s[0] == '0') return false;
-  for (char c : s)
-    if (c < '0' || c > '9') return false;
-  return atoi(s.c_str()) <= 255;
+  uint8_t input = 0;
+  return !s.empty() && s[0] != '0' && camNumber(s, input);
 }
 
 CamPathKind camClassifyPath(const std::string& path) {

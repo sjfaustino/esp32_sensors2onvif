@@ -1,4 +1,5 @@
 #include "cam_server.h"
+#include "cam_number.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -247,7 +248,8 @@ static uint32_t pollWaitMs(const std::string& timeout) {
 
 static uint32_t subIdFromPath(const std::string& path) {
   size_t slash = path.rfind('/');
-  return slash == std::string::npos ? 0 : (uint32_t)strtoul(path.c_str() + slash + 1, nullptr, 10);
+  uint32_t id = 0;
+  return slash != std::string::npos && camNumber(path.c_str() + slash + 1, path.c_str() + path.size(), id) ? id : 0;
 }
 
 std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status) {
@@ -444,7 +446,9 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   std::string route = target.substr(0, target.find('?'));
   bool isApi = route.compare(0, 5, "/api/") == 0 || route == "/" || route == "/files" || route == "/setup";
 
-  size_t contentLength = (size_t)strtoul(headerValue(headers, "content-length").c_str(), nullptr, 10);
+  std::string lengthText = headerValue(headers, "content-length");
+  size_t contentLength = 0;
+  bool lengthOk = lengthText.empty() || camNumber(lengthText, contentLength);
   // A browser reports a connection closed mid-upload as a bare network error, so read the rest of the body before replying.
   auto refuse = [&](int code, const char* message, size_t drainLimit = 128 * 1024) {
     c.out = jsonFail(code, message);
@@ -461,6 +465,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.discardLeft = contentLength > got && contentLength <= drainLimit ? contentLength - got : 0;
     return true;
   };
+  if (!lengthOk) return refuse(400, "the Content-Length is not a number");
   bool isSnapshot = isGet && route == "/onvif/snapshot";  // the one GET that ONVIF clients make
   bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");

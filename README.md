@@ -593,7 +593,7 @@ settings over USB, which also erases its Wi-Fi networks.
 
 | Request | Effect |
 |---|---|
-| `GET /sensor?mac=AA-BB-CC-DD-EE-01&input=1` | That sensor is active for 10 s, or its own alert time. Another alert restarts it. `input` defaults to 1. |
+| `GET /sensor?mac=AA-BB-CC-DD-EE-01&input=1` | That sensor is active for 10 s, or its own alert time. Another alert restarts it. `input` is 1 to 255 and defaults to 1; anything else is refused with 400. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&state=clear` | Logged in the event history. The alert still lasts its hold. |
 | `GET /sensor?mac=AA-BB-CC-DD-EE-01&direction=1&distance=250&age=100&battery=80` | Same as an ESP-NOW report. |
 | `GET /status` | Active sensors, subscribers, streams and each sensor's last contact, as JSON. |

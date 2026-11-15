@@ -1,4 +1,5 @@
 #include "cam_node_images.h"
+#include "cam_number.h"
 #include <stdlib.h>
 
 static const char UPLOAD[] = "nodes/upload.bin";
@@ -15,6 +16,7 @@ void CamNodeImages::load() {
     std::string text;
     if (!storage_.readFile("nodes/" + e.name, text, 256)) continue;
     CamNodeImage image;
+    bool numbersOk = true;
     for (size_t at = 0; at < text.size();) {
       size_t end = text.find('\n', at);
       if (end == std::string::npos) end = text.size();
@@ -24,15 +26,16 @@ void CamNodeImages::load() {
       if (eq == std::string::npos) continue;
       std::string key = line.substr(0, eq), value = line.substr(eq + 1);
       if (key == "chip")
-        image.chip = (uint16_t)atoi(value.c_str());
+        numbersOk = numbersOk && camNumber(value, image.chip);
       else if (key == "version")
         image.version = value;
       else if (key == "number")
-        image.number = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+        numbersOk = numbersOk && camNumber(value, image.number);
       else if (key == "size")
-        image.size = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+        numbersOk = numbersOk && camNumber(value, image.size);
     }
-    if (image.version.empty() || !image.number || storage_.fileSize(imagePath(image.chip)) != image.size || forChip(image.chip)) continue;
+    if (!numbersOk || image.version.empty() || !image.number || storage_.fileSize(imagePath(image.chip)) != image.size || forChip(image.chip))
+      continue;
     images_.push_back(image);
   }
 }

@@ -1,4 +1,5 @@
 #include "cam_sensors.h"
+#include "cam_number.h"
 #include <stdlib.h>
 #include <string.h>
 #include "cam_auth.h"
@@ -62,19 +63,20 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
     size_t eq = line.find('=');
     std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
     if (!printable(value)) return false;
-    unsigned long n = strtoul(value.c_str(), nullptr, 10);
-    if (key == "every")
-      info.everyS = (uint32_t)n;
+    uint32_t n = 0;
+    bool number = camNumber(value, n);
+    if (key == "every" && number)
+      info.everyS = n;
     else if (key == "saving")
       info.saving = value == "1";
-    else if (key == "restart")
+    else if (key == "restart" && number)
       info.restart = n < CAM_RESTART_KINDS ? (uint8_t)n : CAM_RESTART_UNKNOWN;
-    else if (key == "restarts")
+    else if (key == "restarts" && number && n <= 0xFFFF)
       info.restarts = (uint16_t)n;
-    else if (key == "chip")
+    else if (key == "chip" && number && n <= 0xFFFF)
       info.chip = (uint16_t)n;
-    else if (key == "refused")
-      info.refused = (uint32_t)n;
+    else if (key == "refused" && number)
+      info.refused = n;
     else if (key == "sensor")
       info.sensor = value;
     else if (key == "version")
@@ -191,8 +193,7 @@ static bool smallNumber(const std::string& s, int& out) {  // digits only, up to
   if (s.empty() || s.size() > 4) return false;
   for (char ch : s)
     if (ch < '0' || ch > '9') return false;
-  out = atoi(s.c_str());
-  return true;
+  return camNumber(s, out);
 }
 
 static bool minuteOfDay(const std::string& s, int& out) { return smallNumber(s, out) && out < 1440; }

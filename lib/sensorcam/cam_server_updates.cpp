@@ -2,6 +2,7 @@
 // (see firmwareAskPacket).
 #include <stdlib.h>
 #include "cam_server.h"
+#include "cam_number.h"
 #include "cam_server_internal.h"
 
 void SensorCamServer::startNodeImage(HttpConn& c, size_t length) {
@@ -39,8 +40,8 @@ bool SensorCamServer::apiNodeImages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (!r.is("POST", "/api/node-firmware/delete")) return false;
   std::string chip = queryParam(r.form(), "chip");
-  uint16_t n = (uint16_t)atoi(chip.c_str());
-  if (chip.empty() || !nodeImages_.forChip(n))
+  uint16_t n = 0;
+  if (!camNumber(chip, n) || !nodeImages_.forChip(n))
     c.out = jsonFail(404, "there is no firmware for that chip");
   else
     c.out = saved(nodeImages_.remove(n), "could not delete the file");

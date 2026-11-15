@@ -9,12 +9,12 @@
 static uint32_t rol(uint32_t v, int n) { return (v << n) | (v >> (32 - n)); }
 
 // The message plus 0x80, zeros and the bit length, in whole 64-byte blocks.
-static std::string padded(const std::string& data, bool bigEndian) {
+static std::string padded(const std::string& data) {  // as MD5 has it: the length little-endian
   std::string m = data;
   m += (char)0x80;
   while (m.size() % 64 != 56) m += (char)0;
   uint64_t bits = (uint64_t)data.size() * 8;
-  for (int i = 0; i < 8; i++) m += (char)(bits >> (bigEndian ? 56 - 8 * i : 8 * i));
+  for (int i = 0; i < 8; i++) m += (char)(bits >> (8 * i));
   return m;
 }
 
@@ -44,7 +44,7 @@ std::string camMd5Hex(const std::string& data) {
       0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665, 0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d,
       0x85845dd1, 0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391};
   uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
-  std::string m = padded(data, false);
+  std::string m = padded(data);
   for (size_t off = 0; off < m.size(); off += 64) {
     uint32_t w[16];
     for (int i = 0; i < 16; i++) {

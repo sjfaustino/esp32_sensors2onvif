@@ -16,6 +16,7 @@
 #include <time.h>
 #include <new>
 #include "cam_mqtt.h"
+#include "cam_number.h"
 #include "cam_net.h"
 #include "cam_server.h"
 #include "cam_server_internal.h"
@@ -123,8 +124,9 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
       std::string key = topic.substr(0, topic.size() - 5);
       uint8_t mac[6];
       size_t underscore = key.find('_');
-      bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6);
-      if (parsed) testAlert(findSlot(mac, (uint8_t)atoi(key.c_str() + 13)));
+      uint8_t input = 0;
+      bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6) && camNumber(key.substr(13), input);
+      if (parsed) testAlert(findSlot(mac, input));
       return;
     }
     if (topic != "armed/set") return;
@@ -372,13 +374,13 @@ bool SensorCamServer::mqttEvent(std::string& out) {
   bool hub = strcmp(e.sensor, "hub") == 0;
   std::string key = "hub";
   if (!hub) {
-    uint8_t mac[6];
+    uint8_t mac[6], input = 0;
     const char* slash = strchr(e.sensor, '/');
-    if (!slash || !camParseMac(std::string(e.sensor, slash - e.sensor), mac)) {
+    if (!slash || !camParseMac(std::string(e.sensor, slash - e.sensor), mac) || !camNumber(std::string(slash + 1), input)) {
       mqttEventsSent_ = number;  // cannot be placed; never happens for an event this hub logged
       return false;
     }
-    key = sensorKey(mac, (uint8_t)atoi(slash + 1));
+    key = sensorKey(mac, input);
   }
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
   std::string who = hub ? cfg_.hostName : e.text[0] ? std::string(e.text) + " (" + e.sensor + ")" : std::string(e.sensor);

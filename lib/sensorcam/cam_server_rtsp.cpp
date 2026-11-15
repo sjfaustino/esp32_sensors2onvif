@@ -3,6 +3,7 @@
 #include <string.h>
 #include <new>
 #include "cam_auth.h"
+#include "cam_number.h"
 #include "cam_frames.h"
 #include "cam_net.h"
 #include "cam_server.h"
@@ -81,11 +82,14 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
   } else if (method == "SETUP") {
     std::string t = headerValue(text, "transport");
     size_t at = t.find("interleaved=");
+    int channel = 0;  // the first of the pair, which the reply repeats; 255 is left for the second
     if (t.find("TCP") == std::string::npos && t.find("tcp") == std::string::npos) {
       // TCP only: clients fall back to interleaved on 461, and the NVR uses TCP anyway.
       c.out += "RTSP/1.0 461 Unsupported Transport\r\nCSeq: " + cseq + "\r\n\r\n";
+    } else if (at != std::string::npos && !camNumberIn(t.substr(at + 12, t.find_first_of("-;", at + 12) - (at + 12)), 0, 254, channel)) {
+      c.out += "RTSP/1.0 400 Bad Request\r\nCSeq: " + cseq + "\r\n\r\n";
     } else {
-      c.channel = at == std::string::npos ? 0 : atoi(t.c_str() + at + 12);
+      c.channel = channel;
       c.out += head + "Transport: RTP/AVP/TCP;unicast;interleaved=" + std::to_string(c.channel) + "-" + std::to_string(c.channel + 1) +
                "\r\nSession: " + SESSION + ";timeout=60\r\n\r\n";
     }

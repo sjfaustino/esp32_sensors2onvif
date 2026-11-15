@@ -1,5 +1,6 @@
 // SensorCamServer: sensor reports, node health, what is saved before confirming, the NVR delivery check, and the sensor table.
 #include "cam_server.h"
+#include "cam_number.h"
 #include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -591,21 +592,27 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
     status = 403;
     return camJsonError("bad token");
   }
-  uint8_t mac[6];
-  std::string input = queryParam(target, "input");
-  int id = camParseMac(queryParam(target, "mac"), mac) ? findSlot(mac, input.empty() ? 1 : (uint8_t)atoi(input.c_str())) : 0;
+  uint8_t mac[6], input = 1;
+  std::string inputText = queryParam(target, "input");
+  if (!inputText.empty() && !camNumberIn(inputText, (uint8_t)1, (uint8_t)255, input)) {  // never a different input's alert
+    status = 400;
+    return camJsonError("input must be a number from 1 to 255");
+  }
+  int id = camParseMac(queryParam(target, "mac"), mac) ? findSlot(mac, input) : 0;
   std::string state = queryParam(target, "state");
   SensorReport r;
   r.active = !(state == "clear" || state == "off");
   std::string age = queryParam(target, "age");
-  r.age = age == "unknown" ? CAM_AGE_UNKNOWN : (uint32_t)strtoul(age.c_str(), nullptr, 10);
-  std::string battery = queryParam(target, "battery");
-  if (!battery.empty()) r.battery = camBatteryPercent(atoi(battery.c_str()));
+  uint32_t ageS = 0;
+  r.age = age.empty() ? 0 : camNumber(age, ageS) ? ageS : CAM_AGE_UNKNOWN;  // "unknown", or anything else unreadable
+  int percent = 0;
+  if (camNumber(queryParam(target, "battery"), percent)) r.battery = camBatteryPercent(percent);
   std::string distance = queryParam(target, "distance"), direction = queryParam(target, "direction");
   if (!distance.empty() || !direction.empty()) {
-    int d = atoi(direction.c_str());
+    int d = 0;  // stays 0 when missing or unreadable, and the distance stays unknown
+    camNumber(direction, d);
     r.targetCount = 1;
-    if (!distance.empty()) r.targets[0].distanceCm = (uint16_t)atoi(distance.c_str());
+    camNumber(distance, r.targets[0].distanceCm);
     r.targets[0].direction = (uint8_t)(d >= 0 && d < CAM_DIRECTIONS ? d : 0);
   }
   if (!applyReport(id, r, millis_())) {
@@ -635,11 +642,16 @@ uint32_t SensorCamServer::silentMsFor(int id) const {
   return n.settings.silentS ? n.settings.silentS * 1000 : auto_ ? auto_ * 1000 : cfg_.silentMs;
 }
 
+// The input number in a path such as AA-BB-CC-DD-EE-01/2 or AA-BB-CC-DD-EE-01/2/file, slash being the first '/'.
+static bool pathInput(const std::string& path, size_t slash, uint8_t& input) {
+  return camNumber(path.substr(slash + 1, path.find('/', slash + 1) - slash - 1), input);
+}
+
 int SensorCamServer::slotForPath(const std::string& path) const {
-  uint8_t mac[6];
+  uint8_t mac[6], input = 0;
   size_t slash = path.find('/');
-  if (camClassifyPath(path) != CAM_PATH_SENSOR || !camParseMac(path.substr(0, slash), mac)) return 0;
-  return findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1));
+  if (camClassifyPath(path) != CAM_PATH_SENSOR || !camParseMac(path.substr(0, slash), mac) || !pathInput(path, slash, input)) return 0;
+  return findSlot(mac, input);
 }
 
 std::string SensorCamServer::slotName(int id) const { return camMacText(slots_[id - 1].mac) + "/" + std::to_string(slots_[id - 1].input); }
@@ -648,7 +660,8 @@ bool SensorCamServer::sensorFits(const std::string& path) const {
   uint8_t mac[6];
   size_t slash = path.find('/');
   if (slash == std::string::npos || !camParseMac(path.substr(0, slash), mac)) return true;  // not inside a sensor's folder
-  if (findSlot(mac, (uint8_t)atoi(path.c_str() + slash + 1))) return true;
+  uint8_t input = 0;
+  if (pathInput(path, slash, input) && findSlot(mac, input)) return true;
   for (const Slot& s : slots_)
     if (!s.used) return true;
   return false;
@@ -715,7 +728,8 @@ void SensorCamServer::rescan() {
     node->key = node->paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
     for (const CamFsEntry& e : inputs) {
       if (!e.dir || camClassifyPath(s.name + "/" + e.name) != CAM_PATH_SENSOR) continue;
-      uint8_t input = (uint8_t)atoi(e.name.c_str());
+      uint8_t input = 0;
+      camNumber(e.name, input);  // a sensor folder's name is always 1 to 255
       int id = findSlot(mac, input);
       for (int i = 0; id == 0 && i < CAM_MAX_SENSORS; i++) {
         if (slots_[i].used) continue;

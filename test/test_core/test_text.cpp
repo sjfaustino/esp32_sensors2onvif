@@ -1,5 +1,45 @@
 // Text for people: event names and notifications, durations, names cut to fit, and the JSON the pages read.
 #include "tests.h"
+#include "cam_number.h"
+
+// Numbers from outside are read whole and within range, never cut down to fit, so input 257 does not become input 1.
+static void numbers_are_read_whole_and_within_range() {
+  uint8_t input = 7;
+  TEST_ASSERT_TRUE(camNumber(std::string("255"), input));
+  TEST_ASSERT_EQUAL(255, input);
+  for (const char* bad : {"256", "257", "", " 5", "5 ", "+5", "-1", "5a", "0x5", "1.5", "99999999999999999999"}) {
+    input = 7;
+    TEST_ASSERT_FALSE_MESSAGE(camNumber(std::string(bad), input), bad);
+    TEST_ASSERT_EQUAL_MESSAGE(7, input, bad);  // left as it was
+  }
+  long long signedValue = 0;
+  TEST_ASSERT_TRUE(camNumber(std::string("-12"), signedValue));
+  TEST_ASSERT_EQUAL(-12, (int)signedValue);
+  uint16_t port = 0;
+  TEST_ASSERT_FALSE(camNumberIn(std::string("0"), (uint16_t)1, (uint16_t)65535, port));
+  TEST_ASSERT_FALSE(camNumberIn(std::string("65536"), (uint16_t)1, (uint16_t)65535, port));
+  TEST_ASSERT_TRUE(camNumberIn(std::string("8080"), (uint16_t)1, (uint16_t)65535, port));
+  TEST_ASSERT_EQUAL(8080, port);
+  long code = 0;
+  TEST_ASSERT_TRUE(camNumber(std::string("4a"), code, 16));
+  TEST_ASSERT_EQUAL(0x4a, (int)code);
+
+  // Where outside text is read.
+  HttpUrl url;
+  TEST_ASSERT_TRUE(parseHttpUrl("http://host:8080/x", url));
+  TEST_ASSERT_EQUAL(8080, url.port);
+  TEST_ASSERT_FALSE(parseHttpUrl("http://host:8080x/", url));
+  TEST_ASSERT_FALSE(parseHttpUrl("http://host:70000/", url));
+  TEST_ASSERT_EQUAL_STRING("A&B&#65x;", xmlFirstText("<a>&#65;&amp;&#x42;&#65x;</a>", "a").c_str());
+  CamNodeInfo info;
+  TEST_ASSERT_TRUE(camParseNodeInfo("every=60\nrestarts=3", info));
+  TEST_ASSERT_EQUAL(60, info.everyS);
+  TEST_ASSERT_FALSE(camParseNodeInfo("every=60s", info));
+  TEST_ASSERT_FALSE(camParseNodeInfo("restarts=65536", info));
+  TEST_ASSERT_EQUAL(CAM_PATH_SENSOR, camClassifyPath("AA-BB-CC-DD-EE-01/255"));
+  TEST_ASSERT_TRUE(camClassifyPath("AA-BB-CC-DD-EE-01/256") != CAM_PATH_SENSOR);
+  TEST_ASSERT_TRUE(camClassifyPath("AA-BB-CC-DD-EE-01/01") != CAM_PATH_SENSOR);
+}
 
 // Every event kind has a name of its own, so none is shown or sent as a plain "alert", and every name is in the list
 // Home Assistant is told to expect.
@@ -71,6 +111,7 @@ static void json_writer_escapes_any_text() {
 void runTextTests() {
   RUN_TEST(each_notification_has_one_wording);
   RUN_TEST(durations_read_as_people_say_them);
+  RUN_TEST(numbers_are_read_whole_and_within_range);
   RUN_TEST(json_writer_places_commas_and_brackets);
   RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(long_names_are_cut_between_characters);

@@ -1,5 +1,6 @@
 // SensorCamServer: the web page's API, and the JSON it reads.
 #include "cam_server.h"
+#include "cam_number.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,11 +90,12 @@ std::string SensorCamServer::treeJson() {
     for (const CamFsEntry& n : inputs) {
       std::string base = s.name + "/" + n.name;
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
-      int slot = findSlot(mac, (uint8_t)atoi(n.name.c_str()));
+      uint8_t input = 0;
+      int slot = camNumber(n.name, input) ? findSlot(mac, input) : 0;
       if (!slot) continue;                        // beyond the sensor limit, so it does nothing
       if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
       const CamSensorSettings& set = slots_[slot - 1].settings;
-      j.object().num("input", atoi(n.name.c_str())).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
+      j.object().num("input", input).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
       j.flag("interior", set.interior);
       if (set.quietFrom >= 0)
         j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
@@ -156,12 +158,7 @@ static bool validAddress(const CamAddress& a) {
 }
 
 // A plain whole number and nothing else.
-static bool wholeNumber(const std::string& s, long long& out) {
-  if (s.empty()) return false;
-  char* end = nullptr;
-  out = strtoll(s.c_str(), &end, 10);
-  return *end == 0;
-}
+static bool wholeNumber(const std::string& s, long long& out) { return camNumber(s, out); }
 
 static bool validNtpServer(const std::string& s) {
   if (s.empty() || s.size() > 63) return false;
