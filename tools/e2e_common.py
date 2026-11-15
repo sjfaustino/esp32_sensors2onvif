@@ -44,11 +44,11 @@ def wsse_header(password, digest=True, user='admin'):
             '</UsernameToken></Security></s:Header>')
 
 
-def soap(action, path='/onvif/media', inner=''):
+def soap(action, path='/onvif/media', inner='', source=None):
     header = wsse_header(BOARD_LOGIN) if BOARD_LOGIN else ''
     body = (f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{header}<s:Body>'
             f'<{action} xmlns="x">{inner}</{action}></s:Body></s:Envelope>')
-    c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+    c = http.client.HTTPConnection(HOST, ONVIF, timeout=5, source_address=(source, 0) if source else None)
     c.request('POST', path, body, {'Content-Type': 'application/soap+xml', 'Host': f'{HOST}:{ONVIF}'})
     r = c.getresponse()
     data = r.read().decode()

@@ -300,6 +300,20 @@ def test_poll_timeout_waits_for_news(address):
     soap('PullMessages', address)
 
 
+def test_subscription_is_its_makers(address):
+    # Another device cannot pull from or end the NVR's subscription: pulling it would take the change the NVR waits for.
+    if DEVICE:  # needs a second address on this computer
+        return
+    get(f'/sensor?{sid(3)}')
+    other = soap('PullMessages', address, source='127.0.0.2')
+    check("another address pulling the NVR's subscription learns nothing", 'NotificationMessage' not in other[1], other)
+    check("another address cannot end the NVR's subscription", soap('Unsubscribe', address, source='127.0.0.2')[0] == 400)
+    own = soap('PullMessages', address)
+    check('the NVR still gets the change', 'Value="true"' in own[1], own)
+    clear(3)
+    soap('PullMessages', address)
+
+
 def test_ws_discovery():
     # WS-Discovery, sent directly.
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

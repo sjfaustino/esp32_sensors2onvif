@@ -252,6 +252,13 @@ static uint32_t subIdFromPath(const std::string& path) {
   return slash != std::string::npos && camNumber(path.c_str() + slash + 1, path.c_str() + path.size(), id) ? id : 0;
 }
 
+// A subscription is pulled from and ended only by the address that made it. Its number is easy to guess, and another
+// device pulling the NVR's would take the change the NVR was waiting for, which the NVR would then never record.
+static CamSub* ownSub(SubTable& subs, const std::string& path, uint32_t peer) {
+  CamSub* sub = subs.find(subIdFromPath(path));
+  return sub && sub->peer == peer ? sub : nullptr;
+}
+
 std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status) {
   std::string action = soapAction(body);
   std::string path = headers.substr(0, headers.find("\r\n"));
@@ -298,7 +305,7 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   } else if (action == "CreatePullPointSubscription") {
     reply = soapPullPointReply(ctx, subs_.addPull(c.peer, now).id);
   } else if (action == "PullMessages") {
-    CamSub* sub = subs_.find(subIdFromPath(path));
+    CamSub* sub = ownSub(subs_, path, c.peer);
     if (sub) sub->pulledAt = now;
     int state = sensors_.anyActive() ? 1 : 0;
     bool changed = sub && sub->lastPull != state;
@@ -323,7 +330,12 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   } else if (action == "Renew") {
     reply = soapRenewReply(ctx);
   } else if (action == "Unsubscribe") {
-    subs_.remove(subIdFromPath(path));
+    CamSub* sub = ownSub(subs_, path, c.peer);
+    if (!sub) {
+      status = 400;
+      return soapFault("no such subscription from this address");
+    }
+    subs_.remove(sub->id);
     reply = soapUnsubscribeReply();
   } else {
     reply = soapDeviceReply(action, ctx);

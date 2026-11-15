@@ -64,6 +64,7 @@ def main():
 
             # A poll with a timeout waits for news, instead of being answered at once.
             test_poll_timeout_waits_for_news(address)
+            test_subscription_is_its_makers(address)
 
             # WS-Discovery, sent directly.
             test_ws_discovery()

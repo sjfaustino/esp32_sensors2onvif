@@ -444,10 +444,9 @@ struct SensorMessage {
   uint8_t data[CAM_SEALED_EXTRA + CAM_NODE_INFO_MAX];  // the longest the hub reads, sealed node info; anything longer is dropped
 };
 // A message longer than the queue's room is dropped without a word, so each one the hub reads must fit.
-static_assert(sizeof(SensorMessage::data) >= 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN, "a report with every target must fit");
+static_assert(sizeof(SensorMessage::data) >= S2O_REPORT_MAX, "a report with every target must fit");
 static_assert(sizeof(SensorMessage::data) >= CAM_HELLO_LEN, "a pairing hello must fit");
-static_assert(sizeof(SensorMessage::data) >= CAM_SEALED_EXTRA + 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN,
-              "a sealed report with every target must fit");
+static_assert(sizeof(SensorMessage::data) >= CAM_SEALED_EXTRA + S2O_REPORT_MAX, "a sealed report with every target must fit");
 static QueueHandle_t sensorQueue;
 static volatile uint32_t espNowDropped = 0;  // arrived while the queue was full; their senders resend, since nothing confirmed them
 
