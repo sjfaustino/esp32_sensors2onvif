@@ -25,7 +25,7 @@ def test_replacement_all_clear(files):
 def test_signed_messages(node_entry, radio):
     # Signed messages.
     info = radio()
-    check('the ESP-NOW page shows the key', info['key'] == 'test-espnow-key-0123456789', info)
+    check('the Nodes and pairing page shows the key', info['key'] == 'test-espnow-key-0123456789', info)
     control('last-sent')
     control('radio-forged')
     check('a message signed with another key is refused', node_entry(radio())['refusal'] == 'wrong signature', node_entry(radio()))

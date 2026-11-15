@@ -80,7 +80,7 @@ def pairing_tests():
     control('end-alerts')
     control(f'radio-raw {mac} {report(2, 8, b"test-espnow-key-0123456789").hex()}')
     check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
-    check('the ESP-NOW page shows the node has its own key', node_row(1).get('paired') is True)
+    check('the Nodes and pairing page shows the node has its own key', node_row(1).get('paired') is True)
 
     def info(every, saving, sensor, version, key=key, restart=1, restarts=0, response=0xFFFF, chip=13, refused=0):
         body = (bytes([6]) + every.to_bytes(4, 'little') + bytes([saving, restart]) + restarts.to_bytes(2, 'little') + response.to_bytes(2, 'little')
@@ -93,7 +93,7 @@ def pairing_tests():
     check('before it says how often it reports, the node is silent after the default', node_row(1).get('silentAfter') == 3 * 3600, node_row(1))
     say(info(7200, 0, b'RCWL-0516', b'3f2a1b0'))
     row = node_row(1)
-    check("the node's info shows on the ESP-NOW page, for each of its sensors",
+    check("the node's info shows on the Nodes and pairing page, for each of its sensors",
           (row.get('every'), row.get('sensor'), row.get('version'), row.get('saving')) == (7200, 'RCWL-0516', '3f2a1b0', False) and node_row(2).get('sensor') == 'RCWL-0516', row)
     check('its silent time follows from how often it reports', row.get('silentAfter') == 7200 + 1800, row)
     check('the Sensors page shows both', (tree_node().get('every'), tree_node().get('autoSilent')) == (7200, 9000), tree_node())
@@ -191,7 +191,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     body = confirmation_of(answer, True)
     fresh[0] = int.from_bytes(body[22:26], 'little') if len(body) == 26 else 0
     check('a sealed report is accepted, and confirmed sealed', f'{folder}/1' in status()['active'] and body[:7] == bytes([3, 1, 1]) + (21).to_bytes(4, 'little'), (answer, body))
-    check('the ESP-NOW page shows it was sealed', node_row(1).get('sealed') is True, node_row(1))
+    check('the Nodes and pairing page shows it was sealed', node_row(1).get('sealed') is True, node_row(1))
     forged = bytearray(seal(plain, key, mac, 0xABCD0002))
     forged[7] ^= 1
     control('end-alerts')
@@ -249,11 +249,11 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     status_code, reply = api('PUT', '/api/node-firmware', image)
     check('a node firmware can be put on the hub', status_code == 200 and json.loads(reply) == {'ok': True, 'chip': 'ESP32-C6', 'version': '4b5c6d7'}, reply)
     listed = get_json('/api/espnow')['nodeFirmware']
-    check('the ESP-NOW page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': 3000}], listed)
+    check('the Nodes and pairing page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': 3000}], listed)
     control('end-alerts')
     body = confirmed(26)
     check('a node of that chip on another version is told an update is ready', body[21:22] == b'\x01', body.hex())
-    check('and the ESP-NOW page says so', node_row(1).get('update') == 'update ready', node_row(1))
+    check('and the Nodes and pairing page says so', node_row(1).get('update') == 'update ready', node_row(1))
 
     def ask(number, offset):
         data = bytes([8]) + number.to_bytes(4, 'little') + offset.to_bytes(4, 'little')
@@ -276,7 +276,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
             if int.from_bytes(p[9:13], 'little') == len(fetched):
                 fetched += p[13:-8]
     check('the node fetches it in signed parts, four at a time', fetched == image, (len(fetched), len(image)))
-    check('the ESP-NOW page shows the update going', node_row(1).get('update', '').startswith('updating'), node_row(1))
+    check('the Nodes and pairing page shows the update going', node_row(1).get('update', '').startswith('updating'), node_row(1))
     check('asking for another image gets this one described', len(ask(number + 1, 0)) == 1)
     forged_ask = bytes([8]) + number.to_bytes(4, 'little') + bytes(4)
     control('all-sent')

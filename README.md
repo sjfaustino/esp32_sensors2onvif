@@ -38,13 +38,13 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 
 ## Events and alerts
 
-**Sensors Manager > Events** lists the last 64 events, kept across restarts. **Download the full history (CSV)** gives
+**Alarm > Events** lists the last 64 events, kept across restarts. **Download the full history (CSV)** gives
 about the last 5400, in UTC. A download cut short, by a restart or a dropped connection, shows as failed in the browser,
 so a complete file is the whole history. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and
 Events pages. Updating from older firmware keeps its history.
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
-less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
+less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The Nodes and pairing page can also raise an NVR alarm for
 silence, low battery and nodes stopping together. A sensor that is unplugged, smashed or taken is only noticed once it has been silent that long,
 so it should be a little over the time between the node's regular reports. A node that says how often it reports (see
 "Node info" below) sets it for you; otherwise, or to change it, set **Report this node silent after** under its Node
@@ -52,14 +52,14 @@ settings, from 1 minute to 7 days.
 
 A node that sends node info is also logged when it restarts for a fault, such as a crash, its watchdog or a brownout:
 **node restarted by a fault**. That shows a weak battery or a bad wire before the node goes silent. From its battery
-readings the hub works out how long the battery will last, shown on the ESP-NOW page, and logs **battery running out**
+readings the hub works out how long the battery will last, shown on the Nodes and pairing page, and logs **battery running out**
 once that is under a week. It keeps a reading every 6 hours in `battery.txt` in the node's folder, and needs the hub's
 clock set, at least 4 readings over 3 days, and a fall of at least 3 points. A rise of 10 points or more, a new or
 recharged battery, starts the readings again. A node on a solar panel that keeps up gets no forecast.
 
 Batteries run out one node at a time. When two or more nodes that had been reporting steadily stop together, within
 half an hour of each other, the hub logs **possible jamming** as one of its own events, with how many, and sends it with
-node problems; with the ESP-NOW page's NVR alarm on, the NVR records it as an alert from each of them. A node counts as
+node problems; with the Nodes and pairing page's NVR alarm on, the NVR records it as an alert from each of them. A node counts as
 stopped once its regular report is a fifth of its report time late, and a minute more, so how soon this is noticed
 depends on how often the nodes report: every 2 hours, the nodes' default, it takes about two and a half hours, little
 sooner than "went silent"; every 10 minutes, set under each node's Node settings, about 12 minutes. Only nodes that say
@@ -117,6 +117,18 @@ when the disarm began or is not set within two minutes of the restart, it arms i
 **Alarm > Overview**, the page the hub opens on, shows at a glance whether it is armed, any alert running now, whether
 the NVR is listening, how the Home Assistant connection and the last notification went, the last alert, and any sensor
 that is silent, on a low battery, on a weak signal or having messages refused. The arm controls are there too.
+
+A line at the top of every page sums it up: green when all is well, yellow when something needs attention (disarmed, a
+sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
+It links to the Overview. Until everything is done, the Overview also shows **Ready to protect?**, a checklist with a
+link to put each item right: a web password of your own rather than the setup network's built into the firmware, the
+clock set, the NVR's address set and the NVR listening, a sensor heard, a test alert in the last month, notifications
+or Home Assistant, and a daily check. It goes once all are ticked, and comes back if one slips.
+
+**Alarm > Walk test** is for walking the property with a phone. **Start on every node** turns on every node's walk
+test for 10 minutes; each sensor that sees you is ticked, with its signal and how long the hub took to hear it, while
+each node's light blinks its signal too. Sensors still waiting at the end may not cover where you walked. Alerts still
+reach the NVR meanwhile.
 
 **Send test alert**, in each sensor's Alert settings and as a button on each sensor in Home Assistant, makes a real alert
 from that sensor, whatever the alarm is set to: the NVR records it with that sensor's picture, the hub checks the NVR got
@@ -337,9 +349,9 @@ python -m esp_coredump --chip esp32 info_corefile -t raw -c hub-crash.bin firmwa
 using the Python that comes with PlatformIO, with `tool-xtensa-esp-elf-gdb\bin` from the PlatformIO packages on the
 PATH. Use `--chip esp32s3` for an S3 board.
 
-## ESP-NOW page
+## Nodes and pairing page
 
-**Network Manager > ESP-NOW** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
+**Sensors Manager > Nodes and pairing** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
 sensor node with its state, last contact, battery, signal strength, last report number and refused messages. A signal marked
 "weak" has averaged below -80 dBm over the last few messages; it is cleared above -75 dBm. Only nodes added under
 **Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Valid reports from anything
@@ -484,7 +496,7 @@ report, gets no confirmation, and is sent once per node, not per input:
 | 1 + n | The same for its firmware version |
 | 8 | The signature, as a report's |
 
-Texts are printable ASCII. The ESP-NOW page shows them, and the hub keeps them in the node's folder as `about.txt`, all
+Texts are printable ASCII. The Nodes and pairing page shows them, and the hub keeps them in the node's folder as `about.txt`, all
 but the alert time, which changes with every alert. A restart counted for a crash, the watchdog or a brownout is logged.
 **Report this node silent after** is then a quarter longer than the node's report time, and at least 10 minutes longer,
 and follows the node when that changes. Set on the Sensors page, it comes first. A node that never says uses 3 hours.
@@ -503,8 +515,8 @@ event shows the sensor's `-delayed` picture, or else the built-in amber "PAST EV
 so whoever watches the recording can tell it did not happen at that moment. Each past event gets its own NVR record,
 filed at its arrival time; `GET /events` gives the true times.
 
-The ESP-NOW key is made the first time the hub starts and is shown on the ESP-NOW page. It is kept by a settings reset and
-carried in backups. The hub refuses a message with a wrong signature or none; the ESP-NOW page counts those it can read. The report
+The ESP-NOW key is made the first time the hub starts and is shown on the Nodes and pairing page. It is kept by a settings reset and
+carried in backups. The hub refuses a message with a wrong signature or none; the Nodes and pairing page counts those it can read. The report
 number is never a reason to refuse a correctly signed message, so a sensor that restarts its count, or loses it with a
 battery change, is never ignored. It is used only to ignore a resend: the same number and state again within a minute.
 Someone who records a sensor's message can play it back later. That makes a false alert, never a false all-clear,
@@ -568,11 +580,12 @@ one. A stolen node then gives away its own key only.
 The node makes an X25519 key pair (RFC 7748) when it is first set up, keeps the private key, and has the fingerprint of
 its public key on a label: the first 6 bytes of the public key's SHA-1, in upper-case hex, as `4F2A-91C7-03BD`. To pair:
 
-1. On the ESP-NOW page, press **Allow new nodes to pair for 2 minutes**.
+1. On the Nodes and pairing page, press **Allow new nodes to pair for 2 minutes**.
 2. The node sends a **hello** to the broadcast address `FF:FF:FF:FF:FF:FF`, on channel 1, then 2 and so on, waiting about
    100 ms on each for an answer, and repeats every few seconds until it is paired.
 3. The hub lists the node with its fingerprint. Approve it once the fingerprint matches the label: that check is what stops
-   anything else from pairing in its place. The hub makes a folder for each of its inputs.
+   anything else from pairing in its place. The hub makes a folder for each of its inputs, and the page asks where each
+   sensor is, such as "Back door", which alerts and notifications then use.
 4. The node's next hello is answered as paired, signed with its key. It keeps the hub's MAC address, the channel and the
    hub's public key, and starts reporting.
 

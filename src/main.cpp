@@ -315,6 +315,7 @@ static CamConfig makeConfig() {
   c.sealStart = esp_random();
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
+  c.setupPasswordHash = strlen(SETUP_AP_PASSWORD) ? camSha1(SETUP_AP_PASSWORD) : std::string();
   c.webhookSave = storeWebhook;
   c.mqtt = settings.mqtt;
   c.mqttSave = storeMqtt;

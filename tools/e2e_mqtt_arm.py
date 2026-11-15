@@ -201,6 +201,10 @@ def arm_tests():
     check('the overview shows the alarm, the alert running and the last alert',
           overview['mode'] == 'disarmed' and [a['sensor'] for a in overview['active']] == [name(3)] and overview['last']['event'] == 'test alert'
           and 'listening' in overview['nvr'] and 'mqtt' in overview and isinstance(overview['problems'], list), overview)
+    ready = overview.get('ready', {})
+    check("the overview's checklist knows the test alert just sent, the clock, the password and a sensor heard",
+          ready.get('testAgo_s') is not None and ready['testAgo_s'] < 60 and ready['clock'] and ready['password'] == bool(PASSWORD)
+          and ready['heard'] and 'notify' in ready and 'daily' in ready, ready)
     check('the overview needs the web password', api('GET', '/api/overview', auth=False)[0] == 401)
     clear(3)
     api('POST', '/api/arm', 'mode=away')

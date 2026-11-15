@@ -419,7 +419,75 @@
       $("ovProblems").textContent = o.problems.length
         ? o.problems.map((p) => who(p) + ": " + p.problem).join("; ")
         : "None.";
+      showStatus(o);
+      const items = readyItems(o);
+      $("ovReadyBox").hidden = items.every((i) => i.ok);
+      $("ovReady").replaceChildren(
+        ...items.map((i) =>
+          el(
+            "li",
+            null,
+            (i.ok ? "✓ " : "✗ ") + i.text,
+            i.ok ? "" : el("a", { href: "#" + i.view, textContent: "Fix" }),
+          ),
+        ),
+      );
     } catch (e) {}
+  }
+  // What must be right before the hub can be trusted, each with the page that puts it right.
+  function readyItems(o) {
+    const r = o.ready,
+      test = r.testAgo_s;
+    return [
+      {
+        ok: r.password,
+        text: "A web password of your own, not the setup network's, which is built into the firmware",
+        view: "http",
+      },
+      { ok: r.clock, text: "The hub's clock is set", view: "time" },
+      { ok: o.nvr.set, text: "The NVR's address is set", view: "nvr" },
+      { ok: o.nvr.listening, text: "The NVR is listening", view: "nvr" },
+      { ok: r.heard, text: "At least one sensor has reported", view: "sensors" },
+      {
+        ok: test != null && test < 30 * 86400,
+        text:
+          test == null
+            ? "A test alert sent, and its recording found on the NVR"
+            : "A test alert in the last month (the last was " + heardAgo(test) + ")",
+        view: "sensors",
+      },
+      { ok: r.notify, text: "Notifications or Home Assistant set up, so problems reach you", view: "notify" },
+      { ok: r.daily, text: "A daily check, so you notice when the hub goes quiet", view: "notify" },
+    ];
+  }
+  // One line at the top of every page: protecting, something needs attention, or not protecting, and why.
+  function showStatus(o) {
+    const bad = [],
+      attention = [];
+    if (o.nvr.set && !o.nvr.listening) bad.push("the NVR is not listening, so alerts are not recorded");
+    if (o.mode == "disarmed") attention.push("disarmed");
+    if (o.problems.length)
+      attention.push(o.problems.length + (o.problems.length == 1 ? " sensor problem" : " sensor problems"));
+    const todo = readyItems(o).filter((i) => !i.ok).length;
+    if (todo) attention.push(todo + (todo == 1 ? " setup step" : " setup steps") + " left");
+    const s = $("status");
+    s.className = "status " + (bad.length ? "bad" : attention.length ? "attention" : "ok");
+    s.textContent = bad.length
+      ? "Not protecting: " + bad.concat(attention).join("; ")
+      : attention.length
+        ? "Needs attention: " + attention.join("; ")
+        : "All good: armed " + o.mode + ", the NVR is listening, no problems.";
+    s.hidden = false;
+  }
+  async function loadStatus() {
+    try {
+      showStatus(await call("GET", "/api/overview"));
+    } catch (e) {}
+  }
+  // "5 min ago", from a time the hub gave, by this device's clock.
+  function ago(iso) {
+    const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+    return s < 10 ? "just now" : heardAgo(s);
   }
   async function setMode(mode, minutes) {
     try {
@@ -718,6 +786,18 @@
     }
   };
   let espTimer = 0;
+  // Signal strength as bars and a word, for people who do not read dBm. The node's light uses the same steps.
+  function signal(rssi) {
+    if (rssi == null) return "-";
+    const [bars, word] =
+      rssi >= -67 ? ["▂▄▆█", "strong"] : rssi >= -75 ? ["▂▄▆", "good"] : rssi >= -80 ? ["▂▄", "fair"] : ["▂", "weak"];
+    return bars + " " + word + " (" + rssi + " dBm)";
+  }
+  function batteryLeft(days) {
+    return days >= 60
+      ? "about " + Math.round(days / 30) + " months left"
+      : "about " + days + (days == 1 ? " day" : " days") + " left";
+  }
   function heardAgo(s) {
     return s == null
       ? "Never"
@@ -777,8 +857,8 @@
               heardAgo(n.ago),
               (n.battery == null ? "-" : n.battery + "%" + (n.low ? " (low)" : "")) +
                 (n.saving ? ", saving it" : "") +
-                (n.daysLeft == null ? "" : ", about " + n.daysLeft + " days left"),
-              n.rssi == null ? "-" : n.rssi + " dBm" + (n.weak ? " (weak)" : ""),
+                (n.daysLeft == null ? "" : ", " + batteryLeft(n.daysLeft)),
+              signal(n.rssi) + (n.weak ? ", weak on average" : ""),
               n.counter == null ? "-" : n.counter,
               n.refused ? n.refused + " (" + n.refusal + ")" : "-",
               (n.paired ? "its own" : "shared") + (n.sealed ? ", sealed" : ""),
@@ -824,9 +904,7 @@
           el(
             "tr",
             null,
-            ...[n.mac, n.input, heardAgo(n.ago), n.rssi == null ? "-" : n.rssi + " dBm", n.messages].map((v) =>
-              el("td", { textContent: v }),
-            ),
+            ...[n.mac, n.input, heardAgo(n.ago), signal(n.rssi), n.messages].map((v) => el("td", { textContent: v })),
             el(
               "td",
               null,
@@ -872,7 +950,7 @@
               n.inputs,
               n.fingerprint,
               heardAgo(n.ago),
-              n.rssi == null ? "-" : n.rssi + " dBm",
+              signal(n.rssi),
             ].map((v) => el("td", { textContent: v })),
             el(
               "td",
@@ -884,6 +962,19 @@
                     return;
                   try {
                     await call("POST", "/api/pairing/approve", "mac=" + n.mac);
+                    // Named now, so no sensor goes into service as a MAC address in every alert and notification.
+                    for (let i = 1; i <= n.inputs; i++) {
+                      const where = prompt(
+                        "Where is " +
+                          (n.inputs > 1 ? "sensor " + i + " of this node" : "this sensor") +
+                          "? For example: Back door. Alerts and notifications will use this name.",
+                        "",
+                      );
+                      if (where && where.trim())
+                        await call("PUT", "/api/file?path=" + n.mac + "/" + i + "/name.txt", where.trim()).catch(
+                          () => {},
+                        );
+                    }
                     $("pairMsg").textContent = "Paired " + n.mac + ". It starts reporting once it hears the hub again.";
                     loadEsp();
                     load();
@@ -919,6 +1010,92 @@
       $("pairMsg").textContent = e.message;
     }
   };
+  // The walk test: each sensor that fires while someone walks the property, with its signal and how long the hub took.
+  const WALK_KINDS = [0, 3, 10, 13, 15]; // alerts, whether or not the arm mode sent them on
+  let walkTimer = 0,
+    walkSeen = null;
+  const walkFired = new Map();
+  const eventKey = (e) => e.received + " " + e.sensor + " " + e.event;
+  async function walkTick() {
+    try {
+      const [events, esp] = await Promise.all([call("GET", "/api/events"), call("GET", "/api/espnow")]);
+      for (const e of events) {
+        if (!walkSeen || walkSeen.has(eventKey(e))) continue;
+        walkSeen.add(eventKey(e));
+        if (!WALK_KINDS.includes(e.kind) || !e.active || e.sensor == "hub") continue;
+        const f = walkFired.get(e.sensor) || { count: 0 };
+        f.count++;
+        f.at = Date.now();
+        walkFired.set(e.sensor, f);
+      }
+      $("walkList").replaceChildren(
+        ...(esp.nodes.length ? [headRow(["Sensor", "", "Signal", "Hub heard it in"])] : []),
+        ...esp.nodes.map((n) => {
+          const f = walkFired.get(n.node + "/" + n.input);
+          return el(
+            "tr",
+            null,
+            ...[
+              n.name || n.node + "/" + n.input,
+              !walkSeen
+                ? ""
+                : f
+                  ? "✓ fired" +
+                    (f.count > 1 ? " " + f.count + " times" : "") +
+                    ", " +
+                    heardAgo(Math.round((Date.now() - f.at) / 1000))
+                  : "waiting",
+              signal(n.rssi),
+              n.responseMs == null ? "-" : (n.responseMs / 1000).toFixed(1) + " s",
+            ].map((v) => el("td", { textContent: v })),
+          );
+        }),
+      );
+      if (!esp.nodes.length)
+        $("walkMsg").textContent = "No sensor nodes yet. Pair one under Sensors Manager > Nodes and pairing.";
+    } catch (e) {}
+  }
+  async function walkAll(stop) {
+    const esp = await call("GET", "/api/espnow");
+    const nodes = [...new Set(esp.nodes.map((n) => n.node))];
+    for (const node of nodes) await call("POST", "/api/walk-test?path=" + node, stop ? "stop=1" : "go=1");
+    return nodes.length;
+  }
+  $("walkStart").onclick = async () => {
+    try {
+      walkSeen = new Set((await call("GET", "/api/events")).map(eventKey));
+      walkFired.clear();
+      const n = await walkAll(false);
+      $("walkMsg").className = "portMsg";
+      $("walkMsg").textContent =
+        "On for " +
+        n +
+        (n == 1 ? " node" : " nodes") +
+        " for 10 minutes. Walk past each sensor; each node starts on its next report.";
+      walkTick();
+    } catch (e) {
+      $("walkMsg").className = "portMsg err";
+      $("walkMsg").textContent = e.message;
+    }
+  };
+  $("walkStop").onclick = async () => {
+    try {
+      await walkAll(true);
+      $("walkMsg").className = "portMsg";
+      $("walkMsg").textContent = "Stopped. What fired stays listed until you leave this page.";
+    } catch (e) {
+      $("walkMsg").className = "portMsg err";
+      $("walkMsg").textContent = e.message;
+    }
+  };
+  function setWalk(on) {
+    clearInterval(walkTimer);
+    if (!on) walkSeen = null;
+    if (on) {
+      walkTick();
+      walkTimer = setInterval(walkTick, 1500);
+    }
+  }
   function setEsp(on) {
     clearInterval(espTimer);
     if (on) {
@@ -996,8 +1173,11 @@
           return el(
             "tr",
             null,
+            el("td", {
+              textContent: when ? ago(when) : "Clock not set",
+              title: when ? new Date(when).toLocaleString() : "",
+            }),
             ...[
-              when ? new Date(when).toLocaleString() : "Clock not set",
               e.sensor == "hub" ? "Hub" : e.name || e.sensor,
               what,
               details || "-",
@@ -1226,6 +1406,8 @@
     if (view == "nvr") loadNvr();
     setLive(view == "live");
     setEsp(view == "espnow");
+    setWalk(view == "walk");
+    loadStatus();
     setSys(view);
     if (view != "sensors") info(view);
   }
@@ -1245,10 +1427,12 @@
   );
   addEventListener("hashchange", () => show(location.hash.slice(1)));
   show(location.hash.slice(1));
+  setInterval(loadStatus, 10000);
   fetch("/api/info")
     .then((r) => r.json())
     .then((i) => {
       $("openWarn").hidden = i.password;
+      if (i.name) document.title = i.name.replace(/\.local$/, "") + ": alarm hub";
       $("armWarn").hidden = i.armed !== false;
     })
     .catch(() => {});

@@ -384,7 +384,7 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
 }
 
 // Random numbers without a source of them on every build: the hub's seal numbers, which start at random, mixed.
-// Counted, and shown on the ESP-NOW page: a node that keeps failing has a wrong key, or someone is trying keys.
+// Counted, and shown on the Nodes and pairing page: a node that keeps failing has a wrong key, or someone is trying keys.
 void SensorCamServer::refuseSignature(int id) {
   healthOf(id).refused++;
   healthOf(id).refusal = "wrong signature";
@@ -805,7 +805,7 @@ void SensorCamServer::rescan() {
     node->batteryAt = battery.empty() ? 0 : battery.back().t;
     node->daysLeft = camBatteryDaysLeft(battery);
     // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
-    // shows on the ESP-NOW page as refused, rather than being trusted with a key that may not be its own.
+    // shows on the Nodes and pairing page as refused, rather than being trusted with a key that may not be its own.
     uint8_t nodeKey[CAM_NODE_KEY_LEN];
     node->paired = storage_.readFile(s.name + "/pairing.txt", text, 256) && camParsePairing(text, node->publicKey, nodeKey);
     node->key = node->paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();

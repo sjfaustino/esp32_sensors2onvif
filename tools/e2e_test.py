@@ -53,7 +53,7 @@ def main():
             # The Live page shows the picture being sent. The picture changes on the next frame after the alert ends.
             code, firing, idle = test_live_page()
 
-            # The ESP-NOW page lists every sensor node.
+            # The Nodes and pairing page lists every sensor node.
             before, c, code, events, gone, idle, quiet, received, reply, s, seen = test_esp_now_page()
 
             # Other clients may poll instead.

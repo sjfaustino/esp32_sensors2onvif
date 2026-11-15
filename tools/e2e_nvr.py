@@ -169,18 +169,18 @@ def test_live_page():
 
 
 def test_esp_now_page():
-    # The ESP-NOW page lists every sensor node.
+    # The Nodes and pairing page lists every sensor node.
     node_list = get_json('/api/espnow')
     entry = [n for n in node_list['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
-    check('ESP-NOW page lists a sensor that has reported', len(entry) == 1 and entry[0]['state'] == 'idle' and entry[0]['ago'] is not None, node_list)
+    check('Nodes and pairing page lists a sensor that has reported', len(entry) == 1 and entry[0]['state'] == 'idle' and entry[0]['ago'] is not None, node_list)
     quiet = [n for n in node_list['nodes'] if n['node'] == SENSORS[6][0] and n['input'] == SENSORS[6][1]]
-    check('ESP-NOW page shows the state of each sensor', len(quiet) == 1 and quiet[0]['state'] in ('never', 'idle'), node_list)
+    check('Nodes and pairing page shows the state of each sensor', len(quiet) == 1 and quiet[0]['state'] in ('never', 'idle'), node_list)
     get(f'/sensor?{sid(2)}')
     wait_until(lambda: name(2) in status()['active'])
     firing = [n for n in get_json('/api/espnow')['nodes'] if n['node'] == SENSORS[2][0] and n['input'] == SENSORS[2][1]]
-    check('ESP-NOW page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
+    check('Nodes and pairing page shows an active sensor', firing and firing[0]['state'] == 'active', firing)
     clear(2)
-    check('ESP-NOW page needs the web password', not PASSWORD or api('GET', '/api/espnow', auth=False)[0] == 401)
+    check('Nodes and pairing page needs the web password', not PASSWORD or api('GET', '/api/espnow', auth=False)[0] == 401)
 
     if not DEVICE:  # the PC build stands in for the radio
         def radio():

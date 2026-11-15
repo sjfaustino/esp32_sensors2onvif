@@ -68,7 +68,7 @@ void loadSettings() {
       p.putString("token", s.sensorToken);
     }
     s.espNowKey = p.getString("enkey", "");
-    if (s.espNowKey.length() < 16) {  // made once and kept, and shown on the ESP-NOW page
+    if (s.espNowKey.length() < 16) {  // made once and kept, and shown on the Nodes and pairing page
       s.espNowKey = randomHex(4);
       p.putString("enkey", s.espNowKey);
     }

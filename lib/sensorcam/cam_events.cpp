@@ -67,7 +67,7 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
     case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
     case CAM_EVENT_RESTART_LOOP: return who + " has restarted by itself " + detail + ": something keeps stopping it, so alerts may be missed";
     case CAM_EVENT_NODE_FAULT:
-      return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the ESP-NOW page";
+      return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the Nodes and pairing page";
     case CAM_EVENT_BATTERY_RUNNING_OUT: return who + ": the battery will run out within a week";
     case CAM_EVENT_JAMMING:
       return who + ": " + detail +

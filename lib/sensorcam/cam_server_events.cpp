@@ -42,6 +42,7 @@ void SensorCamServer::addEvent(const char* sensor, const char* text, const Senso
   e.battery = r.battery;
   e.targetCount = r.targetCount;
   for (int i = 0; i < CAM_MAX_TARGETS; i++) e.targets[i] = r.targets[i];
+  if (kind == CAM_EVENT_TEST_ALERT && e.received > lastTestAt_) lastTestAt_ = e.received;
   log_.add(e);
 }
 
@@ -154,6 +155,17 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
       j.null("last");
     }
     j.num("dropped", memoryFailures_).num("uptime_s", now / 1000);
+    // For the Overview's checklist: what must be right before the hub can be trusted.
+    time_t t = time(nullptr), lastTest = lastTestAt_;
+    for (int n = 0; n < log_.count(); n++)
+      if (log_.recent(n).kind == CAM_EVENT_TEST_ALERT && log_.recent(n).received > lastTest) lastTest = log_.recent(n).received;
+    bool clockOk = t >= CAM_CLOCK_VALID_AFTER, heard = false;
+    for (int id = 1; id <= sensors_.count(); id++) heard = heard || (slotOf(id).used && healthOf(id).heard);
+    bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(cfg_.webPassword), cfg_.setupPasswordHash);
+    bool testKnown = clockOk && lastTest >= CAM_CLOCK_VALID_AFTER && lastTest <= t;
+    j.object("ready").flag("password", !cfg_.webPassword.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
+    j.flag("notify", !cfg_.webhook.url.empty() || !cfg_.mqtt.host.empty()).flag("daily", !cfg_.webhook.url.empty() && cfg_.webhook.dailyMinute >= 0);
+    j.num("testAgo_s", testKnown, (long long)(t - lastTest)).end();
   });
 }
 

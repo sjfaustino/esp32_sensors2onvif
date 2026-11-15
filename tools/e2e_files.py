@@ -21,7 +21,7 @@ def file_manager_tests(files, hub_files_free):
     check("the hub\'s own page is not refused as another site", api('POST', '/api/restore', b'hello', origin=own_site)[0] == 400)
 
     code, page = api('GET', '/')
-    check('page is served', code == 200 and b'SensorCam files' in page, code)
+    check('page is served', code == 200 and b'<title>Alarm hub</title>' in page, code)
     check('page is sent gzipped', common.last_encoding == 'gzip', common.last_encoding)
     check('a browser must check for a newer page', common.last_cache == 'no-cache', common.last_cache)
     if not DEVICE:
@@ -135,7 +135,7 @@ def file_manager_tests(files, hub_files_free):
         check('phone connectivity check is sent to the setup page', r.status == 302 and r.getheader('Location') == f'http://{HOST}:{WEB}/setup', r.status)
         check('ONVIF still answers in setup mode', soap('GetDeviceInformation', '/onvif/device_service')[0] == 200)
         control('setup-off')
-        check('file manager is back after setup', b'SensorCam files' in api('GET', '/')[1])
+        check('file manager is back after setup', b'<title>Alarm hub</title>' in api('GET', '/')[1])
         try:
             c = http.client.HTTPConnection(HOST, 18081, timeout=5)
             c.request('GET', '/')

@@ -1,4 +1,4 @@
-// Firmware for the sensor nodes, put on the hub from the ESP-NOW page: one file per kind of chip in nodes/, with its
+// Firmware for the sensor nodes, put on the hub from the Nodes and pairing page: one file per kind of chip in nodes/, with its
 // description beside it, so a start of the hub reads only the small files. The nodes fetch it over ESP-NOW, which
 // SensorCamServer::firmwareAskPacket answers from here.
 #pragma once
