@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <string.h>
 #include <string>
+#include <vector>
 #include "cam_auth.h"
 #include "cam_events.h"
 #include "cam_frames.h"
@@ -898,6 +899,127 @@ static void xml_text_is_unescaped_and_secrets_compared_whole() {
   TEST_ASSERT_FALSE(camSnapshotToken("one", "pw") == camSnapshotToken("two", "pw"));  // depends on the hub's secret
 }
 
+// NVRs format their requests differently; the same meaning must read the same.
+static void xml_is_read_as_xml() {
+  const char* forms[] = {
+      "<s:Envelope><s:Body><tev:Subscribe><wsnt:ConsumerReference><wsa:Address>http://10.0.0.5/e</wsa:Address></wsnt:ConsumerReference></tev:Subscribe></s:Body></s:Envelope>",
+      "<?xml version=\"1.0\"?>\r\n<Envelope>\n  <Body>\n    <Subscribe>\n      <ConsumerReference>\n        <Address>\n http://10.0.0.5/e \n</Address>\n"
+      "      </ConsumerReference>\n    </Subscribe>\n  </Body>\n</Envelope>",
+      "<s:Envelope xmlns:s=\"a>b\"><!-- a > comment --><s:Body note='1>0'><Subscribe><ConsumerReference><Address><![CDATA[http://10.0.0.5/e]]></Address>"
+      "</ConsumerReference></Subscribe></s:Body></s:Envelope>",
+      "<!DOCTYPE x [<!ENTITY y \"z\">]><Envelope><Body><Subscribe><ConsumerReference><Address>http://10.0.0.5/<!-- -->e</Address></ConsumerReference>"
+      "</Subscribe></Body></Envelope>",
+  };
+  for (const char* f : forms) {
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("Subscribe", soapAction(f).c_str(), f);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("http://10.0.0.5/e", soapConsumerAddress(f).c_str(), f);
+  }
+  TEST_ASSERT_EQUAL_STRING("a<b&c", xmlFirstText("<Password><![CDATA[a<b&c]]></Password>", "Password").c_str());  // as it is, not unescaped
+  TEST_ASSERT_EQUAL_STRING("", xmlFirstText("<Password>never closed", "Password").c_str());
+  TEST_ASSERT_EQUAL_STRING("", soapAction("<Body><!-- never closed").c_str());
+}
+
+// Every parser of what arrives from outside, fed seeds and many changed copies of them: none may throw, which on the
+// board would stop the hub, or read past what it was given.
+static void parsers_survive_any_input() {
+  uint32_t seed = 12345;
+  auto next = [&]() {
+    seed = seed * 1103515245u + 12345u;
+    return seed >> 8;
+  };
+  const std::string seeds[] = {
+      "<s:Envelope><s:Header><wsse:Security><wsse:UsernameToken><wsse:Username>admin</wsse:Username><wsse:Password Type=\"x#PasswordDigest\">"
+      "abc=</wsse:Password><wsse:Nonce>bm9uY2U=</wsse:Nonce><wsu:Created>2026-01-01T00:00:00Z</wsu:Created></wsse:UsernameToken></wsse:Security>"
+      "</s:Header><s:Body><tev:Subscribe><wsnt:ConsumerReference><wsa:Address>http://10.0.0.5:8080/e</wsa:Address></wsnt:ConsumerReference>"
+      "<wsnt:InitialTerminationTime>PT1M</wsnt:InitialTerminationTime></tev:Subscribe></s:Body></s:Envelope>",
+      "GET /api/file?path=AA-BB-CC-DD-EE-01/1/active.h264&x=%41%zz HTTP/1.1\r\nHost: 10.0.0.2:80\r\nAuthorization: Basic YWRtaW46cHc=\r\n"
+      "Content-Length: 12\r\nOrigin: http://10.0.0.2\r\n\r\n",
+      "Digest username=\"admin\", realm=\"x\", nonce=\"abc\", uri=\"/\", response=\"0123\"",
+      "late=45\nsilent=600\nevery=3600\nrepeat=4\n",
+      "hold=10\nquiet=60-120\nzone=interior\n",
+      "every=7200\nsaving=0\nrestart=1\nrestarts=0\nchip=13\nrefused=0\nsensor=RCWL-0516\nversion=3f2a1b0\n",
+      "1800000000 80\n1800086400 78\n",
+      "public=7b4e909bbe7ffe44c465a220037d608ee35897d31ef972f07f74892cb0f73f13\nkey=88f21f0c93e2f07a7bf6d9d98db1c593e73ae3f7\n",
+      std::string("\x02\x01\x01\x50\x07\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x01\x90\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00", 28),
+      std::string("\x06\x20\x1c\x00\x00\x01\x06\x03\x00\xb4\x00\x0d\x00\x05\x00\x00\x00\x03PIR\x02v1\x00\x00\x00\x00\x00\x00\x00\x00", 32),
+      std::string("\x30\x0f\x00\x05topic{\"a\":\"ARM\"}", 17),
+      std::string("\x00\x00\x00\x01\x67\x42\xc0\x1e\xd9\x00\xa0\x2f\xf9\x61\x00\x00\x00\x01\x68\xce\x3c\x80\x00\x00\x00\x01\x65\x88\x84", 29),
+  };
+  uint8_t mac[6] = {2, 0, 0, 0, 0, 1};
+  int thrown = 0;
+  for (const std::string& base : seeds) {
+    for (int round = 0; round < 3000; round++) {
+      std::string in = base;
+      int changes = 1 + (int)(next() % 4);
+      for (int c = 0; c < changes && !in.empty(); c++) {
+        size_t at = next() % in.size();
+        switch (next() % 5) {
+          case 0: in[at] = (char)next(); break;
+          case 1: in.erase(at, 1 + next() % 8); break;
+          case 2: in.insert(at, 1, "<>&;:=/\"'\r\n\x00\xff"[next() % 14]); break;
+          case 3: in.resize(at); break;
+          default: in.insert(at, in.substr(next() % in.size(), next() % 16)); break;
+        }
+      }
+      try {
+        soapAction(in);
+        soapConsumerAddress(in);
+        xmlFirstText(in, "Password");
+        camWsseValid(in, "admin", "pw");
+        HttpUrl url;
+        parseHttpUrl(in, url);
+        headerValue(in, "authorization");
+        queryParam(in, "path");
+        camAuthParam(in, "nonce");
+        camBase64Decode(in);
+        camKnownHost(in, "10.0.0.2", "hub.local", "192.168.4.1", "a.lan,b");
+        camClassifyPath(in);
+        uint8_t m[6];
+        camParseMac(in, m);
+        CamNodeSettings node;
+        camParseNodeSettings(in, node);
+        CamSensorSettings sensor;
+        camParseSensorSettings(in, sensor);
+        CamNodeInfo info;
+        camParseNodeInfo(in, info);
+        std::vector<CamBatteryPoint> points;
+        camParseBatteryLog(in, points);
+        uint8_t pub[32], key[20];
+        camParsePairing(in, pub, key);
+        camBackupValueValid("net.web", in);
+        const uint8_t* d = (const uint8_t*)in.data();
+        int len = (int)in.size();
+        SensorReport r;
+        camCheckPacket(mac, d, len, "k", r);
+        camCheckNodeInfo(mac, d, len, "k", info);
+        CamFirmwareAsk ask;
+        camCheckFirmwareAsk(mac, d, len, "k", ask);
+        uint8_t opened[CAM_SEALED_MAX_INNER + CAM_SIGNATURE_LEN];
+        camOpenSealed(mac, d, len, "k", false, opened, sizeof(opened));
+        uint8_t inputs;
+        camParseHello(d, len, inputs, pub);
+        camMqttPacketSize(d, in.size());
+        CamMqttMessage msg;
+        camMqttReadPublish(d, in.size(), msg);
+        CamNal nals[3];
+        camParseFrame(d, in.size(), nals);
+        S2oPart part;
+        s2oReadPart(d, len, part);
+        uint8_t state, channel;
+        s2oReadAnswer(d, len, state, channel, pub);
+        S2oForNode forNode;
+        s2oReadConfirmation(d, len, r, forNode);
+        S2oInfo s2oInfo;
+        s2oReadInfo(d, len, s2oInfo);
+        s2oOpen({(const uint8_t*)"k", 1}, mac, d, len, true, opened, sizeof(opened));
+      } catch (...) {
+        thrown++;
+      }
+    }
+  }
+  TEST_ASSERT_EQUAL(0, thrown);
+}
+
 static void wrong_passwords_lock_out_quick_and_slow_guessing() {
   CamLoginGuard g;
   uint32_t t = 1000;
@@ -1150,6 +1272,8 @@ int main() {
   RUN_TEST(the_older_firmwares_history_is_kept);
   RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
+  RUN_TEST(xml_is_read_as_xml);
+  RUN_TEST(parsers_survive_any_input);
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
   RUN_TEST(confirmation_is_signed_for_that_sensor);

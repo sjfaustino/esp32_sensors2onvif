@@ -15,18 +15,53 @@ struct Tag {
   size_t end = 0;  // index of '>'
 };
 
+// The '>' that ends the tag at pos, passing over any inside quoted attribute values, which XML allows there.
+size_t tagEnd(const std::string& s, size_t pos) {
+  char quote = 0;
+  for (size_t i = pos + 1; i < s.size(); i++) {
+    char ch = s[i];
+    if (quote) {
+      if (ch == quote) quote = 0;
+    } else if (ch == '"' || ch == '\'') {
+      quote = ch;
+    } else if (ch == '>') {
+      return i;
+    }
+  }
+  return std::string::npos;
+}
+
+// Past what is not an element: a comment, a CDATA section, a declaration such as <!DOCTYPE ...> with any internal
+// subset in brackets, or a processing instruction. npos when it never ends.
+size_t pastOther(const std::string& s, size_t pos) {
+  if (s.compare(pos, 4, "<!--") == 0) {
+    size_t end = s.find("-->", pos + 4);
+    return end == std::string::npos ? end : end + 3;
+  }
+  if (s.compare(pos, 9, "<![CDATA[") == 0) {
+    size_t end = s.find("]]>", pos + 9);
+    return end == std::string::npos ? end : end + 3;
+  }
+  if (s.compare(pos, 2, "<?") == 0) {
+    size_t end = s.find("?>", pos + 2);
+    return end == std::string::npos ? end : end + 2;
+  }
+  size_t bracket = s.find('[', pos), end = tagEnd(s, pos);  // <!DOCTYPE and the like
+  if (bracket != std::string::npos && (end == std::string::npos || bracket < end)) {
+    size_t close = s.find(']', bracket);
+    end = close == std::string::npos ? close : s.find('>', close);
+  }
+  return end == std::string::npos ? end : end + 1;
+}
+
 bool nextTag(const std::string& s, size_t& pos, Tag& tag) {
   while ((pos = s.find('<', pos)) != std::string::npos) {
-    if (s.compare(pos, 4, "<!--") == 0) {
-      pos = s.find("-->", pos);
+    if (s.compare(pos, 2, "<!") == 0 || s.compare(pos, 2, "<?") == 0) {
+      pos = pastOther(s, pos);
       if (pos == std::string::npos) return false;
       continue;
     }
-    if (s.compare(pos, 2, "<?") == 0 || s.compare(pos, 2, "<!") == 0) {
-      pos++;
-      continue;
-    }
-    size_t end = s.find('>', pos);
+    size_t end = tagEnd(s, pos);
     if (end == std::string::npos) return false;
     size_t i = pos + 1;
     tag.closing = i < end && s[i] == '/';
@@ -70,9 +105,29 @@ std::string unescapeXml(const std::string& s) {
   return out;
 }
 
+// The element's text up to its first child or its end: plain text with its entities read, CDATA sections as they are,
+// comments left out. Empty for an element never closed.
 std::string textAfter(const std::string& s, const Tag& tag) {
-  size_t stop = s.find('<', tag.end + 1);
-  return stop == std::string::npos ? "" : unescapeXml(trim(s.substr(tag.end + 1, stop - tag.end - 1)));
+  std::string out;
+  size_t pos = tag.end + 1;
+  while (pos < s.size()) {
+    size_t lt = s.find('<', pos);
+    if (lt == std::string::npos) return "";
+    out += unescapeXml(s.substr(pos, lt - pos));
+    if (s.compare(lt, 9, "<![CDATA[") == 0) {
+      size_t end = s.find("]]>", lt + 9);
+      if (end == std::string::npos) return "";
+      out += s.substr(lt + 9, end - lt - 9);
+      pos = end + 3;
+    } else if (s.compare(lt, 4, "<!--") == 0) {
+      size_t end = s.find("-->", lt + 4);
+      if (end == std::string::npos) return "";
+      pos = end + 3;
+    } else {
+      break;
+    }
+  }
+  return trim(out);
 }
 }  // namespace
 
