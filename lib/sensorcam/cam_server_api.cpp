@@ -94,8 +94,8 @@ std::string SensorCamServer::treeJson() {
       int slot = camNumber(n.name, input) ? findSlot(mac, input) : 0;
       if (!slot) continue;                        // beyond the sensor limit, so it does nothing
       if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
-      const CamSensorSettings& set = slots_[slot - 1].settings;
-      j.object().num("input", input).str("name", slots_[slot - 1].name).num("hold", set.holdS != 0, set.holdS);
+      const CamSensorSettings& set = slotOf(slot).settings;
+      j.object().num("input", input).str("name", slotOf(slot).name).num("hold", set.holdS != 0, set.holdS);
       j.flag("interior", set.interior);
       if (set.quietFrom >= 0)
         j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
@@ -339,15 +339,11 @@ std::string SensorCamServer::espNowJson() {
   j.str("key", cfg_.espNowKey).array("nodes");
   uint32_t now = millis_();
   for (int id = 1; id <= sensors_.count(); id++) {
-    if (!slots_[id - 1].used) continue;
-    const Health& h = health_[id - 1];
+    if (!slotOf(id).used) continue;
+    const Health& h = healthOf(id);
     std::string name = slotName(id);
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
-    j.object()
-        .flag("low", h.lowBattery)
-        .str("name", slots_[id - 1].name)
-        .str("node", name.substr(0, name.find('/')))
-        .num("input", slots_[id - 1].input);
+    j.object().flag("low", h.lowBattery).str("name", slotOf(id).name).str("node", name.substr(0, name.find('/'))).num("input", slotOf(id).input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
     j.num("rssi", h.rssi != 0, h.rssi)
         .num("counter", h.counterSeen, h.counter)

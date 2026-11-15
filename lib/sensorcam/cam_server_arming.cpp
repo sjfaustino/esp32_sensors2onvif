@@ -32,7 +32,7 @@ bool camTimedDisarmOver(int64_t until, time_t wallNow, uint32_t msSinceStart, ui
 // still counted counts, and so does one whose time is not known: a false alert is better than a missed one. A mode
 // kept from before the start counts from the start, as nothing earlier is known.
 CamEventKind SensorCamServer::heldAs(int id, const SensorReport& r, uint32_t now) const {
-  bool interior = slots_[id - 1].settings.interior;
+  bool interior = slotOf(id).settings.interior;
   bool held = armMode() == CAM_DISARMED || (armMode() == CAM_ARMED_HOME && interior);
   if (!held || r.age == CAM_AGE_UNKNOWN) return CAM_EVENT_REPORT;
   uint32_t offAt = interior ? interiorOffAt_ : perimeterOffAt_;
@@ -63,7 +63,7 @@ bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint3
 }
 
 bool SensorCamServer::testAlert(int id) {
-  if (id < 1 || id > CAM_MAX_SENSORS || !slots_[id - 1].used) return false;
+  if (id < 1 || id > CAM_MAX_SENSORS || !slotOf(id).used) return false;
   uint32_t now = millis_();
   interruptPastEvent(now);
   bool wasActive = sensors_.active(id);
@@ -71,7 +71,7 @@ bool SensorCamServer::testAlert(int id) {
   if (!wasActive) startAlert(id, false, now);  // checked as delivered, as a real one is: that is part of what is tested
   SensorReport r;
   r.active = true;
-  r.battery = health_[id - 1].battery;
+  r.battery = healthOf(id).battery;
   logEvent(id, r, false, CAM_EVENT_TEST_ALERT);
   notifyHook(id, CAM_EVENT_TEST_ALERT, false);
   return true;

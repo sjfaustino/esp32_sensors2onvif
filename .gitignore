@@ -24,3 +24,7 @@ __pycache__/
 
 # Written by tools/embed_web.py on every build
 lib/sensorcam/cam_web_pages.cpp
+
+# Written by PlatformIO for this computer, with its own paths
+.vscode/c_cpp_properties.json
+.vscode/launch.json

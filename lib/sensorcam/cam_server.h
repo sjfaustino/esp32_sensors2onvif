@@ -453,8 +453,14 @@ class SensorCamServer {
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
   Node* nodeByMac(const uint8_t mac[6]);     // nullptr for a node without a folder
-  Node& nodeOf(int id) { return nodes_[slots_[id - 1].node - 1]; }
-  const Node& nodeOf(int id) const { return nodes_[slots_[id - 1].node - 1]; }
+  // A sensor's id runs from 1, as 0 means none; these are the only places that turn it into a table position.
+  Slot& slotOf(int id) { return slots_[id - 1]; }
+  const Slot& slotOf(int id) const { return slots_[id - 1]; }
+  Health& healthOf(int id) { return health_[id - 1]; }
+  const Health& healthOf(int id) const { return health_[id - 1]; }
+  void refuseSignature(int id);  // a message from this sensor's device had the wrong signature
+  Node& nodeOf(int id) { return nodes_[slotOf(id).node - 1]; }
+  const Node& nodeOf(int id) const { return nodes_[slotOf(id).node - 1]; }
   const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
   uint32_t freshNumber();
   bool apiPairing(const ApiRequest& r);

@@ -513,6 +513,10 @@ to the hub, `1` from it), the number (4 bytes) and i (1 byte). The hub opens it,
 come plain, and answers in kind; its own numbers start at random at each start. Sealing hides what a message says, not
 that it was sent: someone listening still sees a node send at other times than its regular reports.
 
+ESP-NOW has encryption of its own, but only for a few peers at once (7 by default, 17 at most), and a hub
+has more nodes than that. So sealing is built from the same HMAC-SHA1 that signs, as a counter-mode key stream, and the
+signature covers the sealed bytes: encrypt, then sign.
+
 **Firmware updates.** When a confirmation says an update is ready, a node can ask for it, signed like a report:
 
 | Ask, node to hub, 17 bytes | |

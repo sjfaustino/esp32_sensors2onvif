@@ -56,7 +56,7 @@ void SensorCamServer::saveWaiting() {
   for (int n = 0; n < missed.count(); n++) add(missed.at(n).mac, missed.at(n).input, 0, missed.at(n).several, true, true);
   for (int id = 1; id <= sensors_.count(); id++) {
     const CamPendingCheck& p = delivery_.pending(id);
-    if (slots_[id - 1].used && p.on) add(p.mac, p.input, 0, p.several, false, p.replay);
+    if (slotOf(id).used && p.on) add(p.mac, p.input, 0, p.several, false, p.replay);
   }
   out[5] = (char)((out.size() - 6) / 9);
   waitingSaveFailed_ = !storage_.writeFile(WAITING_FILE, out.data(), out.size());
@@ -143,7 +143,7 @@ void SensorCamServer::setNvrGoneMs(uint32_t ms) {
 // cleared since is still in the file; after a power cut it replays, which is a false alert rather than a missed one.
 void SensorCamServer::startAlert(int id, bool delayed, uint32_t now, bool replay) {
   if (!cfg_.watchNvr) return;  // nothing would check it
-  delivery_.started(id, slots_[id - 1].mac, slots_[id - 1].input, delayed, sensors_.several(id), replay, holdFor(id), now);
+  delivery_.started(id, slotOf(id).mac, slotOf(id).input, delayed, sensors_.several(id), replay, holdFor(id), now);
   pendingChanged_ = true;
 }
 
@@ -165,12 +165,12 @@ void SensorCamServer::checkNvr(uint32_t now) {
     nvrGone_ = true;  // after, so one that ran out of memory is tried again
   }
   notGot_.clear();
-  delivery_.check(now, listening, [&](int id) { return slots_[id - 1].used && sensors_.active(id); }, notGot_);
+  delivery_.check(now, listening, [&](int id) { return slotOf(id).used && sensors_.active(id); }, notGot_);
   for (const CamDeliveryWatch::Missed& m : notGot_) {
     waitingDirty_ = true;
-    if (!m.log || !slots_[m.id - 1].used) continue;  // a replay that failed again waits again, without a second entry
+    if (!m.log || !slotOf(m.id).used) continue;  // a replay that failed again waits again, without a second entry
     SensorReport r;
-    r.battery = health_[m.id - 1].battery;
+    r.battery = healthOf(m.id).battery;
     r.active = true;
     logEvent(m.id, r, m.delayed, CAM_EVENT_NOT_DELIVERED);
     notifyHook(m.id, CAM_EVENT_NOT_DELIVERED, m.delayed);
@@ -179,7 +179,7 @@ void SensorCamServer::checkNvr(uint32_t now) {
 
 void SensorCamServer::healthAlert(int id, CamEventKind kind, uint32_t now) {
   SensorReport r;
-  r.battery = health_[id - 1].battery;
+  r.battery = healthOf(id).battery;
   logEvent(id, r, false, kind);
   notifyHook(id, kind, false);
   if (!cfg_.healthAlarm) return;
@@ -188,17 +188,17 @@ void SensorCamServer::healthAlert(int id, CamEventKind kind, uint32_t now) {
 }
 
 uint32_t SensorCamServer::holdFor(int id) const {
-  uint32_t seconds = slots_[id - 1].settings.holdS;
+  uint32_t seconds = slotOf(id).settings.holdS;
   return seconds ? seconds * 1000 : cfg_.holdMs;
 }
 
-bool SensorCamServer::quietNow(int id) const { return camQuiet(slots_[id - 1].settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
+bool SensorCamServer::quietNow(int id) const { return camQuiet(slotOf(id).settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
 
 // present: the report shows the sensor is there now. One that may have been recorded and played back still raises its
 // alert, as a false alert is better than a missed one, but says nothing of the node being there or of its battery.
 bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now, bool present) {
   if (id < 1 || id > sensors_.count()) return false;
-  Health& h = health_[id - 1];
+  Health& h = healthOf(id);
   if (present) {
     h.heard = true;
     h.heardAt = now;
@@ -257,7 +257,7 @@ void SensorCamServer::interruptPastEvent(uint32_t now) {
 
 // A late alert waits for its own NVR record; CamDelayedQueue decides which alerts share one.
 void SensorCamServer::queueDelayed(int id, const SensorReport& r, uint32_t now) {
-  const Slot& s = slots_[id - 1];
+  const Slot& s = slotOf(id);
   bool known = r.age != CAM_AGE_UNKNOWN && r.age < 1000000;  // the millisecond clock covers 49 days
   delayed_.add(s.mac, s.input, reportDirection(r), known, known ? now - r.age * 1000 : now, holdFor(id));
   waitingDirty_ = true;
@@ -332,14 +332,10 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     noteUnknown(mac, r.input, rssi);
     return;
   }
-  Health& h = health_[id - 1];
+  Health& h = healthOf(id);
   // The report number is never a reason to refuse a correctly signed report: a sensor that restarts its count must
   // not lose an alert.
-  if (check == CAM_PACKET_BAD_SIGNATURE) {
-    h.refused++;
-    h.refusal = "wrong signature";
-    return;
-  }
+  if (check == CAM_PACKET_BAD_SIGNATURE) return refuseSignature(id);
   noteSignal(id, rssi);
   node->sealed = sealed;
   // A report recorded and played back would otherwise keep a stolen node looking alive. A paired node echoes the number
@@ -383,6 +379,12 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
 }
 
 // Random numbers without a source of them on every build: the hub's seal numbers, which start at random, mixed.
+// Counted, and shown on the ESP-NOW page: a node that keeps failing has a wrong key, or someone is trying keys.
+void SensorCamServer::refuseSignature(int id) {
+  healthOf(id).refused++;
+  healthOf(id).refusal = "wrong signature";
+}
+
 uint32_t SensorCamServer::freshNumber() {
   uint32_t x = sealNumber_++ * 2654435761u ^ millis_() ^ 0x9E3779B9u;
   x ^= x >> 16;
@@ -403,11 +405,7 @@ void SensorCamServer::sealedPacket(const uint8_t mac[6], const uint8_t* data, in
   if (!id) return;
   uint8_t inner[CAM_SEALED_MAX_INNER + CAM_SIGNATURE_LEN];
   int n = camOpenSealed(mac, data, len, keyFor(&nodeOf(id)), false, inner, sizeof(inner));
-  if (n < 0) {
-    health_[id - 1].refused++;
-    health_[id - 1].refusal = "wrong signature";
-    return;
-  }
+  if (n < 0) return refuseSignature(id);
   if (n == 0 || (inner[0] != CAM_REPORT && inner[0] != CAM_NODE_INFO)) return;
   espNowReport(mac, inner, n, rssi, true);
 }
@@ -415,7 +413,7 @@ void SensorCamServer::sealedPacket(const uint8_t mac[6], const uint8_t* data, in
 // What a node gets with each confirmation: the hub's time, its settings from the page, a walk test, and whether a
 // firmware update is ready. No heap, as it is part of confirming an alert.
 CamForNode SensorCamServer::forNode(int id) const {
-  const Slot& s = slots_[id - 1];
+  const Slot& s = slotOf(id);
   const Node& node = nodeOf(id);
   CamForNode e;
   time_t t = time(nullptr);
@@ -452,13 +450,8 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
   const std::string& key = keyFor(&node);
   CamFirmwareAsk ask;
   CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
-  Health& h = health_[id - 1];
   if (check == CAM_PACKET_INVALID) return;
-  if (check == CAM_PACKET_BAD_SIGNATURE) {
-    h.refused++;
-    h.refusal = "wrong signature";
-    return;
-  }
+  if (check == CAM_PACKET_BAD_SIGNATURE) return refuseSignature(id);
   const CamNodeImage* f = imageFor(node.info.chip);
   if (!f) return;
   const CamNodeImage& image = *f;
@@ -526,11 +519,7 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
   Node& node = nodeOf(id);
   CamPacketCheck check = camCheckNodeInfo(mac, data, len, keyFor(&node), info);
   if (check == CAM_PACKET_INVALID) return;
-  if (check == CAM_PACKET_BAD_SIGNATURE) {
-    health_[id - 1].refused++;
-    health_[id - 1].refusal = "wrong signature";
-    return;
-  }
+  if (check == CAM_PACKET_BAD_SIGNATURE) return refuseSignature(id);
   CamNodeInfo old = node.info;
   if (info.responseMs == CAM_RESPONSE_UNKNOWN) info.responseMs = old.responseMs;
   node.info = info;
@@ -542,7 +531,7 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
   bool known = !old.version.empty();  // otherwise this is the first the hub hears, and its restarts are old news
   if (known && info.restarts != old.restarts && camRestartIsFault(info.restart)) {
     SensorReport r;
-    r.battery = health_[id - 1].battery;
+    r.battery = healthOf(id).battery;
     logEvent(id, r, false, CAM_EVENT_NODE_FAULT);
     notifyHook(id, CAM_EVENT_NODE_FAULT, false);
   }
@@ -550,7 +539,7 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
 void SensorCamServer::noteSignal(int id, int8_t rssi) {
-  Health& h = health_[id - 1];
+  Health& h = healthOf(id);
   h.rssi = rssi;
   if (rssi == 0) return;  // not measured
   h.rssiAvg8 = h.rssiCount ? (int16_t)(h.rssiAvg8 + (rssi * 8 - h.rssiAvg8) / 4) : (int16_t)(rssi * 8);
@@ -654,7 +643,7 @@ int SensorCamServer::slotForPath(const std::string& path) const {
   return findSlot(mac, input);
 }
 
-std::string SensorCamServer::slotName(int id) const { return camMacText(slots_[id - 1].mac) + "/" + std::to_string(slots_[id - 1].input); }
+std::string SensorCamServer::slotName(int id) const { return camMacText(slotOf(id).mac) + "/" + std::to_string(slotOf(id).input); }
 
 bool SensorCamServer::sensorFits(const std::string& path) const {
   uint8_t mac[6];
@@ -744,11 +733,11 @@ void SensorCamServer::rescan() {
       if (!id) continue;
       seen[id - 1] = true;
       std::string folder = s.name + "/" + e.name, name;
-      slots_[id - 1].name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
+      slotOf(id).name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
       CamSensorSettings sensor;  // a damaged file means the defaults
       if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, sensor)) sensor = CamSensorSettings();
-      slots_[id - 1].settings = sensor;
-      slots_[id - 1].node = index + 1;
+      slotOf(id).settings = sensor;
+      slotOf(id).node = index + 1;
     }
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {

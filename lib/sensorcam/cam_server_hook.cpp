@@ -17,9 +17,9 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   if (w.url.empty() || !wanted) return;
   try {
     std::string event = camEventName(kind, true, delayed);
-    std::string sensor = slotName(id), name = slots_[id - 1].name;
+    std::string sensor = slotName(id), name = slotOf(id).name;
     std::string message = camEventMessage(kind, name.empty() ? sensor : name + " (" + sensor + ")", "", CAM_AGE_UNKNOWN, delayed);
-    uint8_t battery = health_[id - 1].battery;
+    uint8_t battery = healthOf(id).battery;
     time_t now = time(nullptr);
     bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
     queueHook(message, jsonObject([&](CamJson& j) {

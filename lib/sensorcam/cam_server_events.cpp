@@ -15,7 +15,7 @@
 
 // Written straight into the event, without using the heap, so an alert is logged even when memory has run out.
 void SensorCamServer::logEvent(int id, const SensorReport& r, bool delayed, CamEventKind kind) {
-  const Slot& s = slots_[id - 1];
+  const Slot& s = slotOf(id);
   char sensor[sizeof(CamEvent::sensor)];
   snprintf(sensor, sizeof(sensor), "%02X-%02X-%02X-%02X-%02X-%02X/%u", s.mac[0], s.mac[1], s.mac[2], s.mac[3], s.mac[4], s.mac[5], (unsigned)s.input);
   addEvent(sensor, s.name.c_str(), r, delayed, kind);
@@ -135,15 +135,15 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
     j.str("mode", camArmModeName(mode)).flag("timed", mode == CAM_DISARMED && cfg_.disarmedUntil);
     j.num("left_s", left >= 0, left).array("active");
     for (int id = 1; id <= sensors_.count(); id++)
-      if (slots_[id - 1].used && sensors_.active(id))
-        j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).flag("past", sensors_.pastEvent(id)).end();
+      if (slotOf(id).used && sensors_.active(id))
+        j.object().str("sensor", slotName(id)).str("name", slotOf(id).name).flag("past", sensors_.pastEvent(id)).end();
     j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", streamCount()).end();
     j.str("mqtt", mqttState()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hooks_.result()).end().array("problems");
     for (int id = 1; id <= sensors_.count(); id++) {
-      const Health& h = health_[id - 1];
-      if (!slots_[id - 1].used) continue;
+      const Health& h = healthOf(id);
+      if (!slotOf(id).used) continue;
       const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
-      if (problem) j.object().str("sensor", slotName(id)).str("name", slots_[id - 1].name).str("problem", problem).end();
+      if (problem) j.object().str("sensor", slotName(id)).str("name", slotOf(id).name).str("problem", problem).end();
     }
     j.end();
     if (last) {
@@ -159,14 +159,14 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
 
 std::string SensorCamServer::statusJson(uint32_t now) {
   int known = 0;
-  for (int id = 1; id <= sensors_.count(); id++) known += slots_[id - 1].used;
+  for (int id = 1; id <= sensors_.count(); id++) known += slotOf(id).used;
   return jsonObject([&](CamJson& j) {
     j.num("sensors", known).array("active");
     for (int id = 1; id <= sensors_.count(); id++)
       if (sensors_.active(id)) j.str(slotName(id));
     j.end().num("subscribers", subs_.count()).num("streams", streamCount()).num("delayed_waiting", delayed_.count()).array("heard");
     for (int id = 1; id <= sensors_.count(); id++) {
-      const Health& h = health_[id - 1];
+      const Health& h = healthOf(id);
       if (!h.heard) continue;
       j.object()
           .str("sensor", slotName(id))

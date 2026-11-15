@@ -264,7 +264,7 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
     return true;
   }
   bool alert = false;
-  for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slots_[id - 1].used && sensors_.active(id) && !sensors_.pastEvent(id));
+  for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slotOf(id).used && sensors_.active(id) && !sensors_.pastEvent(id));
   bool nvr = nvrListening(now);
   bool armed = this->armed(), home = armMode() == CAM_ARMED_HOME;
   int64_t until = cfg_.disarmedUntil;
