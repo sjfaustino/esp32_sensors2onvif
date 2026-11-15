@@ -431,18 +431,12 @@ CamForNode SensorCamServer::forNode(int id) const {
   return e;
 }
 
-const SensorCamServer::NodeImageFile* SensorCamServer::imageFor(uint16_t chip) const {
-  for (const NodeImageFile& f : nodeImages_)
-    if (f.image.chip == chip) return &f;
-  return nullptr;
-}
-
 // Offered while the node runs another version, unless it already tried this one and had it undone, or is saving its
 // battery: an update keeps it awake for a minute or so.
 bool SensorCamServer::updateReady(int id) const {
   const CamNodeInfo& info = nodeOf(id).info;
-  const NodeImageFile* f = imageFor(info.chip);
-  return f && !info.version.empty() && info.version != f->image.version && info.refused != f->image.number && !info.saving;
+  const CamNodeImage* f = imageFor(info.chip);
+  return f && !info.version.empty() && info.version != f->version && info.refused != f->number && !info.saving;
 }
 
 // Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
@@ -460,9 +454,9 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
     h.refusal = "wrong signature";
     return;
   }
-  const NodeImageFile* f = imageFor(node.info.chip);
+  const CamNodeImage* f = imageFor(node.info.chip);
   if (!f) return;
-  const CamNodeImage& image = f->image;
+  const CamNodeImage& image = *f;
   node.updating = true;
   node.updateAt = millis_();
   node.updateSize = image.size;
@@ -477,7 +471,7 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
   node.updateOffset = ask.offset;
   uint8_t window[CAM_FIRMWARE_WINDOW * CAM_FIRMWARE_PART_MAX];
   uint32_t length = image.size - ask.offset < sizeof(window) ? image.size - ask.offset : (uint32_t)sizeof(window);
-  if (!storage_.readAt(f->path, ask.offset, (char*)window, length)) return;
+  if (!nodeImages_.read(image.chip, ask.offset, window, length)) return;
   for (uint32_t at = 0; at < length; at += CAM_FIRMWARE_PART_MAX) {
     int n = length - at < (uint32_t)CAM_FIRMWARE_PART_MAX ? (int)(length - at) : CAM_FIRMWARE_PART_MAX;
     cfg_.espNowSend(mac, out, camFirmwarePart(mac, image.number, image.size, ask.offset + at, window + at, n, key, out));
@@ -535,7 +529,7 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
   if (info.responseMs == CAM_RESPONSE_UNKNOWN) info.responseMs = old.responseMs;
   node.info = info;
   // Now running the image it was fetching: the update is over.
-  if (node.updating && imageFor(info.chip) && imageFor(info.chip)->image.version == info.version) node.updating = false;
+  if (node.updating && imageFor(info.chip) && imageFor(info.chip)->version == info.version) node.updating = false;
   if (info == old) return;
   std::string text = camNodeInfoText(info);
   storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());

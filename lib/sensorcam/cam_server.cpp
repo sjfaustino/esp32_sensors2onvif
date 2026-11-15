@@ -71,7 +71,7 @@ bool SensorCamServer::begin() {
   frameData_.reserve(CAM_MAX_FRAME);
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
-  loadNodeImages();
+  nodeImages_.load();
   log_.load();
   mqttEventsSent_ = log_.added();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
@@ -406,7 +406,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
 
 void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || (c.nodeImage ? writeNodeImage(data, take) : camCall(cfg_.firmwareWrite, (const uint8_t*)data, take));
+  bool written = !take || (c.nodeImage ? nodeImages_.write(data, take) : camCall(cfg_.firmwareWrite, (const uint8_t*)data, take));
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -492,12 +492,8 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (!authorized(c, headers)) return needLogin(CAM_MAX_NODE_IMAGE);
     if (!contentLength || contentLength > CAM_MAX_NODE_IMAGE) return refuse(413, "that file is not the right size for a node's firmware", CAM_MAX_NODE_IMAGE);
     if (firmwareOwner_ || nodeImageOwner_) return refuse(507, "the hub is busy with another update; try again", CAM_MAX_NODE_IMAGE);
+    if (!nodeImages_.begin()) return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
     startNodeImage(c, contentLength);
-    if (!nodeImageFile_) {
-      dropNodeImage();
-      c.firmwareActive = c.nodeImage = false;
-      return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
-    }
     std::string first = c.in.substr(headEnd + 4);
     c.in.clear();
     feedFirmware(c, first.data(), first.size(), now);
@@ -685,8 +681,7 @@ void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
   if (n.fd >= 0) netClose(n.fd);
   n = NotifyIo();
   if (hook) {  // last, as the one step that needs memory: running out then loses only the note
-    hookResultAt_ = time(nullptr);
-    hookResult_ = result;
+    hooks_.noteResult(result, time(nullptr));
   }
 }
 
@@ -842,7 +837,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
     CamSub& s = subs_.at(i);
     if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
-  if (hook_.state == NotifyIo::IDLE && hookCount_ && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
+  if (hook_.state == NotifyIo::IDLE && hooks_.count() && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
   mqttHousekeeping(now);
   pushFrames(now);
 }

@@ -26,7 +26,7 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
               }));
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
-    hookDropped_++;
+    hooks_.dropOne();
   }
 }
 
@@ -43,29 +43,20 @@ void SensorCamServer::notifyHubHook(CamEventKind kind, const std::string& detail
               }));
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
-    hookDropped_++;
+    hooks_.dropOne();
   }
 }
 
-// One at a time, oldest first. A full queue drops the new message, so a burst cannot use up memory.
-void SensorCamServer::queueHook(const std::string& message, const std::string& json) {
-  if (hookCount_ == HOOK_QUEUE) {
-    hookDropped_++;
-    return;
-  }
-  hookQueue_[(hookHead_ + hookCount_) % HOOK_QUEUE] = cfg_.webhook.text ? message : json;
-  hookCount_++;
-}
+void SensorCamServer::queueHook(const std::string& message, const std::string& json) { hooks_.add(cfg_.webhook.text ? message : json); }
 
 void SensorCamServer::startHook(uint32_t now) {
   HttpUrl url;
   if (!parseHttpUrl(cfg_.webhook.url, url)) {  // the address was removed while messages waited
-    for (std::string& waiting : hookQueue_) waiting.clear();
-    hookCount_ = 0;
+    hooks_.clear();
     return;
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind; the message waits.
-  const std::string& body = hookQueue_[hookHead_];
+  const std::string& body = hooks_.oldest();
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) + "\r\nContent-Type: " +
                     (cfg_.webhook.text ? "text/plain; charset=utf-8" : JSON_TYPE) + "\r\nContent-Length: " + std::to_string(body.size()) +
                     "\r\nConnection: close\r\n\r\n";
@@ -73,9 +64,7 @@ void SensorCamServer::startHook(uint32_t now) {
   out += body;
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return;  // still queued, so it is tried again on the next pass
-  std::string().swap(hookQueue_[hookHead_]);
-  hookHead_ = (hookHead_ + 1) % HOOK_QUEUE;
-  hookCount_--;
+  hooks_.takeOldest();
   netNonblock(fd);
   hook_ = NotifyIo();
   hook_.hook = true;
@@ -95,10 +84,10 @@ void SensorCamServer::startHook(uint32_t now) {
 
 std::string SensorCamServer::webhookJson() {
   const CamWebhook& w = cfg_.webhook;
-  bool clockOk = hookResultAt_ >= CAM_CLOCK_VALID_AFTER;
+  bool clockOk = hooks_.resultAt() >= CAM_CLOCK_VALID_AFTER;
   return jsonObject([&](CamJson& j) {
     j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems);
-    j.str("last", hookResult_).str("lastAt", clockOk, clockOk ? iso(hookResultAt_) : std::string());
-    j.num("waiting", hookCount_ + (hook_.state != NotifyIo::IDLE)).num("dropped", hookDropped_);
+    j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
+    j.num("waiting", hooks_.count() + (hook_.state != NotifyIo::IDLE)).num("dropped", hooks_.dropped());
   });
 }

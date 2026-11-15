@@ -8,6 +8,8 @@
 #include "cam_auth.h"
 #include "cam_delivery.h"
 #include "cam_events.h"
+#include "cam_hook_queue.h"
+#include "cam_node_images.h"
 #include "cam_json.h"
 #include "cam_pairing.h"
 #include "cam_rtp.h"
@@ -204,7 +206,6 @@ class SensorCamServer {
   static const int MAX_HTTP = 6;
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
   static const int MAX_UNKNOWN = 8;
-  static const int HOOK_QUEUE = 8;
 
   struct Health {
     bool heard = false;
@@ -441,24 +442,15 @@ class SensorCamServer {
   void sealedPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
   void firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len);
   CamForNode forNode(int id) const;  // what goes to a node with each confirmation
-  struct NodeImageFile {  // a node firmware file put on the hub, in nodes/ with its description beside it
-    CamNodeImage image;
-    std::string path;
-  };
-  std::vector<NodeImageFile> nodeImages_;
-  FILE* nodeImageFile_ = nullptr;  // the one being uploaded
-  HttpConn* nodeImageOwner_ = nullptr;
+  HttpConn* nodeImageOwner_ = nullptr;  // the upload of a node firmware file under way
   uint32_t sealNumber_ = 0;  // for the hub's sealed messages; set at random at the start
-  const NodeImageFile* imageFor(uint16_t chip) const;
+  const CamNodeImage* imageFor(uint16_t chip) const { return nodeImages_.forChip(chip); }
   void finishNodeImage(HttpConn& c, bool ok);
   bool updateReady(int id) const;
   void noteBattery(int id, uint8_t percent);
-  void loadNodeImages();
   void startNodeImage(HttpConn& c, size_t length);
-  bool writeNodeImage(const char* data, size_t n);
   void dropNodeImage();  // an upload abandoned partway through
   bool apiNodeImages(const ApiRequest& r);
-  void nodeImagesJson(CamJson& j) const;
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
   Node* nodeByMac(const uint8_t mac[6]);      // nullptr for a node without a folder
@@ -554,6 +546,7 @@ class SensorCamServer {
   uint32_t refused_ = 0;
   CamStorage storage_;
   CamEventLog log_{storage_};  // after storage_, which it uses
+  CamNodeImages nodeImages_{storage_};
   // Waiting to be sent once the reports are saved: 6 bytes of MAC address, then the message. A fixed table, so an alert is
   // confirmed even when memory has run out.
   static const int MAX_CONFIRMATIONS = 32;
@@ -587,12 +580,7 @@ class SensorCamServer {
   uint32_t nextDelayedAt_ = 0;
   bool delayedGap_ = false;
   NotifyIo hook_;
-  std::string hookQueue_[HOOK_QUEUE];
-  int hookCount_ = 0;
-  int hookHead_ = 0;
-  uint32_t hookDropped_ = 0;
-  std::string hookResult_;  // how the last message went; empty before the first
-  time_t hookResultAt_ = 0;
+  CamHookQueue hooks_;
   std::function<size_t(size_t, char*, size_t)> csvRead_;  // streams the whole history for a download
   uint32_t nvrSeenAt_ = 0;  // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;

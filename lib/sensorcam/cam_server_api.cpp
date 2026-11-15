@@ -310,7 +310,7 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
 std::string SensorCamServer::espNowJson() {
   int known = 0;
   for (const Slot& s : slots_) known += s.used;
-  size_t room = (size_t)known * 760 + MAX_UNKNOWN * 120 + nodeImages_.size() * 120 + 256;  // the longest possible entries
+  size_t room = (size_t)known * 760 + MAX_UNKNOWN * 120 + 8 * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
@@ -335,15 +335,15 @@ std::string SensorCamServer::espNowJson() {
     j.str("restart", told ? camRestartName(info.restart) : "").num("restarts", told, info.restarts).flag("restartFault", told && camRestartIsFault(info.restart));
     j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs).str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
     j.num("daysLeft", node.daysLeft >= 0, node.daysLeft).flag("sealed", node.sealed);
-    const NodeImageFile* image = imageFor(info.chip);
+    const CamNodeImage* image = imageFor(info.chip);
     std::string update = node.updating && node.updateSize ? "updating, " + std::to_string((uint64_t)node.updateOffset * 100 / node.updateSize) + "%"
                          : updateReady(id)          ? "update ready"
-                         : image && info.refused == image->image.number ? "update undone"
+                         : image && info.refused == image->number ? "update undone"
                                                                         : "";
     j.str("update", update).end();
   }
   j.end();
-  nodeImagesJson(j);
+  nodeImages_.json(j);
   j.array("unknown");
   for (const UnknownSender& u : unknown_) {
     if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
