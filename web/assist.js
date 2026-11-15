@@ -192,8 +192,10 @@
     create.onclick = async () => {
       const id = mac.value.trim().toUpperCase().replace(/:/g, "-"),
         path = id + "/" + input.value;
+      let existed = false;
       try {
-        await call("POST", "/api/mkdir?path=" + path);
+        existed = (await call("GET", "/api/espnow")).nodes.some((n) => n.node + "/" + n.input == path);
+        if (!existed) await call("POST", "/api/mkdir?path=" + path);
         if (name.value.trim()) await call("PUT", "/api/file?path=" + path + "/name.txt", name.value.trim());
       } catch (e) {
         msg.className = "portMsg err";
@@ -211,6 +213,14 @@
         (info.token ? "&token=" + info.token : "");
       const heard = el("p", { className: "note", textContent: "Waiting for its first report..." });
       body.replaceChildren(
+        existed
+          ? el("p", {
+              className: "note",
+              textContent:
+                "That sensor already existed, so it was kept as it was" +
+                (name.value.trim() ? ", with the new name." : "."),
+            })
+          : "",
         el("p", { textContent: "Set the device to call this address when it detects something:" }),
         copyField(base),
         el("p", {

@@ -426,6 +426,11 @@ function render(t) {
                 say("Sensor number must be 1 to 255", true);
                 return;
               }
+              // The hub makes a folder that is already there without a word, as a restore needs, so this says it here.
+              if (s.sensors.some((n) => n.input == +num.value)) {
+                say("Sensor " + num.value + " already exists on " + s.mac, true);
+                return;
+              }
               act(() => call("POST", "/api/mkdir?path=" + s.mac + "/" + num.value), "Added sensor " + num.value);
             },
           }),
@@ -512,6 +517,11 @@ $("addNode").onclick = () => {
     say("Enter a MAC address like AA:BB:CC:DD:EE:01", true);
     return;
   }
-  act(() => call("POST", "/api/mkdir?path=" + m), "Added node " + m).then(() => ($("mac").value = ""));
+  act(async () => {
+    if ((await call("GET", "/api/tree")).nodes.some((n) => n.mac == m))
+      throw new Error("Node " + m + " already exists");
+    await call("POST", "/api/mkdir?path=" + m);
+    $("mac").value = "";
+  }, "Added node " + m);
 };
 load();
