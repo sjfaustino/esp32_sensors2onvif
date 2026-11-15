@@ -182,6 +182,7 @@ class SensorCamServer {
   void saveNow();  // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds);  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
+  bool nvrListeningNow() const { return nvrListening(millis_()); }  // see nvrListening
   uint32_t memoryFailures() const { return memoryFailures_; }  // times memory ran out and only that piece of work was dropped
   bool armed() const { return cfg_.armMode != CAM_DISARMED; }
   CamArmMode armMode() const { return cfg_.armMode; }
@@ -223,10 +224,29 @@ class SensorCamServer {
     bool weak = false;
     uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
     const char* refusal = "";
-    bool sealed = false;   // its last report was sealed, so no one listening could read it
+  };
+  // One per node folder: what is the same for each of its sensors. A sensor's Slot points to it.
+  struct Node {
+    bool used = false;
+    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
+    CamNodeSettings settings;  // from settings.txt in the node's folder
+    CamNodeInfo info;          // what the node last said about itself, from about.txt
+    // From pairing.txt: its own key, which its messages must be signed with instead of the shared one.
+    bool paired = false;
+    std::string key;
+    uint8_t publicKey[CAM_X25519_LEN] = {0};
+    int64_t batteryAt = 0;  // the newest reading in battery.txt
+    int daysLeft = -1;      // how long its battery will last, from that file; -1 unknown
+    // Only in memory:
+    uint32_t walkUntil = 0;   // the end of a walk test started on the page, on the hub's clock in seconds since 1970
+    bool sealed = false;      // its last report was sealed, so no one listening could read it
     bool runningOut = false;  // its battery is forecast to run out within a week, and that was logged
     uint32_t updateOffset = 0, updateSize = 0, updateAt = 0;  // how far a firmware update has got, and when it last asked
     bool updating = false;
+    // The numbers the hub last gave it for its next report, the newest and the one before. A paired node's report that
+    // carries neither may be one recorded earlier and played back: it still counts as an alert, but not as the node
+    // being there, and the hub asks the node to prove it is.
+    uint32_t fresh = 0, freshBefore = 0;
   };
   struct Slot {
     bool used = false;
@@ -234,15 +254,7 @@ class SensorCamServer {
     uint8_t input = 0;
     std::string name;  // from name.txt in the sensor's folder
     CamSensorSettings settings;  // from settings.txt
-    CamNodeSettings node;        // from settings.txt in the node's folder, the same for each of its sensors
-    CamNodeInfo info;            // what the node last said about itself, from about.txt in its folder
-    uint32_t walkUntil = 0;      // the end of a walk test started on the page, on the hub's clock in seconds since 1970
-    int64_t batteryAt = 0;       // the newest reading in battery.txt, kept in its node's folder
-    int daysLeft = -1;           // how long its battery will last, from that file; -1 unknown
-    // From pairing.txt in the node's folder: its own key, which its reports must be signed with instead of the shared one.
-    bool paired = false;
-    std::string key;
-    uint8_t nodePublic[CAM_X25519_LEN] = {0};
+    int node = 0;                // its node in nodes_, from 1
   };
   struct PairRequest {  // a node that said hello while pairing was open, waiting for approval
     bool used = false;
@@ -369,7 +381,7 @@ class SensorCamServer {
   bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
   bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
   std::string treeJson();
-  bool applyReport(int id, const SensorReport& report, uint32_t now);
+  bool applyReport(int id, const SensorReport& report, uint32_t now, bool present = true);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
   void addEvent(const char* sensor, const char* text,const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
   void hubEvent(CamEventKind kind, const std::string& detail, uint32_t offS, const std::string& message, bool flag = false);
@@ -449,6 +461,11 @@ class SensorCamServer {
   void nodeImagesJson(CamJson& j) const;
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
+  Node* nodeByMac(const uint8_t mac[6]);      // nullptr for a node without a folder
+  Node& nodeOf(int id) { return nodes_[slots_[id - 1].node - 1]; }
+  const Node& nodeOf(int id) const { return nodes_[slots_[id - 1].node - 1]; }
+  const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
+  uint32_t freshNumber();
   bool apiPairing(const ApiRequest& r);
   std::string pairingJson();
   bool approveNode(const uint8_t mac[6], std::string& error);
@@ -544,6 +561,7 @@ class SensorCamServer {
   int confirmCount_ = 0;
   std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   std::vector<Slot> slots_;
+  std::vector<Node> nodes_;  // as many as there can be sensors
   std::string frameKey_;  // what frame_ currently shows; empty forces a reload
   std::string frameFile_;  // the file behind frame_; empty means a built-in picture
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page

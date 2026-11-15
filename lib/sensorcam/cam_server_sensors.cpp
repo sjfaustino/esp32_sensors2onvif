@@ -190,14 +190,18 @@ uint32_t SensorCamServer::holdFor(int id) const {
 
 bool SensorCamServer::quietNow(int id) const { return camQuiet(slots_[id - 1].settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
 
-bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
+// present: the report shows the sensor is there now. One that may have been recorded and played back still raises its
+// alert, as a false alert is better than a missed one, but says nothing of the node being there or of its battery.
+bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now, bool present) {
   if (id < 1 || id > sensors_.count()) return false;
   Health& h = health_[id - 1];
-  h.heard = true;
-  h.heardAt = now;
-  h.silent = false;
+  if (present) {
+    h.heard = true;
+    h.heardAt = now;
+    h.silent = false;
+  }
   bool batteryWentLow = false;
-  if (r.battery != CAM_BATTERY_UNKNOWN) {  // a report without a reading must not erase the last one
+  if (present && r.battery != CAM_BATTERY_UNKNOWN) {  // a report without a reading must not erase the last one
     h.battery = r.battery;
     if (r.battery <= LOW_BATTERY_PERCENT && !h.lowBattery) {
       h.lowBattery = true;
@@ -207,7 +211,7 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now) {
     }
   }
 
-  uint32_t lateAfter = slots_[id - 1].node.lateS ? slots_[id - 1].node.lateS : CAM_PAST_AFTER_S;
+  uint32_t lateAfter = nodeOf(id).settings.lateS ? nodeOf(id).settings.lateS : CAM_PAST_AFTER_S;
   bool late = r.age > lateAfter;  // an unknown age counts as late
   bool wasActive = sensors_.active(id);
   bool wasReported = h.reported;
@@ -315,8 +319,8 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   if (!parseSensorPacket(data, len, r)) return;
   // A paired node signs with its own key, and only that key is accepted from it; the others share the ESP-NOW key.
   int id = findSlot(mac, r.input);
-  bool paired = id && slots_[id - 1].paired;
-  const std::string& key = paired ? slots_[id - 1].key : cfg_.espNowKey;
+  Node* node = id ? &nodeOf(id) : nullptr;
+  const std::string& key = keyFor(node);
   CamPacketCheck check = camCheckPacket(mac, data, len, key, r);
   if (check == CAM_PACKET_INVALID) return;
   if (id == 0) {
@@ -325,15 +329,18 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   }
   Health& h = health_[id - 1];
   // The report number is never a reason to refuse a correctly signed report: a sensor that restarts its count must
-  // not lose an alert. The price is that a recorded report could be played back to make a false alert.
-  const char* refusal = check == CAM_PACKET_BAD_SIGNATURE ? "wrong signature" : nullptr;
-  if (refusal) {
+  // not lose an alert.
+  if (check == CAM_PACKET_BAD_SIGNATURE) {
     h.refused++;
-    h.refusal = refusal;
+    h.refusal = "wrong signature";
     return;
   }
   noteSignal(id, rssi);
-  h.sealed = sealed;
+  node->sealed = sealed;
+  // A report recorded and played back would otherwise keep a stolen node looking alive. A paired node echoes the number
+  // from the hub's last confirmation; one that does not is asked to prove it is there, with a new number. Nodes on the
+  // shared key are taken at their word, as they have no such number.
+  bool present = !node->paired || (r.fresh && (r.fresh == node->fresh || r.fresh == node->freshBefore));
   // A resend repeats the report a moment later, and the hub ignores it. Only a short while, so a restarted sensor that
   // happens to reuse the last number is still heard.
   uint32_t now = millis_();
@@ -343,7 +350,11 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     h.counter = r.counter;
     h.counterAt = now;
     h.counterActive = r.active;
-    applyReport(id, r, now);
+    applyReport(id, r, now, present);
+    if (node->paired) {  // a new number for the next report; the one before stays good, for a confirmation that was lost
+      node->freshBefore = node->fresh;
+      node->fresh = freshNumber();
+    }
   }
   // Confirmed once it is on storage, so a power cut cannot lose an alert its sensor has stopped resending. Again for a
   // resend, whose sender evidently missed the first confirmation. poll() saves all that arrived together, then sends.
@@ -352,6 +363,7 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     uint8_t* slot = confirmations_[confirmCount_++];
     memcpy(slot, mac, 6);
     CamForNode extra = forNode(id);
+    extra.prove = node->paired && !present;
     if (sealed) {
       uint8_t body[CAM_CONFIRMATION_BODY];
       camConfirmationBody(r, extra, body);
@@ -362,7 +374,22 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     }
   }
   // After the confirmation is queued, as this may need memory, and an alert must not wait on it.
-  if (!resend && r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
+  if (!resend && present && r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
+}
+
+// Random numbers without a source of them on every build: the hub's seal numbers, which start at random, mixed.
+uint32_t SensorCamServer::freshNumber() {
+  uint32_t x = sealNumber_++ * 2654435761u ^ millis_() ^ 0x9E3779B9u;
+  x ^= x >> 16;
+  x *= 0x85EBCA6Bu;
+  x ^= x >> 13;
+  return x ? x : 1;  // 0 means none
+}
+
+SensorCamServer::Node* SensorCamServer::nodeByMac(const uint8_t mac[6]) {
+  for (Node& n : nodes_)
+    if (n.used && memcmp(n.mac, mac, 6) == 0) return &n;
+  return nullptr;
 }
 
 // Only a node the hub knows can be opened, with its key; inside is a report or node info, handled as if sent plain.
@@ -370,7 +397,7 @@ void SensorCamServer::sealedPacket(const uint8_t mac[6], const uint8_t* data, in
   int id = findNode(mac);
   if (!id) return;
   uint8_t inner[CAM_SEALED_MAX_INNER + CAM_SIGNATURE_LEN];
-  int n = camOpenSealed(mac, data, len, slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey, false, inner, sizeof(inner));
+  int n = camOpenSealed(mac, data, len, keyFor(&nodeOf(id)), false, inner, sizeof(inner));
   if (n < 0) {
     health_[id - 1].refused++;
     health_[id - 1].refusal = "wrong signature";
@@ -384,21 +411,23 @@ void SensorCamServer::sealedPacket(const uint8_t mac[6], const uint8_t* data, in
 // firmware update is ready. No heap, as it is part of confirming an alert.
 CamForNode SensorCamServer::forNode(int id) const {
   const Slot& s = slots_[id - 1];
+  const Node& node = nodeOf(id);
   CamForNode e;
   time_t t = time(nullptr);
   if (t >= CAM_CLOCK_VALID_AFTER) e.hubTime = (uint32_t)t;
-  e.everyS = s.node.everyS;
+  e.everyS = node.settings.everyS;
   // Repeats must come more often than the alert lasts, or the alert would lapse between them: below the shortest hold
   // of the node's sensors.
-  uint32_t repeat = s.node.repeatS;
+  uint32_t repeat = node.settings.repeatS;
   for (int i = 0; repeat && i < CAM_MAX_SENSORS; i++) {
     if (!slots_[i].used || memcmp(slots_[i].mac, s.mac, 6) != 0) continue;
     uint32_t hold = holdFor(i + 1) / 1000;
     if (repeat >= hold) repeat = hold > 1 ? hold - 1 : 1;
   }
   e.repeatS = (uint16_t)repeat;
-  e.walkUntil = e.hubTime && s.walkUntil > e.hubTime ? s.walkUntil : 0;
+  e.walkUntil = e.hubTime && node.walkUntil > e.hubTime ? node.walkUntil : 0;
   e.update = updateReady(id);
+  e.fresh = node.fresh;
   return e;
 }
 
@@ -411,16 +440,17 @@ const SensorCamServer::NodeImageFile* SensorCamServer::imageFor(uint16_t chip) c
 // Offered while the node runs another version, unless it already tried this one and had it undone, or is saving its
 // battery: an update keeps it awake for a minute or so.
 bool SensorCamServer::updateReady(int id) const {
-  const Slot& s = slots_[id - 1];
-  const NodeImageFile* f = imageFor(s.info.chip);
-  return f && !s.info.version.empty() && s.info.version != f->image.version && s.info.refused != f->image.number && !s.info.saving;
+  const CamNodeInfo& info = nodeOf(id).info;
+  const NodeImageFile* f = imageFor(info.chip);
+  return f && !info.version.empty() && info.version != f->image.version && info.refused != f->image.number && !info.saving;
 }
 
 // Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
 void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len) {
   int id = findNode(mac);
   if (!id || !cfg_.espNowSend) return;
-  const std::string& key = slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey;
+  Node& node = nodeOf(id);
+  const std::string& key = keyFor(&node);
   CamFirmwareAsk ask;
   CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
   Health& h = health_[id - 1];
@@ -430,21 +460,21 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
     h.refusal = "wrong signature";
     return;
   }
-  const NodeImageFile* f = imageFor(slots_[id - 1].info.chip);
+  const NodeImageFile* f = imageFor(node.info.chip);
   if (!f) return;
   const CamNodeImage& image = f->image;
-  h.updating = true;
-  h.updateAt = millis_();
-  h.updateSize = image.size;
+  node.updating = true;
+  node.updateAt = millis_();
+  node.updateSize = image.size;
   uint8_t out[CAM_FIRMWARE_PART_LEN_MAX];
   if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
     int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(), key, out);
     cfg_.espNowSend(mac, out, n);
-    h.updateOffset = 0;
+    node.updateOffset = 0;
     return;
   }
   if (ask.offset >= image.size) return;
-  h.updateOffset = ask.offset;
+  node.updateOffset = ask.offset;
   uint8_t window[CAM_FIRMWARE_WINDOW * CAM_FIRMWARE_PART_MAX];
   uint32_t length = image.size - ask.offset < sizeof(window) ? image.size - ask.offset : (uint32_t)sizeof(window);
   if (!storage_.readAt(f->path, ask.offset, (char*)window, length)) return;
@@ -458,10 +488,10 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
 // Needs the clock. Anything that runs out of memory here only skips this reading.
 void SensorCamServer::noteBattery(int id, uint8_t percent) {
   time_t t = time(nullptr);
-  Slot& slot = slots_[id - 1];
-  if (t < CAM_CLOCK_VALID_AFTER || (slot.batteryAt && t >= slot.batteryAt && t - slot.batteryAt < CAM_BATTERY_POINT_EVERY_S)) return;
+  Node& node = nodeOf(id);
+  if (t < CAM_CLOCK_VALID_AFTER || (node.batteryAt && t >= node.batteryAt && t - node.batteryAt < CAM_BATTERY_POINT_EVERY_S)) return;
   try {
-    std::string path = camMacText(slot.mac) + "/battery.txt", text;
+    std::string path = camMacText(node.mac) + "/battery.txt", text;
     std::vector<CamBatteryPoint> points;
     if (!storage_.readFile(path, text, 8192) || !camParseBatteryLog(text, points)) points.clear();
     bool added = camAddBatteryPoint(points, t, percent);
@@ -470,21 +500,17 @@ void SensorCamServer::noteBattery(int id, uint8_t percent) {
       storage_.writeFile(path, text.data(), text.size());
     }
     int days = camBatteryDaysLeft(points);
-    for (int i = 0; i < CAM_MAX_SENSORS; i++) {
-      if (!slots_[i].used || memcmp(slots_[i].mac, slot.mac, 6) != 0) continue;
-      slots_[i].batteryAt = points.empty() ? t : points.back().t;
-      slots_[i].daysLeft = days;
-    }
-    int first = findNode(slot.mac);  // logged once for the node, on its first sensor
-    Health& h = health_[first - 1];
-    if (days >= 0 && days < 7 && !h.runningOut) {
-      h.runningOut = true;
+    node.batteryAt = points.empty() ? t : points.back().t;
+    node.daysLeft = days;
+    int first = findNode(node.mac);  // logged once for the node, on its first sensor
+    if (days >= 0 && days < 7 && !node.runningOut) {
+      node.runningOut = true;
       SensorReport r;
       r.battery = percent;
       logEvent(first, r, false, CAM_EVENT_BATTERY_RUNNING_OUT);
       notifyHook(first, CAM_EVENT_BATTERY_RUNNING_OUT, false);
     } else if (days < 0 || days > 14) {
-      h.runningOut = false;
+      node.runningOut = false;
     }
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
@@ -497,22 +523,19 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
   int id = findNode(mac);
   if (!id) return;
   CamNodeInfo info;
-  CamPacketCheck check = camCheckNodeInfo(mac, data, len, slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey, info);
+  Node& node = nodeOf(id);
+  CamPacketCheck check = camCheckNodeInfo(mac, data, len, keyFor(&node), info);
   if (check == CAM_PACKET_INVALID) return;
   if (check == CAM_PACKET_BAD_SIGNATURE) {
     health_[id - 1].refused++;
     health_[id - 1].refusal = "wrong signature";
     return;
   }
-  CamNodeInfo old = slots_[id - 1].info;
-  uint16_t response = info.responseMs == CAM_RESPONSE_UNKNOWN ? old.responseMs : info.responseMs;
-  info.responseMs = response;
-  for (int i = 0; i < CAM_MAX_SENSORS; i++) {
-    if (!slots_[i].used || memcmp(slots_[i].mac, mac, 6) != 0) continue;
-    slots_[i].info = info;
-    // Now running the image it was fetching: the update is over.
-    if (health_[i].updating && imageFor(info.chip) && imageFor(info.chip)->image.version == info.version) health_[i].updating = false;
-  }
+  CamNodeInfo old = node.info;
+  if (info.responseMs == CAM_RESPONSE_UNKNOWN) info.responseMs = old.responseMs;
+  node.info = info;
+  // Now running the image it was fetching: the update is over.
+  if (node.updating && imageFor(info.chip) && imageFor(info.chip)->image.version == info.version) node.updating = false;
   if (info == old) return;
   std::string text = camNodeInfoText(info);
   storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());
@@ -608,9 +631,9 @@ int SensorCamServer::findSlot(const uint8_t mac[6], uint8_t input) const {
 
 // The node's own setting, or else worked out from how often the node says it reports, or else the hub's default.
 uint32_t SensorCamServer::silentMsFor(int id) const {
-  const Slot& s = slots_[id - 1];
-  uint32_t auto_ = camAutoSilentS(s.info.everyS);
-  return s.node.silentS ? s.node.silentS * 1000 : auto_ ? auto_ * 1000 : cfg_.silentMs;
+  const Node& n = nodeOf(id);
+  uint32_t auto_ = camAutoSilentS(n.info.everyS);
+  return n.settings.silentS ? n.settings.silentS * 1000 : auto_ ? auto_ * 1000 : cfg_.silentMs;
 }
 
 int SensorCamServer::slotForPath(const std::string& path) const {
@@ -651,32 +674,48 @@ uint32_t SensorCamServer::sensorsTag() const {
 
 void SensorCamServer::rescan() {
   uint32_t before = sensorsTag();
-  bool seen[CAM_MAX_SENSORS] = {false};
+  bool seen[CAM_MAX_SENSORS] = {false}, nodeSeen[CAM_MAX_SENSORS] = {false};
   // A folder that cannot be read changes nothing: forgetting its sensors would ignore their alerts as coming from
   // unknown senders until the next change. A deleted folder is still noticed, as it is simply not listed.
-  std::vector<CamFsEntry> nodes;
-  if (!storage_.list("", nodes)) return;
-  for (const CamFsEntry& s : nodes) {
+  std::vector<CamFsEntry> folders;
+  if (!storage_.list("", folders)) return;
+  for (const CamFsEntry& s : folders) {
     uint8_t mac[6];
     if (!s.dir || !camParseMac(s.name, mac)) continue;
+    // The node's entry, kept across rescans for what is only in memory; or a free one.
+    Node* node = nodeByMac(mac);
+    for (int i = 0; !node && i < CAM_MAX_SENSORS; i++) {
+      if (nodes_[i].used) continue;
+      nodes_[i] = Node();
+      nodes_[i].used = true;
+      memcpy(nodes_[i].mac, mac, 6);
+      node = &nodes_[i];
+    }
+    if (!node) continue;  // more nodes than there can be sensors: none of its sensors could have a place
+    int index = (int)(node - nodes_.data());
+    nodeSeen[index] = true;
     std::vector<CamFsEntry> inputs;
     if (!storage_.list(s.name, inputs)) {
       for (int i = 0; i < CAM_MAX_SENSORS; i++) seen[i] = seen[i] || (slots_[i].used && memcmp(slots_[i].mac, mac, 6) == 0);
       continue;
     }
-    CamNodeSettings node;  // a damaged file means the defaults
-    std::string nodeText, pairingText;
-    if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
+    std::string text;
+    CamNodeSettings settings;  // a damaged file means the defaults
+    if (!storage_.readFile(s.name + "/settings.txt", text, 256) || !camParseNodeSettings(text, settings)) settings = CamNodeSettings();
+    node->settings = settings;
     CamNodeInfo info;  // likewise: a damaged file is as if the node had said nothing
-    std::string infoText;
-    if (!storage_.readFile(s.name + "/about.txt", infoText, 256) || !camParseNodeInfo(infoText, info)) info = CamNodeInfo();
-    std::string batteryText;  // and a damaged battery log is no forecast
-    std::vector<CamBatteryPoint> battery;
-    if (!storage_.readFile(s.name + "/battery.txt", batteryText, 8192) || !camParseBatteryLog(batteryText, battery)) battery.clear();
-    uint8_t nodePublic[CAM_X25519_LEN], nodeKey[CAM_NODE_KEY_LEN];
+    if (!storage_.readFile(s.name + "/about.txt", text, 256) || !camParseNodeInfo(text, info)) info = CamNodeInfo();
+    info.responseMs = node->info.responseMs;  // only in memory
+    node->info = info;
+    std::vector<CamBatteryPoint> battery;  // and a damaged battery log is no forecast
+    if (!storage_.readFile(s.name + "/battery.txt", text, 8192) || !camParseBatteryLog(text, battery)) battery.clear();
+    node->batteryAt = battery.empty() ? 0 : battery.back().t;
+    node->daysLeft = camBatteryDaysLeft(battery);
     // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
     // shows on the ESP-NOW page as refused, rather than being trusted with a key that may not be its own.
-    bool paired = storage_.readFile(s.name + "/pairing.txt", pairingText, 256) && camParsePairing(pairingText, nodePublic, nodeKey);
+    uint8_t nodeKey[CAM_NODE_KEY_LEN];
+    node->paired = storage_.readFile(s.name + "/pairing.txt", text, 256) && camParsePairing(text, node->publicKey, nodeKey);
+    node->key = node->paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
     for (const CamFsEntry& e : inputs) {
       if (!e.dir || camClassifyPath(s.name + "/" + e.name) != CAM_PATH_SENSOR) continue;
       uint8_t input = (uint8_t)atoi(e.name.c_str());
@@ -691,26 +730,18 @@ void SensorCamServer::rescan() {
         mqttShown_[i] = MqttShown();
         id = i + 1;
       }
-      if (id) {
-        seen[id - 1] = true;
-        std::string folder = s.name + "/" + e.name, name, text;
-        slots_[id - 1].name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
-        CamSensorSettings settings;  // a damaged file means the defaults
-        if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
-        slots_[id - 1].settings = settings;
-        slots_[id - 1].node = node;
-        uint16_t response = slots_[id - 1].info.responseMs;  // only in memory
-        slots_[id - 1].info = info;
-        slots_[id - 1].info.responseMs = response;
-        slots_[id - 1].batteryAt = battery.empty() ? 0 : battery.back().t;
-        slots_[id - 1].daysLeft = camBatteryDaysLeft(battery);
-        slots_[id - 1].paired = paired;
-        slots_[id - 1].key = paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
-        if (paired) memcpy(slots_[id - 1].nodePublic, nodePublic, CAM_X25519_LEN);
-      }
+      if (!id) continue;
+      seen[id - 1] = true;
+      std::string folder = s.name + "/" + e.name, name;
+      slots_[id - 1].name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
+      CamSensorSettings sensor;  // a damaged file means the defaults
+      if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, sensor)) sensor = CamSensorSettings();
+      slots_[id - 1].settings = sensor;
+      slots_[id - 1].node = index + 1;
     }
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++) {
+    if (nodes_[i].used && !nodeSeen[i]) nodes_[i] = Node();
     if (!slots_[i].used || seen[i]) continue;
     sensors_.clear(i + 1);
     delivery_.forget(i + 1);

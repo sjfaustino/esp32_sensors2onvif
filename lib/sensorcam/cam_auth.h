@@ -3,25 +3,17 @@
 #include <stdint.h>
 #include <string>
 #include "cam_timing.h"
+#include "s2o_sha1.h"
 
 std::string camSha1(const std::string& data);    // the raw 20 bytes
 std::string camHmacSha1(const std::string& key, const std::string& data);  // the raw 20 bytes
 
-// SHA-1 fed in pieces, without using the heap, so an alert can be checked when memory has run out.
-class CamSha1 {
- public:
-  void add(const void* data, size_t len);
-  void finish(uint8_t out[20]);
-
- private:
-  void block();
-  uint32_t h_[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
-  uint8_t buf_[64];
-  size_t used_ = 0;
-  uint64_t total_ = 0;
-};
-// HMAC-SHA1 over a then b, without using the heap.
-void camHmacSha1(const uint8_t* key, size_t keyLen, const uint8_t* a, size_t aLen, const uint8_t* b, size_t bLen, uint8_t out[20]);
+// SHA-1 fed in pieces, and HMAC-SHA1 over a then b, without using the heap, so an alert can be checked when memory has
+// run out. From the library shared with the nodes.
+using CamSha1 = S2oSha1;
+inline void camHmacSha1(const uint8_t* key, size_t keyLen, const uint8_t* a, size_t aLen, const uint8_t* b, size_t bLen, uint8_t out[20]) {
+  s2oHmacSha1(key, keyLen, a, aLen, b, bLen, out);
+}
 std::string camMd5Hex(const std::string& data);  // lowercase hex
 std::string camBase64Decode(const std::string& text);
 

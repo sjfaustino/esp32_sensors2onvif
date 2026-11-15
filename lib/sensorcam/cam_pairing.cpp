@@ -3,48 +3,24 @@
 #include <string.h>
 #include "cam_auth.h"
 #include "cam_rtp.h"
+#include "s2o_messages.h"
 
-static const char KEY_LABEL[] = "sensors2onvif node key";
-
-bool camParseHello(const uint8_t* d, int len, uint8_t& inputs, uint8_t publicKey[CAM_X25519_LEN]) {
-  if (len != CAM_HELLO_LEN || d[0] != CAM_HELLO || d[1] < 1 || d[1] > CAM_MAX_NODE_INPUTS) return false;
-  inputs = d[1];
-  memcpy(publicKey, d + 2, CAM_X25519_LEN);
-  return true;
-}
+// The messages themselves are in the library shared with the nodes.
+bool camParseHello(const uint8_t* d, int len, uint8_t& inputs, uint8_t publicKey[CAM_X25519_LEN]) { return s2oReadHello(d, len, inputs, publicKey); }
 
 void camHelloAnswer(const uint8_t nodeMac[6], uint8_t state, uint8_t channel, const uint8_t hubPublic[CAM_X25519_LEN], const uint8_t* nodeKey,
                     uint8_t out[CAM_ANSWER_LEN]) {
-  out[0] = CAM_HELLO_ANSWER;
-  out[1] = state;
-  out[2] = channel;
-  memcpy(out + 3, hubPublic, CAM_X25519_LEN);
-  uint8_t s[20] = {0};
-  if (nodeKey) camHmacSha1(nodeKey, CAM_NODE_KEY_LEN, nodeMac, 6, out, 3 + CAM_X25519_LEN, s);
-  memcpy(out + 3 + CAM_X25519_LEN, s, 8);
+  s2oAnswer(nodeMac, state, channel, hubPublic, nodeKey, out);
 }
 
 bool camNodeKey(const uint8_t hubPrivate[CAM_X25519_LEN], const uint8_t hubPublic[CAM_X25519_LEN], const uint8_t nodePublic[CAM_X25519_LEN],
                 uint8_t key[CAM_NODE_KEY_LEN]) {
-  uint8_t shared[CAM_X25519_LEN];
-  camX25519(shared, hubPrivate, nodePublic);
-  uint8_t any = 0;
-  for (uint8_t b : shared) any |= b;
-  if (!any) return false;
-  uint8_t label[sizeof(KEY_LABEL) - 1 + 2 * CAM_X25519_LEN];
-  memcpy(label, KEY_LABEL, sizeof(KEY_LABEL) - 1);
-  memcpy(label + sizeof(KEY_LABEL) - 1, hubPublic, CAM_X25519_LEN);
-  memcpy(label + sizeof(KEY_LABEL) - 1 + CAM_X25519_LEN, nodePublic, CAM_X25519_LEN);
-  camHmacSha1(shared, sizeof(shared), label, sizeof(label), nullptr, 0, key);
-  memset(shared, 0, sizeof(shared));
-  return true;
+  return s2oNodeKey(hubPrivate, nodePublic, hubPublic, nodePublic, key);
 }
 
 std::string camKeyFingerprint(const uint8_t publicKey[CAM_X25519_LEN]) {
-  std::string hash = camSha1(std::string((const char*)publicKey, CAM_X25519_LEN));
-  char out[16];
-  const uint8_t* h = (const uint8_t*)hash.data();
-  snprintf(out, sizeof(out), "%02X%02X-%02X%02X-%02X%02X", h[0], h[1], h[2], h[3], h[4], h[5]);
+  char out[15];
+  s2oFingerprint(publicKey, out);
   return out;
 }
 

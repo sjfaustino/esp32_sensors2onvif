@@ -338,9 +338,9 @@ static void a_timed_disarm_ends_safely_after_a_restart() {
 
 static void signed_messages_are_checked() {
   const uint8_t mac[6] = {0x84, 0xF7, 0x03, 0xDF, 0x03, 0x62};
-  uint8_t p[13 + 8] = {2, 1, 1, 90, 4, 3, 2, 1, 0, 0, 0, 0, 0};
-  std::string sig = camPacketSignature(mac, p, 13, "key-1");
-  memcpy(p + 13, sig.data(), 8);
+  uint8_t p[17 + 8] = {2, 1, 1, 90, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::string sig = camPacketSignature(mac, p, 17, "key-1");
+  memcpy(p + 17, sig.data(), 8);
   SensorReport r;
   TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckPacket(mac, p, sizeof(p), "key-1", r));
   TEST_ASSERT_EQUAL(0x01020304u, r.counter);
@@ -473,7 +473,7 @@ static void long_names_are_cut_between_characters() {
 }
 
 static void battery_outside_0_to_100_is_unknown() {
-  uint8_t p[] = {2, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // the last 8 stand for the signature
+  uint8_t p[] = {2, 2, 1, 100, 4, 3, 2, 1, 44, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // the last 8 stand for the signature
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(100, r.battery);
@@ -486,8 +486,9 @@ static void battery_outside_0_to_100_is_unknown() {
 }
 
 static void parses_report_with_no_targets() {
-  // a report, input, active, battery, counter 0x01020304, age 300, no targets, then 8 bytes for the signature, unchecked here
-  const uint8_t p[] = {2, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  // a report, input, active, battery, counter 0x01020304, age 300, fresh 0x0A0B0C0D, no targets, then 8 bytes for the
+  // signature, unchecked here
+  const uint8_t p[] = {2, 2, 1, 80, 4, 3, 2, 1, 44, 1, 0, 0, 0x0D, 0x0C, 0x0B, 0x0A, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(p, sizeof(p), r));
   TEST_ASSERT_EQUAL(2, r.input);
@@ -495,11 +496,12 @@ static void parses_report_with_no_targets() {
   TEST_ASSERT_EQUAL(80, r.battery);
   TEST_ASSERT_EQUAL_UINT32(0x01020304, r.counter);
   TEST_ASSERT_EQUAL_UINT32(300, r.age);
+  TEST_ASSERT_EQUAL_UINT32(0x0A0B0C0D, r.fresh);
   TEST_ASSERT_EQUAL(0, r.targetCount);
 }
 
 static void parses_three_targets_and_picks_nearest() {
-  const uint8_t p[] = {2, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 3,
+  const uint8_t p[] = {2, 1, 1, 0xFF, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3,
                        0x90, 0x01, 1,    // 400 cm, approaching
                        0x96, 0x00, 2,    // 150 cm, moving away
                        0xFF, 0xFF, 3,    // unknown distance
@@ -514,11 +516,11 @@ static void parses_three_targets_and_picks_nearest() {
 }
 
 static void rejects_malformed_reports() {
-  const uint8_t good[] = {2, 1, 1, 80, 1, 0, 0, 0, 0, 0, 0, 0, 1, 10, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+  const uint8_t good[] = {2, 1, 1, 80, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
   SensorReport r;
   TEST_ASSERT_TRUE(parseSensorPacket(good, sizeof(good), r));
   uint8_t bad[sizeof(good)];
-  struct { int index; uint8_t value; } changes[] = {{0, 1}, {0, 3}, {1, 0}, {2, 2}, {12, 4}, {12, 2}, {15, 5}};
+  struct { int index; uint8_t value; } changes[] = {{0, 1}, {0, 3}, {1, 0}, {2, 2}, {16, 4}, {16, 2}, {19, 5}};
   for (auto& c : changes) {
     memcpy(bad, good, sizeof(good));
     bad[c.index] = c.value;
@@ -776,9 +778,11 @@ static void confirmation_is_signed_for_that_sensor() {
   e.repeatS = 4;
   e.walkUntil = 0x0A0B0C0D + 600;
   e.update = true;
+  e.prove = true;
+  e.fresh = 0x5EED0001;
   std::string c = camConfirmation(mac, r, e, "key");
   TEST_ASSERT_EQUAL(CAM_CONFIRMATION_LEN, (int)c.size());
-  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01\x0D\x0C\x0B\x0A\x10\x0E\x00\x00\x04\x00\x65\x0E\x0B\x0A\x01", c.data(), CAM_CONFIRMATION_BODY);
+  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01\x0D\x0C\x0B\x0A\x10\x0E\x00\x00\x04\x00\x65\x0E\x0B\x0A\x03\x01\x00\xED\x5E", c.data(), CAM_CONFIRMATION_BODY);
   TEST_ASSERT_TRUE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(mac, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
   TEST_ASSERT_FALSE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(other, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
 }
@@ -787,20 +791,20 @@ static void confirmation_is_signed_for_that_sensor() {
 static void sealed_messages_hide_what_they_say() {
   const uint8_t mac[6] = {2, 0, 0, 0, 0, 0x55};
   const std::string key(20, '\x22');
-  const uint8_t report[13] = {CAM_REPORT, 1, 1, 80, 7, 0, 0, 0, 0, 0, 0, 0, 0};
+  const uint8_t report[17] = {CAM_REPORT, 1, 1, 80, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   uint8_t sealed[64], opened[64];
   int len = camSeal(mac, 0x11223344, report, sizeof(report), key, false, sealed);
-  TEST_ASSERT_EQUAL(CAM_SEALED_EXTRA + 13 + CAM_SIGNATURE_LEN, len);
+  TEST_ASSERT_EQUAL(CAM_SEALED_EXTRA + 17 + CAM_SIGNATURE_LEN, len);
   char hex[2 * 64 + 1] = "";
   for (int i = 0; i < len; i++) snprintf(hex + 2 * i, 3, "%02x", sealed[i]);
-  TEST_ASSERT_EQUAL_STRING("0744332211bd9133a3e584d49750a42c9ee743e4fe676106846d", hex);
+  TEST_ASSERT_EQUAL_STRING("0744332211bd9133a3e584d49750a42c9ee767185a68f21fe3b7906fbb0b", hex);
   int n = camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened));
-  TEST_ASSERT_EQUAL(13 + CAM_SIGNATURE_LEN, n);
+  TEST_ASSERT_EQUAL(17 + CAM_SIGNATURE_LEN, n);
   SensorReport r;
   TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckPacket(mac, opened, n, key, r));  // reads as if it had been sent plain
   TEST_ASSERT_EQUAL(7, r.counter);
   TEST_ASSERT_EQUAL(n, camOpenSealed(mac, sealed, len, key, true, opened, sizeof(opened)));
-  TEST_ASSERT_NOT_EQUAL(0, memcmp(opened, report, 13));  // read as from the hub, the stream differs
+  TEST_ASSERT_NOT_EQUAL(0, memcmp(opened, report, 17));  // read as from the hub, the stream differs
   sealed[6] ^= 1;
   TEST_ASSERT_EQUAL(-1, camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened)));
   TEST_ASSERT_EQUAL(0, camOpenSealed(mac, report, sizeof(report), key, false, opened, sizeof(opened)));  // not sealed

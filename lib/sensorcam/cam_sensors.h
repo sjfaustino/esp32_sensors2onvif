@@ -4,37 +4,23 @@
 #include <string>
 #include <vector>
 #include "cam_frames.h"
+#include "s2o_messages.h"
 
-const int CAM_MAX_TARGETS = 3;
+const int CAM_MAX_TARGETS = S2O_MAX_TARGETS;
 const int CAM_MAX_SENSORS = 32;  // the hub's sensor table
-const uint32_t CAM_AGE_UNKNOWN = 0xFFFFFFFFu;
-const uint16_t CAM_DISTANCE_UNKNOWN = 0xFFFF;
-const uint8_t CAM_BATTERY_UNKNOWN = 0xFF;
+const uint32_t CAM_AGE_UNKNOWN = S2O_AGE_UNKNOWN;
+const uint16_t CAM_DISTANCE_UNKNOWN = S2O_DISTANCE_UNKNOWN;
+const uint8_t CAM_BATTERY_UNKNOWN = S2O_BATTERY_UNKNOWN;
 inline uint8_t camBatteryPercent(int value) { return value >= 0 && value <= 100 ? (uint8_t)value : CAM_BATTERY_UNKNOWN; }
 
-struct SensorTarget {
-  uint16_t distanceCm = CAM_DISTANCE_UNKNOWN;
-  uint8_t direction = 0;
-};
+// One report from a device, as the library shared with the nodes reads it (s2o_messages.h).
+using SensorTarget = S2oTarget;
+using SensorReport = S2oReport;
 
-// One report from a device. On the air, little-endian, 13 + 3 * targetCount bytes and the signature:
-// CAM_REPORT, input (1-255), active (0/1), battery %, counter (u32), age seconds (u32),
-// target count (0-3), then for each target distance cm (u16) and direction (0-4).
-struct SensorReport {
-  uint8_t input = 1;
-  bool active = false;
-  uint8_t battery = CAM_BATTERY_UNKNOWN;
-  uint32_t counter = 0;
-  uint32_t age = 0;
-  uint8_t targetCount = 0;
-  SensorTarget targets[CAM_MAX_TARGETS];
-};
-
-// A report on the air: CAM_REPORT, then the fields above, then an 8-byte signature: the first 8 bytes of HMAC-SHA1, keyed
-// with the hub's ESP-NOW key or the node's own, over the sender's MAC address (6 bytes) and then the bytes before the
-// signature. parseSensorPacket reads it without checking the signature; camCheckPacket checks it too.
-const uint8_t CAM_REPORT = 2;
-const int CAM_SIGNATURE_LEN = 8;
+// A report on the air is signed as s2o_messages.h says. parseSensorPacket reads it without checking the signature;
+// camCheckPacket checks it too.
+const uint8_t CAM_REPORT = S2O_REPORT;
+const int CAM_SIGNATURE_LEN = S2O_SIG_LEN;
 bool parseSensorPacket(const uint8_t* data, int len, SensorReport& out);
 enum CamPacketCheck { CAM_PACKET_INVALID, CAM_PACKET_SIGNED, CAM_PACKET_BAD_SIGNATURE };
 CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, SensorReport& out);
@@ -42,52 +28,34 @@ CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* data, int len
 std::string camPacketSignature(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);
 
 // What the hub sends back once it has accepted a report, so the sensor can stop resending, and what it has for the node.
-// 22 bytes and the signature over the sensor's own MAC address and those bytes: 3, the input, active (0/1), the report
-// number (u32), then the hub's time (u32, seconds since 1970 UTC, 0 while its clock is not set), the node's report time
-// set on the hub (u32 seconds, 0 for the node's own), its repeat time while a sensor stays on (u16 seconds, 0 for its own),
-// the end of a walk test started on the hub (u32, on the hub's time, 0 for none), and flags: bit 0, a firmware update is
-// ready for the node.
-const uint8_t CAM_CONFIRMATION = 3;
-const int CAM_CONFIRMATION_BODY = 22;
-const int CAM_CONFIRMATION_LEN = CAM_CONFIRMATION_BODY + CAM_SIGNATURE_LEN;
-struct CamForNode {
-  uint32_t hubTime = 0;
-  uint32_t everyS = 0;
-  uint16_t repeatS = 0;
-  uint32_t walkUntil = 0;
-  bool update = false;
-};
-void camConfirmationBody(const SensorReport& r, const CamForNode& extra, uint8_t out[CAM_CONFIRMATION_BODY]);
+// The layout is in s2o_messages.h.
+const uint8_t CAM_CONFIRMATION = S2O_CONFIRMATION;
+const int CAM_CONFIRMATION_BODY = S2O_CONFIRMATION_BODY;
+const int CAM_CONFIRMATION_LEN = S2O_CONFIRMATION_LEN;
+using CamForNode = S2oForNode;
+inline void camConfirmationBody(const SensorReport& r, const CamForNode& extra, uint8_t out[CAM_CONFIRMATION_BODY]) { s2oConfirmationBody(r, extra, out); }
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key);
 // Without using the heap. out gets the body and its signature.
 void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]);
 
-// A sealed message hides what a report says from anyone listening: CAM_SEALED, a number used once by its sender (u32),
-// then the message inside, without its own signature, XORed with a key stream, then the signature over the node's MAC
-// address and every byte before it. Block i of the stream, 20 bytes, is HMAC-SHA1 keyed with the seal key over the
-// direction (0 to the hub, 1 from it), the number (u32) and i (one byte). The seal key is HMAC-SHA1, keyed with the
-// signing key, over "sensors2onvif seal". Inside: a report or node info to the hub, a confirmation from it.
-const uint8_t CAM_SEALED = 7;
-const int CAM_SEALED_EXTRA = 5;  // the type and the number
-const int CAM_SEALED_MAX_INNER = 120;
+// A sealed message hides what a report says from anyone listening; see s2o_messages.h.
+const uint8_t CAM_SEALED = S2O_SEALED;
+const int CAM_SEALED_EXTRA = S2O_SEALED_EXTRA;  // the type and the number
+const int CAM_SEALED_MAX_INNER = S2O_SEALED_MAX_INNER;
 // The message inside, with a signature made with key added, so it reads as if sent plain: its length, 0 for one that is
 // not a sealed message, or -1 for a wrong signature. mac is always the node's. Without using the heap.
 int camOpenSealed(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax);
 // The sealed form of inner, which has no signature: its length, CAM_SEALED_EXTRA + innerLen + CAM_SIGNATURE_LEN.
 int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out);
 
-// A node fetches a firmware update from the hub in parts. It asks with CAM_FIRMWARE_ASK, the image's number (u32, 0 when
-// it does not know it yet) and an offset (u32), signed like a report; CAM_FIRMWARE_DESCRIBE as the offset asks what the
-// image is. The hub answers with up to CAM_FIRMWARE_WINDOW parts from that offset on: CAM_FIRMWARE_PART, the image's
-// number (u32), its size (u32), the offset (u32), then up to CAM_FIRMWARE_PART_MAX bytes of it, signed like a
-// confirmation. A description is answered with one part at CAM_FIRMWARE_DESCRIBE, holding the image's version.
-const uint8_t CAM_FIRMWARE_ASK = 8, CAM_FIRMWARE_PART = 9;
-const uint32_t CAM_FIRMWARE_DESCRIBE = 0xFFFFFFFFu;
-const int CAM_FIRMWARE_ASK_LEN = 9 + CAM_SIGNATURE_LEN;
-const int CAM_FIRMWARE_PART_HEAD = 13;
-const int CAM_FIRMWARE_PART_MAX = 200;
-const int CAM_FIRMWARE_PART_LEN_MAX = CAM_FIRMWARE_PART_HEAD + CAM_FIRMWARE_PART_MAX + CAM_SIGNATURE_LEN;
-const int CAM_FIRMWARE_WINDOW = 4;
+// A node fetches a firmware update from the hub in parts; see s2o_messages.h.
+const uint8_t CAM_FIRMWARE_ASK = S2O_FIRMWARE_ASK, CAM_FIRMWARE_PART = S2O_FIRMWARE_PART;
+const uint32_t CAM_FIRMWARE_DESCRIBE = S2O_DESCRIBE;
+const int CAM_FIRMWARE_ASK_LEN = S2O_ASK_LEN;
+const int CAM_FIRMWARE_PART_HEAD = S2O_PART_HEAD;
+const int CAM_FIRMWARE_PART_MAX = S2O_PART_MAX;
+const int CAM_FIRMWARE_PART_LEN_MAX = S2O_PART_LEN_MAX;
+const int CAM_FIRMWARE_WINDOW = S2O_WINDOW;
 struct CamFirmwareAsk {
   uint32_t image = 0, offset = 0;
 };
@@ -98,7 +66,7 @@ int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uin
 
 // A node firmware file put on the hub: an ESP32 app image, with its chip in the header and its version after the text
 // CAM_NODE_IMAGE_MARK, as the node's firmware has it. Its number is the FNV-1a hash of the whole file, never 0.
-const char* const CAM_NODE_IMAGE_MARK = "sensors2onvif-node-version=";
+const char* const CAM_NODE_IMAGE_MARK = S2O_NODE_IMAGE_MARK;
 struct CamNodeImage {
   uint16_t chip = 0;
   std::string version;
@@ -148,14 +116,14 @@ std::string camNodeSettingsText(const CamNodeSettings& s);
 // none), its chip as in its firmware's header (u16, 0xFFFF unknown), the firmware update it refused because it was
 // undone (u32, 0 for none), the length (0 to 24) and text of its sensor's kind, the same for its firmware version, then a
 // report's 8-byte signature. Texts are printable ASCII.
-const uint8_t CAM_NODE_INFO = 6;
-const int CAM_NODE_TEXT_MAX = 24;
-const int CAM_NODE_INFO_HEAD = 17;
-const int CAM_NODE_INFO_MAX = CAM_NODE_INFO_HEAD + 2 * (1 + CAM_NODE_TEXT_MAX) + CAM_SIGNATURE_LEN;
+const uint8_t CAM_NODE_INFO = S2O_INFO;
+const int CAM_NODE_TEXT_MAX = S2O_TEXT_MAX;
+const int CAM_NODE_INFO_HEAD = S2O_INFO_HEAD;
+const int CAM_NODE_INFO_MAX = S2O_INFO_MAX;
 enum CamNodeRestart { CAM_RESTART_UNKNOWN, CAM_RESTART_POWER, CAM_RESTART_BUTTON, CAM_RESTART_SOFTWARE, CAM_RESTART_CRASH, CAM_RESTART_WATCHDOG, CAM_RESTART_BROWNOUT, CAM_RESTART_KINDS };
 const char* camRestartName(uint8_t reason);  // "brownout", for the page and the log
 inline bool camRestartIsFault(uint8_t reason) { return reason == CAM_RESTART_CRASH || reason == CAM_RESTART_WATCHDOG || reason == CAM_RESTART_BROWNOUT; }
-const uint16_t CAM_RESPONSE_UNKNOWN = 0xFFFF, CAM_CHIP_UNKNOWN = 0xFFFF;
+const uint16_t CAM_RESPONSE_UNKNOWN = S2O_RESPONSE_UNKNOWN, CAM_CHIP_UNKNOWN = S2O_CHIP_UNKNOWN;
 struct CamNodeInfo {
   uint32_t everyS = 0;
   bool saving = false;

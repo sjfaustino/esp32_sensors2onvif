@@ -2,60 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cam_auth.h"
+#include "s2o_messages.h"
 
 static const uint32_t CYCLE_MS = 2000;
-static const int HEADER_LEN = 13;
-static const int TARGET_LEN = 3;
-
-static uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
 static uint16_t readU16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
-static void put32(uint8_t* p, uint32_t v) {
-  for (int i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i));
-}
-static void put16(uint8_t* p, uint16_t v) {
-  p[0] = (uint8_t)v;
-  p[1] = (uint8_t)(v >> 8);
-}
 
-bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
-  if (len < 1 || d[0] != CAM_REPORT) return false;
-  len -= CAM_SIGNATURE_LEN;
-  if (len < HEADER_LEN || d[1] == 0 || d[2] > 1 || d[12] > CAM_MAX_TARGETS) return false;
-  if (len != HEADER_LEN + d[12] * TARGET_LEN) return false;
-  SensorReport r;
-  r.input = d[1];
-  r.active = d[2] == 1;
-  r.battery = camBatteryPercent(d[3]);
-  r.counter = readU32(d + 4);
-  r.age = readU32(d + 8);
-  r.targetCount = d[12];
-  for (int i = 0; i < r.targetCount; i++) {
-    const uint8_t* t = d + HEADER_LEN + i * TARGET_LEN;
-    if (t[2] >= CAM_DIRECTIONS) return false;
-    r.targets[i].distanceCm = (uint16_t)(t[0] | (t[1] << 8));
-    r.targets[i].direction = t[2];
-  }
-  out = r;
-  return true;
-}
-
-// Without using the heap, so an alert is checked and confirmed even when memory has run out. out gets the full 20 bytes.
-static void signature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, uint8_t out[20]) {
-  camHmacSha1((const uint8_t*)key.data(), key.size(), mac, 6, d, (size_t)len, out);
-}
-
-std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
-  uint8_t s[20];
-  signature(mac, d, len, key, s);
-  return std::string((const char*)s, CAM_SIGNATURE_LEN);
-}
+// The messages are in the library shared with the nodes; these keep the hub's names and its std::string keys.
+static S2oKey keyOf(const std::string& key) { return {(const uint8_t*)key.data(), key.size()}; }
 
 static CamPacketCheck checkSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
-  uint8_t expected[20];
-  signature(mac, d, len - CAM_SIGNATURE_LEN, key, expected);
-  uint8_t differ = 0;  // every byte is compared, so the time taken does not reveal how much matched
-  for (int i = 0; i < CAM_SIGNATURE_LEN; i++) differ |= expected[i] ^ d[len - CAM_SIGNATURE_LEN + i];
-  return differ || key.empty() ? CAM_PACKET_BAD_SIGNATURE : CAM_PACKET_SIGNED;
+  return s2oSignatureOk(keyOf(key), mac, d, len) ? CAM_PACKET_SIGNED : CAM_PACKET_BAD_SIGNATURE;
+}
+
+bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) { return len > CAM_SIGNATURE_LEN && s2oReadReport(d, len - CAM_SIGNATURE_LEN, out); }
+
+std::string camPacketSignature(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
+  uint8_t s[CAM_SIGNATURE_LEN];
+  s2oSign(keyOf(key), mac, d, len, s);
+  return std::string((const char*)s, CAM_SIGNATURE_LEN);
 }
 
 CamPacketCheck camCheckPacket(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, SensorReport& out) {
@@ -69,23 +33,18 @@ static bool printable(const std::string& t) {
 }
 
 CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, CamNodeInfo& out) {
-  int body = len - CAM_SIGNATURE_LEN, at = CAM_NODE_INFO_HEAD;
-  if (body < CAM_NODE_INFO_HEAD + 2 || d[0] != CAM_NODE_INFO || d[5] > 1 || d[6] >= CAM_RESTART_KINDS) return CAM_PACKET_INVALID;
+  S2oInfo i;
+  if (len <= CAM_SIGNATURE_LEN || !s2oReadInfo(d, len - CAM_SIGNATURE_LEN, i)) return CAM_PACKET_INVALID;
   CamNodeInfo info;
-  info.everyS = readU32(d + 1);
-  info.saving = d[5] == 1;
-  info.restart = d[6];
-  info.restarts = readU16(d + 7);
-  info.responseMs = readU16(d + 9);
-  info.chip = readU16(d + 11);
-  info.refused = readU32(d + 13);
-  for (std::string* text : {&info.sensor, &info.version}) {
-    if (at >= body || at + 1 + d[at] > body) return CAM_PACKET_INVALID;
-    text->assign((const char*)d + at + 1, d[at]);
-    at += 1 + d[at];
-    if (!printable(*text)) return CAM_PACKET_INVALID;
-  }
-  if (at != body) return CAM_PACKET_INVALID;
+  info.everyS = i.everyS;
+  info.saving = i.saving;
+  info.restart = i.restart;
+  info.restarts = i.restarts;
+  info.responseMs = i.responseMs;
+  info.chip = i.chip;
+  info.refused = i.refused;
+  info.sensor = i.sensor;
+  info.version = i.version;
   out = info;
   return checkSignature(mac, d, len, key);
 }
@@ -147,23 +106,9 @@ uint32_t camAutoSilentS(uint32_t everyS) {
   return s < CAM_MIN_SILENT_S ? CAM_MIN_SILENT_S : s > CAM_MAX_SILENT_S ? CAM_MAX_SILENT_S : (uint32_t)s;
 }
 
-void camConfirmationBody(const SensorReport& r, const CamForNode& e, uint8_t d[CAM_CONFIRMATION_BODY]) {
-  d[0] = CAM_CONFIRMATION;
-  d[1] = r.input;
-  d[2] = (uint8_t)r.active;
-  put32(d + 3, r.counter);
-  put32(d + 7, e.hubTime);
-  put32(d + 11, e.everyS);
-  put16(d + 15, e.repeatS);
-  put32(d + 17, e.walkUntil);
-  d[21] = e.update ? 1 : 0;
-}
-
 void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {
   camConfirmationBody(r, extra, out);
-  uint8_t s[20];
-  signature(sensorMac, out, CAM_CONFIRMATION_BODY, key, s);
-  memcpy(out + CAM_CONFIRMATION_BODY, s, CAM_SIGNATURE_LEN);
+  s2oAddSignature(keyOf(key), sensorMac, out, CAM_CONFIRMATION_BODY);
 }
 
 std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key) {
@@ -172,63 +117,22 @@ std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, c
   return std::string((const char*)out, sizeof(out));
 }
 
-static const char SEAL_LABEL[] = "sensors2onvif seal";
-
-// XORs the key stream into data, in place.
-static void sealStream(const std::string& key, bool fromHub, uint32_t number, uint8_t* data, int len) {
-  uint8_t sealKey[20];
-  camHmacSha1((const uint8_t*)key.data(), key.size(), (const uint8_t*)SEAL_LABEL, sizeof(SEAL_LABEL) - 1, nullptr, 0, sealKey);
-  for (int block = 0; block * 20 < len; block++) {
-    uint8_t in[6] = {(uint8_t)(fromHub ? 1 : 0), 0, 0, 0, 0, (uint8_t)block}, stream[20];
-    put32(in + 1, number);
-    camHmacSha1(sealKey, sizeof(sealKey), in, sizeof(in), nullptr, 0, stream);
-    for (int i = 0; i < 20 && block * 20 + i < len; i++) data[block * 20 + i] ^= stream[i];
-  }
-  memset(sealKey, 0, sizeof(sealKey));
-}
-
 int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out) {
-  out[0] = CAM_SEALED;
-  put32(out + 1, number);
-  memcpy(out + CAM_SEALED_EXTRA, inner, innerLen);
-  sealStream(key, fromHub, number, out + CAM_SEALED_EXTRA, innerLen);
-  uint8_t s[20];
-  signature(mac, out, CAM_SEALED_EXTRA + innerLen, key, s);
-  memcpy(out + CAM_SEALED_EXTRA + innerLen, s, CAM_SIGNATURE_LEN);
-  return CAM_SEALED_EXTRA + innerLen + CAM_SIGNATURE_LEN;
+  return s2oSeal(keyOf(key), mac, number, inner, innerLen, fromHub, out);
 }
 
 int camOpenSealed(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax) {
-  int inner = len - CAM_SEALED_EXTRA - CAM_SIGNATURE_LEN;
-  if (len < 1 || d[0] != CAM_SEALED || inner < 1 || inner > CAM_SEALED_MAX_INNER || inner + CAM_SIGNATURE_LEN > outMax) return 0;
-  if (checkSignature(mac, d, len, key) != CAM_PACKET_SIGNED) return -1;
-  memcpy(out, d + CAM_SEALED_EXTRA, inner);
-  sealStream(key, fromHub, readU32(d + 1), out, inner);
-  uint8_t s[20];
-  signature(mac, out, inner, key, s);
-  memcpy(out + inner, s, CAM_SIGNATURE_LEN);
-  return inner + CAM_SIGNATURE_LEN;
+  int inner = s2oOpen(keyOf(key), mac, d, len, fromHub, out, outMax - CAM_SIGNATURE_LEN);
+  return inner > 0 ? s2oAddSignature(keyOf(key), mac, out, inner) : inner;
 }
 
 CamPacketCheck camCheckFirmwareAsk(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, CamFirmwareAsk& out) {
-  if (len != CAM_FIRMWARE_ASK_LEN || d[0] != CAM_FIRMWARE_ASK) return CAM_PACKET_INVALID;
-  out.image = readU32(d + 1);
-  out.offset = readU32(d + 5);
-  return checkSignature(mac, d, len, key);
+  return s2oReadAsk(d, len, out.image, out.offset) ? checkSignature(mac, d, len, key) : CAM_PACKET_INVALID;
 }
 
 int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen, const std::string& key,
                     uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]) {
-  if (partLen > CAM_FIRMWARE_PART_MAX) partLen = CAM_FIRMWARE_PART_MAX;
-  out[0] = CAM_FIRMWARE_PART;
-  put32(out + 1, image);
-  put32(out + 5, size);
-  put32(out + 9, offset);
-  memcpy(out + CAM_FIRMWARE_PART_HEAD, part, partLen);
-  uint8_t s[20];
-  signature(nodeMac, out, CAM_FIRMWARE_PART_HEAD + partLen, key, s);
-  memcpy(out + CAM_FIRMWARE_PART_HEAD + partLen, s, CAM_SIGNATURE_LEN);
-  return CAM_FIRMWARE_PART_HEAD + partLen + CAM_SIGNATURE_LEN;
+  return s2oPart(keyOf(key), nodeMac, image, size, offset, part, partLen, out);
 }
 
 bool camCheckNodeImage(const std::function<bool(size_t, char*, size_t)>& read, size_t size, CamNodeImage& out) {

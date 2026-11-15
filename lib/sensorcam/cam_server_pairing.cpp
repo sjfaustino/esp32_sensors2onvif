@@ -26,8 +26,8 @@ void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int
   uint8_t answer[CAM_ANSWER_LEN];
   // A paired node asking again, to find the hub's channel: answered at any time, signed so it can trust the answer.
   int id = findNode(mac);
-  if (id && slots_[id - 1].paired && memcmp(slots_[id - 1].nodePublic, key, CAM_X25519_LEN) == 0) {
-    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)slots_[id - 1].key.data(), answer);
+  if (id && nodeOf(id).paired && memcmp(nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
+    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)nodeOf(id).key.data(), answer);
     camCall(cfg_.espNowSend, mac, answer, CAM_ANSWER_LEN);
     return;
   }
@@ -99,7 +99,7 @@ std::string SensorCamServer::pairingJson() {
       if (!p.used) continue;
       int id = findNode(p.mac);
       j.object().str("mac", camMacText(p.mac)).num("inputs", p.inputs).str("fingerprint", camKeyFingerprint(p.publicKey));
-      j.num("ago", (now - p.heardAt) / 1000).num("rssi", p.rssi != 0, p.rssi).flag("known", id != 0).flag("paired", id && slots_[id - 1].paired).end();
+      j.num("ago", (now - p.heardAt) / 1000).num("rssi", p.rssi != 0, p.rssi).flag("known", id != 0).flag("paired", id && nodeOf(id).paired).end();
     }
   });
 }

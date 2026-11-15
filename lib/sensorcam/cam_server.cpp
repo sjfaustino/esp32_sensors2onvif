@@ -13,7 +13,7 @@
 
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
     : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(CAM_REPEAT_TRUE_MS),
-      storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
+      storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), nodes_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
   sealNumber_ = cfg.sealStart;
 }
@@ -816,8 +816,8 @@ void SensorCamServer::housekeeping(uint32_t now) {
     h.silent = true;
     healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }
-  for (Health& h : health_)  // a node that stopped asking has given up, or restarted with what it had
-    if (h.updating && now - h.updateAt > CAM_UPDATE_IDLE_MS) h.updating = false;
+  for (Node& n : nodes_)  // a node that stopped asking has given up, or restarted with what it had
+    if (n.updating && now - n.updateAt > CAM_UPDATE_IDLE_MS) n.updating = false;
   // Reports that arrived since the last pass are saved together, and only then confirmed.
   if (confirmCount_) {
     bool kept = persist();

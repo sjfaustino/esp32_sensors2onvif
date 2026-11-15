@@ -1,0 +1,7 @@
+{
+  "name": "s2o_proto",
+  "version": "1.0.0",
+  "description": "The ESP-NOW messages of the sensors2onvif hub and its sensor nodes, shared by both. No heap, no Arduino.",
+  "frameworks": "*",
+  "platforms": "*"
+}

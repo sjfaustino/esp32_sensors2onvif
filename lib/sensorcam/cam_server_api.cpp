@@ -60,19 +60,19 @@ std::string SensorCamServer::treeJson() {
   j.object().num("used", used).num("total", total).num("kept", historyRoom()).num("clear", clear, clearSize).flag("clearPreview", hasFile(root, "clear.jpg")).array("nodes");
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
-    if (!makeRoom(128)) return std::string();
+    if (!makeRoom(320)) return std::string();  // the longest node entry before its sensors
     CamNodeSettings node;
     std::string nodeText;
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
     uint8_t mac[6];
     camParseMac(s.name, mac);
     int any = findNode(mac);
-    uint32_t every = any ? slots_[any - 1].info.everyS : 0;
+    uint32_t every = any ? nodeOf(any).info.everyS : 0;
     j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS);
     j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every));
     j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
     time_t t = time(nullptr);
-    uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && slots_[any - 1].walkUntil > (uint32_t)t ? slots_[any - 1].walkUntil - (uint32_t)t : 0;
+    uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && nodeOf(any).walkUntil > (uint32_t)t ? nodeOf(any).walkUntil - (uint32_t)t : 0;
     j.num("walkLeft", walk).array("sensors");
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
@@ -327,15 +327,16 @@ std::string SensorCamServer::espNowJson() {
     const char* state = sensors_.active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
     j.object().flag("low", h.lowBattery).str("name", slots_[id - 1].name).str("node", name.substr(0, name.find('/'))).num("input", slots_[id - 1].input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
-    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", slots_[id - 1].paired);
-    const CamNodeInfo& info = slots_[id - 1].info;
+    j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", nodeOf(id).paired);
+    const Node& node = nodeOf(id);
+    const CamNodeInfo& info = node.info;
     j.num("every", info.everyS != 0, info.everyS).num("silentAfter", silentMsFor(id) / 1000).flag("saving", info.saving).str("sensor", info.sensor).str("version", info.version);
     bool told = !info.version.empty();
     j.str("restart", told ? camRestartName(info.restart) : "").num("restarts", told, info.restarts).flag("restartFault", told && camRestartIsFault(info.restart));
     j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs).str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
-    j.num("daysLeft", slots_[id - 1].daysLeft >= 0, slots_[id - 1].daysLeft).flag("sealed", h.sealed);
+    j.num("daysLeft", node.daysLeft >= 0, node.daysLeft).flag("sealed", node.sealed);
     const NodeImageFile* image = imageFor(info.chip);
-    std::string update = h.updating && h.updateSize ? "updating, " + std::to_string((uint64_t)h.updateOffset * 100 / h.updateSize) + "%"
+    std::string update = node.updating && node.updateSize ? "updating, " + std::to_string((uint64_t)node.updateOffset * 100 / node.updateSize) + "%"
                          : updateReady(id)          ? "update ready"
                          : image && info.refused == image->image.number ? "update undone"
                                                                         : "";
@@ -597,8 +598,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     } else if (t < CAM_CLOCK_VALID_AFTER) {
       c.out = jsonFail(409, "the hub's clock is not set yet, and the node needs it to know when the walk test ends");
     } else {
-      for (Slot& s : slots_)
-        if (s.used && memcmp(s.mac, mac, 6) == 0) s.walkUntil = stop ? 0 : (uint32_t)t + CAM_WALK_TEST_S;
+      nodeByMac(mac)->walkUntil = stop ? 0 : (uint32_t)t + CAM_WALK_TEST_S;
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/webhook")) {

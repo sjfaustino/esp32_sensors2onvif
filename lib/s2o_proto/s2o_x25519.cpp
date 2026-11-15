@@ -1,4 +1,4 @@
-#include "cam_x25519.h"
+#include "s2o_x25519.h"
 #include <string.h>
 
 // A number below 2^255 - 19 as 16 limbs of 16 bits, each kept in 64 bits so products and carries fit.
@@ -84,7 +84,7 @@ static void invert(Field o, const Field in) {
   for (int i = 0; i < 16; i++) o[i] = c[i];
 }
 
-void camX25519(uint8_t out[CAM_X25519_LEN], const uint8_t scalar[CAM_X25519_LEN], const uint8_t point[CAM_X25519_LEN]) {
+void s2oX25519(uint8_t out[S2O_X25519_LEN], const uint8_t scalar[S2O_X25519_LEN], const uint8_t point[S2O_X25519_LEN]) {
   uint8_t z[32];
   memcpy(z, scalar, 32);
   z[31] = (uint8_t)((scalar[31] & 127) | 64);
@@ -126,7 +126,7 @@ void camX25519(uint8_t out[CAM_X25519_LEN], const uint8_t scalar[CAM_X25519_LEN]
   pack(out, a);
 }
 
-void camX25519Public(uint8_t out[CAM_X25519_LEN], const uint8_t privateKey[CAM_X25519_LEN]) {
+void s2oX25519Public(uint8_t out[S2O_X25519_LEN], const uint8_t privateKey[S2O_X25519_LEN]) {
   static const uint8_t BASE[32] = {9};
-  camX25519(out, privateKey, BASE);
+  s2oX25519(out, privateKey, BASE);
 }

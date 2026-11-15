@@ -43,10 +43,15 @@ void operator delete(void* p, size_t) noexcept { free(p); }
 // Sends a report the way a sensor node would, signed with key.
 static void radio(SensorCamServer* hub, uint8_t last, uint32_t counter, uint8_t battery, int8_t rssi, const char* key, bool active = false) {
   uint8_t mac[6] = {2, 0, 0, 0, 0, last};
-  uint8_t p[13 + 8] = {CAM_REPORT, 1, (uint8_t)active, battery, (uint8_t)counter, (uint8_t)(counter >> 8), (uint8_t)(counter >> 16), (uint8_t)(counter >> 24), 0, 0, 0, 0, 0};
-  memcpy(p + 13, camPacketSignature(mac, p, 13, key).data(), 8);
+  SensorReport r;
+  r.active = active;
+  r.battery = battery;
+  r.counter = counter;
+  uint8_t p[S2O_REPORT_MAX];
+  int len = s2oReportBody(r, p);
+  memcpy(p + len, camPacketSignature(mac, p, len, key).data(), 8);
   HubCall call;
-  hub->espNowPacket(mac, p, sizeof(p), rssi);
+  hub->espNowPacket(mac, p, len + 8, rssi);
 }
 
 // The test's controls, which only this build has: one command per line on standard input, each answered with

@@ -13,13 +13,14 @@
 #include <stdint.h>
 #include <string>
 #include "cam_x25519.h"
+#include "s2o_messages.h"
 
-const uint8_t CAM_HELLO = 4, CAM_HELLO_ANSWER = 5;
-const int CAM_HELLO_LEN = 2 + CAM_X25519_LEN;
-const int CAM_ANSWER_LEN = 3 + CAM_X25519_LEN + 8;
-const int CAM_NODE_KEY_LEN = 20;
-const int CAM_MAX_NODE_INPUTS = 16;
-const uint8_t CAM_PAIR_WAITING = 0, CAM_PAIR_PAIRED = 1;
+const uint8_t CAM_HELLO = S2O_HELLO, CAM_HELLO_ANSWER = S2O_ANSWER;
+const int CAM_HELLO_LEN = S2O_HELLO_LEN;
+const int CAM_ANSWER_LEN = S2O_ANSWER_LEN;
+const int CAM_NODE_KEY_LEN = S2O_NODE_KEY_LEN;
+const int CAM_MAX_NODE_INPUTS = S2O_MAX_INPUTS;
+const uint8_t CAM_PAIR_WAITING = S2O_WAITING, CAM_PAIR_PAIRED = S2O_PAIRED;
 
 bool camParseHello(const uint8_t* data, int len, uint8_t& inputs, uint8_t publicKey[CAM_X25519_LEN]);
 // nodeKey nullptr while waiting, which leaves the signature zero.

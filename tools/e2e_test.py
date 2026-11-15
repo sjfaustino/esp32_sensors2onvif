@@ -718,8 +718,8 @@ def pairing_tests():
     def signed(key, data):
         return hmac.new(key, bytes.fromhex(mac) + data, hashlib.sha1).digest()[:8]
 
-    def report(input_number, counter, key):
-        body = bytes([2, input_number, 1, 80]) + counter.to_bytes(4, 'little') + bytes(4) + bytes([0])
+    def report(input_number, counter, key, fresh=0, battery=80):
+        body = bytes([2, input_number, 1, battery]) + counter.to_bytes(4, 'little') + bytes(4) + fresh.to_bytes(4, 'little') + bytes([0])
         return body + signed(key, body)
 
     def node_row(input_number):
@@ -754,11 +754,13 @@ def pairing_tests():
     check("a report signed with the node's own key is accepted", f'{folder}/1' in status()['active'], status())
     sent = wait_until(lambda: control('last-sent'))
     confirmation = bytes.fromhex(sent.split(' ')[1]) if ' ' in sent else b''
-    check("and confirmed, signed with the node's own key", sent.startswith(mac + ' ') and len(confirmation) == 30 and confirmation[:7] == bytes([3, 1, 1]) + (7).to_bytes(4, 'little')
-          and confirmation[22:] == signed(key, confirmation[:22]), sent)
+    check("and confirmed, signed with the node's own key", sent.startswith(mac + ' ') and len(confirmation) == 34 and confirmation[:7] == bytes([3, 1, 1]) + (7).to_bytes(4, 'little')
+          and confirmation[26:] == signed(key, confirmation[:26]), sent)
     hub_time = int.from_bytes(confirmation[7:11], 'little')
     check("the confirmation carries the hub's time, for the node's clock", abs(hub_time - time.time()) < 5, hub_time)
-    check('and nothing set for the node yet', confirmation[11:22] == bytes(11), confirmation.hex())
+    check('and nothing set for the node yet', confirmation[11:21] == bytes(10), confirmation.hex())
+    check("a paired node's first report, without the hub's number, is asked to prove the node is there", confirmation[21] == 2
+          and int.from_bytes(confirmation[22:26], 'little') != 0, confirmation.hex())
     control('end-alerts')
     control(f'radio-raw {mac} {report(2, 8, b"test-espnow-key-0123456789").hex()}')
     check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
@@ -834,17 +836,44 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
         data = answer[1] if answer else b''
         if sealed:
             data = open_sealed(data, key, mac, True) or b''
-        elif data[22:] != signed(key, data[:22]):
+        elif data[26:] != signed(key, data[:26]):
             return b''
         return data
 
+    fresh = [0]
+
+    def confirmed(counter, battery=80):
+        """Sends a report as the node does, with the number from the hub's last confirmation, and keeps the next one."""
+        control('end-alerts')
+        body = confirmation_of(say(report(1, counter, key, fresh[0], battery)))
+        if len(body) >= 26:
+            fresh[0] = int.from_bytes(body[22:26], 'little')
+        return body
+
+    # Playing back a recorded report: it still raises an alert, but does not show the node is there.
+    first = confirmed(15)
+    check('a report without the number is asked for proof', first[21] & 2 == 2, first.hex())
+    recorded = report(1, 16, key, fresh[0], 33)
+    control('end-alerts')
+    body = confirmation_of(say(recorded))
+    fresh[0] = int.from_bytes(body[22:26], 'little')
+    check('a report with the number is taken as the node being there, and asks for nothing more', body[21] & 2 == 0 and node_row(1).get('battery') == 33, (body.hex(), node_row(1)))
+    confirmed(17)
+    confirmed(18)
+    control('end-alerts')
+    body = confirmation_of(say(recorded))
+    check('the same report played back later raises its alert, as a false alert is better than a missed one', f'{folder}/1' in status()['active'], status())
+    check('but it is asked for proof, and its battery reading is not taken', body[21] & 2 == 2 and node_row(1).get('battery') == 80, (body.hex(), node_row(1)))
+    confirmed(19)
+
     # Sealed: what a report says is hidden, and so is the confirmation, which repeats it.
-    plain = report(1, 21, key)[:-8]
+    plain = report(1, 21, key, fresh[0])[:-8]
     sealed = seal(plain, key, mac, 0xABCD0001)
     check('a sealed report hides the input, state and battery', plain[1:4] not in sealed[5:-8])
     control('end-alerts')
     answer = say(sealed)
     body = confirmation_of(answer, True)
+    fresh[0] = int.from_bytes(body[22:26], 'little') if len(body) == 26 else 0
     check('a sealed report is accepted, and confirmed sealed', f'{folder}/1' in status()['active'] and body[:7] == bytes([3, 1, 1]) + (21).to_bytes(4, 'little'), (answer, body))
     check('the ESP-NOW page shows it was sealed', node_row(1).get('sealed') is True, node_row(1))
     forged = bytearray(seal(plain, key, mac, 0xABCD0002))
@@ -863,7 +892,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     node = tree_node()
     check('the Sensors page shows them', (node.get('reportEvery'), node.get('repeat')) == (3600, 30), node)
     control('end-alerts')
-    body = confirmation_of(say(report(1, 23, key)))
+    body = confirmed(23)
     check('they reach the node with its next confirmation', int.from_bytes(body[11:15], 'little') == 3600, body.hex())
     check("the repeat is kept below the sensor's alert time, so the alert does not lapse between repeats", int.from_bytes(body[15:17], 'little') == HOLD_MS // 1000 - 1, body.hex())
     api('POST', f'/api/node-settings?path={folder}', '')
@@ -872,13 +901,13 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     check('a walk test can be started for a node', api('POST', f'/api/walk-test?path={folder}', 'go=1')[0] == 200)
     check('a walk test for a node that does not exist is refused', api('POST', '/api/walk-test?path=02-00-00-00-00-77', 'go=1')[0] == 404)
     control('end-alerts')
-    body = confirmation_of(say(report(1, 24, key)))
+    body = confirmed(24)
     until, now_hub = int.from_bytes(body[17:21], 'little'), int.from_bytes(body[7:11], 'little')
     check('the confirmation says when the walk test ends, on the hub\'s time', 590 <= until - now_hub <= 600, (until, now_hub))
     check('the Sensors page shows it running', 0 < tree_node().get('walkLeft', 0) <= 600, tree_node())
     api('POST', f'/api/walk-test?path={folder}', 'stop=1')
     control('end-alerts')
-    check('and it can be stopped', confirmation_of(say(report(1, 25, key)))[17:21] == bytes(4))
+    check('and it can be stopped', confirmed(25)[17:21] == bytes(4))
 
     # A restart for a fault shows a node failing before it goes silent.
     say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', restart=6, restarts=1))
@@ -890,7 +919,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
 
     # The battery: a reading is kept every few hours, for the forecast.
     battery_file = api('GET', f'/api/file?path={folder}/battery.txt')
-    check('a battery reading is kept in the node folder, for the forecast', battery_file[0] == 200 and battery_file[1].decode().split()[-1] == '80', battery_file)
+    check('a battery reading is kept in the node folder, for the forecast', battery_file[0] == 200 and battery_file[1].decode().split()[-1] == '33', battery_file)  # the first, from the report with the number above
     check('one reading is not enough for a forecast', node_row(1).get('daysLeft') is None, node_row(1))
 
     # Firmware for the node: put on the hub, offered to nodes of that chip on another version, fetched in parts.
@@ -906,7 +935,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     listed = get_json('/api/espnow')['nodeFirmware']
     check('the ESP-NOW page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': 3000}], listed)
     control('end-alerts')
-    body = confirmation_of(say(report(1, 26, key)))
+    body = confirmed(26)
     check('a node of that chip on another version is told an update is ready', body[21:22] == b'\x01', body.hex())
     check('and the ESP-NOW page says so', node_row(1).get('update') == 'update ready', node_row(1))
 
@@ -940,17 +969,17 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     say(info(7200, 0, b'RCWL-0516', b'4b5c6d7'))
     check('once the node runs it, the update is over', node_row(1).get('update') == '', node_row(1))
     control('end-alerts')
-    check('and no longer offered', confirmation_of(say(report(1, 27, key)))[21:22] == b'\x00')
+    check('and no longer offered', confirmed(27)[21:22] == b'\x00')
     say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', refused=number))
     control('end-alerts')
-    check('a node that had the update undone is not offered it again', confirmation_of(say(report(1, 28, key)))[21:22] == b'\x00')
+    check('a node that had the update undone is not offered it again', confirmed(28)[21:22] == b'\x00')
     check('and the page says it was undone', node_row(1).get('update') == 'update undone', node_row(1))
     say(info(7200, 1, b'RCWL-0516', b'3f2a1b0'))
     control('end-alerts')
-    check('a node saving its battery is not offered an update', confirmation_of(say(report(1, 29, key)))[21:22] == b'\x00')
+    check('a node saving its battery is not offered an update', confirmed(29)[21:22] == b'\x00')
     say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', chip=0))
     control('end-alerts')
-    check('nor is a node of another chip', confirmation_of(say(report(1, 30, key)))[21:22] == b'\x00')
+    check('nor is a node of another chip', confirmed(30)[21:22] == b'\x00')
     check('a node firmware can be deleted', api('POST', '/api/node-firmware/delete', 'chip=13')[0] == 200 and get_json('/api/espnow')['nodeFirmware'] == [])
     control('end-alerts')
 
@@ -1783,8 +1812,8 @@ def test_esp_now_page():
         to, _, sent = control('last-sent').partition(' ')
         expect = bytes([3, 1, 0]) + (77).to_bytes(4, 'little')
         got = bytes.fromhex(sent)
-        signature = hmac.new(b'test-espnow-key-0123456789', bytes.fromhex(to) + got[:22], hashlib.sha1).digest()[:8]
-        check('the hub confirms a report to its sensor, signed for that sensor', to == '020000000001' and got[:7] == expect and got[22:] == signature, (to, sent))
+        signature = hmac.new(b'test-espnow-key-0123456789', bytes.fromhex(to) + got[:26], hashlib.sha1).digest()[:8]
+        check('the hub confirms a report to its sensor, signed for that sensor', to == '020000000001' and got[:7] == expect and got[26:] == signature, (to, sent))
         clear(1)
         check('a report without a battery keeps the last reading', node_entry(radio())['battery'] == 55, node_entry(radio()))
         check('no unknown senders yet', radio()['unknown'] == [], radio()['unknown'])

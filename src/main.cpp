@@ -224,7 +224,17 @@ static bool startWasPlanned();
 extern "C" bool verifyRollbackLater() { return true; }
 
 static const uint32_t FIRMWARE_PROOF_MS = 60000;
+static const uint32_t FIRMWARE_PROOF_DEADLINE_MS = 10UL * 60UL * 1000UL;
 static bool firmwareUnproven = false;
+static bool espNowStarted = false;
+// Set as an update starts and kept through the restart into it: whether the NVR was listening then, so the new firmware
+// must get it listening again before it is kept. A random value after a power cut is told apart by the mark.
+struct UpdateProof {
+  uint32_t mark;
+  bool needNvr;
+};
+static const uint32_t UPDATE_PROOF_MARK = 0x50524F46;
+RTC_NOINIT_ATTR static UpdateProof updateProof;
 
 // Until this is called, any restart makes the bootloader go back to the previous firmware.
 static void confirmFirmware() {
@@ -309,6 +319,8 @@ static CamConfig makeConfig() {
   };
   c.firmwareBegin = [](size_t size) {
     confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
+    updateProof.mark = UPDATE_PROOF_MARK;
+    updateProof.needNvr = server && server->nvrListeningNow();
     return Update.begin(size, U_FLASH);
   };
   c.firmwareWrite = [](const uint8_t* data, size_t len) { return Update.write((uint8_t*)data, len) == len; };
@@ -533,7 +545,8 @@ void setup() {
   }
 
   sensorQueue = xQueueCreate(32, sizeof(SensorMessage));
-  if (esp_now_init() == ESP_OK) esp_now_register_recv_cb(onEspNow);
+  espNowStarted = sensorQueue && esp_now_init() == ESP_OK;
+  if (espNowStarted) esp_now_register_recv_cb(onEspNow);
   else Serial.println("ESP-NOW failed to start; HTTP sensor input still works.");
 
   enableLoopWDT();  // an unattended hub must restart itself if the main loop ever stalls
@@ -590,14 +603,36 @@ static void keepOnNetwork(bool connected, bool justLost) {
   if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
 }
 
-// A restart asked for on the page, and the minute a new firmware must last before it is kept.
-static void restartWhenAsked(bool connected) {
+// A new firmware is kept once it has done the hub's work: on the network for a minute, ESP-NOW running, and the NVR
+// listening again if it was when the update began. Any restart before that, including the Wi-Fi one, undoes the update,
+// and so does not managing it within 10 minutes.
+static void proveFirmware(bool connected) {
+  if (!firmwareUnproven) return;
+  if (settings.wifiSsid[0].isEmpty()) {  // still being set up: nothing to prove it on
+    if (millis() > FIRMWARE_PROOF_MS) confirmFirmware();
+    return;
+  }
+  bool needNvr = updateProof.mark == UPDATE_PROOF_MARK && updateProof.needNvr;
+  bool proven = connected && millis() - connectedAt > FIRMWARE_PROOF_MS && espNowStarted && (!needNvr || server->nvrListeningNow());
+  if (proven) {
+    confirmFirmware();
+    updateProof.mark = 0;
+    Serial.println("The new firmware has proved itself and is kept.");
+  } else if (millis() > FIRMWARE_PROOF_DEADLINE_MS) {
+    Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n",
+                  !espNowStarted ? "started ESP-NOW" : !connected ? "stayed on the network" : "got the NVR listening again");
+    if (server) server->saveNow();
+    updateProof.mark = 0;
+    esp_ota_mark_app_invalid_rollback_and_reboot();
+  }
+}
+
+// A restart asked for on the page.
+static void restartWhenAsked() {
   if (restartPending && millis() - restartRequestedAt > 1500) {
     confirmFirmware();  // someone used this firmware's pages to ask for this restart, so it must not count as a failure
     restartFor(restartRequested);
   }
-  // A new firmware has to stay on the network for a minute. Any restart before that, including the Wi-Fi one, undoes the update.
-  if (firmwareUnproven && (connected ? millis() - connectedAt > FIRMWARE_PROOF_MS : settings.wifiSsid[0].isEmpty() && millis() > FIRMWARE_PROOF_MS)) confirmFirmware();
 }
 
 // Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
@@ -658,7 +693,8 @@ void loop() {
   keepOnNetwork(connected, justLost);
   if (setupOpen) dnsServer.processNextRequest();
   if (!settings.timeNtp && esp_sntp_enabled() && clockSet()) applyTime();  // the one-off NTP reading after a power cut has arrived
-  restartWhenAsked(connected);
+  restartWhenAsked();
+  proveFirmware(connected);
   restartWhenStuck();
   restartWhenScheduled();
   restartWhenCutOff(connected);
