@@ -182,6 +182,8 @@ def test_webhook(path):
     time.sleep(0.5)  # time for a message to be wrongly sent
     check('node problems are not sent when turned off', len(received) == 3, received[3:])
     control('radio-known')
+    if not DEVICE:  # these need the PC build's test commands
+        test_trouble_reports(received, hook_url)
     check('the webhook settings need the web password', api('GET', '/api/webhook', auth=False)[0] == 401)
     api('POST', '/api/webhook', 'url=&alerts=1&problems=1')
     catcher.shutdown()
@@ -192,6 +194,63 @@ def test_webhook(path):
     control('memory-normal')
     check('a reply larger than the memory left fails alone, and the hub keeps running', code == 507 and api('GET', '/api/events')[0] == 200, code)
     return code, received
+
+
+def test_trouble_reports(received, hook_url):
+    """The daily check, a sensor firing too often, and nodes going quiet together, with the webhook catching what is sent."""
+    def sent(event):
+        found = []
+        for _, body in list(received):
+            try:
+                message = json.loads(body)
+            except ValueError:
+                continue
+            if message.get('event') == event:
+                found.append(message)
+        return found
+
+    # The daily check, set for this minute: the PC build's local time is UTC.
+    if time.gmtime().tm_sec > 54:
+        time.sleep(7)  # not at the end of a minute, which would be over before the hub looks
+    now = time.gmtime()
+    minute = now.tm_hour * 60 + now.tm_min
+    check('a daily check time past midnight is refused', api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1&daily=1440')[0] == 400)
+    check('the daily check time is saved', api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1&daily={minute}')[0] == 200
+          and get_json('/api/webhook')['daily'] == minute)
+    daily = wait_until(lambda: sent('daily check'), timeout=5)
+    check('the daily check arrives at its time', len(daily) == 1 and daily[0]['nodes'] >= 2 and ' daily check: ' in daily[0]['message']
+          and 'nvrListening' in daily[0], daily)
+    time.sleep(1)  # time for a second one to be wrongly sent
+    check('and only once', len(sent('daily check')) == 1)
+    api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1')
+    check('no time turns the daily check off', get_json('/api/webhook')['daily'] == -1)
+
+    # A sensor firing far too often is reported once; every alert still goes through.
+    control('busy-alerts 3')
+    for _ in range(4):
+        get(f'/sensor?{sid(6)}')
+        clear(6)
+    control('busy-alerts 100000')
+    busy = [e for e in event_list() if e['event'] == 'firing often' and e['sensor'] == name(6)]
+    check('a sensor firing often is logged once', len(busy) == 1, busy)
+    check('and sent as a node problem', wait_until(lambda: sent('firing often'), timeout=5))
+
+    # Nodes that report steadily and then stop together.
+    nodes = (SENSORS[1][0], SENSORS[4][0])
+    for folder in nodes:
+        api('POST', f'/api/node-settings?path={folder}', 'every=600')
+    for n in (1, 4):
+        get(f'/sensor?{sid(n)}')
+        clear(n)
+    control('overdue-ms 1500')  # instead of 12 minutes for a node that reports every 10
+    jam = poll(lambda: [e for e in event_list() if e['event'] == 'possible jamming'], lambda found: found, timeout=6)
+    check('nodes going quiet together are logged as possible jamming', len(jam) == 1 and jam[0]['sensor'] == 'hub' and 'nodes' in jam[0]['detail'], jam)
+    check('and sent as a node problem', wait_until(lambda: sent('possible jamming'), timeout=5))
+    time.sleep(1)
+    check('once', len([e for e in event_list() if e['event'] == 'possible jamming']) == 1)
+    control('overdue-ms 0')
+    for folder in nodes:
+        api('POST', f'/api/node-settings?path={folder}', '')
 
 
 def test_no_memory_left_at_all():

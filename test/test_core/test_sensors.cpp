@@ -203,6 +203,55 @@ static void delivery_is_checked_and_missed_alerts_kept_once() {
   TEST_ASSERT_EQUAL(0, (int)missed.size());
 }
 
+// Batteries fail one node at a time; nodes stopping together are reported once, and only nodes that stopped recently
+// count, so two that died weeks apart do not.
+static void nodes_going_quiet_together_are_reported_once() {
+  TEST_ASSERT_EQUAL_UINT32(720000, camOverdueMs(600));    // 10 min, 2 min late
+  TEST_ASSERT_EQUAL_UINT32(8640000, camOverdueMs(7200));  // 2 h, 24 min late
+  TEST_ASSERT_EQUAL_UINT32(120000, camOverdueMs(60));     // at least a minute late
+  CamJamWatch w;
+  bool overdue[3] = {false, false, false};
+  TEST_ASSERT_EQUAL(0, w.update(overdue, 3, 1000));
+  overdue[0] = true;
+  TEST_ASSERT_EQUAL(0, w.update(overdue, 3, 2000));  // one node: a battery, most likely
+  overdue[2] = true;
+  TEST_ASSERT_EQUAL(2, w.update(overdue, 3, 3000));  // a second soon after: together
+  TEST_ASSERT_TRUE(w.together(0) && !w.together(1) && w.together(2));
+  TEST_ASSERT_EQUAL(0, w.update(overdue, 3, 4000));  // reported once
+  overdue[1] = true;
+  TEST_ASSERT_EQUAL(0, w.update(overdue, 3, 5000));  // a third joining is the same episode
+  bool none[3] = {false, false, false};
+  TEST_ASSERT_EQUAL(0, w.update(none, 3, 6000));     // all heard again
+  TEST_ASSERT_EQUAL(3, w.update(overdue, 3, 7000));  // a new episode is reported again
+  // Two nodes overdue further apart than the window: not together.
+  CamJamWatch apart;
+  bool a[2] = {true, false};
+  apart.update(a, 2, 0);
+  a[1] = true;
+  TEST_ASSERT_EQUAL(0, apart.update(a, 2, CAM_JAM_WINDOW_MS + 1));
+  // Across the millisecond clock's wrap.
+  CamJamWatch wrap;
+  bool b[2] = {true, true};
+  TEST_ASSERT_EQUAL(2, wrap.update(b, 2, 0xFFFFFF00u));
+}
+
+static void a_sensor_firing_often_is_reported_once_an_hour_at_most() {
+  CamBusyCount b;
+  for (int i = 1; i < 20; i++) TEST_ASSERT_FALSE(b.note(i * 1000, 20));
+  TEST_ASSERT_TRUE(b.note(20000, 20));  // the 20th within the hour
+  TEST_ASSERT_FALSE(b.note(21000, 20));
+  // Still busy the next hour: not again.
+  for (int i = 0; i < 30; i++) TEST_ASSERT_FALSE(b.note(CAM_BUSY_WINDOW_MS + 1000 + i, 20));
+  // A quiet hour, then busy again: reported again.
+  TEST_ASSERT_FALSE(b.note(2 * CAM_BUSY_WINDOW_MS + 2000, 20));
+  bool again = false;
+  for (int i = 0; i < 20; i++) again = b.note(3 * CAM_BUSY_WINDOW_MS + 3000 + i, 20) || again;
+  TEST_ASSERT_TRUE(again);
+  // Spread out, 19 an hour never is.
+  CamBusyCount slow;
+  for (int i = 0; i < 200; i++) TEST_ASSERT_FALSE(slow.note(i * (CAM_BUSY_WINDOW_MS / 19 + 1000), 20));
+}
+
 static void battery_forecast_follows_the_readings() {
   std::vector<CamBatteryPoint> points;
   const int64_t day = 86400, start = 1800000000;
@@ -254,6 +303,8 @@ void runSensorsTests() {
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
   RUN_TEST(battery_forecast_follows_the_readings);
+  RUN_TEST(nodes_going_quiet_together_are_reported_once);
+  RUN_TEST(a_sensor_firing_often_is_reported_once_an_hour_at_most);
   RUN_TEST(hold_expires_and_retrigger_extends);
   RUN_TEST(hold_survives_millis_wrap);
   RUN_TEST(unknown_sensors_rejected);

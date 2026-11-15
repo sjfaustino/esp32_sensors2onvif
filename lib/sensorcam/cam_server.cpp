@@ -858,6 +858,8 @@ void SensorCamServer::housekeeping(uint32_t now) {
   if (!startNoted_) noteHubStart(now);
   if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= CAM_ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
   if (cfg_.watchNvr) checkNvr(now);
+  checkJamming(now);
+  dailyCheck(now);
   subs_.expire(now);
   servicePolls(now);
   if (signal_.update(sensors_.anyActive(), now)) subs_.markAllPending();

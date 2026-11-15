@@ -34,6 +34,8 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_RESTART_LOOP: return "restarting often";
     case CAM_EVENT_NODE_FAULT: return "node restarted by a fault";
     case CAM_EVENT_BATTERY_RUNNING_OUT: return "battery running out";
+    case CAM_EVENT_JAMMING: return "possible jamming";
+    case CAM_EVENT_BUSY_SENSOR: return "firing often";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -67,12 +69,37 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
     case CAM_EVENT_NODE_FAULT:
       return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the ESP-NOW page";
     case CAM_EVENT_BATTERY_RUNNING_OUT: return who + ": the battery will run out within a week";
+    case CAM_EVENT_JAMMING:
+      return who + ": " + detail +
+             " stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a jammer";
+    case CAM_EVENT_BUSY_SENSOR:
+      return who + ": fired " + std::to_string(CAM_BUSY_ALERTS) +
+             " times within an hour. Every alert still goes to the NVR, but check the sensor's aim and wiring";
     case CAM_EVENT_ARMED_HOME:
       return who + " was armed home" + (detail.empty() ? std::string() : " from " + detail) + ": interior sensors are logged but not sent to the NVR";
     case CAM_EVENT_DISARMED:
       return who + " was disarmed" + (detail.empty() ? std::string() : " from " + detail) + ": alerts are logged but not sent to the NVR";
     default: return who + ": " + camEventName(kind, true, delayed);
   }
+}
+
+std::string camDailyMessage(const CamDailyCheck& d) {
+  std::string m = d.hub + " daily check: " + std::to_string(d.heard) + " of " + std::to_string(d.nodes) + " nodes heard in the last day";
+  if (d.problems.empty()) {
+    m += "; no problems";
+  } else {
+    m += "; problems: ";
+    for (size_t i = 0; i < d.problems.size(); i++) m += (i ? ", " : "") + d.problems[i];
+  }
+  m += "; " + std::string(d.allCounted ? "" : "at least ") + std::to_string(d.alerts) + (d.alerts == 1 ? " alert" : " alerts") + " in the last day";
+  if (d.notDelivered)
+    m += ", " + std::to_string(d.notDelivered) + " not delivered to the NVR";
+  else if (d.alerts)
+    m += ", all delivered to the NVR";
+  m += d.nvrListening ? "; the NVR is listening" : "; the NVR is NOT listening";
+  m += d.mode == "disarmed" ? "; disarmed" : "; armed " + d.mode;
+  m += d.testAgoS >= 0 ? "; last test alert " + camDurationText((uint32_t)d.testAgoS) + " ago" : "; no test alert recently";
+  return m;
 }
 
 std::string camDurationText(uint32_t seconds) {

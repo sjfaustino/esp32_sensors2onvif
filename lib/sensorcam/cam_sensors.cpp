@@ -113,6 +113,40 @@ std::string camChipName(uint16_t chip) {
   }
 }
 
+uint32_t camOverdueMs(uint32_t everyS) { return (everyS + (everyS / 5 > 60 ? everyS / 5 : 60)) * 1000; }
+
+int CamJamWatch::update(const bool overdue[], int count, uint32_t now) {
+  now_ = now;
+  int together = 0;
+  for (int n = 0; n < count && n < CAM_MAX_SENSORS; n++) {
+    if (!overdue[n]) {
+      on_[n] = false;
+    } else if (!on_[n]) {
+      on_[n] = true;
+      at_[n] = now;
+    }
+    together += this->together(n);
+  }
+  for (int n = count; n < CAM_MAX_SENSORS; n++) on_[n] = false;
+  if (!together) reported_ = false;
+  if (together < 2 || reported_) return 0;
+  reported_ = true;
+  return together;
+}
+
+bool CamBusyCount::note(uint32_t now, int limit) {
+  if (!started || now - from >= CAM_BUSY_WINDOW_MS) {
+    if (started && count < (limit + 3) / 4) reported = false;  // a quiet hour
+    started = true;
+    from = now;
+    count = 0;
+  }
+  count++;
+  if (reported || count < limit) return false;
+  reported = true;
+  return true;
+}
+
 uint32_t camAutoSilentS(uint32_t everyS) {
   if (!everyS) return 0;
   uint64_t s = (uint64_t)everyS + (everyS / 4 > 600 ? everyS / 4 : 600);

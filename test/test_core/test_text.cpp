@@ -59,6 +59,34 @@ static void every_event_kind_has_its_own_name() {
     for (size_t k = i + 1; k < names.size(); k++) TEST_ASSERT_TRUE(strcmp(names[i], names[k]) != 0);
 }
 
+static void the_daily_check_says_what_matters() {
+  CamDailyCheck d;
+  d.hub = "esp-alarmhub";
+  d.mode = "away";
+  d.nodes = 3;
+  d.heard = 3;
+  d.nvrListening = true;
+  TEST_ASSERT_EQUAL_STRING(
+      "esp-alarmhub daily check: 3 of 3 nodes heard in the last day; no problems; 0 alerts in the last day; the NVR is listening; armed away; no "
+      "test alert recently",
+      camDailyMessage(d).c_str());
+  d.heard = 2;
+  d.problems = {"Gate: silent", "Shed: low battery"};
+  d.alerts = 1;
+  d.notDelivered = 1;
+  d.allCounted = false;
+  d.nvrListening = false;
+  d.mode = "disarmed";
+  d.testAgoS = 3 * 86400;
+  TEST_ASSERT_EQUAL_STRING(
+      "esp-alarmhub daily check: 2 of 3 nodes heard in the last day; problems: Gate: silent, Shed: low battery; at least 1 alert in the last day, 1 "
+      "not delivered to the NVR; the NVR is NOT listening; disarmed; last test alert 3 days 0 h ago",
+      camDailyMessage(d).c_str());
+  d.notDelivered = 0;
+  d.alerts = 4;
+  TEST_ASSERT_TRUE(camDailyMessage(d).find("at least 4 alerts in the last day, all delivered to the NVR") != std::string::npos);
+}
+
 static void long_names_are_cut_between_characters() {
   char out[6];
   camCopyText(out, sizeof(out), "abc");
@@ -115,5 +143,6 @@ void runTextTests() {
   RUN_TEST(json_writer_places_commas_and_brackets);
   RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(long_names_are_cut_between_characters);
+  RUN_TEST(the_daily_check_says_what_matters);
   RUN_TEST(every_event_kind_has_its_own_name);
 }

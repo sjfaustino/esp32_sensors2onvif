@@ -240,6 +240,11 @@ bool SensorCamServer::applyReport(int id, const SensorReport& r, uint32_t now, b
     logEvent(id, r, late, quiet ? CAM_EVENT_QUIET_ALERT : disarmed ? heldKind : CAM_EVENT_REPORT);
   if (r.active && !held && (late || !wasActive)) notifyHook(id, CAM_EVENT_REPORT, late);
   if (batteryWentLow) healthAlert(id, CAM_EVENT_LOW_BATTERY, now);
+  // Each activation, as logged above, counts; held ones too, since the sensor fired all the same.
+  if (r.active && (late || !wasReported || !wasActive) && h.busy.note(now, busyAlerts_)) {
+    logEvent(id, r, false, CAM_EVENT_BUSY_SENSOR);
+    notifyHook(id, CAM_EVENT_BUSY_SENSOR, false);
+  }
   return true;
 }
 
@@ -534,6 +539,95 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
     r.battery = healthOf(id).battery;
     logEvent(id, r, false, CAM_EVENT_NODE_FAULT);
     notifyHook(id, CAM_EVENT_NODE_FAULT, false);
+  }
+}
+
+// See CamJamWatch. Only nodes that say how often they report, or are told to, that have reported since the hub started,
+// and that are not silent already, which a node gone for longer is.
+void SensorCamServer::checkJamming(uint32_t now) {
+  int count = (int)nodes_.size() < CAM_MAX_SENSORS ? (int)nodes_.size() : CAM_MAX_SENSORS;
+  bool heard[CAM_MAX_SENSORS] = {false}, silent[CAM_MAX_SENSORS], overdue[CAM_MAX_SENSORS] = {false};
+  uint32_t last[CAM_MAX_SENSORS] = {0};
+  int first[CAM_MAX_SENSORS] = {0};  // the node's first sensor, for an NVR alarm
+  for (bool& s : silent) s = true;
+  for (int id = 1; id <= CAM_MAX_SENSORS; id++) {
+    const Slot& s = slotOf(id);
+    int n = s.node - 1;
+    if (!s.used || n < 0 || n >= count) continue;
+    const Health& h = healthOf(id);
+    if (!first[n]) first[n] = id;
+    silent[n] = silent[n] && h.silent;
+    if (h.heard && (!heard[n] || (int32_t)(h.heardAt - last[n]) > 0)) last[n] = h.heardAt;
+    heard[n] = heard[n] || h.heard;
+  }
+  for (int n = 0; n < count; n++) {
+    const Node& node = nodes_[n];
+    uint32_t every = node.info.everyS ? node.info.everyS : node.settings.everyS;
+    uint32_t late = overdueMs_ ? overdueMs_ : camOverdueMs(every);
+    overdue[n] = node.used && every && first[n] && heard[n] && !silent[n] && now - last[n] > late;
+  }
+  int together = jam_.update(overdue, count, now);
+  if (!together) return;
+  std::string detail = std::to_string(together) + " nodes";
+  hubEvent(CAM_EVENT_JAMMING, detail, CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_JAMMING, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
+  if (!cfg_.healthAlarm) return;  // as for a silent node: the NVR records it as an alert from each of them
+  interruptPastEvent(now);
+  for (int n = 0; n < count; n++)
+    if (jam_.together(n) && first[n]) sensors_.trigger(first[n], now, 0, false, holdFor(first[n]));
+}
+
+// At the minute set under Notifications, local time: what the hub knows of its nodes, its alerts and the NVR, in one
+// message. Needs the clock, so a hub whose clock is not set sends none, which is itself worth noticing.
+void SensorCamServer::dailyCheck(uint32_t now) {
+  const CamWebhook& w = cfg_.webhook;
+  if (w.url.empty() || w.dailyMinute < 0 || !cfg_.localMinute || cfg_.localMinute() != w.dailyMinute) return;
+  if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
+  dailySent_ = true;
+  dailySentAt_ = now;
+  time_t t = time(nullptr);
+  try {
+    CamDailyCheck d;
+    d.hub = cfg_.hostName;
+    d.mode = camArmModeName(armMode());
+    d.nvrListening = nvrListening(now);
+    for (size_t n = 0; n < nodes_.size(); n++) {
+      if (!nodes_[n].used) continue;
+      d.nodes++;
+      bool heard = false;
+      for (int id = 1; id <= CAM_MAX_SENSORS && !heard; id++)
+        heard = slotOf(id).used && slotOf(id).node == (int)n + 1 && healthOf(id).heard && now - healthOf(id).heardAt < 86400000u;
+      d.heard += heard;
+    }
+    for (int id = 1; id <= sensors_.count(); id++) {
+      const Health& h = healthOf(id);
+      if (!slotOf(id).used) continue;
+      const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
+      if (problem) d.problems.push_back((slotOf(id).name.empty() ? slotName(id) : slotOf(id).name) + ": " + problem);
+    }
+    d.allCounted = false;
+    for (int n = 0; n < log_.count(); n++) {
+      const CamEvent& e = log_.recent(n);
+      if (e.kind == CAM_EVENT_TEST_ALERT && d.testAgoS < 0 && e.received <= t) d.testAgoS = (long long)(t - e.received);
+      if (e.received < t - 86400) {
+        d.allCounted = true;  // an older event is kept, so every one of the last day is too
+        continue;
+      }
+      d.alerts += e.kind == CAM_EVENT_REPORT && e.active;
+      d.notDelivered += e.kind == CAM_EVENT_NOT_DELIVERED;
+    }
+    if (log_.count() < CamEventLog::RECENT) d.allCounted = true;  // nothing has been dropped from memory yet
+    std::string message = camDailyMessage(d);
+    queueHook(message, jsonObject([&](CamJson& j) {
+                j.str("event", "daily check").str("sensor", "hub").str("name", "").str("time", iso(t)).str("hub", cfg_.hostName);
+                j.num("nodes", d.nodes).num("heard", d.heard).array("problems");
+                for (const std::string& p : d.problems) j.str(p);
+                j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
+                j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
+                j.str("message", message);
+              }));
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+    hooks_.dropOne();
   }
 }
 

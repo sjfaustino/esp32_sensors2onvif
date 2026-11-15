@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "cam_frames.h"
+#include "cam_timing.h"
 #include "s2o_messages.h"
 
 const int CAM_MAX_TARGETS = S2O_MAX_TARGETS;
@@ -159,6 +160,37 @@ std::string camNodeInfoText(const CamNodeInfo& info);
 // The silent time worked out from how often a node reports: a quarter longer, and at least 10 minutes longer, so one late
 // report is not enough. 0 when the node does not say. Its own setting on the Sensors page comes first.
 uint32_t camAutoSilentS(uint32_t everyS);
+
+// A node is overdue once its regular report is a fifth of its time late, and a minute more: sooner than silent, which
+// waits long enough to be sure. Only for the jamming check below.
+uint32_t camOverdueMs(uint32_t everyS);
+
+// Batteries run out one node at a time. Several nodes that stop reporting together, after reporting steadily, point to
+// something stopping them all, such as a jammer on 2.4 GHz. Each pass gives every node's state by its position; two or
+// more becoming overdue within CAM_JAM_WINDOW_MS of each other are reported once, until no node is overdue that
+// recently. How soon it can tell is set by how often the nodes report.
+class CamJamWatch {
+ public:
+  // Returns how many nodes went quiet together when that is to be reported now, else 0. together(n) then says which.
+  int update(const bool overdue[], int count, uint32_t now);
+  bool together(int n) const { return on_[n] && now_ - at_[n] < CAM_JAM_WINDOW_MS; }
+
+ private:
+  bool on_[CAM_MAX_SENSORS] = {false};
+  uint32_t at_[CAM_MAX_SENSORS] = {0};
+  uint32_t now_ = 0;
+  bool reported_ = false;
+};
+
+// A sensor that fires many times an hour is more likely faulty or badly aimed than watching that many intruders, and its
+// alerts bury the real ones. Counted over an hour from its first alert; reported once, and again only after an hour with
+// fewer than a quarter as many. Every alert still goes through: this only says something may be wrong.
+struct CamBusyCount {
+  bool started = false, reported = false;
+  uint32_t from = 0;
+  int count = 0;
+  bool note(uint32_t now, int limit);  // one new alert; true when it should be reported now
+};
 
 // A node's battery readings, a few a day, kept as battery.txt in its folder as "SECONDS PERCENT" lines, the time since
 // 1970 UTC, so the hub can tell how long the battery will last.

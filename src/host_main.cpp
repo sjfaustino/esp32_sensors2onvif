@@ -84,6 +84,10 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     camStorageListsFail = command == "lists-fail";
   } else if (command == "save-now") {  // what the board does before a planned restart
     hub.saveNow();
+  } else if (command.compare(0, 12, "busy-alerts ") == 0) {  // how many alerts within an hour count as firing often
+    hub.setBusyAlerts(atoi(command.c_str() + 12));
+  } else if (command.compare(0, 11, "overdue-ms ") == 0) {  // how late a node's report is overdue; 0 for from its report time
+    hub.setOverdueMs((uint32_t)strtoul(command.c_str() + 11, nullptr, 10));
   } else if (command == "minutes-fast") {  // a minute of a timed disarm lasts a second, so the test need not wait
     hub.setMinuteMs(1000);
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
@@ -261,6 +265,7 @@ int main(int argc, char** argv) {
   if (argc > 3) cfg.webPassword = argv[3];
   if (argc > 4) cfg.silentMs = (uint32_t)atol(argv[4]);
   SensorCamServer server(cfg, [] { return std::string("127.0.0.1"); }, nowMs);
+  server.setBusyAlerts(100000);  // the tests fire sensors far more often than any real one; busy-alerts sets it
   if (!server.begin()) {
     fprintf(stderr, "could not bind test ports\n");
     return 1;

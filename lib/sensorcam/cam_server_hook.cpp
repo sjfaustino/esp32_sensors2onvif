@@ -88,7 +88,7 @@ std::string SensorCamServer::webhookJson() {
   const CamWebhook& w = cfg_.webhook;
   bool clockOk = hooks_.resultAt() >= CAM_CLOCK_VALID_AFTER;
   return jsonObject([&](CamJson& j) {
-    j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems);
+    j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems).num("daily", w.dailyMinute);
     j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
     j.num("waiting", hooks_.count() + (hook_.state != NotifyIo::IDLE)).num("dropped", hooks_.dropped());
   });

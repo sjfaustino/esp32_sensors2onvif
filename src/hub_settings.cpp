@@ -86,6 +86,7 @@ void loadSettings() {
     s.webhook.text = p.getBool("hooktx", false);
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
+    s.webhook.dailyMinute = p.getInt("hookdy", -1);
     s.mqtt.host = p.getString("mqhost", "").c_str();
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
@@ -207,7 +208,7 @@ bool storeHealthAlarm(bool on) {
 bool storeWebhook(const CamWebhook& w) {
   return withPrefs("net", [&w](Preferences& p) {
     return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 &&
-           p.putBool("hookpr", w.problems) == 1;
+           p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4;
   });
 }
 
@@ -256,14 +257,14 @@ struct BackupKey {
   char type;  // s text, u 16-bit number, i number, b true or false
 };
 static const BackupKey BACKUP_KEYS[] = {
-    {"wifi", "ssid", 's'},   {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
-    {"net", "web", 'u'},     {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
-    {"net", "ipfor", 's'},   {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
-    {"net", "nvrip", 's'},   {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
-    {"net", "rben", 'b'},    {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
-    {"net", "hook", 's'},    {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hosts", 's'},
-    {"net", "pairkey", 's'}, {"net", "rearm", 'u'},     {"net", "mqhost", 's'}, {"net", "mqport", 'u'},     {"net", "mquser", 's'},
-    {"net", "mqpw", 's'},
+    {"wifi", "ssid", 's'},  {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
+    {"net", "web", 'u'},    {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
+    {"net", "ipfor", 's'},  {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
+    {"net", "nvrip", 's'},  {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
+    {"net", "rben", 'b'},   {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
+    {"net", "hook", 's'},   {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hookdy", 'i'},
+    {"net", "hosts", 's'},  {"net", "pairkey", 's'},   {"net", "rearm", 'u'},  {"net", "mqhost", 's'},     {"net", "mqport", 'u'},
+    {"net", "mquser", 's'}, {"net", "mqpw", 's'},
 };
 
 std::string backupText() {

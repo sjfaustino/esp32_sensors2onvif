@@ -65,6 +65,7 @@ struct CamWebhook {
   bool text = false;     // plain text instead of JSON
   bool alerts = true;    // sensor alerts
   bool problems = true;  // silent nodes, low batteries and weak signals
+  int dailyMinute = -1;  // the daily check, in minutes after local midnight; -1 sends none
 };
 
 // An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.
@@ -192,10 +193,12 @@ class SensorCamServer {
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
   // An alert from sensor id that takes the whole path, whatever the arm mode, and is logged as a test. False for no such sensor.
   bool testAlert(int id);
-#ifdef CAM_TEST_HOOKS                                // only in the PC builds, for the tests
-  void endAlerts();                                  // ends every alert now, without waiting for its hold
-  void setNvrGoneMs(uint32_t ms);                    // how soon the NVR counts as gone, instead of 3 minutes
-  void setMinuteMs(uint32_t ms) { minuteMs_ = ms; }  // how long a minute of a timed disarm lasts
+#ifdef CAM_TEST_HOOKS                                  // only in the PC builds, for the tests
+  void endAlerts();                                    // ends every alert now, without waiting for its hold
+  void setNvrGoneMs(uint32_t ms);                      // how soon the NVR counts as gone, instead of 3 minutes
+  void setMinuteMs(uint32_t ms) { minuteMs_ = ms; }    // how long a minute of a timed disarm lasts
+  void setBusyAlerts(int n) { busyAlerts_ = n; }       // how many alerts within an hour count as firing often
+  void setOverdueMs(uint32_t ms) { overdueMs_ = ms; }  // how late a node's report is overdue, instead of from its report time; 0 for that
 #endif
 
  private:
@@ -224,6 +227,7 @@ class SensorCamServer {
     bool weak = false;
     uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
     const char* refusal = "";
+    CamBusyCount busy;  // its alerts in the last hour, to notice one firing far too often
   };
   // One per node folder: what is the same for each of its sensors. A sensor's Slot points to it.
   struct Node {
@@ -412,6 +416,9 @@ class SensorCamServer {
   void serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now);
   void endNotify(NotifyIo& n, const char* result = "");
   void noteSignal(int id, int8_t rssi);
+  void checkJamming(uint32_t now);
+  void dailyCheck(uint32_t now);
+  void refuseSignature(int id);  // a message from this sensor's device had the wrong signature
   uint32_t holdFor(int id) const;
   void queueDelayed(int id, const SensorReport& r, uint32_t now);
   void interruptPastEvent(uint32_t now);
@@ -458,7 +465,6 @@ class SensorCamServer {
   const Slot& slotOf(int id) const { return slots_[id - 1]; }
   Health& healthOf(int id) { return health_[id - 1]; }
   const Health& healthOf(int id) const { return health_[id - 1]; }
-  void refuseSignature(int id);  // a message from this sensor's device had the wrong signature
   Node& nodeOf(int id) { return nodes_[slotOf(id).node - 1]; }
   const Node& nodeOf(int id) const { return nodes_[slotOf(id).node - 1]; }
   const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
@@ -590,6 +596,11 @@ class SensorCamServer {
   uint32_t nvrSeenAt_ = 0;                                // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;
   uint32_t nvrGoneMs_ = CAM_NVR_GONE_MS;  // a test may shorten it
+  CamJamWatch jam_;
+  int busyAlerts_ = CAM_BUSY_ALERTS;  // a test may change these two
+  uint32_t overdueMs_ = 0;
+  bool dailySent_ = false;  // and when, so the minute it is due sends one
+  uint32_t dailySentAt_ = 0;
   uint32_t beganAt_ = 0;
   bool networkSeen_ = false;
   bool startNoted_ = false;

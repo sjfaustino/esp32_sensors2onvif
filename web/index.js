@@ -488,6 +488,11 @@
     )
       loadMqtt(true);
   };
+  // "07:30" as minutes after midnight; empty is -1, none.
+  const dailyMinute = (v) => {
+    const m = /^(\d\d):(\d\d)/.exec(v);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+  };
   async function loadHook(all) {
     try {
       const h = await call("GET", "/api/webhook");
@@ -496,6 +501,10 @@
         $("hookText").value = h.text ? "1" : "0";
         $("hookAlerts").checked = h.alerts;
         $("hookProblems").checked = h.problems;
+        $("hookDaily").value =
+          h.daily >= 0
+            ? String(Math.floor(h.daily / 60)).padStart(2, "0") + ":" + String(h.daily % 60).padStart(2, "0")
+            : "";
       }
       fill("hookInfo", [
         [
@@ -519,7 +528,9 @@
           "&alerts=" +
           ($("hookAlerts").checked ? 1 : 0) +
           "&problems=" +
-          ($("hookProblems").checked ? 1 : 0),
+          ($("hookProblems").checked ? 1 : 0) +
+          "&daily=" +
+          dailyMinute($("hookDaily").value),
         "Saved.",
       )
     )
@@ -933,7 +944,7 @@
   }
   // Filtered here, from the list the hub sends, so the hub builds nothing more for it.
   const ALERT_KINDS = [0, 3, 5, 10, 13, 15],
-    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16];
+    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20];
   let events = [];
   async function loadEvents() {
     try {

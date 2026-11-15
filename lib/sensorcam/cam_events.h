@@ -32,6 +32,8 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_RESTART_LOOP = 16,         // several unplanned starts within an hour; a hub start's "active" says it was unplanned
   CAM_EVENT_NODE_FAULT = 17,           // a node restarted for a fault: a crash, its watchdog or a brownout
   CAM_EVENT_BATTERY_RUNNING_OUT = 18,  // a node's battery is forecast to run out within a week
+  CAM_EVENT_JAMMING = 19,              // a hub event: several nodes stopped reporting together; the detail says how many
+  CAM_EVENT_BUSY_SENSOR = 20,          // a sensor fired CAM_BUSY_ALERTS times within an hour
   CAM_EVENT_KIND_COUNT                 // not a kind: one more than the last, so code can go through them all
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.
@@ -42,6 +44,19 @@ std::vector<const char*> camEventNames();
 // The one wording of each event's notification. who is the sensor, as "Gate (AA-BB-CC-DD-EE-01/1)", or for the hub's own
 // events the hub's name. detail and offS are those of a hub event.
 std::string camEventMessage(uint8_t kind, const std::string& who, const std::string& detail, uint32_t offS, bool delayed);
+
+// The daily check Notifications can send: one message saying the system works, whose absence says it does not.
+struct CamDailyCheck {
+  std::string hub;
+  std::string mode;                   // "away", "home" or "disarmed"
+  int nodes = 0, heard = 0;           // the nodes, and those heard from in the last day
+  std::vector<std::string> problems;  // as "Gate: silent"
+  int alerts = 0, notDelivered = 0;   // in the last day
+  bool allCounted = true;             // false when the events kept in memory do not reach back a whole day
+  bool nvrListening = false;
+  long long testAgoS = -1;  // since the last test alert; -1 when none is among the events kept in memory
+};
+std::string camDailyMessage(const CamDailyCheck& d);
 
 // A length of time as people say it: "7 min", "2 h 13 min", "3 days 4 h". Rounded up to the minute.
 std::string camDurationText(uint32_t seconds);

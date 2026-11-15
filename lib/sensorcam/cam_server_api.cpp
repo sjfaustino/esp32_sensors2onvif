@@ -668,8 +668,11 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     w.text = queryParam(form, "text") == "1";
     w.alerts = queryParam(form, "alerts") == "1";
     w.problems = queryParam(form, "problems") == "1";
+    std::string daily = queryParam(form, "daily");
     if (!validHookUrl(w.url)) {
       c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
+    } else if (!daily.empty() && daily != "-1" && !camNumberIn(daily, 0, 1439, w.dailyMinute)) {
+      c.out = jsonFail(400, "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none");
     } else {
       bool ok = camCall(cfg_.webhookSave, w);
       if (ok) cfg_.webhook = w;

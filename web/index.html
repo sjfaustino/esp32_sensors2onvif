@@ -48,7 +48,7 @@
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>ESP-NOW</h1><table class="info" id="espInfo"></table>
-<label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low</label>
+<label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
 <h2 class="sub">Pairing</h2>
 <p class="note">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
 <div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
@@ -71,7 +71,9 @@
 <label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" placeholder="http://192.168.1.10:8123/api/webhook/hub"></label>
 <label class="netRow"><span>Format</span><select id="hookText"><option value="0">JSON</option><option value="1">Plain text</option></select></label>
 <label class="portForm block"><input id="hookAlerts" type="checkbox"> Alerts</label>
-<label class="portForm block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal</label>
+<label class="portForm block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
+<label class="netRow"><span>Daily check at</span><input id="hookDaily" type="time"></label>
+<p class="note">Once a day, at this local time, one message: how many nodes were heard, any problems, the day's alerts and whether they reached the NVR, and when you last sent a test alert. If it stops arriving, the hub is off or cannot reach this address. Leave it empty for none; it needs the hub's clock.</p>
 <div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button></div>
 <div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
 <div class="view" id="view-ha" hidden><h1>Home Assistant</h1>

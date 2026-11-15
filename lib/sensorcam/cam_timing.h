@@ -16,8 +16,11 @@ const uint32_t CAM_POLL_HOLD_MAX_MS = 10000;        // chosen: the longest a Pul
 const uint32_t CAM_PAST_GAP_MS = 4000;              // chosen: between past-event records, so the NVR closes one before the next
 
 // ---- sensors ----
-const uint32_t CAM_PAST_AFTER_S = 30;         // chosen: an older report is a past event, unless its node says otherwise
-const uint32_t CAM_RESEND_WINDOW_MS = 60000;  // chosen: the same ESP-NOW report again within this is a resend
+const uint32_t CAM_PAST_AFTER_S = 30;                 // chosen: an older report is a past event, unless its node says otherwise
+const uint32_t CAM_RESEND_WINDOW_MS = 60000;          // chosen: the same ESP-NOW report again within this is a resend
+const uint32_t CAM_JAM_WINDOW_MS = 30UL * 60 * 1000;  // chosen: nodes overdue within this of each other went quiet together
+const uint32_t CAM_BUSY_WINDOW_MS = 3600UL * 1000;    // chosen: a sensor's alerts are counted over an hour
+const int CAM_BUSY_ALERTS = 20;                       // chosen: this many in that hour is reported as firing often
 // The alert hold, 10 s, is SENSOR_HOLD_MS in include/config.h; silence, 3 hours, is CamConfig::silentMs. Both chosen.
 
 // ---- connections ----

@@ -45,7 +45,7 @@ Events pages. Updating from older firmware keeps its history.
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or
 less, or whose ESP-NOW signal stays below -80 dBm, is logged as an event. The ESP-NOW page can also raise an NVR alarm for
-silence and low battery. A sensor that is unplugged, smashed or taken is only noticed once it has been silent that long,
+silence, low battery and nodes stopping together. A sensor that is unplugged, smashed or taken is only noticed once it has been silent that long,
 so it should be a little over the time between the node's regular reports. A node that says how often it reports (see
 "Node info" below) sets it for you; otherwise, or to change it, set **Report this node silent after** under its Node
 settings, from 1 minute to 7 days.
@@ -56,6 +56,18 @@ readings the hub works out how long the battery will last, shown on the ESP-NOW 
 once that is under a week. It keeps a reading every 6 hours in `battery.txt` in the node's folder, and needs the hub's
 clock set, at least 4 readings over 3 days, and a fall of at least 3 points. A rise of 10 points or more, a new or
 recharged battery, starts the readings again. A node on a solar panel that keeps up gets no forecast.
+
+Batteries run out one node at a time. When two or more nodes that had been reporting steadily stop together, within
+half an hour of each other, the hub logs **possible jamming** as one of its own events, with how many, and sends it with
+node problems; with the ESP-NOW page's NVR alarm on, the NVR records it as an alert from each of them. A node counts as
+stopped once its regular report is a fifth of its report time late, and a minute more, so how soon this is noticed
+depends on how often the nodes report: every 2 hours, the nodes' default, it takes about two and a half hours, little
+sooner than "went silent"; every 10 minutes, set under each node's Node settings, about 12 minutes. Only nodes that say
+how often they report, or are told, count, and only once they have reported since the hub started.
+
+A sensor that fires 20 times within an hour is logged once as **firing often** and sent with node problems: it is more
+likely faulty or badly aimed than watching that many intruders, and its alerts bury the real ones. Every alert still
+goes to the NVR. It can be logged again after an hour with fewer than 5.
 
 The hub cannot report its own death: while it has no power or no Wi-Fi, nothing reaches the NVR, and the hub logs how long
 it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
@@ -117,10 +129,16 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
 or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
-`node restarted by a fault`, `battery running out`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
+`node restarted by a fault`, `battery running out`, `possible jamming`, `firing often`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
 `NVR listening again`, `hub started`, `network lost`, `armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
+**Daily check at** sends one message a day at that local time, as event `daily check` from `"sensor":"hub"`: how many
+nodes were heard in the last day (`nodes`, `heard`), the sensors with a problem (`problems`), the day's alerts and how many
+did not reach the NVR (`alerts`, `notDelivered`; `allCounted` is false when more happened than the hub keeps in memory),
+whether the NVR is listening, how the hub is armed, and how long since the last test alert (`testAgo_s`). It shows the
+system works; if it stops arriving, the hub is off, cut off from the network, or its clock is not set. Leave the time
+empty for none.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
 
@@ -199,8 +217,8 @@ actions:
       message: "{{ trigger.to_state.attributes.message }}"
 ```
 
-Problems: a sensor silent, on a low battery or a weak signal, a node restarted by a fault or its battery running out, an
-alert the NVR missed, or the NVR not listening.
+Problems: a sensor silent, on a low battery or a weak signal, a node restarted by a fault or its battery running out,
+nodes stopping together, a sensor firing often, an alert the NVR missed, or the NVR not listening.
 
 ```yaml
 alias: Alarm problem
@@ -213,7 +231,7 @@ conditions:
   - condition: template
     value_template: >-
       {{ trigger.to_state.attributes.event_type in ['went silent', 'low battery', 'weak signal',
-         'node restarted by a fault', 'battery running out',
+         'node restarted by a fault', 'battery running out', 'possible jamming', 'firing often',
          'alert not delivered', 'delayed alert not delivered', 'NVR not listening'] }}
 actions:
   - action: notify.mobile_app_phone
