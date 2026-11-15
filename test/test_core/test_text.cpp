@@ -1,0 +1,78 @@
+// Text for people: event names and notifications, durations, names cut to fit, and the JSON the pages read.
+#include "tests.h"
+
+// Every event kind has a name of its own, so none is shown or sent as a plain "alert", and every name is in the list
+// Home Assistant is told to expect.
+static void every_event_kind_has_its_own_name() {
+  std::vector<const char*> names = camEventNames();
+  for (int kind = 1; kind < CAM_EVENT_KIND_COUNT; kind++) {
+    const char* name = camEventName((uint8_t)kind, true, false);
+    TEST_ASSERT_TRUE_MESSAGE(strcmp(name, "alert") != 0, ("kind " + std::to_string(kind) + " has no name in camEventName").c_str());
+    for (int variant = 0; variant < 4; variant++) {
+      const char* each = camEventName((uint8_t)kind, (variant & 1) == 0, (variant & 2) != 0);
+      bool listed = false;
+      for (const char* n : names) listed = listed || strcmp(n, each) == 0;
+      TEST_ASSERT_TRUE_MESSAGE(listed, each);
+    }
+  }
+  for (size_t i = 0; i < names.size(); i++)
+    for (size_t k = i + 1; k < names.size(); k++) TEST_ASSERT_TRUE(strcmp(names[i], names[k]) != 0);
+}
+
+static void long_names_are_cut_between_characters() {
+  char out[6];
+  camCopyText(out, sizeof(out), "abc");
+  TEST_ASSERT_EQUAL_STRING("abc", out);
+  camCopyText(out, sizeof(out), "abcde");
+  TEST_ASSERT_EQUAL_STRING("abcde", out);
+  camCopyText(out, sizeof(out), "abcdef");
+  TEST_ASSERT_EQUAL_STRING("abcde", out);
+  camCopyText(out, sizeof(out), "abcd\xC3\xA3");  // "abcdã" needs 6 bytes, so the whole letter goes
+  TEST_ASSERT_EQUAL_STRING("abcd", out);
+  camCopyText(out, sizeof(out), "abc\xC3\xA3x");  // "abcãx": the letter fits, the x does not
+  TEST_ASSERT_EQUAL_STRING("abc\xC3\xA3", out);
+  camCopyText(out, sizeof(out), "ab\xE2\x82\xAC\xE2\x82\xAC");  // "ab€€": one 3-byte euro sign fits
+  TEST_ASSERT_EQUAL_STRING("ab\xE2\x82\xAC", out);
+}
+
+static void durations_read_as_people_say_them() {
+  TEST_ASSERT_EQUAL_STRING("1 min", camDurationText(1).c_str());
+  TEST_ASSERT_EQUAL_STRING("59 min", camDurationText(59 * 60).c_str());
+  TEST_ASSERT_EQUAL_STRING("2 h 13 min", camDurationText(2 * 3600 + 13 * 60).c_str());
+  TEST_ASSERT_EQUAL_STRING("3 days 4 h", camDurationText(3 * 86400 + 4 * 3600).c_str());
+}
+
+static void each_notification_has_one_wording() {
+  TEST_ASSERT_EQUAL_STRING("Gate (X/1): alert", camEventMessage(CAM_EVENT_REPORT, "Gate (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("Gate (X/1): delayed alert not delivered, because the NVR is not listening",
+                           camEventMessage(CAM_EVENT_NOT_DELIVERED, "Gate (X/1)", "", CAM_AGE_UNKNOWN, true).c_str());
+  TEST_ASSERT_EQUAL_STRING("hub.local started (Power on), after being off for up to 2 h 0 min",
+                           camEventMessage(CAM_EVENT_HUB_STARTED, "hub.local", "Power on", 7200, false).c_str());
+}
+
+static void json_writer_places_commas_and_brackets() {
+  std::string out;
+  CamJson j(out);
+  j.object().num("a", 1).array("b").num(2).str("x").null().flag(true).end().object("c").end().array("d").end().num("e", false, 5).num("f", true, -7);
+  j.str("g", false, "no").str("h", true, "yes").finish();
+  TEST_ASSERT_EQUAL_STRING("{\"a\":1,\"b\":[2,\"x\",null,true],\"c\":{},\"d\":[],\"e\":null,\"f\":-7,\"g\":null,\"h\":\"yes\"}\n", out.c_str());
+  out.clear();
+  CamJson(out).array().object().str("k", "v").finish();  // closes what is left open
+  TEST_ASSERT_EQUAL_STRING("[{\"k\":\"v\"}]\n", out.c_str());
+}
+
+static void json_writer_escapes_any_text() {
+  std::string out;
+  CamJson(out).object().str("say \"hi\"", "a\"b\\c\nd\re\tf\x01g\x1f h\xc3\xa9").finish();
+  TEST_ASSERT_EQUAL_STRING("{\"say \\\"hi\\\"\":\"a\\\"b\\\\c\\nd\\re\\tf\\u0001g\\u001f h\xc3\xa9\"}\n", out.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"ok\":false,\"error\":\"can't \\\"x\\\"\"}\n", camJsonError("can't \"x\"").c_str());
+}
+
+void runTextTests() {
+  RUN_TEST(each_notification_has_one_wording);
+  RUN_TEST(durations_read_as_people_say_them);
+  RUN_TEST(json_writer_places_commas_and_brackets);
+  RUN_TEST(json_writer_escapes_any_text);
+  RUN_TEST(long_names_are_cut_between_characters);
+  RUN_TEST(every_event_kind_has_its_own_name);
+}

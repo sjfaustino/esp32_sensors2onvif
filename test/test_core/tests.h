@@ -1,0 +1,19 @@
+// What every hub test file needs; each registers its tests in a run...Tests() that test_main.cpp calls.
+#pragma once
+#include <unity.h>
+#include <string.h>
+#include <string>
+#include <vector>
+#include "cam_auth.h"
+#include "cam_events.h"
+#include "cam_frames.h"
+#include "cam_mqtt.h"
+#include "cam_rtp.h"
+#include "cam_server.h"
+#include "cam_sensors.h"
+#include "cam_soap.h"
+#include "cam_storage.h"
+#include "cam_subs.h"
+#include "cam_x25519.h"
+#include <stdio.h>
+#include <stdlib.h>
