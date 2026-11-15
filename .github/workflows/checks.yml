@@ -27,7 +27,7 @@ jobs:
 
       - name: Install PlatformIO and ffmpeg
         run: |
-          pip install platformio
+          pip install platformio cryptography
           choco install ffmpeg --no-progress -y
 
       - name: Web page scripts
