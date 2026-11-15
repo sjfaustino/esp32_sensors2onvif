@@ -19,6 +19,7 @@ static bool setupOn = false;
 static bool firmwareRefused = false;  // the next update cannot start, as on a board short of memory
 static uint32_t diskTotal = 10u * 1024 * 1024;  // a pretend storage size, which the test can shrink
 static std::string lastSent;  // the last ESP-NOW message the hub sent, as hex: this build has no radio to send it on
+static std::string allSent;   // every one since "all-sent" was last asked, each as lastSent, joined by ";"
 
 // As on the board when memory is short and broken up: a request for a block larger than this fails, as the board's does.
 static std::atomic<size_t> largestBlock{0};  // 0 for no limit
@@ -60,6 +61,9 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
   } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or "done last-sent" when nothing was sent
     reply = lastSent;
     lastSent.clear();
+  } else if (command == "all-sent") {
+    reply = allSent;
+    allSent.clear();
   } else if (command == "disk-nearly-full" || command == "disk-normal") {  // the storage left over beside what is stored
     diskTotal = command == "disk-normal" ? 10u * 1024 * 1024 : 300u * 1024;
   } else if (command == "firmware-refused" || command == "firmware-allowed") {
@@ -188,9 +192,11 @@ int main(int argc, char** argv) {
       snprintf(hex, sizeof(hex), "%02x", data[i]);
       lastSent += hex;
     }
+    if (allSent.size() < 400000) allSent += (allSent.empty() ? "" : ";") + lastSent;
   };
   cfg.startReason = "PC build started";
   cfg.snapshotSecret = "test-snapshot-secret";
+  cfg.sealStart = 0x5EA10000;
   static std::string storageFolder = argv[2];
   cfg.fsUsage = [](uint32_t& used, uint32_t& total) {  // what is really stored, of a pretend storage size
     std::function<uint32_t(const CamStorage&, const std::string&)> sum = [&](const CamStorage& s, const std::string& path) {

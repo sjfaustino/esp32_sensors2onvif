@@ -50,6 +50,13 @@ so it should be a little over the time between the node's regular reports. A nod
 "Node info" below) sets it for you; otherwise, or to change it, set **Report this node silent after** under its Node
 settings, from 1 minute to 7 days.
 
+A node that sends node info is also logged when it restarts for a fault, such as a crash, its watchdog or a brownout:
+**node restarted by a fault**. That shows a weak battery or a bad wire before the node goes silent. From its battery
+readings the hub works out how long the battery will last, shown on the ESP-NOW page, and logs **battery running out**
+once that is under a week. It keeps a reading every 6 hours in `battery.txt` in the node's folder, and needs the hub's
+clock set, at least 4 readings over 3 days, and a fall of at least 3 points. A rise of 10 points or more, a new or
+recharged battery, starts the readings again. A node on a solar panel that keeps up gets no forecast.
+
 The hub cannot report its own death: while it has no power or no Wi-Fi, nothing reaches the NVR, and the hub logs how long
 it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
 hub from a small UPS.
@@ -110,8 +117,8 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
 `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
 or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
-`alert not delivered`, `delayed alert not delivered`, `NVR not listening`, `NVR listening again`, `hub started`, `network lost`,
-`armed`, `disarmed` and `test`.
+`node restarted by a fault`, `battery running out`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
+`NVR listening again`, `hub started`, `network lost`, `armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
@@ -192,7 +199,8 @@ actions:
       message: "{{ trigger.to_state.attributes.message }}"
 ```
 
-Problems: a sensor silent, on a low battery or a weak signal, an alert the NVR missed, or the NVR not listening.
+Problems: a sensor silent, on a low battery or a weak signal, a node restarted by a fault or its battery running out, an
+alert the NVR missed, or the NVR not listening.
 
 ```yaml
 alias: Alarm problem
@@ -205,6 +213,7 @@ conditions:
   - condition: template
     value_template: >-
       {{ trigger.to_state.attributes.event_type in ['went silent', 'low battery', 'weak signal',
+         'node restarted by a fault', 'battery running out',
          'alert not delivered', 'delayed alert not delivered', 'NVR not listening'] }}
 actions:
   - action: notify.mobile_app_phone
@@ -315,6 +324,18 @@ sensor node with its state, last contact, battery, signal strength, last report 
 "weak" has averaged below -80 dBm over the last few messages; it is cleared above -75 dBm. Only nodes added under
 **Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Valid reports from anything
 else are ignored, and the eight most recent such senders appear under **Unknown senders** until the hub restarts or they are added.
+A node that sends node info also shows its sensor's kind, its firmware and chip, how often and why it last restarted, how
+long its last alert took to be confirmed, how long its battery will last, and whether its last report was sealed.
+
+**Node firmware** on the same page takes a node's `firmware.bin`, from the node project, one per kind of chip, kept in
+`nodes/` on LittleFS. The hub reads the version from the file and refuses anything that is not a node's firmware, the
+hub's own included. Each node of that chip that runs another version is told an update is ready with its next
+confirmation and fetches it over ESP-NOW (see "Firmware updates" below). A node saving its battery is not offered one,
+and a node whose update was undone is not offered that file again. The node's row shows the update's progress.
+
+**Walk test**, under each node's Node settings on the Sensors page, makes that node blink its LED after each alert the hub
+confirms, for 10 minutes, by its signal: 3 blinks strong, 2 fair, 1 weak. It needs the hub's clock set. The node learns
+of it with the confirmation of its next alert, so the first blink comes with the first alert.
 
 ## NVR page and live video
 
@@ -332,7 +353,9 @@ Pictures are stored on LittleFS, and the folders are also the list of known sens
 ```
 clear.h264                         optional replacement for the built-in "all clear"
 AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
-AA-BB-CC-DD-EE-01/settings.txt     optional past-event and silent times for the node, set on the Sensors page
+AA-BB-CC-DD-EE-01/settings.txt     optional past-event, silent, report and repeat times for the node, set on the Sensors page
+AA-BB-CC-DD-EE-01/about.txt        what the node last said of itself (node info)
+AA-BB-CC-DD-EE-01/battery.txt      its battery readings, for the forecast
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
@@ -340,7 +363,7 @@ AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time and quiet hours, set on t
 ```
 
 The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with a `-delayed` version such as
-`approaching-delayed.h264` for past events. A missing picture falls back to `active.h264` or `active-delayed.h264`, and
+`approaching-delayed.h264` for past events. `nodes/` holds the node firmware files. A missing picture falls back to `active.h264` or `active-delayed.h264`, and
 finally to the built-in red "ALERT" or amber "PAST EVENT, CHECK LOGS", so a sensor with no pictures still makes motion
 records. A past event never falls back to a live picture.
 
@@ -394,7 +417,8 @@ sends start failing, because a router on automatic channel selection can move.
 Once it has accepted a report and saved it, the hub sends a **confirmation** back to that MAC address, usually within
 100 ms; wait at least 300 ms before resending. A sensor should resend a report, with the same number, until the
 confirmation arrives: delivery by ESP-NOW only means the radio got it. A resend is confirmed again. Messages that are
-refused, malformed or from a device without a folder get no confirmation. The confirmation is 15 bytes:
+refused, malformed or from a device without a folder get no confirmation. The confirmation is 30 bytes. With it comes
+what the hub has for the node; a sensor that needs none of it can read just the first 7 bytes and check the signature.
 
 | Bytes | Field |
 |---|---|
@@ -402,7 +426,16 @@ refused, malformed or from a device without a folder get no confirmation. The co
 | 1 | The report's input number |
 | 1 | The report's active value |
 | 4 | The report's event counter |
-| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 7 bytes above |
+| 4 | The hub's time, in seconds since 1970 UTC, `0` while its clock is not set |
+| 4 | How often the node should report with nothing to report, in seconds, as set on the hub; `0` for the node's own |
+| 2 | How often it should report while a sensor stays on, in seconds, as set on the hub; `0` for its own |
+| 4 | The end of a walk test started on the hub, on the hub's time; `0` for none |
+| 1 | Flags: `1` when a firmware update is ready for the node |
+| 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 22 bytes above |
+
+The repeat time is kept below the shortest alert time of the node's sensors, so the alert does not lapse between repeats.
+A node's clock can run some percent fast or slow while it sleeps. A node that keeps alerts for hours can measure its rate
+against the hub's time over successive confirmations and scale the ages it sends by it, so a past event's time is right.
 
 A sensor should check the signature, so that nothing else in radio range can stop it resending. The confirmation means
 the hub has the alert, not that the NVR got it or recorded it; the hub reports delivery separately (see Events and alerts).
@@ -419,13 +452,21 @@ report, gets no confirmation, and is sent once per node, not per input:
 | 1 | `6`, node info |
 | 4 | How often the node reports with nothing to report, in seconds; `0` when it does not say |
 | 1 | `1` while the node is saving its battery, so reporting less often; else `0` |
+| 1 | Why it last restarted: `0` unknown, `1` power-up, `2` reset button, `3` software, such as an update, `4` crash, `5` watchdog, `6` brownout |
+| 2 | How many times it has restarted since it was set up |
+| 2 | How long its last alert took to be confirmed, in milliseconds; `0xFFFF` for none |
+| 2 | Its chip, as in its firmware's header: `0` ESP32, `9` ESP32-S3, `13` ESP32-C6 and so on; `0xFFFF` unknown |
+| 4 | The firmware update it refused, because it was undone (see "Firmware updates"); `0` for none |
 | 1 + n | The length, 0 to 24, then the text of its sensor's kind, such as `RCWL-0516` |
 | 1 + n | The same for its firmware version |
 | 8 | The signature, as a report's |
 
-Texts are printable ASCII. The ESP-NOW page shows them, and the hub keeps them in the node's folder as `about.txt`.
+Texts are printable ASCII. The ESP-NOW page shows them, and the hub keeps them in the node's folder as `about.txt`, all
+but the alert time, which changes with every alert. A restart counted for a crash, the watchdog or a brownout is logged.
 **Report this node silent after** is then a quarter longer than the node's report time, and at least 10 minutes longer,
 and follows the node when that changes. Set on the Sensors page, it comes first. A node that never says uses 3 hours.
+Its report time and repeat time can also be set there, under **Node settings**; they reach the node with its next
+confirmation, and the node then says its new report time, so the silent time follows.
 
 An alert lasts its hold time, 10 seconds or the sensor's own alert time, from the sensor's latest activation. Another
 activation before then extends it, so a person moving about makes one NVR record rather than several. A clear report is
@@ -445,6 +486,45 @@ number is never a reason to refuse a correctly signed message, so a sensor that 
 battery change, is never ignored. It is used only to ignore a resend: the same number and state again within a minute.
 The cost is that someone who records a sensor's message could play it back later to make a false alert, though not a
 false all-clear, because a clear report never ends an alert. A missed intruder is worse than a false alert.
+
+**Sealed messages.** A report says which sensor fired, whether it is on and the battery level, which anyone listening
+could read. Sealed, only the hub can. A node may seal any report or node info, and the hub then seals its confirmation:
+
+| Bytes | Field |
+|---|---|
+| 1 | `7`, sealed |
+| 4 | A number the sender never uses twice with the same key; for a report, its event counter will do, as a resend is the same message again |
+| n | The message inside, without its signature, XORed with the key stream |
+| 8 | The signature over the **node's** MAC address followed by every byte above, keyed as the message inside would be |
+
+The seal key is HMAC-SHA1, keyed with the signing key (the node's own, or the ESP-NOW key as text), over the text
+`sensors2onvif seal`. Block i of the key stream, 20 bytes, is HMAC-SHA1 keyed with the seal key over the direction (`0`
+to the hub, `1` from it), the number (4 bytes) and i (1 byte). The hub opens it, checks the message inside as if it had
+come plain, and answers in kind; its own numbers start at random at each start. Sealing hides what a message says, not
+that it was sent: someone listening still sees a node send at other times than its regular reports.
+
+**Firmware updates.** When a confirmation says an update is ready, a node can ask for it, signed like a report:
+
+| Ask, node to hub, 17 bytes | |
+|---|---|
+| 1 | `8` |
+| 4 | The update's number, `0` when it does not know it yet |
+| 4 | The offset it wants, or `0xFFFFFFFF` for a description |
+| 8 | The signature, as a report's |
+
+The hub answers at once with up to 4 parts from that offset, or with a description when asked for one or for an update it
+no longer has:
+
+| Part, hub to node | |
+|---|---|
+| 1 | `9` |
+| 4 | The update's number, which changes with its file |
+| 4 | Its size in bytes |
+| 4 | The offset, or `0xFFFFFFFF` for a description |
+| up to 200 | That part of the file, or for a description its version |
+| 8 | The signature, as a confirmation's |
+
+The node asks for the next offset until it has the whole file, and asks again for anything that did not arrive.
 
 ### Pairing a node
 

@@ -15,6 +15,7 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
     : cfg_(cfg), localIp_(localIp), millis_(millisFn), sensors_(CAM_MAX_SENSORS, cfg.holdMs), signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot), slots_(CAM_MAX_SENSORS), health_(CAM_MAX_SENSORS) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
+  sealNumber_ = cfg.sealStart;
 }
 
 int SensorCamServer::listenOn(uint16_t port) {
@@ -70,6 +71,7 @@ bool SensorCamServer::begin() {
   frameData_.reserve(CAM_MAX_FRAME);
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
+  loadNodeImages();
   log_.load();
   mqttEventsSent_ = log_.added();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
@@ -121,7 +123,9 @@ bool SensorCamServer::sendFile(HttpConn& c, const std::string& path, const char*
 }
 
 void SensorCamServer::closeHttp(HttpConn& c) {
-  if (c.firmwareActive) {  // the browser went away partway through, so the update is abandoned
+  if (c.firmwareActive && c.nodeImage) {
+    dropNodeImage();
+  } else if (c.firmwareActive) {  // the browser went away partway through, so the update is abandoned
     camCall(cfg_.firmwareEnd, false);
     firmwareOwner_ = nullptr;
   }
@@ -386,6 +390,10 @@ bool SensorCamServer::authorized(const HttpConn& c, const std::string& headers) 
 }
 
 void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
+  if (c.nodeImage) {
+    finishNodeImage(c, ok);
+    return;
+  }
   bool done = ok && camCall(cfg_.firmwareEnd, true);
   if (!ok) camCall(cfg_.firmwareEnd, false);
   firmwareOwner_ = nullptr;
@@ -398,7 +406,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
 
 void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || camCall(cfg_.firmwareWrite, (const uint8_t*)data, take);
+  bool written = !take || (c.nodeImage ? writeNodeImage(data, take) : camCall(cfg_.firmwareWrite, (const uint8_t*)data, take));
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -475,6 +483,21 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     for (RtspConn& r : rtsp_)
       if (r.fd >= 0) closeRtsp(r);
     c.firmwareLeft = contentLength;
+    std::string first = c.in.substr(headEnd + 4);
+    c.in.clear();
+    feedFirmware(c, first.data(), first.size(), now);
+    return true;
+  }
+  if (method == "PUT" && target == "/api/node-firmware") {  // to storage, read through as it arrives, as it is far larger than memory
+    if (!authorized(c, headers)) return needLogin(CAM_MAX_NODE_IMAGE);
+    if (!contentLength || contentLength > CAM_MAX_NODE_IMAGE) return refuse(413, "that file is not the right size for a node's firmware", CAM_MAX_NODE_IMAGE);
+    if (firmwareOwner_ || nodeImageOwner_) return refuse(507, "the hub is busy with another update; try again", CAM_MAX_NODE_IMAGE);
+    startNodeImage(c, contentLength);
+    if (!nodeImageFile_) {
+      dropNodeImage();
+      c.firmwareActive = c.nodeImage = false;
+      return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
+    }
     std::string first = c.in.substr(headEnd + 4);
     c.in.clear();
     feedFirmware(c, first.data(), first.size(), now);
@@ -793,10 +816,12 @@ void SensorCamServer::housekeeping(uint32_t now) {
     h.silent = true;
     healthAlert(i + 1, CAM_EVENT_SILENT, now);
   }
+  for (Health& h : health_)  // a node that stopped asking has given up, or restarted with what it had
+    if (h.updating && now - h.updateAt > CAM_UPDATE_IDLE_MS) h.updating = false;
   // Reports that arrived since the last pass are saved together, and only then confirmed.
   if (confirmCount_) {
     bool kept = persist();
-    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++) cfg_.espNowSend(confirmations_[i], confirmations_[i] + 6, CAM_CONFIRMATION_LEN);
+    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++) cfg_.espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
     confirmCount_ = 0;  // unconfirmed, the sensors resend, and each resend tries the save again
   }
   if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap

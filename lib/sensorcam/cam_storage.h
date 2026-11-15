@@ -60,6 +60,7 @@ class CamStorage {
   // Writes a file through the callback without building it in RAM first. Creates parent folders.
   bool writeWith(const std::string& path, const std::function<bool(FILE*)>& write) const;
   bool appendFile(const std::string& path, const char* data, size_t len) const;
+  FILE* openWrite(const std::string& path) const;  // a new file, written by the caller, who closes it; makes parent folders
   bool readAt(const std::string& path, size_t offset, char* out, size_t len) const;  // exactly len bytes, or false
   bool writeAt(const std::string& path, size_t offset, const char* data, size_t len) const;  // in place; makes the file if needed
   bool renameFile(const std::string& from, const std::string& to) const;  // replaces to

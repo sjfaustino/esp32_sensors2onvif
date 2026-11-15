@@ -266,11 +266,25 @@ function nodePanel(s) {
     placeholder: String(Math.round((s.autoSilent || 10800) / 60)),
     style: "width:7em",
   });
-  const seconds = () => (silent.value ? String(Math.round(silent.value * 60)) : "");
+  const every = el("input", {
+    type: "number",
+    min: 1,
+    max: 1440,
+    value: s.reportEvery ? Math.round(s.reportEvery / 60) : "",
+    placeholder: s.every && !s.reportEvery ? String(Math.round(s.every / 60)) : "",
+    style: "width:7em",
+  });
+  const repeat = el("input", { type: "number", min: 1, max: 60, value: s.repeat || "", style: "width:5em" });
+  const seconds = (input) => (input.value ? String(Math.round(input.value * 60)) : "");
+  const walk = el("span", {
+    textContent: s.walkLeft ? " Running, " + Math.ceil(s.walkLeft / 60) + " min left." : "",
+  });
   return el(
     "details",
     null,
-    el("summary", { textContent: "Node settings" + (s.late || s.silent ? " (changed)" : "") }),
+    el("summary", {
+      textContent: "Node settings" + (s.late || s.silent || s.reportEvery || s.repeat ? " (changed)" : ""),
+    }),
     el(
       "p",
       null,
@@ -285,17 +299,53 @@ function nodePanel(s) {
       silent,
       " minutes without a message. A disabled or stolen sensor is noticed only then, so keep it short: a little over the time between the node's regular reports. " +
         (s.every
-          ? "The node says it reports every " + Math.round(s.every / 60) + " minutes, so empty uses " + Math.round(s.autoSilent / 60) + " minutes, and follows the node if that changes."
+          ? "The node says it reports every " +
+            Math.round(s.every / 60) +
+            " minutes, so empty uses " +
+            Math.round(s.autoSilent / 60) +
+            " minutes, and follows the node if that changes."
           : "Empty uses 180 minutes."),
+    ),
+    el(
+      "p",
+      null,
+      "The node reports that it is alive every ",
+      every,
+      " minutes, and every ",
+      repeat,
+      " seconds while its sensor stays on. Empty leaves each to the node's own setting. These reach the node with the hub's next answer to it, so after its next report. Less often saves its battery, but a stolen node is noticed later. The repeat is kept below each sensor's alert time, so the alert does not lapse between repeats.",
     ),
     el("button", {
       textContent: "Save node settings",
       onclick: () =>
         act(
-          () => call("POST", "/api/node-settings?path=" + s.mac, "late=" + late.value + "&silent=" + seconds()),
+          () =>
+            call(
+              "POST",
+              "/api/node-settings?path=" + s.mac,
+              "late=" +
+                late.value +
+                "&silent=" +
+                seconds(silent) +
+                "&every=" +
+                seconds(every) +
+                "&repeat=" +
+                repeat.value,
+            ),
           "Saved the node settings",
         ),
     }),
+    el(
+      "p",
+      null,
+      "Walk test: for the next 10 minutes, the node blinks its LED after each alert the hub confirms, 3 times for a strong signal, 2 for a fair one and 1 for a weak one, so you can walk the area and see what it covers. It starts with the first alert the node sends after this. ",
+      el("button", {
+        textContent: "Start a walk test",
+        onclick: () =>
+          act(() => call("POST", "/api/walk-test?path=" + s.mac, "go=1"), "The walk test is on for 10 minutes"),
+      }),
+      walk,
+    ),
   );
 }
 function clearPanel() {

@@ -69,7 +69,11 @@ std::string SensorCamServer::treeJson() {
     int any = findNode(mac);
     uint32_t every = any ? slots_[any - 1].info.everyS : 0;
     j.object().str("mac", s.name).flag("paired", storage_.exists(s.name + "/pairing.txt")).num("late", node.lateS != 0, node.lateS).num("silent", node.silentS != 0, node.silentS);
-    j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every)).array("sensors");
+    j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every));
+    j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
+    time_t t = time(nullptr);
+    uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && slots_[any - 1].walkUntil > (uint32_t)t ? slots_[any - 1].walkUntil - (uint32_t)t : 0;
+    j.num("walkLeft", walk).array("sensors");
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
     for (const CamFsEntry& n : inputs) {
@@ -234,7 +238,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
   }
   const ApiRequest r{c, method, route, target, headers, body, bodyLen};
   if (setupRoute) apiSetup(r);
-  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r) && !apiPairing(r)) apiFiles(r);
+  else if (!apiPages(r) && !apiInfo(r) && !apiSystem(r) && !apiNetwork(r) && !apiSensors(r) && !apiPairing(r) && !apiNodeImages(r)) apiFiles(r);
 }
 
 void SensorCamServer::apiSetup(const ApiRequest& r) {
@@ -306,7 +310,7 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
 std::string SensorCamServer::espNowJson() {
   int known = 0;
   for (const Slot& s : slots_) known += s.used;
-  size_t room = (size_t)known * 520 + MAX_UNKNOWN * 120 + 256;  // the longest possible entries
+  size_t room = (size_t)known * 760 + MAX_UNKNOWN * 120 + nodeImages_.size() * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
@@ -325,9 +329,21 @@ std::string SensorCamServer::espNowJson() {
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
     j.num("rssi", h.rssi != 0, h.rssi).num("counter", h.counterSeen, h.counter).flag("weak", h.weak).num("refused", h.refused).str("refusal", h.refusal).flag("paired", slots_[id - 1].paired);
     const CamNodeInfo& info = slots_[id - 1].info;
-    j.num("every", info.everyS != 0, info.everyS).num("silentAfter", silentMsFor(id) / 1000).flag("saving", info.saving).str("sensor", info.sensor).str("version", info.version).end();
+    j.num("every", info.everyS != 0, info.everyS).num("silentAfter", silentMsFor(id) / 1000).flag("saving", info.saving).str("sensor", info.sensor).str("version", info.version);
+    bool told = !info.version.empty();
+    j.str("restart", told ? camRestartName(info.restart) : "").num("restarts", told, info.restarts).flag("restartFault", told && camRestartIsFault(info.restart));
+    j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs).str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
+    j.num("daysLeft", slots_[id - 1].daysLeft >= 0, slots_[id - 1].daysLeft).flag("sealed", h.sealed);
+    const NodeImageFile* image = imageFor(info.chip);
+    std::string update = h.updating && h.updateSize ? "updating, " + std::to_string((uint64_t)h.updateOffset * 100 / h.updateSize) + "%"
+                         : updateReady(id)          ? "update ready"
+                         : image && info.refused == image->image.number ? "update undone"
+                                                                        : "";
+    j.str("update", update).end();
   }
-  j.end().array("unknown");
+  j.end();
+  nodeImagesJson(j);
+  j.array("unknown");
   for (const UnknownSender& u : unknown_) {
     if (!u.used || findSlot(u.mac, u.input)) continue;  // added since it was last heard
     j.object().str("mac", camMacText(u.mac)).num("input", u.input).num("ago", (now - u.heardAt) / 1000).num("rssi", u.rssi != 0, u.rssi).num("messages", u.messages).end();
@@ -555,18 +571,35 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the settings; storage may be full");
     }
   } else if (r.is("POST", "/api/node-settings")) {
-    std::string path = queryParam(r.target, "path"), form = r.form(), late = queryParam(form, "late"), silent = queryParam(form, "silent");
+    std::string path = queryParam(r.target, "path"), form = r.form(), text;
+    for (const char* key : {"late", "silent", "every", "repeat"}) {
+      std::string value = queryParam(form, key);
+      if (!value.empty()) text += std::string(key) + "=" + value + "\n";
+    }
     CamNodeSettings s;
-    std::string text = (late.empty() ? "" : "late=" + late + "\n") + (silent.empty() ? "" : "silent=" + silent + "\n");
     if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path)) {
       c.out = jsonFail(404, "no such node");
     } else if (!camParseNodeSettings(text, s)) {
-      c.out = jsonFail(400, "the past-event time must be 1 to 86400 seconds, and the silent time 60 to 604800");
+      c.out = jsonFail(400, "the past-event time must be 1 to 86400 seconds, the silent time 60 to 604800, the report time 60 to 86400, and the repeat time 1 to 60");
     } else {
       std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
       bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
       rescan();
       c.out = saved(ok, "could not save the setting; storage may be full");
+    }
+  } else if (r.is("POST", "/api/walk-test")) {
+    std::string path = queryParam(r.target, "path");
+    uint8_t mac[6];
+    time_t t = time(nullptr);
+    bool stop = queryParam(r.form(), "stop") == "1";
+    if (camClassifyPath(path) != CAM_PATH_NODE || !camParseMac(path, mac) || !findNode(mac)) {
+      c.out = jsonFail(404, "no such node");
+    } else if (t < CAM_CLOCK_VALID_AFTER) {
+      c.out = jsonFail(409, "the hub's clock is not set yet, and the node needs it to know when the walk test ends");
+    } else {
+      for (Slot& s : slots_)
+        if (s.used && memcmp(s.mac, mac, 6) == 0) s.walkUntil = stop ? 0 : (uint32_t)t + CAM_WALK_TEST_S;
+      c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/webhook")) {
     reply(c, 200, JSON_TYPE, webhookJson());

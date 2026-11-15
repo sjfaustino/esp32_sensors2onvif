@@ -83,6 +83,23 @@ A node's info (message 6) is read the same way, from its `about.txt`, into each 
 every regular report but is written only when it differs, so flash is not worn. The silent check asks `silentMsFor`: the
 node's own setting, else a quarter over its report time, else the hub's 3 hours.
 
+A sealed message (7) is opened with the key of the node it comes from, found by its MAC address alone, and the message
+inside gets a signature made with that key appended, so `espNowReport` checks it as if it had come plain; `sealed` then
+makes it seal the confirmation. All of it is on the stack, so a sealed alert is still confirmed with no memory left.
+What a confirmation carries for the node comes from `forNode`, which reads only the sensor table and the clock.
+
+## Node firmware
+
+An upload to `/api/node-firmware` streams into `nodes/upload.bin`, as the hub's own update streams to flash, and is then
+read through once by `camCheckNodeImage`: the ESP32 image's first byte and chip, the version after
+`sensors2onvif-node-version=`, and an FNV-1a hash of the whole file, which is the update's number. Its description,
+`nodes/<chip>.txt`, is written once it is renamed into place, so a start of the hub reads only the small files. A node's
+ask (message 8) is answered at once from storage with up to 4 parts, read in one piece. Nothing is kept per transfer but
+the offset last asked for, for the page; a node that stops asking for 2 minutes is no longer shown as updating.
+
+A node's battery readings go to `battery.txt` at most every 6 hours, after its confirmation is queued and outside it, so
+a lack of memory skips a reading and never an alert. The forecast is a least-squares line through the last 30 days.
+
 ## Passwords and names
 
 `CamLoginGuard` (`lib/sensorcam/cam_auth.h`) counts wrong passwords per address, on the web page, ONVIF and RTSP: ten in

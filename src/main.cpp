@@ -287,6 +287,7 @@ static CamConfig makeConfig() {
   c.startReason = lastRestartText();
   c.startPlanned = startWasPlanned();
   c.snapshotSecret = settings.snapshotKey.c_str();
+  c.sealStart = esp_random();
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
   c.webhookSave = storeWebhook;
@@ -413,11 +414,12 @@ struct SensorMessage {
   uint8_t mac[6];
   int8_t rssi;
   uint8_t len;
-  uint8_t data[48];  // the longest the hub reads; anything longer is dropped
+  uint8_t data[CAM_SEALED_EXTRA + CAM_NODE_INFO_MAX];  // the longest the hub reads, sealed node info; anything longer is dropped
 };
 // A message longer than the queue's room is dropped without a word, so each one the hub reads must fit.
 static_assert(sizeof(SensorMessage::data) >= 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN, "a report with every target must fit");
 static_assert(sizeof(SensorMessage::data) >= CAM_HELLO_LEN, "a pairing hello must fit");
+static_assert(sizeof(SensorMessage::data) >= CAM_SEALED_EXTRA + 13 + 3 * CAM_MAX_TARGETS + CAM_SIGNATURE_LEN, "a sealed report with every target must fit");
 static QueueHandle_t sensorQueue;
 static volatile uint32_t espNowDropped = 0;  // arrived while the queue was full; their senders resend, since nothing confirmed them
 

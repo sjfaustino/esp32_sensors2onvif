@@ -75,7 +75,7 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() == 1 && parts[0] == "clear.jpg") return CAM_PATH_PREVIEW;
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_NODE;
-  if (parts.size() == 2 && (parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt")) return CAM_PATH_TEXT;  // the node's own settings, key and what it said of itself
+  if (parts.size() == 2 && (parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt")) return CAM_PATH_TEXT;  // the node's own settings, key, what it said of itself, and its battery
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
   if (parts[2] == "text.json" || parts[2] == "name.txt" || parts[2] == "settings.txt") return CAM_PATH_TEXT;
@@ -279,6 +279,12 @@ bool CamStorage::writeWith(const std::string& path, const std::function<bool(FIL
   }
   if (!ok) remove(temp.c_str());
   return ok;
+}
+
+FILE* CamStorage::openWrite(const std::string& path) const {
+  size_t slash = path.rfind('/');
+  if (slash != std::string::npos && !makeDirs(path.substr(0, slash))) return nullptr;
+  return fopen(full(path).c_str(), "wb");
 }
 
 bool CamStorage::appendFile(const std::string& path, const char* data, size_t len) const {

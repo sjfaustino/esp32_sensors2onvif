@@ -32,6 +32,8 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_ARMED_HOME: return "armed home";
     case CAM_EVENT_TEST_ALERT: return "test alert";
     case CAM_EVENT_RESTART_LOOP: return "restarting often";
+    case CAM_EVENT_NODE_FAULT: return "node restarted by a fault";
+    case CAM_EVENT_BATTERY_RUNNING_OUT: return "battery running out";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -61,6 +63,8 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
              "; alerts in that time reach the NVR as past events once it is back";
     case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
     case CAM_EVENT_RESTART_LOOP: return who + " has restarted by itself " + detail + ": something keeps stopping it, so alerts may be missed";
+    case CAM_EVENT_NODE_FAULT: return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the ESP-NOW page";
+    case CAM_EVENT_BATTERY_RUNNING_OUT: return who + ": the battery will run out within a week";
     case CAM_EVENT_ARMED_HOME:
       return who + " was armed home" + (detail.empty() ? std::string() : " from " + detail) + ": interior sensors are logged but not sent to the NVR";
     case CAM_EVENT_DISARMED:

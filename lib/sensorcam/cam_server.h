@@ -163,6 +163,7 @@ struct CamConfig {
   std::string startReason;  // why the hub last started, for the "hub started" event
   bool startPlanned = false;  // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
+  uint32_t sealStart = 0;      // random at each start: the first number of the hub's sealed messages
   std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
   bool watchNvr = true;     // log and send alerts the NVR was not listening for
 };
@@ -222,6 +223,10 @@ class SensorCamServer {
     bool weak = false;
     uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
     const char* refusal = "";
+    bool sealed = false;   // its last report was sealed, so no one listening could read it
+    bool runningOut = false;  // its battery is forecast to run out within a week, and that was logged
+    uint32_t updateOffset = 0, updateSize = 0, updateAt = 0;  // how far a firmware update has got, and when it last asked
+    bool updating = false;
   };
   struct Slot {
     bool used = false;
@@ -231,6 +236,9 @@ class SensorCamServer {
     CamSensorSettings settings;  // from settings.txt
     CamNodeSettings node;        // from settings.txt in the node's folder, the same for each of its sensors
     CamNodeInfo info;            // what the node last said about itself, from about.txt in its folder
+    uint32_t walkUntil = 0;      // the end of a walk test started on the page, on the hub's clock in seconds since 1970
+    int64_t batteryAt = 0;       // the newest reading in battery.txt, kept in its node's folder
+    int daysLeft = -1;           // how long its battery will last, from that file; -1 unknown
     // From pairing.txt in the node's folder: its own key, which its reports must be signed with instead of the shared one.
     bool paired = false;
     std::string key;
@@ -275,6 +283,7 @@ class SensorCamServer {
     uint32_t undoSub = 0;
     int undoState = 0;
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
+    bool nodeImage = false;       // to a node firmware file instead
     size_t firmwareLeft = 0;
     const std::function<bool(size_t, char*, size_t)>* pull = nullptr;  // reads the body piece by piece instead of staticBody
     std::function<bool(size_t, char*, size_t)> reader;  // this reply's own piece reader, a file or the picture; pull points at it
@@ -354,7 +363,7 @@ class SensorCamServer {
   void undoPull(HttpConn& c);  // see HttpConn::undoSub
   void housekeeping(uint32_t now);  // alerts, saving, the NVR and video: the part of poll() before waiting
   void pollOnce(int maxWaitMs);     // waits for the network, then serves the connections
-  void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
+  void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed = false);
   uint32_t memoryFailures_ = 0;
   int streamCount() const;
   bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
@@ -417,6 +426,27 @@ class SensorCamServer {
   static const int MAX_PAIR_REQUESTS = 8;
   void helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
   void nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len);
+  void sealedPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
+  void firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len);
+  CamForNode forNode(int id) const;  // what goes to a node with each confirmation
+  struct NodeImageFile {  // a node firmware file put on the hub, in nodes/ with its description beside it
+    CamNodeImage image;
+    std::string path;
+  };
+  std::vector<NodeImageFile> nodeImages_;
+  FILE* nodeImageFile_ = nullptr;  // the one being uploaded
+  HttpConn* nodeImageOwner_ = nullptr;
+  uint32_t sealNumber_ = 0;  // for the hub's sealed messages; set at random at the start
+  const NodeImageFile* imageFor(uint16_t chip) const;
+  void finishNodeImage(HttpConn& c, bool ok);
+  bool updateReady(int id) const;
+  void noteBattery(int id, uint8_t percent);
+  void loadNodeImages();
+  void startNodeImage(HttpConn& c, size_t length);
+  bool writeNodeImage(const char* data, size_t n);
+  void dropNodeImage();  // an upload abandoned partway through
+  bool apiNodeImages(const ApiRequest& r);
+  void nodeImagesJson(CamJson& j) const;
   bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
   bool apiPairing(const ApiRequest& r);
@@ -510,7 +540,7 @@ class SensorCamServer {
   // Waiting to be sent once the reports are saved: 6 bytes of MAC address, then the message. A fixed table, so an alert is
   // confirmed even when memory has run out.
   static const int MAX_CONFIRMATIONS = 32;
-  uint8_t confirmations_[MAX_CONFIRMATIONS][6 + CAM_CONFIRMATION_LEN];
+  uint8_t confirmations_[MAX_CONFIRMATIONS][7 + CAM_SEALED_EXTRA + CAM_CONFIRMATION_LEN];  // MAC, length, message
   int confirmCount_ = 0;
   std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   std::vector<Slot> slots_;

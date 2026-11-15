@@ -54,6 +54,10 @@
 <div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
 <table id="pairWaiting"></table><div class="portMsg" id="pairMsg"></div>
 <h2 class="sub">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
+<h2 class="sub">Node firmware</h2>
+<p class="note">Put a node's new <code>firmware.bin</code> here, from the node project, one for each kind of chip. Each node of that chip running another version fetches it by itself after its next report, unless it is saving its battery; one whose update fails goes back to what it had, and does not try that file again. A node watches nothing while it updates, for a minute or so, and stops to report if its sensor fires.</p>
+<div class="portForm"><input id="nfFile" type="file" accept=".bin"> <button id="nfSend">Put on the hub</button></div>
+<table id="nfList"></table><div class="portMsg" id="nfMsg"></div>
 <h2 class="sub">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>
 <label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>

@@ -30,6 +30,8 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_ARMED_HOME = 14,
   CAM_EVENT_TEST_ALERT = 15,  // asked for on the page or in Home Assistant: a real alert, marked as a test
   CAM_EVENT_RESTART_LOOP = 16,  // several unplanned starts within an hour; a hub start's "active" says it was unplanned
+  CAM_EVENT_NODE_FAULT = 17,    // a node restarted for a fault: a crash, its watchdog or a brownout
+  CAM_EVENT_BATTERY_RUNNING_OUT = 18,  // a node's battery is forecast to run out within a week
   CAM_EVENT_KIND_COUNT        // not a kind: one more than the last, so code can go through them all
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.

@@ -382,27 +382,42 @@ static void node_settings_round_trip_and_refuse_bad_values() {
   TEST_ASSERT_TRUE(camParseNodeSettings("silent=600\nlate=45\n", s));
   TEST_ASSERT_EQUAL(600, s.silentS);
   TEST_ASSERT_EQUAL_STRING("late=45\nsilent=600\n", camNodeSettingsText(s).c_str());
-  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n", "silent=59\n", "silent=604801\n"};
+  TEST_ASSERT_TRUE(camParseNodeSettings("every=3600\nrepeat=4\n", s));
+  TEST_ASSERT_EQUAL(3600, s.everyS);
+  TEST_ASSERT_EQUAL(4, s.repeatS);
+  TEST_ASSERT_EQUAL_STRING("every=3600\nrepeat=4\n", camNodeSettingsText(s).c_str());
+  const char* bad[] = {"late=0\n", "late=86401\n", "late=\n", "late=-5\n", "late=1x\n", "late=99999999999\n", "hold=5\n", "silent=59\n", "silent=604801\n", "every=59\n", "every=86401\n", "repeat=0\n", "repeat=61\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseNodeSettings(text, s), text);
 }
 
 static void node_info_is_read_signed_and_kept() {
   const uint8_t mac[6] = {2, 0, 0, 0, 0, 9};
   const std::string key = "node-key";
-  uint8_t m[64] = {CAM_NODE_INFO, 0x20, 0x1C, 0, 0, 1, 3, 'P', 'I', 'R', 2, 'v', '1'};  // every 7200 s, saving
-  int len = 13;
+  // every 7200 s, saving, a brownout, 3 restarts, 180 ms, an ESP32-C6, refused image 5, then the texts
+  uint8_t m[80] = {CAM_NODE_INFO, 0x20, 0x1C, 0, 0, 1, CAM_RESTART_BROWNOUT, 3, 0, 180, 0, 13, 0, 5, 0, 0, 0, 3, 'P', 'I', 'R', 2, 'v', '1'};
+  int len = 24;
   memcpy(m + len, camPacketSignature(mac, m, len, key).data(), CAM_SIGNATURE_LEN);
   CamNodeInfo info;
   TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
   TEST_ASSERT_EQUAL(7200, info.everyS);
   TEST_ASSERT_TRUE(info.saving);
+  TEST_ASSERT_EQUAL(CAM_RESTART_BROWNOUT, info.restart);
+  TEST_ASSERT_TRUE(camRestartIsFault(info.restart));
+  TEST_ASSERT_EQUAL_STRING("brownout", camRestartName(info.restart));
+  TEST_ASSERT_EQUAL(3, info.restarts);
+  TEST_ASSERT_EQUAL(180, info.responseMs);
+  TEST_ASSERT_EQUAL_STRING("ESP32-C6", camChipName(info.chip).c_str());
+  TEST_ASSERT_EQUAL(5, info.refused);
   TEST_ASSERT_EQUAL_STRING("PIR", info.sensor.c_str());
   TEST_ASSERT_EQUAL_STRING("v1", info.version.c_str());
   TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, "other", info));
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN - 1, key, info));  // a text runs past the end
-  m[6] = 30;  // longer than a text may be
+  m[17] = 30;  // longer than a text may be
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
-  m[6] = 3, m[8] = '\n';
+  m[17] = 3, m[19] = '\n';
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
+  m[19] = 'I', m[6] = CAM_RESTART_KINDS;  // a reason this hub does not know
+  memcpy(m + len, camPacketSignature(mac, m, len, key).data(), CAM_SIGNATURE_LEN);
   TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckNodeInfo(mac, m, len + CAM_SIGNATURE_LEN, key, info));
 
   CamNodeInfo back;
@@ -755,11 +770,111 @@ static void confirmation_is_signed_for_that_sensor() {
   r.input = 2;
   r.active = true;
   r.counter = 0x01020304;
-  std::string c = camConfirmation(mac, r, "key");
+  CamForNode e;
+  e.hubTime = 0x0A0B0C0D;
+  e.everyS = 3600;
+  e.repeatS = 4;
+  e.walkUntil = 0x0A0B0C0D + 600;
+  e.update = true;
+  std::string c = camConfirmation(mac, r, e, "key");
   TEST_ASSERT_EQUAL(CAM_CONFIRMATION_LEN, (int)c.size());
-  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01", c.data(), 7);
-  TEST_ASSERT_TRUE(c.substr(7) == camPacketSignature(mac, (const uint8_t*)c.data(), 7, "key"));
-  TEST_ASSERT_FALSE(c.substr(7) == camPacketSignature(other, (const uint8_t*)c.data(), 7, "key"));
+  TEST_ASSERT_EQUAL_MEMORY("\x03\x02\x01\x04\x03\x02\x01\x0D\x0C\x0B\x0A\x10\x0E\x00\x00\x04\x00\x65\x0E\x0B\x0A\x01", c.data(), CAM_CONFIRMATION_BODY);
+  TEST_ASSERT_TRUE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(mac, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
+  TEST_ASSERT_FALSE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(other, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
+}
+
+// The expected bytes were worked out in Python from the README's description.
+static void sealed_messages_hide_what_they_say() {
+  const uint8_t mac[6] = {2, 0, 0, 0, 0, 0x55};
+  const std::string key(20, '\x22');
+  const uint8_t report[13] = {CAM_REPORT, 1, 1, 80, 7, 0, 0, 0, 0, 0, 0, 0, 0};
+  uint8_t sealed[64], opened[64];
+  int len = camSeal(mac, 0x11223344, report, sizeof(report), key, false, sealed);
+  TEST_ASSERT_EQUAL(CAM_SEALED_EXTRA + 13 + CAM_SIGNATURE_LEN, len);
+  char hex[2 * 64 + 1] = "";
+  for (int i = 0; i < len; i++) snprintf(hex + 2 * i, 3, "%02x", sealed[i]);
+  TEST_ASSERT_EQUAL_STRING("0744332211bd9133a3e584d49750a42c9ee743e4fe676106846d", hex);
+  int n = camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened));
+  TEST_ASSERT_EQUAL(13 + CAM_SIGNATURE_LEN, n);
+  SensorReport r;
+  TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckPacket(mac, opened, n, key, r));  // reads as if it had been sent plain
+  TEST_ASSERT_EQUAL(7, r.counter);
+  TEST_ASSERT_EQUAL(n, camOpenSealed(mac, sealed, len, key, true, opened, sizeof(opened)));
+  TEST_ASSERT_NOT_EQUAL(0, memcmp(opened, report, 13));  // read as from the hub, the stream differs
+  sealed[6] ^= 1;
+  TEST_ASSERT_EQUAL(-1, camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened)));
+  TEST_ASSERT_EQUAL(0, camOpenSealed(mac, report, sizeof(report), key, false, opened, sizeof(opened)));  // not sealed
+}
+
+static void firmware_goes_in_signed_parts() {
+  const uint8_t mac[6] = {2, 0, 0, 0, 0, 0x55};
+  const std::string key = "node-key";
+  uint8_t ask[CAM_FIRMWARE_ASK_LEN] = {CAM_FIRMWARE_ASK, 9, 0, 0, 0, 0x90, 1, 0, 0};
+  memcpy(ask + 9, camPacketSignature(mac, ask, 9, key).data(), CAM_SIGNATURE_LEN);
+  CamFirmwareAsk a;
+  TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckFirmwareAsk(mac, ask, sizeof(ask), key, a));
+  TEST_ASSERT_EQUAL(9, a.image);
+  TEST_ASSERT_EQUAL(400, a.offset);
+  TEST_ASSERT_EQUAL(CAM_PACKET_BAD_SIGNATURE, camCheckFirmwareAsk(mac, ask, sizeof(ask), "other", a));
+  TEST_ASSERT_EQUAL(CAM_PACKET_INVALID, camCheckFirmwareAsk(mac, ask, sizeof(ask) - 1, key, a));
+  uint8_t data[CAM_FIRMWARE_PART_MAX + 10], out[CAM_FIRMWARE_PART_LEN_MAX];
+  memset(data, 0xAB, sizeof(data));
+  int len = camFirmwarePart(mac, 9, 1000, 400, data, sizeof(data), key, out);
+  TEST_ASSERT_EQUAL(CAM_FIRMWARE_PART_LEN_MAX, len);  // cut to the most a part holds
+  TEST_ASSERT_EQUAL_MEMORY("\x09\x09\x00\x00\x00\xE8\x03\x00\x00\x90\x01\x00\x00", out, CAM_FIRMWARE_PART_HEAD);
+  TEST_ASSERT_TRUE(std::string((const char*)out + len - CAM_SIGNATURE_LEN, CAM_SIGNATURE_LEN) == camPacketSignature(mac, out, len - CAM_SIGNATURE_LEN, key));
+}
+
+static void a_node_image_is_told_from_other_files() {
+  std::string file(5000, '\0');
+  file[0] = (char)0xE9;
+  file[12] = 13;  // an ESP32-C6
+  std::string mark = std::string(CAM_NODE_IMAGE_MARK) + "3f2a1b0";
+  file.replace(1020, mark.size(), mark);  // across the first two blocks read
+  auto reader = [&](const std::string& f) {
+    return [&f](size_t offset, char* out, size_t len) {
+      if (offset + len > f.size()) return false;
+      memcpy(out, f.data() + offset, len);
+      return true;
+    };
+  };
+  CamNodeImage image;
+  TEST_ASSERT_TRUE(camCheckNodeImage(reader(file), file.size(), image));
+  TEST_ASSERT_EQUAL(13, image.chip);
+  TEST_ASSERT_EQUAL_STRING("3f2a1b0", image.version.c_str());
+  TEST_ASSERT_EQUAL(5000, image.size);
+  CamNodeImage again;
+  std::string changed = file;
+  changed[4000] = 1;
+  TEST_ASSERT_TRUE(camCheckNodeImage(reader(changed), changed.size(), again));
+  TEST_ASSERT_NOT_EQUAL(image.number, again.number);  // another file, another number
+  std::string hub = file;
+  hub.replace(1020, mark.size(), std::string(mark.size(), 'x'));  // the hub's own firmware has no such mark
+  TEST_ASSERT_FALSE(camCheckNodeImage(reader(hub), hub.size(), image));
+  std::string notApp = file;
+  notApp[0] = 'P';
+  TEST_ASSERT_FALSE(camCheckNodeImage(reader(notApp), notApp.size(), image));
+}
+
+static void battery_forecast_follows_the_readings() {
+  std::vector<CamBatteryPoint> points;
+  const int64_t day = 86400, start = 1800000000;
+  TEST_ASSERT_TRUE(camAddBatteryPoint(points, start, 80));
+  TEST_ASSERT_FALSE(camAddBatteryPoint(points, start + 3600, 79));  // too soon after the last
+  for (int d = 1; d <= 4; d++) TEST_ASSERT_TRUE(camAddBatteryPoint(points, start + d * day, (uint8_t)(80 - 2 * d)));
+  TEST_ASSERT_EQUAL(36, camBatteryDaysLeft(points));  // 72% left at 2% a day
+  std::vector<CamBatteryPoint> back;
+  TEST_ASSERT_TRUE(camParseBatteryLog(camBatteryLogText(points), back));
+  TEST_ASSERT_EQUAL(5, (int)back.size());
+  TEST_ASSERT_EQUAL(72, back.back().percent);
+  TEST_ASSERT_TRUE(camAddBatteryPoint(points, start + 5 * day, 100));  // a new battery
+  TEST_ASSERT_EQUAL(1, (int)points.size());
+  TEST_ASSERT_EQUAL(-1, camBatteryDaysLeft(points));
+  std::vector<CamBatteryPoint> solar;
+  for (int d = 0; d < 6; d++) camAddBatteryPoint(solar, start + d * day, (uint8_t)(d % 2 ? 70 : 72));
+  TEST_ASSERT_EQUAL(-1, camBatteryDaysLeft(solar));  // not going down
+  TEST_ASSERT_FALSE(camParseBatteryLog("1800000000 101\n", back));
+  TEST_ASSERT_FALSE(camParseBatteryLog("soon 50\n", back));
 }
 
 static void durations_read_as_people_say_them() {
@@ -1034,6 +1149,10 @@ int main() {
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
   RUN_TEST(confirmation_is_signed_for_that_sensor);
+  RUN_TEST(sealed_messages_hide_what_they_say);
+  RUN_TEST(firmware_goes_in_signed_parts);
+  RUN_TEST(a_node_image_is_told_from_other_files);
+  RUN_TEST(battery_forecast_follows_the_readings);
   RUN_TEST(durations_read_as_people_say_them);
   RUN_TEST(json_writer_places_commas_and_brackets);
   RUN_TEST(json_writer_escapes_any_text);

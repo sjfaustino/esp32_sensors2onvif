@@ -748,6 +748,8 @@
                 "Key",
                 "Sensor type",
                 "Firmware",
+                "Restarts",
+                "Last alert took",
               ]),
             ]
           : []),
@@ -759,20 +761,52 @@
               n.name || "-",
               n.node,
               n.input,
-              STATES[n.state] + (n.state == "silent" ? " (no report for " + Math.round(n.silentAfter / 60) + " minutes)" : ""),
+              STATES[n.state] +
+                (n.state == "silent" ? " (no report for " + Math.round(n.silentAfter / 60) + " minutes)" : ""),
               heardAgo(n.ago),
-              (n.battery == null ? "-" : n.battery + "%" + (n.low ? " (low)" : "")) + (n.saving ? ", saving it" : ""),
+              (n.battery == null ? "-" : n.battery + "%" + (n.low ? " (low)" : "")) +
+                (n.saving ? ", saving it" : "") +
+                (n.daysLeft == null ? "" : ", about " + n.daysLeft + " days left"),
               n.rssi == null ? "-" : n.rssi + " dBm" + (n.weak ? " (weak)" : ""),
               n.counter == null ? "-" : n.counter,
               n.refused ? n.refused + " (" + n.refusal + ")" : "-",
-              n.paired ? "its own" : "shared",
+              (n.paired ? "its own" : "shared") + (n.sealed ? ", sealed" : ""),
               n.sensor || "-",
-              n.version || "-",
+              (n.version || "-") + (n.chip ? " (" + n.chip + ")" : "") + (n.update ? ", " + n.update : ""),
+              n.restarts == null ? "-" : n.restarts + ", last: " + n.restart + (n.restartFault ? " (a fault)" : ""),
+              n.responseMs == null ? "-" : n.responseMs + " ms",
             ].map((v) => el("td", { textContent: v })),
           ),
         ),
       );
       $("espEmpty").textContent = j.nodes.length ? "" : "No sensor nodes yet. Add one under Sensors Manager > Sensors.";
+      $("nfList").replaceChildren(
+        ...(j.nodeFirmware.length
+          ? [headRow(["Chip", "Version", "Size", ""])]
+          : [el("tr", null, el("td", { textContent: "None on the hub." }))]),
+        ...j.nodeFirmware.map((f) =>
+          el(
+            "tr",
+            null,
+            ...[f.name, f.version, Math.round(f.size / 1024) + " KB"].map((v) => el("td", { textContent: v })),
+            el(
+              "td",
+              null,
+              el("button", {
+                textContent: "Delete",
+                onclick: async () => {
+                  try {
+                    await call("POST", "/api/node-firmware/delete", "chip=" + f.chip);
+                    loadEsp();
+                  } catch (e) {
+                    $("nfMsg").textContent = e.message;
+                  }
+                },
+              }),
+            ),
+          ),
+        ),
+      );
       $("espUnknown").replaceChildren(
         ...(j.unknown.length ? [headRow(["Node", "Sensor", "Last heard", "Signal", "Messages", ""])] : []),
         ...j.unknown.map((n) =>
@@ -992,6 +1026,28 @@
       )
     )
       setTimeout(() => location.reload(), 25000);
+  };
+  $("nfSend").onclick = async () => {
+    const m = $("nfMsg"),
+      f = $("nfFile").files[0];
+    m.className = "portMsg";
+    if (!f) {
+      m.className = "portMsg err";
+      m.textContent = "Choose a node's firmware .bin file first.";
+      return;
+    }
+    m.textContent = "Uploading. Keep this page open.";
+    if (
+      await send(
+        m,
+        "/api/node-firmware",
+        f,
+        "Done. The nodes of that chip update after their next report.",
+        "PUT",
+        "The upload failed.",
+      )
+    )
+      loadEsp();
   };
   $("rsSend").onclick = async () => {
     const m = $("rsMsg"),

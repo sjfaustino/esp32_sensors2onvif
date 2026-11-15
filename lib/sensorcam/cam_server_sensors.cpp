@@ -294,8 +294,16 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
   }
 }
 
-void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
-  if (len >= 1 && data[0] == CAM_HELLO) {
+void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed) {
+  if (!sealed && len >= 1 && data[0] == CAM_SEALED) {
+    sealedPacket(mac, data, len, rssi);
+    return;
+  }
+  if (!sealed && len >= 1 && data[0] == CAM_FIRMWARE_ASK) {
+    firmwareAskPacket(mac, data, len);
+    return;
+  }
+  if (!sealed && len >= 1 && data[0] == CAM_HELLO) {
     helloPacket(mac, data, len, rssi);
     return;
   }
@@ -325,6 +333,7 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
     return;
   }
   noteSignal(id, rssi);
+  h.sealed = sealed;
   // A resend repeats the report a moment later, and the hub ignores it. Only a short while, so a restarted sensor that
   // happens to reuse the last number is still heard.
   uint32_t now = millis_();
@@ -338,14 +347,152 @@ void SensorCamServer::espNowReport(const uint8_t mac[6], const uint8_t* data, in
   }
   // Confirmed once it is on storage, so a power cut cannot lose an alert its sensor has stopped resending. Again for a
   // resend, whose sender evidently missed the first confirmation. poll() saves all that arrived together, then sends.
+  // A sealed report is confirmed sealed, as the confirmation repeats what it said.
   if (confirmCount_ < MAX_CONFIRMATIONS) {
     uint8_t* slot = confirmations_[confirmCount_++];
     memcpy(slot, mac, 6);
-    camConfirmationInto(mac, r, key, slot + 6);
+    CamForNode extra = forNode(id);
+    if (sealed) {
+      uint8_t body[CAM_CONFIRMATION_BODY];
+      camConfirmationBody(r, extra, body);
+      slot[6] = (uint8_t)camSeal(mac, sealNumber_++, body, sizeof(body), key, true, slot + 7);
+    } else {
+      slot[6] = CAM_CONFIRMATION_LEN;
+      camConfirmationInto(mac, r, extra, key, slot + 7);
+    }
+  }
+  // After the confirmation is queued, as this may need memory, and an alert must not wait on it.
+  if (!resend && r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
+}
+
+// Only a node the hub knows can be opened, with its key; inside is a report or node info, handled as if sent plain.
+void SensorCamServer::sealedPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
+  int id = findNode(mac);
+  if (!id) return;
+  uint8_t inner[CAM_SEALED_MAX_INNER + CAM_SIGNATURE_LEN];
+  int n = camOpenSealed(mac, data, len, slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey, false, inner, sizeof(inner));
+  if (n < 0) {
+    health_[id - 1].refused++;
+    health_[id - 1].refusal = "wrong signature";
+    return;
+  }
+  if (n == 0 || (inner[0] != CAM_REPORT && inner[0] != CAM_NODE_INFO)) return;
+  espNowReport(mac, inner, n, rssi, true);
+}
+
+// What a node gets with each confirmation: the hub's time, its settings from the page, a walk test, and whether a
+// firmware update is ready. No heap, as it is part of confirming an alert.
+CamForNode SensorCamServer::forNode(int id) const {
+  const Slot& s = slots_[id - 1];
+  CamForNode e;
+  time_t t = time(nullptr);
+  if (t >= CAM_CLOCK_VALID_AFTER) e.hubTime = (uint32_t)t;
+  e.everyS = s.node.everyS;
+  // Repeats must come more often than the alert lasts, or the alert would lapse between them: below the shortest hold
+  // of the node's sensors.
+  uint32_t repeat = s.node.repeatS;
+  for (int i = 0; repeat && i < CAM_MAX_SENSORS; i++) {
+    if (!slots_[i].used || memcmp(slots_[i].mac, s.mac, 6) != 0) continue;
+    uint32_t hold = holdFor(i + 1) / 1000;
+    if (repeat >= hold) repeat = hold > 1 ? hold - 1 : 1;
+  }
+  e.repeatS = (uint16_t)repeat;
+  e.walkUntil = e.hubTime && s.walkUntil > e.hubTime ? s.walkUntil : 0;
+  e.update = updateReady(id);
+  return e;
+}
+
+const SensorCamServer::NodeImageFile* SensorCamServer::imageFor(uint16_t chip) const {
+  for (const NodeImageFile& f : nodeImages_)
+    if (f.image.chip == chip) return &f;
+  return nullptr;
+}
+
+// Offered while the node runs another version, unless it already tried this one and had it undone, or is saving its
+// battery: an update keeps it awake for a minute or so.
+bool SensorCamServer::updateReady(int id) const {
+  const Slot& s = slots_[id - 1];
+  const NodeImageFile* f = imageFor(s.info.chip);
+  return f && !s.info.version.empty() && s.info.version != f->image.version && s.info.refused != f->image.number && !s.info.saving;
+}
+
+// Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
+void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len) {
+  int id = findNode(mac);
+  if (!id || !cfg_.espNowSend) return;
+  const std::string& key = slots_[id - 1].paired ? slots_[id - 1].key : cfg_.espNowKey;
+  CamFirmwareAsk ask;
+  CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
+  Health& h = health_[id - 1];
+  if (check == CAM_PACKET_INVALID) return;
+  if (check == CAM_PACKET_BAD_SIGNATURE) {
+    h.refused++;
+    h.refusal = "wrong signature";
+    return;
+  }
+  const NodeImageFile* f = imageFor(slots_[id - 1].info.chip);
+  if (!f) return;
+  const CamNodeImage& image = f->image;
+  h.updating = true;
+  h.updateAt = millis_();
+  h.updateSize = image.size;
+  uint8_t out[CAM_FIRMWARE_PART_LEN_MAX];
+  if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
+    int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(), key, out);
+    cfg_.espNowSend(mac, out, n);
+    h.updateOffset = 0;
+    return;
+  }
+  if (ask.offset >= image.size) return;
+  h.updateOffset = ask.offset;
+  uint8_t window[CAM_FIRMWARE_WINDOW * CAM_FIRMWARE_PART_MAX];
+  uint32_t length = image.size - ask.offset < sizeof(window) ? image.size - ask.offset : (uint32_t)sizeof(window);
+  if (!storage_.readAt(f->path, ask.offset, (char*)window, length)) return;
+  for (uint32_t at = 0; at < length; at += CAM_FIRMWARE_PART_MAX) {
+    int n = length - at < (uint32_t)CAM_FIRMWARE_PART_MAX ? (int)(length - at) : CAM_FIRMWARE_PART_MAX;
+    cfg_.espNowSend(mac, out, camFirmwarePart(mac, image.number, image.size, ask.offset + at, window + at, n, key, out));
   }
 }
 
-// Kept on storage only when it changes, so the silent time it sets survives a restart of the hub.
+// A reading every few hours goes to battery.txt in the node's folder, and from those comes how long the battery will last.
+// Needs the clock. Anything that runs out of memory here only skips this reading.
+void SensorCamServer::noteBattery(int id, uint8_t percent) {
+  time_t t = time(nullptr);
+  Slot& slot = slots_[id - 1];
+  if (t < CAM_CLOCK_VALID_AFTER || (slot.batteryAt && t >= slot.batteryAt && t - slot.batteryAt < CAM_BATTERY_POINT_EVERY_S)) return;
+  try {
+    std::string path = camMacText(slot.mac) + "/battery.txt", text;
+    std::vector<CamBatteryPoint> points;
+    if (!storage_.readFile(path, text, 8192) || !camParseBatteryLog(text, points)) points.clear();
+    bool added = camAddBatteryPoint(points, t, percent);
+    if (added) {
+      text = camBatteryLogText(points);
+      storage_.writeFile(path, text.data(), text.size());
+    }
+    int days = camBatteryDaysLeft(points);
+    for (int i = 0; i < CAM_MAX_SENSORS; i++) {
+      if (!slots_[i].used || memcmp(slots_[i].mac, slot.mac, 6) != 0) continue;
+      slots_[i].batteryAt = points.empty() ? t : points.back().t;
+      slots_[i].daysLeft = days;
+    }
+    int first = findNode(slot.mac);  // logged once for the node, on its first sensor
+    Health& h = health_[first - 1];
+    if (days >= 0 && days < 7 && !h.runningOut) {
+      h.runningOut = true;
+      SensorReport r;
+      r.battery = percent;
+      logEvent(first, r, false, CAM_EVENT_BATTERY_RUNNING_OUT);
+      notifyHook(first, CAM_EVENT_BATTERY_RUNNING_OUT, false);
+    } else if (days < 0 || days > 14) {
+      h.runningOut = false;
+    }
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+  }
+}
+
+// Kept on storage only when it changes, so the silent time it sets survives a restart of the hub. A restart for a fault,
+// such as a brownout from a weak battery or a bad wire, is logged, as it shows a node failing before it goes silent.
 void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len) {
   int id = findNode(mac);
   if (!id) return;
@@ -357,11 +504,25 @@ void SensorCamServer::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, 
     health_[id - 1].refusal = "wrong signature";
     return;
   }
-  if (info == slots_[id - 1].info) return;
+  CamNodeInfo old = slots_[id - 1].info;
+  uint16_t response = info.responseMs == CAM_RESPONSE_UNKNOWN ? old.responseMs : info.responseMs;
+  info.responseMs = response;
+  for (int i = 0; i < CAM_MAX_SENSORS; i++) {
+    if (!slots_[i].used || memcmp(slots_[i].mac, mac, 6) != 0) continue;
+    slots_[i].info = info;
+    // Now running the image it was fetching: the update is over.
+    if (health_[i].updating && imageFor(info.chip) && imageFor(info.chip)->image.version == info.version) health_[i].updating = false;
+  }
+  if (info == old) return;
   std::string text = camNodeInfoText(info);
   storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());
-  for (Slot& s : slots_)
-    if (s.used && memcmp(s.mac, mac, 6) == 0) s.info = info;
+  bool known = !old.version.empty();  // otherwise this is the first the hub hears, and its restarts are old news
+  if (known && info.restarts != old.restarts && camRestartIsFault(info.restart)) {
+    SensorReport r;
+    r.battery = health_[id - 1].battery;
+    logEvent(id, r, false, CAM_EVENT_NODE_FAULT);
+    notifyHook(id, CAM_EVENT_NODE_FAULT, false);
+  }
 }
 
 // Smoothed, so a single weak packet does not count. Weak after a few, and strong again only with some margin.
@@ -429,6 +590,7 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
     status = 404;
     return camJsonError("unknown sensor");
   }
+  if (r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
   // The reply is the confirmation, so it waits for storage as an ESP-NOW confirmation does.
   if (!persist()) {
     status = 507;
@@ -508,6 +670,9 @@ void SensorCamServer::rescan() {
     CamNodeInfo info;  // likewise: a damaged file is as if the node had said nothing
     std::string infoText;
     if (!storage_.readFile(s.name + "/about.txt", infoText, 256) || !camParseNodeInfo(infoText, info)) info = CamNodeInfo();
+    std::string batteryText;  // and a damaged battery log is no forecast
+    std::vector<CamBatteryPoint> battery;
+    if (!storage_.readFile(s.name + "/battery.txt", batteryText, 8192) || !camParseBatteryLog(batteryText, battery)) battery.clear();
     uint8_t nodePublic[CAM_X25519_LEN], nodeKey[CAM_NODE_KEY_LEN];
     // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
     // shows on the ESP-NOW page as refused, rather than being trusted with a key that may not be its own.
@@ -534,7 +699,11 @@ void SensorCamServer::rescan() {
         if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, settings)) settings = CamSensorSettings();
         slots_[id - 1].settings = settings;
         slots_[id - 1].node = node;
+        uint16_t response = slots_[id - 1].info.responseMs;  // only in memory
         slots_[id - 1].info = info;
+        slots_[id - 1].info.responseMs = response;
+        slots_[id - 1].batteryAt = battery.empty() ? 0 : battery.back().t;
+        slots_[id - 1].daysLeft = camBatteryDaysLeft(battery);
         slots_[id - 1].paired = paired;
         slots_[id - 1].key = paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
         if (paired) memcpy(slots_[id - 1].nodePublic, nodePublic, CAM_X25519_LEN);

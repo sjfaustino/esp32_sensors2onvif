@@ -8,6 +8,14 @@ static const int HEADER_LEN = 13;
 static const int TARGET_LEN = 3;
 
 static uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
+static uint16_t readU16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+static void put32(uint8_t* p, uint32_t v) {
+  for (int i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i));
+}
+static void put16(uint8_t* p, uint16_t v) {
+  p[0] = (uint8_t)v;
+  p[1] = (uint8_t)(v >> 8);
+}
 
 bool parseSensorPacket(const uint8_t* d, int len, SensorReport& out) {
   if (len < 1 || d[0] != CAM_REPORT) return false;
@@ -61,11 +69,16 @@ static bool printable(const std::string& t) {
 }
 
 CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, CamNodeInfo& out) {
-  int body = len - CAM_SIGNATURE_LEN, at = 6;
-  if (body < 8 || d[0] != CAM_NODE_INFO || d[5] > 1) return CAM_PACKET_INVALID;
+  int body = len - CAM_SIGNATURE_LEN, at = CAM_NODE_INFO_HEAD;
+  if (body < CAM_NODE_INFO_HEAD + 2 || d[0] != CAM_NODE_INFO || d[5] > 1 || d[6] >= CAM_RESTART_KINDS) return CAM_PACKET_INVALID;
   CamNodeInfo info;
   info.everyS = readU32(d + 1);
   info.saving = d[5] == 1;
+  info.restart = d[6];
+  info.restarts = readU16(d + 7);
+  info.responseMs = readU16(d + 9);
+  info.chip = readU16(d + 11);
+  info.refused = readU32(d + 13);
   for (std::string* text : {&info.sensor, &info.version}) {
     if (at >= body || at + 1 + d[at] > body) return CAM_PACKET_INVALID;
     text->assign((const char*)d + at + 1, d[at]);
@@ -88,8 +101,13 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
     size_t eq = line.find('=');
     std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
     if (!printable(value)) return false;
-    if (key == "every") info.everyS = (uint32_t)strtoul(value.c_str(), nullptr, 10);
+    unsigned long n = strtoul(value.c_str(), nullptr, 10);
+    if (key == "every") info.everyS = (uint32_t)n;
     else if (key == "saving") info.saving = value == "1";
+    else if (key == "restart") info.restart = n < CAM_RESTART_KINDS ? (uint8_t)n : CAM_RESTART_UNKNOWN;
+    else if (key == "restarts") info.restarts = (uint16_t)n;
+    else if (key == "chip") info.chip = (uint16_t)n;
+    else if (key == "refused") info.refused = (uint32_t)n;
     else if (key == "sensor") info.sensor = value;
     else if (key == "version") info.version = value;
     else return false;
@@ -99,7 +117,28 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
 }
 
 std::string camNodeInfoText(const CamNodeInfo& i) {
-  return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n";
+  return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nrestart=" + std::to_string(i.restart) + "\nrestarts=" +
+         std::to_string(i.restarts) + "\nchip=" + std::to_string(i.chip) + "\nrefused=" + std::to_string(i.refused) + "\nsensor=" + i.sensor +
+         "\nversion=" + i.version + "\n";
+}
+
+const char* camRestartName(uint8_t reason) {
+  static const char* const NAMES[CAM_RESTART_KINDS] = {"unknown", "power on", "reset button", "software", "crash", "watchdog", "brownout"};
+  return reason < CAM_RESTART_KINDS ? NAMES[reason] : NAMES[0];
+}
+
+std::string camChipName(uint16_t chip) {
+  switch (chip) {
+    case 0: return "ESP32";
+    case 2: return "ESP32-S2";
+    case 5: return "ESP32-C3";
+    case 9: return "ESP32-S3";
+    case 12: return "ESP32-C2";
+    case 13: return "ESP32-C6";
+    case 16: return "ESP32-H2";
+    case CAM_CHIP_UNKNOWN: return "unknown";
+    default: return "chip " + std::to_string(chip);
+  }
 }
 
 uint32_t camAutoSilentS(uint32_t everyS) {
@@ -108,18 +147,128 @@ uint32_t camAutoSilentS(uint32_t everyS) {
   return s < CAM_MIN_SILENT_S ? CAM_MIN_SILENT_S : s > CAM_MAX_SILENT_S ? CAM_MAX_SILENT_S : (uint32_t)s;
 }
 
-void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {
-  uint8_t d[7] = {CAM_CONFIRMATION, r.input, (uint8_t)r.active, (uint8_t)r.counter, (uint8_t)(r.counter >> 8), (uint8_t)(r.counter >> 16), (uint8_t)(r.counter >> 24)};
-  uint8_t s[20];
-  signature(sensorMac, d, sizeof(d), key, s);
-  memcpy(out, d, sizeof(d));
-  memcpy(out + sizeof(d), s, CAM_SIGNATURE_LEN);
+void camConfirmationBody(const SensorReport& r, const CamForNode& e, uint8_t d[CAM_CONFIRMATION_BODY]) {
+  d[0] = CAM_CONFIRMATION;
+  d[1] = r.input;
+  d[2] = (uint8_t)r.active;
+  put32(d + 3, r.counter);
+  put32(d + 7, e.hubTime);
+  put32(d + 11, e.everyS);
+  put16(d + 15, e.repeatS);
+  put32(d + 17, e.walkUntil);
+  d[21] = e.update ? 1 : 0;
 }
 
-std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const std::string& key) {
+void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key, uint8_t out[CAM_CONFIRMATION_LEN]) {
+  camConfirmationBody(r, extra, out);
+  uint8_t s[20];
+  signature(sensorMac, out, CAM_CONFIRMATION_BODY, key, s);
+  memcpy(out + CAM_CONFIRMATION_BODY, s, CAM_SIGNATURE_LEN);
+}
+
+std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, const CamForNode& extra, const std::string& key) {
   uint8_t out[CAM_CONFIRMATION_LEN];
-  camConfirmationInto(sensorMac, r, key, out);
+  camConfirmationInto(sensorMac, r, extra, key, out);
   return std::string((const char*)out, sizeof(out));
+}
+
+static const char SEAL_LABEL[] = "sensors2onvif seal";
+
+// XORs the key stream into data, in place.
+static void sealStream(const std::string& key, bool fromHub, uint32_t number, uint8_t* data, int len) {
+  uint8_t sealKey[20];
+  camHmacSha1((const uint8_t*)key.data(), key.size(), (const uint8_t*)SEAL_LABEL, sizeof(SEAL_LABEL) - 1, nullptr, 0, sealKey);
+  for (int block = 0; block * 20 < len; block++) {
+    uint8_t in[6] = {(uint8_t)(fromHub ? 1 : 0), 0, 0, 0, 0, (uint8_t)block}, stream[20];
+    put32(in + 1, number);
+    camHmacSha1(sealKey, sizeof(sealKey), in, sizeof(in), nullptr, 0, stream);
+    for (int i = 0; i < 20 && block * 20 + i < len; i++) data[block * 20 + i] ^= stream[i];
+  }
+  memset(sealKey, 0, sizeof(sealKey));
+}
+
+int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out) {
+  out[0] = CAM_SEALED;
+  put32(out + 1, number);
+  memcpy(out + CAM_SEALED_EXTRA, inner, innerLen);
+  sealStream(key, fromHub, number, out + CAM_SEALED_EXTRA, innerLen);
+  uint8_t s[20];
+  signature(mac, out, CAM_SEALED_EXTRA + innerLen, key, s);
+  memcpy(out + CAM_SEALED_EXTRA + innerLen, s, CAM_SIGNATURE_LEN);
+  return CAM_SEALED_EXTRA + innerLen + CAM_SIGNATURE_LEN;
+}
+
+int camOpenSealed(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax) {
+  int inner = len - CAM_SEALED_EXTRA - CAM_SIGNATURE_LEN;
+  if (len < 1 || d[0] != CAM_SEALED || inner < 1 || inner > CAM_SEALED_MAX_INNER || inner + CAM_SIGNATURE_LEN > outMax) return 0;
+  if (checkSignature(mac, d, len, key) != CAM_PACKET_SIGNED) return -1;
+  memcpy(out, d + CAM_SEALED_EXTRA, inner);
+  sealStream(key, fromHub, readU32(d + 1), out, inner);
+  uint8_t s[20];
+  signature(mac, out, inner, key, s);
+  memcpy(out + inner, s, CAM_SIGNATURE_LEN);
+  return inner + CAM_SIGNATURE_LEN;
+}
+
+CamPacketCheck camCheckFirmwareAsk(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, CamFirmwareAsk& out) {
+  if (len != CAM_FIRMWARE_ASK_LEN || d[0] != CAM_FIRMWARE_ASK) return CAM_PACKET_INVALID;
+  out.image = readU32(d + 1);
+  out.offset = readU32(d + 5);
+  return checkSignature(mac, d, len, key);
+}
+
+int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uint32_t offset, const uint8_t* part, int partLen, const std::string& key,
+                    uint8_t out[CAM_FIRMWARE_PART_LEN_MAX]) {
+  if (partLen > CAM_FIRMWARE_PART_MAX) partLen = CAM_FIRMWARE_PART_MAX;
+  out[0] = CAM_FIRMWARE_PART;
+  put32(out + 1, image);
+  put32(out + 5, size);
+  put32(out + 9, offset);
+  memcpy(out + CAM_FIRMWARE_PART_HEAD, part, partLen);
+  uint8_t s[20];
+  signature(nodeMac, out, CAM_FIRMWARE_PART_HEAD + partLen, key, s);
+  memcpy(out + CAM_FIRMWARE_PART_HEAD + partLen, s, CAM_SIGNATURE_LEN);
+  return CAM_FIRMWARE_PART_HEAD + partLen + CAM_SIGNATURE_LEN;
+}
+
+bool camCheckNodeImage(const std::function<bool(size_t, char*, size_t)>& read, size_t size, CamNodeImage& out) {
+  static const size_t BLOCK = 1024;
+  const size_t markLen = strlen(CAM_NODE_IMAGE_MARK), keep = markLen + CAM_NODE_TEXT_MAX;
+  if (size < 64 || size > CAM_MAX_NODE_IMAGE) return false;
+  // Read in blocks, each with the end of the one before, so a version that spans two is still found.
+  char buf[BLOCK + 64];
+  size_t carried = 0;
+  uint32_t hash = 2166136261u;
+  std::string version;
+  bool found = false;
+  uint16_t chip = 0;
+  for (size_t at = 0; at < size;) {
+    size_t n = size - at < BLOCK ? size - at : BLOCK;
+    if (!read(at, buf + carried, n)) return false;
+    if (at == 0) {
+      if ((uint8_t)buf[0] != 0xE9) return false;  // an ESP32 app image starts so
+      chip = readU16((const uint8_t*)buf + 12);
+    }
+    for (size_t i = 0; i < n; i++) hash = (hash ^ (uint8_t)buf[carried + i]) * 16777619u;
+    size_t total = carried + n;
+    for (size_t i = 0; !found && i + markLen <= total; i++) {
+      if (memcmp(buf + i, CAM_NODE_IMAGE_MARK, markLen) != 0) continue;
+      size_t j = i + markLen;
+      while (j < total && buf[j] && j - (i + markLen) <= (size_t)CAM_NODE_TEXT_MAX) j++;
+      if (j == total && at + n < size) break;  // the version runs into the next block, which brings it whole
+      version.assign(buf + i + markLen, j - (i + markLen));
+      found = true;
+    }
+    at += n;
+    carried = total < keep ? total : keep;
+    memmove(buf, buf + total - carried, carried);
+  }
+  if (!found || version.empty() || !printable(version)) return false;
+  out.chip = chip;
+  out.version = version;
+  out.number = hash ? hash : 1;
+  out.size = (uint32_t)size;
+  return true;
 }
 
 static bool smallNumber(const std::string& s, int& out) {  // digits only, up to 9999
@@ -184,6 +333,8 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
     uint32_t n = (uint32_t)atol(value.c_str());
     if (key == "late" && n >= 1 && n <= CAM_MAX_LATE_S) s.lateS = n;
     else if (key == "silent" && n >= CAM_MIN_SILENT_S && n <= CAM_MAX_SILENT_S) s.silentS = n;
+    else if (key == "every" && n >= CAM_MIN_EVERY_S && n <= CAM_MAX_EVERY_S) s.everyS = n;
+    else if (key == "repeat" && n >= 1 && n <= CAM_MAX_REPEAT_S) s.repeatS = n;
     else return false;
   }
   out = s;
@@ -191,13 +342,75 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
 }
 
 std::string camNodeSettingsText(const CamNodeSettings& s) {
-  return (s.lateS ? "late=" + std::to_string(s.lateS) + "\n" : std::string()) + (s.silentS ? "silent=" + std::to_string(s.silentS) + "\n" : std::string());
+  auto line = [](const char* key, uint32_t v) { return v ? std::string(key) + "=" + std::to_string(v) + "\n" : std::string(); };
+  return line("late", s.lateS) + line("silent", s.silentS) + line("every", s.everyS) + line("repeat", s.repeatS);
 }
 
 bool camQuiet(const CamSensorSettings& s, int minute) {
   if (minute < 0 || s.quietFrom < 0) return false;
   if (s.quietFrom < s.quietTo) return minute >= s.quietFrom && minute < s.quietTo;
   return minute >= s.quietFrom || minute < s.quietTo;  // across midnight
+}
+
+bool camParseBatteryLog(const std::string& text, std::vector<CamBatteryPoint>& out) {
+  std::vector<CamBatteryPoint> points;
+  for (size_t at = 0; at < text.size();) {
+    size_t end = text.find('\n', at);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(at, end - at);
+    at = end + 1;
+    if (line.empty()) continue;
+    char* rest = nullptr;
+    CamBatteryPoint p;
+    p.t = strtoll(line.c_str(), &rest, 10);
+    long percent = rest && *rest == ' ' ? strtol(rest + 1, &rest, 10) : -1;
+    if (!rest || *rest || percent < 0 || percent > 100 || p.t <= 0) return false;
+    p.percent = (uint8_t)percent;
+    points.push_back(p);
+  }
+  out = points;
+  return true;
+}
+
+std::string camBatteryLogText(const std::vector<CamBatteryPoint>& points) {
+  std::string out;
+  for (const CamBatteryPoint& p : points) out += std::to_string((long long)p.t) + " " + std::to_string(p.percent) + "\n";
+  return out;
+}
+
+bool camAddBatteryPoint(std::vector<CamBatteryPoint>& points, int64_t t, uint8_t percent) {
+  if (percent > 100) return false;
+  if (!points.empty() && percent >= points.back().percent + 10) points.clear();  // a new or recharged battery
+  if (!points.empty() && t - points.back().t < CAM_BATTERY_POINT_EVERY_S && t >= points.back().t) return false;
+  CamBatteryPoint p;
+  p.t = t;
+  p.percent = percent;
+  points.push_back(p);
+  if ((int)points.size() > CAM_BATTERY_POINTS) points.erase(points.begin(), points.end() - CAM_BATTERY_POINTS);
+  return true;
+}
+
+int camBatteryDaysLeft(const std::vector<CamBatteryPoint>& points) {
+  if (points.empty()) return -1;
+  const int64_t last = points.back().t, from = last - 30 * 86400;
+  double n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+  int64_t first = last;
+  for (const CamBatteryPoint& p : points) {
+    if (p.t < from) continue;
+    double x = (double)(p.t - last) / 86400.0, y = p.percent;  // days, from the last reading
+    n++;
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    sxy += x * y;
+    if (p.t < first) first = p.t;
+  }
+  if (n < 4 || last - first < 3 * 86400) return -1;
+  double slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);  // percent a day
+  if (!(slope < 0) || -slope * (double)(last - first) / 86400.0 < 3) return -1;  // not clearly going down: noise, or a solar panel keeping up
+  double now = (sy - slope * sx) / n;  // the line's value at the last reading
+  double days = now / -slope;
+  return days < 0 ? 0 : days > 9999 ? 9999 : (int)days;
 }
 
 uint8_t reportDirection(const SensorReport& r) {
