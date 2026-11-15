@@ -382,6 +382,134 @@
       $("armWarn").hidden = a.mode != "disarmed";
     } catch (e) {}
   }
+  // What each event means and what to do about it, for the Events page and each sensor's own page.
+  const EXPLAIN = {
+    0: [
+      "The sensor saw something, and the NVR was told, so it records.",
+      "Check the recording if nobody was expected.",
+    ],
+    1: [
+      "No report from this sensor for longer than its silent time. Its battery may be flat, or it was unplugged, moved or taken.",
+      "Check the sensor and its battery. This clears by itself once it reports again.",
+    ],
+    2: ["Its battery is at 20% or less.", "Replace or charge it soon."],
+    3: [
+      "The sensor fired during its quiet hours, so the NVR was not told.",
+      "If this should have been recorded, change the quiet hours in the sensor's Alert settings.",
+    ],
+    4: [
+      "Its radio signal has stayed below -80 dBm, so its messages may be lost.",
+      "Move the node or the hub closer, or raise the node off the ground and away from metal.",
+    ],
+    5: [
+      "The NVR was not listening when this alert came, so it did not record it then. The hub keeps it and plays it as a past event once the NVR listens again.",
+      "Check that the NVR is on and on the network.",
+    ],
+    6: [
+      "The NVR has not been listening for 3 minutes, so alerts are not being recorded.",
+      "Check that the NVR is on, on the network, and still has the hub's channel set up.",
+    ],
+    7: ["The NVR is listening again. Alerts kept for it play now.", ""],
+    8: ["The hub started, for the reason shown.", "If power cuts are common, a small UPS keeps it running."],
+    9: [
+      "The hub was off its Wi-Fi for the time shown. Alerts in that time reached the NVR afterwards, as past events.",
+      "If this happens often, check the Wi-Fi where the hub is. Someone may be keeping it off on purpose.",
+    ],
+    10: [
+      "The sensor fired while the hub was disarmed, so the NVR was not told.",
+      "Arm the hub whenever nobody is home.",
+    ],
+    11: ["The hub was armed, from where the details say.", ""],
+    12: ["The hub was disarmed, from where the details say. Alerts are logged but not recorded.", ""],
+    13: [
+      "An interior sensor fired while the hub was armed home, so the NVR was not told.",
+      "If it should always record, mark it perimeter in its Alert settings.",
+    ],
+    14: ["The hub was armed home: interior sensors are logged but not recorded.", ""],
+    15: [
+      "A test alert, sent from the page or Home Assistant. It records like a real one.",
+      "Check that the NVR has the recording.",
+    ],
+    16: [
+      "The hub restarted by itself three times within an hour: it is crashing, losing power or being restarted.",
+      "Check its power supply. Device Info shows the reasons.",
+    ],
+    17: [
+      "The node restarted because of a fault, such as a brownout from a weak battery, or a bad wire.",
+      "Check its battery and its wiring.",
+    ],
+    18: ["From its readings, the battery will run out within a week.", "Replace or charge it."],
+    19: [
+      "Several nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a jammer.",
+      "Check the property now: this can mean a break-in.",
+    ],
+    20: [
+      "The sensor fired 20 times within an hour. Every alert still went to the NVR, but a fault or a bad aim is likelier than that many intruders.",
+      "Check what it sees, such as moving plants, sun, pets or heating, and its wiring.",
+    ],
+  };
+  function explain(e) {
+    if (e.kind == 0 && !e.active)
+      return "The sensor reports nothing in front of it any more. Its alert ends when the alert time runs out.";
+    const [what, todo] = EXPLAIN[e.kind] || ["", ""];
+    return what + (todo ? " " + todo : "");
+  }
+  // A short next step for each problem the Overview lists.
+  const PROBLEM_HINT = {
+    silent: "check its battery, or whether it was moved",
+    "low battery": "replace or charge it",
+    "weak signal": "move it or the hub closer",
+    "messages refused": "it may have the wrong key; pair it again",
+  };
+  const sensorLink = (sensor, text) =>
+    el("a", { href: "#sensor:" + sensor, textContent: text, onclick: (ev) => ev.stopPropagation() });
+  // "Since armed away at 23:10: 2 alerts, Back door 02:14 and Gate 02:15; all reached the NVR", from the events kept.
+  function sinceArmed(events, mode, nvrSet) {
+    const ARM = [11, 14],
+      at = (e) => (e.received ? new Date(e.received) : null),
+      clock = (d) =>
+        !d
+          ? "?"
+          : d.toDateString() == new Date().toDateString()
+            ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : d.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    let end = 0;
+    if (mode == "disarmed") {
+      end = events.findIndex((e) => e.kind == 12);
+      if (end < 0) return "";
+    }
+    const start = events.findIndex((e, i) => i > end && ARM.includes(e.kind));
+    const span = events.slice(mode == "disarmed" ? end + 1 : 0, start < 0 ? events.length : start);
+    const alerts = span.filter((e) => e.sensor != "hub" && ((e.kind == 0 && e.active) || e.kind == 15)).reverse(),
+      missed = span.filter((e) => e.kind == 5).length;
+    const head =
+      start < 0
+        ? mode == "disarmed"
+          ? "Before the disarm at " + clock(at(events[end]))
+          : "Since it was last armed"
+        : mode == "disarmed"
+          ? "While armed, " + clock(at(events[start])) + " to " + clock(at(events[end]))
+          : "Since armed at " + clock(at(events[start]));
+    const count = (start < 0 ? "at least " : "") + alerts.length + (alerts.length == 1 ? " alert" : " alerts");
+    return (
+      head +
+      ": " +
+      (alerts.length
+        ? count +
+          ", " +
+          alerts
+            .slice(0, 6)
+            .map((e) => (e.name || e.sensor) + " " + clock(at(e)))
+            .join(", ") +
+          (alerts.length > 6 ? " and more" : "") +
+          (missed
+            ? "; " + missed + " did not reach the NVR"
+            : nvrSet
+              ? "; all reached the NVR"
+              : "; with no NVR address set, the hub cannot tell whether they reached it")
+        : "no alerts.")
+    );
+  }
   // What someone checking the hub wants at a glance. Each line says what is wrong, if anything.
   async function loadOverview() {
     loadArm();
@@ -413,12 +541,20 @@
         ],
         ["Work dropped for lack of memory", o.dropped],
       ]);
-      $("ovActive").textContent = o.active.length
-        ? o.active.map((a) => who(a) + (a.past ? " (a past event replaying)" : "")).join(", ")
-        : "None.";
-      $("ovProblems").textContent = o.problems.length
-        ? o.problems.map((p) => who(p) + ": " + p.problem).join("; ")
-        : "None.";
+      const listOf = (items, line) =>
+        items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : ["None."];
+      $("ovActive").replaceChildren(
+        ...listOf(o.active, (a) => [sensorLink(a.sensor, who(a)), a.past ? " (a past event replaying)" : ""]),
+      );
+      $("ovProblems").replaceChildren(
+        ...listOf(o.problems, (p) => [
+          sensorLink(p.sensor, who(p)),
+          ": " + p.problem + (PROBLEM_HINT[p.problem] ? " (" + PROBLEM_HINT[p.problem] + ")" : ""),
+        ]),
+      );
+      call("GET", "/api/events")
+        .then((events) => ($("ovSince").textContent = sinceArmed(events, o.mode, o.nvr.set)))
+        .catch(() => {});
       showStatus(o);
       const items = readyItems(o);
       $("ovReadyBox").hidden = items.every((i) => i.ok);
@@ -447,7 +583,7 @@
       { ok: r.clock, text: "The hub's clock is set", view: "time" },
       { ok: o.nvr.set, text: "The NVR's address is set", view: "nvr" },
       { ok: o.nvr.listening, text: "The NVR is listening", view: "nvr" },
-      { ok: r.heard, text: "At least one sensor has reported", view: "sensors" },
+      { ok: r.heard, text: "At least one sensor has reported", view: "espnow" },
       {
         ok: test != null && test < 30 * 86400,
         text:
@@ -693,6 +829,8 @@
       if (t.clear != null) await add("clear.h264");
       if (t.clearPreview) await add("clear.jpg");
       await add("text.json");
+      await add("plan.jpg"); // the floor plan, and where each sensor is on it
+      await add("plan.json");
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
         if (s.late || s.silent || s.reportEvery || s.repeat) await add(s.mac + "/settings.txt"); // any of its settings
@@ -849,7 +987,7 @@
             "tr",
             null,
             ...[
-              n.name || "-",
+              sensorLink(n.node + "/" + n.input, n.name || "(no name)"),
               n.node,
               n.input,
               STATES[n.state] +
@@ -866,7 +1004,7 @@
               (n.version || "-") + (n.chip ? " (" + n.chip + ")" : "") + (n.update ? ", " + n.update : ""),
               n.restarts == null ? "-" : n.restarts + ", last: " + n.restart + (n.restartFault ? " (a fault)" : ""),
               n.responseMs == null ? "-" : n.responseMs + " ms",
-            ].map((v) => el("td", { textContent: v })),
+            ].map((v) => el("td", null, v)),
           ),
         ),
       );
@@ -1051,6 +1189,11 @@
           );
         }),
       );
+      if (typeof plan != "undefined")
+        plan.draw($("walkPlan"), esp.nodes, (n) => {
+          const f = walkFired.get(n.node + "/" + n.input);
+          return !walkSeen ? "ok" : f && Date.now() - f.at < 5000 ? "alert" : f ? "fired" : "waiting";
+        });
       if (!esp.nodes.length)
         $("walkMsg").textContent = "No sensor nodes yet. Pair one under Sensors Manager > Nodes and pairing.";
     } catch (e) {}
@@ -1170,20 +1313,24 @@
             )
             .filter(Boolean)
             .join(", ");
-          return el(
+          const row = el(
             "tr",
-            null,
+            { className: "explains", title: "Tap for what this means" },
             el("td", {
               textContent: when ? ago(when) : "Clock not set",
               title: when ? new Date(when).toLocaleString() : "",
             }),
-            ...[
-              e.sensor == "hub" ? "Hub" : e.name || e.sensor,
-              what,
-              details || "-",
-              e.battery == null ? "-" : e.battery + "%",
-            ].map((v) => el("td", { textContent: v })),
+            el("td", null, e.sensor == "hub" ? "Hub" : sensorLink(e.sensor, e.name || e.sensor)),
+            ...[what, details || "-", e.battery == null ? "-" : e.battery + "%"].map((v) =>
+              el("td", { textContent: v }),
+            ),
           );
+          row.onclick = () => {
+            const next = row.nextElementSibling;
+            if (next && next.classList.contains("explanation")) next.remove();
+            else row.after(el("tr", { className: "explanation" }, el("td", { colSpan: 5, textContent: explain(e) })));
+          };
+          return row;
         }),
       );
       $("evNone").textContent = list.length
@@ -1387,7 +1534,11 @@
     f.classList.toggle("open", on);
     f.nextElementSibling.classList.toggle("show", on);
   }
-  function show(view) {
+  // A hash such as "sensor:AA-BB-CC-DD-EE-01/1" opens a page for one thing; the part after the colon goes to its file.
+  function show(hash) {
+    const colon = hash.indexOf(":"),
+      arg = colon < 0 ? "" : decodeURIComponent(hash.slice(colon + 1));
+    let view = colon < 0 ? hash : hash.slice(0, colon);
     if (!$("view-" + view)) view = "overview";
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id != "view-" + view));
     items.forEach((i) => {
@@ -1410,7 +1561,10 @@
     loadStatus();
     setSys(view);
     if (view != "sensors") info(view);
+    for (const hook of window.viewHooks || []) hook(view, arg);
   }
+  // For plan.js, sensor.js and assist.js, which add pages of their own.
+  window.hub = { signal, batteryLeft, heardAgo, ago, explain, headRow, fill, sensorLink, loadOverview };
   firsts.forEach(
     (f) =>
       (f.onclick = () => {

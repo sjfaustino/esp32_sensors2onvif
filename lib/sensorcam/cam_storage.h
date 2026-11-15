@@ -16,6 +16,8 @@ const size_t CAM_MAX_FRAME = 32 * 1024;  // the one picture buffer, reserved at 
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set, and a sensor's
 // name.txt and settings.txt, and a node's settings.txt.
+// plan.jpg and plan.json, at the top, are the floor plan and where each sensor is on it; they count as a preview and a
+// text.
 // CAM_PATH_PREVIEW is the JPEG beside a picture, made by the browser for ONVIF snapshots, because the hub cannot decode H.264.
 enum CamPathKind { CAM_PATH_INVALID, CAM_PATH_CLEAR, CAM_PATH_NODE, CAM_PATH_SENSOR, CAM_PATH_FILE, CAM_PATH_TEXT, CAM_PATH_PREVIEW };
 std::string camPreviewPath(const std::string& picturePath);

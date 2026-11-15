@@ -128,7 +128,27 @@ or Home Assistant, and a daily check. It goes once all are ticked, and comes bac
 **Alarm > Walk test** is for walking the property with a phone. **Start on every node** turns on every node's walk
 test for 10 minutes; each sensor that sees you is ticked, with its signal and how long the hub took to hear it, while
 each node's light blinks its signal too. Sensors still waiting at the end may not cover where you walked. Alerts still
-reach the NVR meanwhile.
+reach the NVR meanwhile. With a floor plan, the walk test shows it too, each sensor lighting up as it fires.
+
+**Alarm > Floor plan** shows a picture of the property with each sensor where it is: red while it fires, amber with a
+problem, grey until it is first heard. **Choose a picture** takes any image, such as a photo of a drawing or a
+screenshot of a map; the browser makes it a JPEG of at most 30 KB, as the hub keeps it in its picture buffer, smaller
+and coarser until it fits. Then choose each sensor and tap where it is. The hub keeps the picture as `plan.jpg` and the
+places as `plan.json`, at the top of its storage, and a full backup carries both. Tapping a sensor on the plan opens its
+page.
+
+Each sensor has a page of its own, opened by its name anywhere: on the Overview, the Events and Nodes and pairing pages,
+and the floor plan. It shows how the sensor is now, when it fired over the last 7 days by hour of the day, its battery
+readings over time, and its latest events, each explained, with a button for a test alert.
+
+**Test everything**, on the Overview, sends a test alert from a sensor you choose and checks each step it takes: that
+the hub sent it, that the NVR was listening, that Notifications delivered its message, and that Home Assistant is
+connected. It ends by saying what recording to look for on the NVR, the one step the hub cannot check.
+
+Under its arm controls the Overview says what happened since the hub was armed, or, once disarmed, while it was:
+"While armed, 23:10 to 07:02: 2 alerts, Back door 02:14, Gate 02:15; all reached the NVR". It reads the latest 64
+events, so after a busy night it says "at least". On the Events page, tapping an event says what it means and what to
+do; the Overview's problems carry a short next step too.
 
 **Send test alert**, in each sensor's Alert settings and as a button on each sensor in Home Assistant, makes a real alert
 from that sensor, whatever the alarm is set to: the NVR records it with that sensor's picture, the hub checks the NVR got
@@ -323,7 +343,7 @@ and the ESP-NOW key and token that sensors use.
 deleted and the start makes new ones, as on the first. Every sensor node must then be set up or paired again, so use it
 only if a key may have got out. A settings backup made before brings the old keys back if restored.
 
-A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, and each node's settings.
+A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, each node's settings, and the floor plan.
 Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
 pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the
 settings backup, it holds the passwords in plain text, and the keys too: the hub's pairing key, the ESP-NOW key and, in a
@@ -582,7 +602,8 @@ one. A stolen node then gives away its own key only.
 The node makes an X25519 key pair (RFC 7748) when it is first set up, keeps the private key, and has the fingerprint of
 its public key on a label: the first 6 bytes of the public key's SHA-1, in upper-case hex, as `4F2A-91C7-03BD`. To pair:
 
-1. On the Nodes and pairing page, press **Allow new nodes to pair for 2 minutes**.
+1. On the Nodes and pairing page, press **Allow new nodes to pair for 2 minutes**, or **Add a sensor** and choose a
+   sensor node, which does the same.
 2. The node sends a **hello** to the broadcast address `FF:FF:FF:FF:FF:FF`, on channel 1, then 2 and so on, waiting about
    100 ms on each for an answer, and repeats every few seconds until it is paired.
 3. The hub lists the node with its fingerprint. Approve it once the fingerprint matches the label: that check is what stops
@@ -620,6 +641,10 @@ key is in `pairing.txt` in its folder, which a full backup includes, and deletin
 up with the shared ESP-NOW key keep working as before.
 
 ## Sensor input over HTTP
+
+**Add a sensor**, on the Nodes and pairing page, sets one up: say where it is, give its MAC address or keep the
+made-up one offered, and it shows the exact address the device must call, with the hub's token in it, and a Copy
+button; then it waits for the device's first report and says when it arrives.
 
 Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.
 The ports can be changed on the web page, under **Network Manager > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's

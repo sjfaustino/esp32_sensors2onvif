@@ -303,3 +303,111 @@ h2.sub {
 #walkList td {
   padding: 4px 8px 4px 0;
 }
+
+/* The floor plan, with a spot for each sensor. */
+.plan {
+  position: relative;
+  max-width: 900px;
+  margin: 8px 0;
+}
+.planImg {
+  display: block;
+  width: 100%;
+  border: 1px solid #b9c0c8;
+  border-radius: 6px;
+}
+.spot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #fff;
+  text-decoration: none;
+  background: #1e6b34;
+  box-shadow: 0 0 0 2px #fff;
+}
+.spot.alert {
+  background: #b3261e;
+  animation: pulse 1s infinite alternate;
+}
+.spot.problem {
+  background: #b07800;
+}
+.spot.never {
+  background: #8a939c;
+}
+.spot.fired {
+  background: #1f5fbf;
+}
+.spot.waiting {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 0 0 2px #1f5fbf;
+}
+@keyframes pulse {
+  to {
+    box-shadow: 0 0 0 6px rgba(179, 38, 30, 0.35);
+  }
+}
+
+/* Events that open an explanation, a sensor's week, its battery, and the guides. */
+tr.explains {
+  cursor: pointer;
+}
+tr.explanation td {
+  font-size: 13px;
+  color: #5a636d;
+  padding: 2px 0 8px;
+}
+ul.explained {
+  font-size: 14px;
+  padding-left: 18px;
+}
+ul.explained li {
+  margin-bottom: 6px;
+}
+table.week {
+  border-collapse: collapse;
+  font-size: 11px;
+}
+table.week th {
+  font-weight: normal;
+  text-align: left;
+  padding-right: 4px;
+}
+table.week td {
+  width: 12px;
+  height: 14px;
+  border: 1px solid #eef0f2;
+}
+table.week td.hit {
+  background: #b3261e;
+}
+svg.chart {
+  width: 100%;
+  max-width: 480px;
+  font-size: 9px;
+}
+svg.chart .grid {
+  stroke: #dde1e5;
+}
+svg.chart .line {
+  fill: none;
+  stroke: #1f5fbf;
+  stroke-width: 2;
+}
+dialog.guide {
+  max-width: min(92vw, 560px);
+}
+.copyRow {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.copyField {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}

@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="index.css"></head><body>
 <nav id="menu">
 <div class="first">Alarm</div>
-<div class="subs"><div class="item" data-view="overview">Overview</div><div class="item" data-view="events">Events</div><div class="item" data-view="walk">Walk test</div></div>
+<div class="subs"><div class="item" data-view="overview">Overview</div><div class="item" data-view="events">Events</div><div class="item" data-view="walk">Walk test</div><div class="item" data-view="plan">Floor plan</div></div>
 <div class="first">Sensors Manager</div>
 <div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="espnow">Nodes and pairing</div><div class="item" data-view="notify">Notifications</div><div class="item" data-view="ha">Home Assistant</div></div>
 <div class="first">Network Manager</div>
@@ -23,6 +23,8 @@
 <p class="portForm" style="margin:0 0 4px">Alarm: <b id="armState">…</b></p>
 <p class="portForm" style="margin:0 0 4px"><button id="armAway">Arm away</button> <button id="armHome">Arm home</button> <button id="disarmBtn">Disarm</button> <select id="armFor"></select></p>
 <p class="portForm" style="margin:0 0 10px;font-size:14px">A disarm from Home Assistant lasts <select id="rearmDefault"></select></p>
+<p class="portMsg" id="ovSince"></p>
+<p class="portForm"><button id="testAll">Test everything</button> <span class="note">a test alert along the whole path, checked step by step</span></p>
 <table class="info" id="ovInfo"></table>
 <h2 class="sub">Alerts now</h2><div class="portMsg" id="ovActive"></div>
 <h2 class="sub">Sensor problems</h2><div class="portMsg" id="ovProblems"></div>
@@ -30,7 +32,18 @@
 <div class="view" id="view-walk" hidden><h1>Walk test</h1>
 <p class="note">Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.</p>
 <div class="portForm"><button id="walkStart">Start on every node</button> <button id="walkStop">Stop</button></div>
-<div class="portMsg" id="walkMsg"></div><table id="walkList"></table></div>
+<div class="portMsg" id="walkMsg"></div><div id="walkPlan"></div><table id="walkList"></table></div>
+<div class="view" id="view-plan" hidden><h1>Floor plan</h1>
+<p class="note">A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too.</p>
+<div class="portForm"><button id="planUpload">Choose a picture</button> <button id="planDelete" class="del">Delete the plan</button></div>
+<div class="portForm"><select id="planSensor"></select> <button id="planRemove">Take it off the plan</button></div>
+<div class="portMsg" id="planMsg"></div><p class="note" id="planHint"></p><div id="planBox"></div></div>
+<div class="view" id="view-sensor" hidden><h1 id="snTitle">Sensor</h1>
+<p class="portForm"><button id="snTest">Send a test alert</button> <a href="#sensors">Alert settings and pictures</a></p><div class="portMsg" id="snMsg"></div>
+<table class="info" id="snFacts"></table>
+<h2 class="sub">When it fired, the last 7 days</h2><div id="snWeek"></div>
+<h2 class="sub">Battery</h2><div id="snBattery"></div>
+<h2 class="sub">Its latest events</h2><ul class="explained" id="snEvents"></ul></div>
 <div class="view" id="view-network" hidden><h1>Network</h1>
 <label class="netRow"><span>Connection</span><input id="netType" disabled></label>
 <label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
@@ -55,6 +68,7 @@
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>Nodes and pairing</h1><p class="note">The sensor nodes, which talk to the hub over ESP-NOW, a radio link of their own beside Wi-Fi.</p><table class="info" id="espInfo"></table>
 <label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
+<p class="portForm"><button id="addSensor">Add a sensor</button> <span class="note">a node, or a device that calls a web address</span></p>
 <h2 class="sub">Pairing</h2>
 <p class="note">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
 <div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
@@ -140,4 +154,7 @@
 <script src="sha256.js"></script>
 <script src="pictures.js"></script>
 <script src="sensors.js"></script>
+<script src="plan.js"></script>
+<script src="sensor.js"></script>
+<script src="assist.js"></script>
 <script src="index.js"></script></body></html>

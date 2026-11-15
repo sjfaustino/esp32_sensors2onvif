@@ -804,7 +804,7 @@ void SensorCamServer::apiFiles(const ApiRequest& r) {
   } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
     if (!sendFile(c, path, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264")) c.out = jsonFail(404, "no such file");
   } else if (fileRoute && method == "PUT" && isText) {
-    if (bodyLen > 1024) {
+    if (bodyLen > (path == "plan.json" ? 2048u : 1024u)) {  // the plan holds a place for each of up to 32 sensors
       c.out = jsonFail(413, "text is too long");
     } else {
       c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");

@@ -3,7 +3,25 @@ from e2e_common import *  # noqa: F401,F403  (the helpers every part shares)
 import e2e_common as common
 
 
+def floor_plan_tests():
+    """The floor plan's two files at the top of storage: a JPEG, and where each sensor is."""
+    if DEVICE:  # never on a real hub, which may have its own plan
+        return
+    jpeg = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + bytes(3000) + bytes([0xFF, 0xD9])
+    check('the floor plan picture is saved', api('PUT', '/api/file?path=plan.jpg', jpeg)[0] == 200)
+    got = api('GET', '/api/file?path=plan.jpg')
+    check('and read back as it was', got[0] == 200 and got[1] == jpeg)
+    check('a floor plan that is not a JPEG is refused', api('PUT', '/api/file?path=plan.jpg', b'PNG' + bytes(100))[0] == 422)
+    places = json.dumps({f'02-00-00-00-{n:02X}-01/{i}': [999, 999] for n in range(16) for i in (1, 2)})  # 32 sensors
+    check('places for 32 sensors fit', len(places) > 1024 and api('PUT', '/api/file?path=plan.json', places)[0] == 200, len(places))
+    check('more than 2 KB of places is refused', api('PUT', '/api/file?path=plan.json', 'x' * 2100)[0] == 413)
+    check('a plan of another kind of file is refused', api('PUT', '/api/file?path=plan.png', jpeg)[0] == 400)
+    check('the floor plan can be deleted', api('DELETE', '/api/file?path=plan.jpg')[0] == 200 and api('DELETE', '/api/file?path=plan.json')[0] == 200
+          and api('GET', '/api/file?path=plan.jpg')[0] == 404)
+
+
 def file_manager_tests(files, hub_files_free):
+    floor_plan_tests()
     if PASSWORD:
         check('file manager needs the password', api('GET', '/', auth=False)[0] == 401)
         check('file operations need the password', api('DELETE', f'/api/file?path={A}', auth=False)[0] == 401)
