@@ -287,12 +287,29 @@ bool CamEventLog::save(bool downloading) {
   return true;
 }
 
-void CamEventLog::csvBegin() {
-  legacyOld_ = storage_.fileSize(LEGACY_CSV_OLD);
-  legacyCur_ = storage_.fileSize(LEGACY_CSV);
+void CamEventLog::csvBegin(const std::string& sensor, time_t since) {
+  bool chosen = !sensor.empty() || since;
+  legacyOld_ = chosen ? 0 : storage_.fileSize(LEGACY_CSV_OLD);
+  legacyCur_ = chosen ? 0 : storage_.fileSize(LEGACY_CSV);
   oldRecords_ = oldBytes_ / CAM_EVENT_RECORD;
   allRecords_ = oldRecords_ + curBytes_ / CAM_EVENT_RECORD;
-  lineStart_ = lineIndex_ = 0;
+  csvSensor_ = sensor;
+  csvSince_ = since;
+  chunk_.clear();
+  // The records are in the order received. One saved before the clock was set counts as late, so halving never skips
+  // past a later one that is wanted; it is left out below anyway.
+  size_t lo = 0, hi = allRecords_;
+  while (since && lo < hi) {
+    size_t mid = lo + (hi - lo) / 2;
+    CamEvent e;
+    if (recordAt(mid, e) && e.received >= CAM_CLOCK_VALID_AFTER && e.received < since)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  firstRecord_ = lo;
+  lineStart_ = 0;
+  lineIndex_ = firstRecord_;
   line_.clear();
   chunk_.clear();
   hasMark_ = false;
@@ -338,7 +355,8 @@ size_t CamEventLog::csvRead(size_t offset, char* out, size_t len) {
           lineIndex_ = markIndex_;
           line_ = markLine_;
         } else {
-          lineStart_ = lineIndex_ = 0;
+          lineStart_ = 0;
+          lineIndex_ = firstRecord_;
           line_.clear();
         }
       }
@@ -350,7 +368,8 @@ size_t CamEventLog::csvRead(size_t offset, char* out, size_t len) {
           return done;
         }
         CamEvent e;
-        if (recordAt(lineIndex_++, e)) line_ = camEventCsvLine(e);
+        if (recordAt(lineIndex_++, e) && (csvSensor_.empty() || e.sensor == csvSensor_) && (!csvSince_ || e.received >= csvSince_))
+          line_ = camEventCsvLine(e);
       }
       if (!marked) {
         markStart_ = lineStart_;

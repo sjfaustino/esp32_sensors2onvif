@@ -35,17 +35,28 @@
     return out;
   }
 
-  // Seven rows, today last, of 24 hours each, shaded by how many alerts there were, from the full history.
+  // Seven rows, today last, of 24 hours each, shaded by how many alerts there were, from this sensor's history over the
+  // last 8 days, which covers 7 local days wherever the browser is. The hub sends one download at a time, so a busy one
+  // is asked again a few times.
   async function drawWeek(key) {
     const box = $("snWeek");
     box.replaceChildren(el("p", { className: "note", textContent: "Reading the history..." }));
-    let text;
-    try {
-      const r = await fetch("/api/events.csv");
-      if (!r.ok) throw new Error();
-      text = await r.text();
-    } catch (e) {
-      box.replaceChildren(el("p", { className: "note", textContent: "Could not read the history." }));
+    let text,
+      why = "";
+    for (let i = 0; i < 5 && text == null && shown == key; i++) {
+      try {
+        const r = await fetch("/api/events.csv?sensor=" + key + "&days=8");
+        if (r.ok) text = await r.text();
+        else why = (await r.json().catch(() => ({}))).error || "";
+        if (r.status != 503) break;
+      } catch (e) {}
+      if (text == null) await new Promise((done) => setTimeout(done, 3000));
+    }
+    if (shown != key) return; // another sensor's page was opened meanwhile
+    if (text == null) {
+      box.replaceChildren(
+        el("p", { className: "note", textContent: "Could not read the history" + (why ? ": " + why : ".") }),
+      );
       return;
     }
     const today = new Date();
@@ -197,7 +208,7 @@
             )
           : [el("li", { textContent: "None among the latest 64 events." })]),
       );
-      if (full) {
+      if (full && shown == key) {
         drawWeek(key);
         drawBattery(n.node);
       }

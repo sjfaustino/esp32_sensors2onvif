@@ -40,7 +40,9 @@ to the setup network. Networks can also be changed at any time from **Network Ma
 
 **Alarm > Events** lists the last 64 events, kept across restarts. **Download the full history (CSV)** gives
 about the last 5400, in UTC. A download cut short, by a restart or a dropped connection, shows as failed in the browser,
-so a complete file is the whole history. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and
+so a complete file is the whole history. `/api/events.csv?sensor=AA-BB-CC-DD-EE-01/1&days=7` gives one sensor's events
+over the last days, as each sensor's page uses; either part can be left out. The hub sends one download at a time and
+answers 503 to another meanwhile. A sensor can be given a name on the Sensors page, which then appears on the ESP-NOW and
 Events pages. Updating from older firmware keeps its history.
 
 A node that stays silent for 3 hours, counted from the last restart if it has not reported since, reports 20% battery or

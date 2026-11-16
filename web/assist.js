@@ -193,6 +193,7 @@
       const id = mac.value.trim().toUpperCase().replace(/:/g, "-"),
         path = id + "/" + input.value;
       let existed = false;
+      const asked = Date.now();
       try {
         existed = (await call("GET", "/api/espnow")).nodes.some((n) => n.node + "/" + n.input == path);
         if (!existed) await call("POST", "/api/mkdir?path=" + path);
@@ -235,9 +236,12 @@
         await wait(2000);
         const esp = await call("GET", "/api/espnow").catch(() => null);
         const row = esp && esp.nodes.find((n) => n.node + "/" + n.input == path);
-        if (row && row.ago != null) {
+        // A report since this was set up, not one a sensor that already existed sent before.
+        if (row && row.ago != null && Date.now() - row.ago * 1000 > asked - 2000) {
           heard.className = "portMsg";
-          heard.textContent = "✓ Its first report arrived. It is ready; try a test alert from its page.";
+          heard.textContent =
+            (existed ? "✓ A report arrived." : "✓ Its first report arrived.") +
+            " It is ready; try a test alert from its page.";
           heard.append(" ", hub.sensorLink(path, "Open its page"));
           return;
         }

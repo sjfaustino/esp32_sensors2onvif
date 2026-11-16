@@ -103,8 +103,10 @@ class CamEventLog {
   size_t bytesOnStorage() const { return oldBytes_ + curBytes_; }
 
   // The whole history as CSV: after csvBegin, csvRead hands it out piece by piece, in order or repeating a piece, and
-  // gives fewer bytes than asked only at the end. Events added meanwhile are left for the next download.
-  void csvBegin();
+  // gives fewer bytes than asked only at the end. Events added meanwhile are left for the next download. With a sensor,
+  // only its events; with since, only those received from then on, found by halving, and without the history of older
+  // firmware. One download at a time, as there is one place it has got to.
+  void csvBegin(const std::string& sensor = std::string(), time_t since = 0);
   size_t csvRead(size_t offset, char* out, size_t len);
 
  private:
@@ -124,6 +126,9 @@ class CamEventLog {
   bool hasMark_ = false;  // where the last piece began, for a piece asked for again
   size_t markStart_ = 0, markIndex_ = 0;
   std::string markLine_;
-  std::string chunk_;  // records read ahead from storage
+  std::string chunk_;      // records read ahead from storage
+  std::string csvSensor_;  // the download's choice: one sensor, and events from a time on
+  time_t csvSince_ = 0;
+  size_t firstRecord_ = 0;  // the first record that can be from csvSince_ on
   size_t chunkFirst_ = 0;
 };

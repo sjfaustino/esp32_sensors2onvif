@@ -753,8 +753,24 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the MQTT settings");
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block
-    log_.save(downloadingHistory());
-    log_.csvBegin();  // made from the log as it is sent, piece by piece, so its size is not known in advance
+    // ?sensor=AA-BB-CC-DD-EE-01/1&days=7: one sensor's, or the hub's, over the last days, as each sensor's page shows.
+    std::string sensor = queryParam(r.target, "sensor"), daysText = queryParam(r.target, "days");
+    int days = 0;
+    if (!daysText.empty() && !camNumberIn(daysText, 1, 3650, days)) {
+      c.out = jsonFail(400, "days must be 1 to 3650");
+      return true;
+    }
+    time_t now = time(nullptr);
+    if (days && now < CAM_CLOCK_VALID_AFTER) {
+      c.out = jsonFail(503, "the hub's clock is not set yet, so it cannot tell which days those are; try again");
+      return true;
+    }
+    if (downloadingHistory()) {  // one download at a time, as the log keeps one place it has got to
+      c.out = jsonFail(503, "the history is being downloaded already; try again when that is done");
+      return true;
+    }
+    log_.save(false);
+    log_.csvBegin(sensor, days ? now - (time_t)days * 86400 : 0);  // made as it is sent, so its size is not known in advance
     c.out =
         "HTTP/1.1 200 OK\r\nContent-Type: text/csv; charset=utf-8\r\nContent-Disposition: attachment; filename=\"hub-events.csv\"\r\n"
         "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n";

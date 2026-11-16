@@ -135,6 +135,12 @@ def test_full_event_history(path):
     check('the history is sent in chunks, so a download cut short shows as failed', common.last_transfer == 'chunked', common.last_transfer)
     check('a name with quotes stays one CSV field', any('"Front ""gate"""' in l for l in lines), [l for l in lines if path in l][:2])
     check('the full history needs the web password', api('GET', '/api/events.csv', auth=False)[0] == 401)
+    # One sensor's last days, as each sensor's page asks for.
+    one_code, one = api('GET', f'/api/events.csv?sensor={path}&days=8')
+    one_lines = one.decode().splitlines()
+    check("one sensor's last days hold only its events", one_code == 200 and len(one_lines) > 1 and all(f',{path},' in l for l in one_lines[1:]),
+          one_lines[:3])
+    check('days out of range are refused', api('GET', '/api/events.csv?days=0')[0] == 400)
     return code
 
 

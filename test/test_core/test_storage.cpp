@@ -1,4 +1,5 @@
 // Storage paths, pictures, node firmware files, backups, and the event history kept on storage.
+#include <algorithm>
 #include "tests.h"
 
 static void classifies_storage_paths() {
@@ -214,8 +215,8 @@ static void an_event_record_reads_back_and_damage_is_found() {
 }
 
 // Reads the download the way the web server does: in pieces, some sent only in part and asked for again.
-static std::string download(CamEventLog& log) {
-  log.csvBegin();
+static std::string download(CamEventLog& log, const std::string& sensor = std::string(), time_t since = 0) {
+  log.csvBegin(sensor, since);
   size_t at = 0;
   std::string out;
   char piece[700];
@@ -278,6 +279,30 @@ static void the_event_log_starts_a_new_file_but_not_during_a_download() {
   TEST_ASSERT_TRUE(download(again) == expect);
 }
 
+// One sensor's events from a time on, as each sensor's page asks for, across both log files, with an event saved before
+// the clock was set among them, which must not make the search skip later ones.
+static void the_history_can_be_one_sensors_last_days() {
+  std::string folder = tempFolder("cam_event_log_chosen");
+  CamStorage storage(folder);
+  CamEventLog log(storage);
+  log.load();
+  std::string header = "received_utc,happened_utc,sensor,name,event,battery_percent,distance_m,direction\n", expect = header;
+  size_t perFile = CamEventLog::FILE_MAX / CAM_EVENT_RECORD, total = perFile + 300;
+  time_t since = 1800000000 + (time_t)perFile - 200;
+  for (size_t i = 0; i < total; i++) {
+    CamEvent e = sampleEvent((int)i);
+    if (i == perFile + 100) e.received = 1000;  // after a restart without the time
+    log.add(e);
+    if (e.received >= since && i % 100 == 7) expect += camEventCsvLine(e);
+    TEST_ASSERT_TRUE(log.save(false));
+  }
+  TEST_ASSERT_TRUE(storage.exists("events-old.log"));
+  TEST_ASSERT_TRUE(download(log, "AA-BB-CC-DD-EE-07/1", since) == expect);
+  TEST_ASSERT_TRUE(download(log, "AA-BB-CC-DD-EE-07/1", 1800000000 + (time_t)total + 5) == header);  // none yet
+  std::string whole = download(log);                                                                 // and the whole history again after it
+  TEST_ASSERT_EQUAL((int)(total + 1), (int)std::count(whole.begin(), whole.end(), '\n'));
+}
+
 static void the_older_firmwares_history_is_kept() {
   std::string folder = tempFolder("cam_event_log_legacy");
   CamStorage storage(folder);
@@ -321,6 +346,7 @@ void runStorageTests() {
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);
   RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);
   RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);
+  RUN_TEST(the_history_can_be_one_sensors_last_days);
   RUN_TEST(the_older_firmwares_history_is_kept);
   RUN_TEST(a_node_image_is_told_from_other_files);
   RUN_TEST(classifies_storage_paths);

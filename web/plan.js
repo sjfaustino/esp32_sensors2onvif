@@ -8,7 +8,8 @@ const plan = (() => {
     spots = {},
     loaded = false,
     timer = 0,
-    placing = "";
+    placing = "",
+    known = null; // the sensors the hub has, once read, so places of deleted ones are dropped
 
   async function load() {
     try {
@@ -112,6 +113,7 @@ const plan = (() => {
   async function refresh() {
     try {
       const esp = await call("GET", "/api/espnow");
+      known = new Set(esp.nodes.map(keyOf));
       const choose = $("planSensor"),
         before = choose.value;
       choose.replaceChildren(
@@ -139,7 +141,9 @@ const plan = (() => {
     } catch (e) {}
   }
 
+  // Without the places of sensors deleted since, which would otherwise fill the hub's 2 KB for plan.json in time.
   async function savePlaces() {
+    if (known) for (const key in spots) if (!known.has(key)) delete spots[key];
     await call("PUT", "/api/file?path=plan.json", JSON.stringify(spots));
   }
 
@@ -195,8 +199,12 @@ const plan = (() => {
   $("planDelete").onclick = async () => {
     if (!confirm("Delete the floor plan and every sensor's place on it?")) return;
     try {
-      await call("DELETE", "/api/file?path=plan.jpg");
-      await call("DELETE", "/api/file?path=plan.json").catch(() => {});
+      // Either may be missing, such as places kept from a picture deleted before; the other still goes.
+      const gone = await Promise.allSettled([
+        call("DELETE", "/api/file?path=plan.jpg"),
+        call("DELETE", "/api/file?path=plan.json"),
+      ]);
+      if (gone.every((g) => g.status == "rejected")) throw gone[0].reason;
       spots = {};
       loaded = false;
       msg("Deleted.");

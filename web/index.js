@@ -481,7 +481,10 @@
     const start = events.findIndex((e, i) => i > end && ARM.includes(e.kind));
     const span = events.slice(mode == "disarmed" ? end + 1 : 0, start < 0 ? events.length : start);
     const alerts = span.filter((e) => e.sensor != "hub" && ((e.kind == 0 && e.active) || e.kind == 15)).reverse(),
-      missed = span.filter((e) => e.kind == 5).length;
+      missed = span.filter((e) => e.kind == 5).length,
+      // The NVR listened again after the newest of them: the hub played them to it then.
+      lastMissed = events.findIndex((e) => e.kind == 5),
+      caughtUp = lastMissed >= 0 && events.slice(0, lastMissed).some((e) => e.kind == 7);
     const head =
       start < 0
         ? mode == "disarmed"
@@ -503,7 +506,11 @@
             .join(", ") +
           (alerts.length > 6 ? " and more" : "") +
           (missed
-            ? "; " + missed + " did not reach the NVR"
+            ? "; " +
+              missed +
+              (caughtUp
+                ? " came while the NVR was not listening, and were played to it once it listened again"
+                : " did not reach the NVR yet; the hub keeps them until it listens")
             : nvrSet
               ? "; all reached the NVR"
               : "; with no NVR address set, the hub cannot tell whether they reached it")
@@ -1536,9 +1543,14 @@
   }
   // A hash such as "sensor:AA-BB-CC-DD-EE-01/1" opens a page for one thing; the part after the colon goes to its file.
   function show(hash) {
-    const colon = hash.indexOf(":"),
+    const colon = hash.indexOf(":");
+    let view = colon < 0 ? hash : hash.slice(0, colon),
+      arg = "";
+    try {
       arg = colon < 0 ? "" : decodeURIComponent(hash.slice(colon + 1));
-    let view = colon < 0 ? hash : hash.slice(0, colon);
+    } catch (e) {
+      view = "overview"; // a broken address, such as one cut short
+    }
     if (!$("view-" + view)) view = "overview";
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id != "view-" + view));
     items.forEach((i) => {
