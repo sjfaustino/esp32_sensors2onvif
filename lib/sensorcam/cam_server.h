@@ -155,6 +155,9 @@ struct CamConfig {
   std::string espNowKey;                                       // signs the ESP-NOW messages of nodes not paired
   std::string pairingKey;                                      // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
   std::function<int()> wifiChannel;                            // told to nodes in the pairing answer
+  // The Long Range radio test, /api/radio-test: start it, or say how it is going or went, as members of j. False when it
+  // cannot start: running already, or the hub is off its Wi-Fi network.
+  std::function<bool(bool start, CamJson& j)> radioTest;
   // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
   std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
   CamWebhook webhook;

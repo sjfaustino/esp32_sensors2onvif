@@ -141,6 +141,7 @@ def test_full_event_history(path):
     check("one sensor's last days hold only its events", one_code == 200 and len(one_lines) > 1 and all(f',{path},' in l for l in one_lines[1:]),
           one_lines[:3])
     check('days out of range are refused', api('GET', '/api/events.csv?days=0')[0] == 400)
+    check('the Long Range radio test is only on a board with a radio', api('GET', '/api/radio-test')[0] == 404)
     return code
 
 

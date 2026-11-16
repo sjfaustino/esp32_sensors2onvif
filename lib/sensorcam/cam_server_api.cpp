@@ -501,6 +501,14 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       if (ok) cfg_.schedule = s;
       c.out = saved(ok, "could not save the schedule");
     }
+  } else if (r.is("GET", "/api/radio-test") || r.is("POST", "/api/radio-test")) {
+    if (!cfg_.radioTest) {
+      c.out = jsonFail(404, "this board has no radio test");
+    } else {
+      bool ok = true;
+      std::string body = jsonObject([&](CamJson& j) { ok = cfg_.radioTest(r.method == "POST", j); });
+      c.out = ok ? jsonOk(body) : jsonFail(409, "the test is running already, or the hub is off its Wi-Fi network");
+    }
   } else if (r.is("POST", "/api/reboot")) {
     c.out = saved(camCall(cfg_.maintenance, "reboot"), "could not do that");
   } else if (r.is("POST", "/api/reset")) {
