@@ -650,7 +650,7 @@ void CamWeb::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now
   if (!c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS) closeHttp(c);
 }
 
-// ---- ONVIF event push ----
+// ---- what the rest of the hub asks of the web side ----
 
 bool CamWeb::downloadingHistory() const {
   for (const HttpConn& c : http_)

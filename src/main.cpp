@@ -854,6 +854,6 @@ void loop() {
 
   // Sensor messages first, so the server saves them together and then confirms them, in the same pass.
   SensorMessage m;
-  while (xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowPacket(m.mac, m.data, m.len, m.rssi);
+  while (sensorQueue && xQueueReceive(sensorQueue, &m, 0) == pdTRUE) server->espNowPacket(m.mac, m.data, m.len, m.rssi);
   server->poll(20);
 }

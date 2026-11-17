@@ -134,5 +134,3 @@ void CamOnvifEvents::serviceDiscovery() {
   std::string reply = discoveryProbeMatch(xmlFirstText(msg, "MessageID"), localIp_(), cfg_.onvifPort, cfg_.serial, messageNo_++);
   sendto(udp_, reply.data(), (int)reply.size(), 0, (sockaddr*)&from, len);
 }
-
-// ---- main loop ----

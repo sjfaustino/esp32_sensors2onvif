@@ -56,7 +56,7 @@ without a second entry. Delivered is all the hub can know: whether the NVR recor
 
 ## MQTT
 
-`lib/sensorcam/cam_server_mqtt.cpp` keeps one connection to the broker and holds one message at a time, built only once
+`lib/sensorcam/cam_mqtt_client.cpp` keeps one connection to the broker and holds one message at a time, built only once
 the one before has gone, in this order: the hub's "online", any alert that started or ended, the next event, Home
 Assistant's discovery, other state changes, then a ping. Events are not queued anywhere new: the connection reads them
 from the event history's newest 64 and remembers how far the broker has acknowledged, so logging an alert costs MQTT
@@ -75,15 +75,29 @@ waiting record, which then stands for several sensors and shows the built-in "PA
 ## Where things are
 
 `lib/s2o_proto` holds every ESP-NOW message, SHA-1 and X25519, with no heap and no Arduino, and is the one copy the
-nodes build too, from a checkout beside this one. `lib/sensorcam` is the hub. `SensorCamServer` is still the hub's
-centre: the HTTP, ONVIF and RTSP servers share its one select loop and its sensor table, and splitting those apart would
-cost the PC build its one-process test harness. What has its own class has a clear edge: `CamNodeImages` (node
-firmware files), `CamHookQueue` (the webhook's waiting messages), `CamEventLog`, `CamDeliveryWatch`, `SubTable` and
-`SensorBoard`. Per-node data is in `nodes_`, one entry per node folder, which each sensor's `Slot` points to.
+nodes build too: the node project has this repository as a git submodule. `lib/sensorcam` is the hub. `SensorCamServer`
+(`cam_server.h`) owns the hub's parts and runs them in one select loop, each waiting on its own sockets; the PC build
+runs the same loop in one process, which is what the end-to-end tests drive. The parts:
+
+- `CamAlarm` (`cam_alarm.h`): the sensor table, reports, node health, arming, the event history, the alerts waiting for an
+  NVR record, and the delivery check. It decides; the others carry what it decides. Per-node data is in its `Node`
+  entries, one per node folder, which each sensor's `Slot` points to.
+- `CamNodes` (`cam_nodes.h`): pairing, and the node firmware files (`CamNodeImages`).
+- `CamOnvifEvents` (`cam_onvif_events.h`): the NVR's event subscriptions (`SubTable`), the pushes to them, WS-Discovery,
+  and whether the NVR is listening.
+- `CamVideo` (`cam_video.h`): the RTSP connections and the picture they send.
+- `CamWeb` (`cam_web_server.h`): HTTP, which carries the ONVIF requests, the pages and their API, sensor reports and
+  uploads.
+- `CamMqttClient` (`cam_mqtt_client.h`) and `CamWebhookSender` (`cam_webhook.h`): Home Assistant, and the webhook.
+  The webhook and the event pushes each send through a `CamPost`, one HTTP POST that does not block.
+
+What the board does for the hub reaches them through three interfaces in `cam_config.h`: `CamChip`, `CamRadio` and
+`CamStore`. What the alarm and the MQTT client need back from the rest of the hub goes through `CamAlarmOutside` and
+`CamMqttOutside`, which the server answers.
 
 ## Pairing
 
-`lib/sensorcam/cam_x25519.cpp` is X25519 after TweetNaCl, checked against RFC 7748's vectors. It is slow, tens of
+`lib/s2o_proto/s2o_x25519.cpp` is X25519 after TweetNaCl, checked against RFC 7748's vectors. It is slow, tens of
 milliseconds on the board, and runs only when the hub starts and when a node is approved; reports never use it. A paired
 node's key is read from its `pairing.txt` into its sensors' rows when the sensor table is rebuilt, so checking its reports
 picks the key by the sender and needs no memory, as before.
