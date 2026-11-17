@@ -10,6 +10,7 @@ void runCryptoTests();
 void runOnvifTests();
 void runStorageTests();
 void runTextTests();
+void runAlarmTests();
 
 int main() {
   UNITY_BEGIN();
@@ -19,5 +20,6 @@ int main() {
   runOnvifTests();
   runStorageTests();
   runTextTests();
+  runAlarmTests();
   return UNITY_END();
 }
