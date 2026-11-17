@@ -72,8 +72,8 @@ std::string CamWeb::treeJson() {
     if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
     uint8_t mac[6];
     camParseMac(s.name, mac);
-    int any = alarm_.findNode(mac);
-    uint32_t every = any ? alarm_.nodeOf(any).info.everyS : 0;
+    int any = table_.findNode(mac);
+    uint32_t every = any ? table_.nodeOf(any).info.everyS : 0;
     j.object()
         .str("mac", s.name)
         .flag("paired", storage_.exists(s.name + "/pairing.txt"))
@@ -82,7 +82,7 @@ std::string CamWeb::treeJson() {
     j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every));
     j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
     time_t t = chip_->wallTime();
-    uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && alarm_.nodeOf(any).walkUntil > (uint32_t)t ? alarm_.nodeOf(any).walkUntil - (uint32_t)t : 0;
+    uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && table_.nodeOf(any).walkUntil > (uint32_t)t ? table_.nodeOf(any).walkUntil - (uint32_t)t : 0;
     j.num("walkLeft", walk).array("sensors");
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
@@ -90,11 +90,11 @@ std::string CamWeb::treeJson() {
       std::string base = s.name + "/" + n.name;
       if (!n.dir || camClassifyPath(base) != CAM_PATH_SENSOR) continue;
       uint8_t input = 0;
-      int slot = camNumber(n.name, input) ? alarm_.findSlot(mac, input) : 0;
+      int slot = camNumber(n.name, input) ? table_.findSlot(mac, input) : 0;
       if (!slot) continue;                        // beyond the sensor limit, so it does nothing
       if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
-      const CamSensorSettings& set = alarm_.slotOf(slot).settings;
-      j.object().num("input", input).str("name", alarm_.slotOf(slot).name).num("hold", set.holdS != 0, set.holdS);
+      const CamSensorSettings& set = table_.slotOf(slot).settings;
+      j.object().num("input", input).str("name", table_.slotOf(slot).name).num("hold", set.holdS != 0, set.holdS);
       j.flag("interior", set.interior);
       if (set.quietFrom >= 0)
         j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
@@ -323,8 +323,8 @@ bool CamWeb::apiPages(const ApiRequest& r) {
 
 // Sized for the sensors that exist, and empty when the hub is too short of memory to build it.
 std::string CamWeb::espNowJson() {
-  int known = alarm_.sensorCount();
-  size_t room = (size_t)known * 760 + CamAlarm::MAX_UNKNOWN * 120 + 8 * 120 + 256;  // the longest possible entries
+  int known = table_.sensorCount();
+  size_t room = (size_t)known * 760 + CamSensorTable::MAX_UNKNOWN * 120 + 8 * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
   std::string out;
   out.reserve(room);
@@ -334,26 +334,26 @@ std::string CamWeb::espNowJson() {
   j.str("key", cfg_.espNowKey).array("nodes");
   uint32_t now = millis_();
   for (int id = 1; id <= alarm_.board().count(); id++) {
-    if (!alarm_.slotOf(id).used) continue;
-    const Health& h = alarm_.healthOf(id);
-    std::string name = alarm_.slotName(id);
+    if (!table_.slotOf(id).used) continue;
+    const Health& h = table_.healthOf(id);
+    std::string name = table_.slotName(id);
     const char* state = alarm_.board().active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
     j.object()
         .flag("low", h.lowBattery)
-        .str("name", alarm_.slotOf(id).name)
+        .str("name", table_.slotOf(id).name)
         .str("node", name.substr(0, name.find('/')))
-        .num("input", alarm_.slotOf(id).input);
+        .num("input", table_.slotOf(id).input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
     j.num("rssi", h.rssi != 0, h.rssi)
         .num("counter", h.counterSeen, h.counter)
         .flag("weak", h.weak)
         .num("refused", h.refused)
         .str("refusal", h.refusal)
-        .flag("paired", alarm_.nodeOf(id).paired);
-    const Node& node = alarm_.nodeOf(id);
+        .flag("paired", table_.nodeOf(id).paired);
+    const Node& node = table_.nodeOf(id);
     const CamNodeInfo& info = node.info;
     j.num("every", info.everyS != 0, info.everyS)
-        .num("silentAfter", alarm_.silentMsFor(id) / 1000)
+        .num("silentAfter", table_.silentMsFor(id) / 1000)
         .flag("saving", info.saving)
         .str("sensor", info.sensor)
         .str("version", info.version);
@@ -374,8 +374,8 @@ std::string CamWeb::espNowJson() {
   j.end();
   nodes_.images().json(j);
   j.array("unknown");
-  for (const UnknownSender& u : alarm_.unknown()) {
-    if (!u.used || alarm_.findSlot(u.mac, u.input)) continue;  // added since it was last heard
+  for (const UnknownSender& u : table_.unknown()) {
+    if (!u.used || table_.findSlot(u.mac, u.input)) continue;  // added since it was last heard
     j.object()
         .str("mac", camMacText(u.mac))
         .num("input", u.input)
@@ -391,7 +391,7 @@ std::string CamWeb::espNowJson() {
 bool CamWeb::apiInfo(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/device")) {
-    int known = alarm_.sensorCount();
+    int known = table_.sensorCount();
     uint32_t used = 0, total = 0;
     chip_->storageUsage(used, total);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
@@ -613,7 +613,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path"), form = r.form();
     std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to"), zone = queryParam(form, "zone");
-    bool sensor = alarm_.slotForPath(path) != 0;
+    bool sensor = table_.slotForPath(path) != 0;
     CamSensorSettings s;
     std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n") +
                        (zone.empty() ? "" : "zone=" + zone + "\n");
@@ -652,7 +652,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     uint8_t mac[6];
     time_t t = chip_->wallTime();
     bool stop = queryParam(r.form(), "stop") == "1";
-    if (camClassifyPath(path) != CAM_PATH_NODE || !camParseMac(path, mac) || !alarm_.findNode(mac)) {
+    if (camClassifyPath(path) != CAM_PATH_NODE || !camParseMac(path, mac) || !table_.findNode(mac)) {
       c.out = jsonFail(404, "no such node");
     } else if (t < CAM_CLOCK_VALID_AFTER) {
       c.out = jsonFail(409, "the hub's clock is not set yet, and the node needs it to know when the walk test ends");
@@ -707,7 +707,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = saved(alarm_.setArmMode(m, "the web page", (uint32_t)minutes), "could not save the setting");
     }
   } else if (r.is("POST", "/api/test-alert")) {
-    c.out = alarm_.testAlert(alarm_.slotForPath(queryParam(r.target, "path"))) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
+    c.out = alarm_.testAlert(table_.slotForPath(queryParam(r.target, "path"))) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
   } else if (r.is("GET", "/api/overview")) {
     reply(c, 200, JSON_TYPE, overviewJson(millis_()));
   } else if (r.is("POST", "/api/arm/rearm")) {
@@ -792,7 +792,7 @@ void CamWeb::apiFiles(const ApiRequest& r) {
     c.out = jsonFail(400, "invalid path");
     return;
   }
-  if (method != "GET" && method != "DELETE" && !alarm_.sensorFits(path)) {  // it would be stored and then never do anything
+  if (method != "GET" && method != "DELETE" && !table_.sensorFits(path)) {  // it would be stored and then never do anything
     c.out = jsonFail(409, "the hub already has its limit of " + std::to_string(CAM_MAX_SENSORS) + " sensors; delete one first");
     return;
   }

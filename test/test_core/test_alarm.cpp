@@ -59,15 +59,16 @@ struct Rig {
   Outside outside;
   CamStorage storage;
   CamNodeImages images{storage};
+  CamSensorTable table{cfg, storage};
   CamMemoryFailures failures;
   CamAlarm alarm;
   // start: the start-up settings, which the alarm reads as it is made.
   explicit Rig(const char* folder, const CamConfig& start = CamConfig())
-      : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, failures, [this] { return now; }) {}
+      : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, table, images, outside, failures, [this] { return now; }) {}
   // A rig on the folder another left, as after a restart, with the settings it starts with. The clock starts again, as
   // millis() does; the wall clock is the same date until the test moves it.
   Rig(const Rig& before, const CamConfig& start)
-      : cfg(start), storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, failures, [this] { return now; }) {}
+      : cfg(start), storage(before.storage), alarm(cfg, chip, radio, store, storage, table, images, outside, failures, [this] { return now; }) {}
 
   void sensor(const char* path, const char* settings = nullptr) {
     storage.makeDirs(path);
@@ -87,7 +88,7 @@ struct Rig {
       alarm.tick(now);
     }
   }
-  int id(uint8_t input = 1) const { return alarm.findSlot(DOOR, input); }
+  int id(uint8_t input = 1) const { return table.findSlot(DOOR, input); }
   bool on(uint8_t input = 1) const { return alarm.board().active(id(input)); }
   bool past(uint8_t input = 1) const { return alarm.board().pastEvent(id(input)); }
   int logged(CamEventKind kind) const {
@@ -230,12 +231,12 @@ static void a_sensor_never_heard_is_reported_silent_once() {
   r.run(200);
   TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_SILENT));
   TEST_ASSERT_EQUAL(1, r.outside.sent(CAM_EVENT_SILENT));
-  TEST_ASSERT_TRUE(r.alarm.healthOf(r.id()).silent);
+  TEST_ASSERT_TRUE(r.table.healthOf(r.id()).silent);
   TEST_ASSERT_FALSE(r.on());  // and raises no alarm unless asked to
   r.run(5000);
   TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_SILENT));
   r.report(DOOR, 1, false);  // heard again
-  TEST_ASSERT_FALSE(r.alarm.healthOf(r.id()).silent);
+  TEST_ASSERT_FALSE(r.table.healthOf(r.id()).silent);
 }
 
 static void a_silent_sensor_can_raise_the_alarm_when_asked_to() {
@@ -359,7 +360,7 @@ static void a_battery_that_will_run_out_within_a_week_is_reported_once() {
   }
   TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_BATTERY_RUNNING_OUT));
   TEST_ASSERT_EQUAL(1, r.outside.sent(CAM_EVENT_BATTERY_RUNNING_OUT));
-  TEST_ASSERT_TRUE(r.alarm.nodeOf(r.id()).daysLeft >= 0 && r.alarm.nodeOf(r.id()).daysLeft < 7);
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).daysLeft >= 0 && r.table.nodeOf(r.id()).daysLeft < 7);
 }
 
 static void battery_readings_need_the_clock() {
@@ -369,6 +370,63 @@ static void battery_readings_need_the_clock() {
   r.start();
   r.report(DOOR, 1, false, 0, 50);
   TEST_ASSERT_FALSE(r.storage.exists("AA-BB-CC-DD-EE-01/battery.txt"));
+}
+
+// ---- CamSensorTable on its own: the folders it reads ----
+
+static void the_table_reads_sensors_nodes_and_their_settings() {
+  CamConfig cfg;
+  CamStorage storage(emptyFolder("cam_table_read"));
+  storage.makeDirs("AA-BB-CC-DD-EE-01/1");
+  storage.makeDirs("AA-BB-CC-DD-EE-01/2");
+  storage.writeFile("AA-BB-CC-DD-EE-01/1/name.txt", "Door", 4);
+  storage.writeFile("AA-BB-CC-DD-EE-01/2/settings.txt", "zone=interior\n", 14);
+  storage.writeFile("AA-BB-CC-DD-EE-01/settings.txt", "silent=600\n", 11);
+  CamSensorTable table(cfg, storage);
+  CamSensorTable::Changes c = table.rescan(1000);
+  TEST_ASSERT_TRUE(c.readable);
+  TEST_ASSERT_TRUE(c.listChanged);
+  TEST_ASSERT_EQUAL(2, table.sensorCount());
+  int door = table.findSlot(DOOR, 1), hall = table.findSlot(DOOR, 2);
+  TEST_ASSERT_TRUE(door && hall && door != hall);
+  TEST_ASSERT_TRUE(c.fresh[door - 1] && c.fresh[hall - 1]);
+  TEST_ASSERT_EQUAL_STRING("Door", table.slotOf(door).name.c_str());
+  TEST_ASSERT_TRUE(table.slotOf(hall).settings.interior);
+  TEST_ASSERT_EQUAL(600000, table.silentMsFor(door));  // the node's own setting
+  TEST_ASSERT_EQUAL(door, table.slotForPath("AA-BB-CC-DD-EE-01/1"));
+  TEST_ASSERT_TRUE(table.findNode(DOOR) == door || table.findNode(DOOR) == hall);  // either of the node's sensors
+  TEST_ASSERT_EQUAL_STRING("AA-BB-CC-DD-EE-01/1", table.slotName(door).c_str());
+  CamSensorTable::Changes again = table.rescan(2000);  // nothing changed on storage
+  TEST_ASSERT_FALSE(again.listChanged);
+  TEST_ASSERT_FALSE(again.fresh[door - 1]);
+}
+
+static void the_table_reports_a_sensor_whose_folder_went() {
+  CamConfig cfg;
+  CamStorage storage(emptyFolder("cam_table_gone"));
+  storage.makeDirs("AA-BB-CC-DD-EE-01/1");
+  storage.makeDirs("AA-BB-CC-DD-EE-01/2");
+  CamSensorTable table(cfg, storage);
+  table.rescan(1000);
+  int hall = table.findSlot(DOOR, 2);
+  storage.removeTree("AA-BB-CC-DD-EE-01/2");
+  CamSensorTable::Changes c = table.rescan(2000);
+  TEST_ASSERT_TRUE(c.gone[hall - 1]);
+  TEST_ASSERT_TRUE(c.listChanged);
+  TEST_ASSERT_EQUAL(0, table.findSlot(DOOR, 2));
+  TEST_ASSERT_EQUAL(1, table.sensorCount());
+}
+
+static void the_table_refuses_a_sensor_beyond_the_limit() {
+  CamConfig cfg;
+  CamStorage storage(emptyFolder("cam_table_full"));
+  for (int i = 1; i <= CAM_MAX_SENSORS; i++) storage.makeDirs("AA-BB-CC-DD-EE-01/" + std::to_string(i));
+  CamSensorTable table(cfg, storage);
+  table.rescan(1000);
+  TEST_ASSERT_EQUAL(CAM_MAX_SENSORS, table.sensorCount());
+  TEST_ASSERT_FALSE(table.sensorFits("02-00-00-00-00-99/1"));          // a new one
+  TEST_ASSERT_TRUE(table.sensorFits("AA-BB-CC-DD-EE-01/1/name.txt"));  // within one already there
+  TEST_ASSERT_TRUE(table.sensorFits("plan.json"));                     // not a sensor's at all
 }
 
 void runAlarmTests() {
@@ -392,4 +450,7 @@ void runAlarmTests() {
   RUN_TEST(the_start_waits_for_the_clock_before_it_is_logged);
   RUN_TEST(a_battery_that_will_run_out_within_a_week_is_reported_once);
   RUN_TEST(battery_readings_need_the_clock);
+  RUN_TEST(the_table_reads_sensors_nodes_and_their_settings);
+  RUN_TEST(the_table_reports_a_sensor_whose_folder_went);
+  RUN_TEST(the_table_refuses_a_sensor_beyond_the_limit);
 }

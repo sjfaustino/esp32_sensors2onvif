@@ -25,9 +25,9 @@ void CamNodes::hello(const uint8_t mac[6], const uint8_t* data, int len, int8_t 
   uint8_t channel = (uint8_t)radio_->wifiChannel();
   uint8_t answer[CAM_ANSWER_LEN];
   // A paired node asking again, to find the hub's channel: answered at any time, signed so it can trust the answer.
-  int id = alarm_.findNode(mac);
-  if (id && alarm_.nodeOf(id).paired && memcmp(alarm_.nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
-    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)alarm_.nodeOf(id).key.data(), answer);
+  int id = table_.findNode(mac);
+  if (id && table_.nodeOf(id).paired && memcmp(table_.nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
+    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)table_.nodeOf(id).key.data(), answer);
     radio_->espNowSend(mac, answer, CAM_ANSWER_LEN);
     return;
   }
@@ -65,8 +65,8 @@ bool CamNodes::approve(const uint8_t mac[6], std::string& error) {
     return false;
   }
   std::string node = camMacText(mac);
-  int free = CAM_MAX_SENSORS - alarm_.sensorCount(), needed = 0;
-  for (int input = 1; input <= request->inputs; input++) needed += !alarm_.findSlot(mac, (uint8_t)input);
+  int free = CAM_MAX_SENSORS - table_.sensorCount(), needed = 0;
+  for (int input = 1; input <= request->inputs; input++) needed += !table_.findSlot(mac, (uint8_t)input);
   if (needed > free) {
     error = "the hub has room for " + std::to_string(CAM_MAX_SENSORS) + " sensors, and this node's would go beyond that";
     return false;
@@ -96,12 +96,12 @@ std::string CamNodes::pairingJson() {
     j.str("hub", pairingReady_ ? camKeyFingerprint(hubPublic_) : std::string()).array("waiting");
     for (const PairRequest& p : pairRequests_) {
       if (!p.used) continue;
-      int id = alarm_.findNode(p.mac);
+      int id = table_.findNode(p.mac);
       j.object().str("mac", camMacText(p.mac)).num("inputs", p.inputs).str("fingerprint", camKeyFingerprint(p.publicKey));
       j.num("ago", (now - p.heardAt) / 1000)
           .num("rssi", p.rssi != 0, p.rssi)
           .flag("known", id != 0)
-          .flag("paired", id && alarm_.nodeOf(id).paired)
+          .flag("paired", id && table_.nodeOf(id).paired)
           .end();
     }
   });
@@ -124,10 +124,10 @@ void CamNodes::reject(const uint8_t mac[6]) {
 
 // Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
 void CamNodes::firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
-  int id = alarm_.findNode(mac);
+  int id = table_.findNode(mac);
   if (!id || !radio_->hasEspNow()) return;
-  const CamAlarm::Node& node = alarm_.nodeOf(id);
-  const std::string& key = alarm_.keyFor(&node);
+  const CamSensorTable::Node& node = table_.nodeOf(id);
+  const std::string& key = table_.keyFor(&node);
   CamFirmwareAsk ask;
   CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
   if (check == CAM_PACKET_INVALID) return;

@@ -232,7 +232,7 @@ const CamFrame& CamVideo::show(uint32_t now) {
     return *frame_;
   }
   std::string key =
-      on ? alarm_.slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (alarm_.board().several(id) ? "s" : "") : "clear";
+      on ? table_.slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (alarm_.board().several(id) ? "s" : "") : "clear";
   if (key == frameKey_) return *frame_;
   frameKey_ = key;
   frameFile_.clear();
@@ -244,7 +244,7 @@ const CamFrame& CamVideo::show(uint32_t now) {
     // Stands for several sensors' past events, so no one sensor's picture fits: the built-in one says to check the logs.
   } else if (on) {
     // A past event never borrows the live picture, which would make it look like it is happening now.
-    std::string base = alarm_.slotName(id) + "/";
+    std::string base = table_.slotName(id) + "/";
     candidates = {base + camStateFile(direction, delayed), base + camStateFile(0, delayed)};
   } else {
     candidates = {"clear.h264"};

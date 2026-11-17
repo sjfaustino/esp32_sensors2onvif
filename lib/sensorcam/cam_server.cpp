@@ -19,14 +19,14 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       localIp_(localIp),
       millis_(millisFn),
       storage_(cfg.fsRoot),
-      alarm_(cfg_, *chip_, *radio_, *store_, storage_, images_, *this, failures_, millisFn),
-      nodes_(cfg_, *radio_, storage_, alarm_, images_, millisFn),
+      alarm_(cfg_, *chip_, *radio_, *store_, storage_, table_, images_, *this, failures_, millisFn),
+      nodes_(cfg_, *radio_, storage_, alarm_, table_, images_, millisFn),
       events_(cfg_, alarm_, *chip_, localIp),
-      mqtt_(cfg_, alarm_, *chip_, events_, failures_, localIp),
-      video_(cfg_, *chip_, storage_, alarm_, logins_, events_, failures_, millisFn),
-      webhook_(cfg_, alarm_, *chip_, events_, failures_),
-      web_(CamWebParts{cfg_, *chip_, *radio_, *store_, storage_, logins_, nodes_, alarm_, mqtt_, events_, video_, webhook_, failures_, localIp,
-                       millisFn}) {}
+      mqtt_(cfg_, alarm_, table_, *chip_, events_, failures_, localIp),
+      video_(cfg_, *chip_, storage_, alarm_, table_, logins_, events_, failures_, millisFn),
+      webhook_(cfg_, alarm_, table_, *chip_, events_, failures_),
+      web_(CamWebParts{cfg_, *chip_, *radio_, *store_, storage_, logins_, nodes_, alarm_, table_, mqtt_, events_, video_, webhook_, failures_,
+                       localIp, millisFn}) {}
 
 bool SensorCamServer::begin() {
   netInit();

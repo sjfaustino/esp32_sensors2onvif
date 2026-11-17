@@ -17,12 +17,13 @@ class CamVideo {
  public:
   // cfg holds the start-up settings, which never change; it and the others outlive the video. A viewer heard from tells
   // events, as it keeps the NVR's subscription alive.
-  CamVideo(const CamConfig& cfg, CamChip& chip, CamStorage& storage, const CamAlarm& alarm, CamLoginGuard& logins, CamOnvifEvents& events,
-           CamMemoryFailures& failures, std::function<uint32_t()> millisFn)
+  CamVideo(const CamConfig& cfg, CamChip& chip, CamStorage& storage, const CamAlarm& alarm, const CamSensorTable& table, CamLoginGuard& logins,
+           CamOnvifEvents& events, CamMemoryFailures& failures, std::function<uint32_t()> millisFn)
       : cfg_(cfg),
         chip_(&chip),
         storage_(storage),
         alarm_(alarm),
+        table_(table),
         logins_(logins),
         events_(events),
         failures_(failures),
@@ -94,6 +95,7 @@ class CamVideo {
   CamChip* chip_;
   CamStorage& storage_;
   const CamAlarm& alarm_;
+  const CamSensorTable& table_;
   CamLoginGuard& logins_;
   CamOnvifEvents& events_;
   CamMemoryFailures& failures_;

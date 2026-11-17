@@ -17,9 +17,9 @@ void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
   if (w.url.empty() || !wanted) return;
   try {
     std::string event = camEventName(kind, true, delayed);
-    std::string sensor = alarm_.slotName(id), name = alarm_.slotOf(id).name;
+    std::string sensor = table_.slotName(id), name = table_.slotOf(id).name;
     std::string message = camEventMessage(kind, name.empty() ? sensor : name + " (" + sensor + ")", "", CAM_AGE_UNKNOWN, delayed);
-    uint8_t battery = alarm_.healthOf(id).battery;
+    uint8_t battery = table_.healthOf(id).battery;
     time_t now = chip_->wallTime();
     bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
     queue(message, jsonObject([&](CamJson& j) {
@@ -104,18 +104,18 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
     d.mode = camArmModeName(alarm_.armMode());
     d.nvrListening = events_.nvrListening(now);
     for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
-      if (!alarm_.nodeAt(n).used) continue;
+      if (!table_.nodeAt(n).used) continue;
       d.nodes++;
       bool heard = false;
       for (int id = 1; id <= CAM_MAX_SENSORS && !heard; id++)
-        heard = alarm_.slotOf(id).used && alarm_.slotOf(id).node == n && alarm_.healthOf(id).heard && now - alarm_.healthOf(id).heardAt < 86400000u;
+        heard = table_.slotOf(id).used && table_.slotOf(id).node == n && table_.healthOf(id).heard && now - table_.healthOf(id).heardAt < 86400000u;
       d.heard += heard;
     }
     for (int id = 1; id <= alarm_.board().count(); id++) {
-      const CamAlarm::Health& h = alarm_.healthOf(id);
-      if (!alarm_.slotOf(id).used) continue;
+      const CamSensorTable::Health& h = table_.healthOf(id);
+      if (!table_.slotOf(id).used) continue;
       const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
-      if (problem) d.problems.push_back((alarm_.slotOf(id).name.empty() ? alarm_.slotName(id) : alarm_.slotOf(id).name) + ": " + problem);
+      if (problem) d.problems.push_back((table_.slotOf(id).name.empty() ? table_.slotName(id) : table_.slotOf(id).name) + ": " + problem);
     }
     d.allCounted = false;
     for (int n = 0; n < alarm_.log().count(); n++) {

@@ -14,8 +14,9 @@
 class CamNodes {
  public:
   // It and the others outlive the nodes; images are the hub's node firmware files, which the alarm reads too.
-  CamNodes(const CamConfig& cfg, CamRadio& radio, CamStorage& storage, CamAlarm& alarm, CamNodeImages& images, std::function<uint32_t()> millisFn)
-      : cfg_(cfg), radio_(&radio), storage_(storage), alarm_(alarm), millis_(millisFn), images_(images) {}
+  CamNodes(const CamConfig& cfg, CamRadio& radio, CamStorage& storage, CamAlarm& alarm, const CamSensorTable& table, CamNodeImages& images,
+           std::function<uint32_t()> millisFn)
+      : cfg_(cfg), radio_(&radio), storage_(storage), alarm_(alarm), table_(table), millis_(millisFn), images_(images) {}
   void begin();  // reads the firmware files, and works out the hub's public key: tens of milliseconds on the board, once
 
   // ESP-NOW messages from the nodes. From the task that calls the server's poll().
@@ -51,6 +52,7 @@ class CamNodes {
   CamRadio* radio_;
   CamStorage& storage_;
   CamAlarm& alarm_;
+  const CamSensorTable& table_;
   std::function<uint32_t()> millis_;
   CamNodeImages& images_;
   bool pairingReady_ = false;

@@ -13,8 +13,9 @@
 class CamWebhookSender {
  public:
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the others outlive the sender.
-  CamWebhookSender(const CamConfig& cfg, const CamAlarm& alarm, CamChip& chip, const CamOnvifEvents& events, CamMemoryFailures& failures)
-      : cfg_(cfg), alarm_(alarm), chip_(&chip), events_(events), failures_(failures), settings_(cfg.webhook) {}
+  CamWebhookSender(const CamConfig& cfg, const CamAlarm& alarm, const CamSensorTable& table, CamChip& chip, const CamOnvifEvents& events,
+                   CamMemoryFailures& failures)
+      : cfg_(cfg), alarm_(alarm), table_(table), chip_(&chip), events_(events), failures_(failures), settings_(cfg.webhook) {}
   // A sensor's event, and the hub's own; each queued if the settings say it is wanted. Running out of memory drops the
   // message, counted, and the alert goes on.
   void notify(int id, CamEventKind kind, bool delayed);
@@ -35,6 +36,7 @@ class CamWebhookSender {
 
   const CamConfig& cfg_;
   const CamAlarm& alarm_;
+  const CamSensorTable& table_;
   CamChip* chip_;
   const CamOnvifEvents& events_;  // whether the NVR is listening, for the daily check
   CamMemoryFailures& failures_;

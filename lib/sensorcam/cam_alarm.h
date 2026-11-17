@@ -12,6 +12,7 @@
 #include "cam_events.h"
 #include "cam_node_images.h"
 #include "cam_pairing.h"
+#include "cam_sensor_table.h"
 #include "cam_sensors.h"
 #include "cam_storage.h"
 #include "cam_timing.h"
@@ -30,70 +31,13 @@ class CamAlarmOutside {
 
 class CamAlarm {
  public:
-  struct Health {
-    bool heard = false;
-    uint32_t heardAt = 0;
-    uint32_t watchedAt = 0;  // when the hub started expecting reports, so a node dead since before a restart is still noticed
-    bool silent = false;
-    uint8_t battery = CAM_BATTERY_UNKNOWN;
-    bool counterSeen = false;
-    uint32_t counter = 0;    // the last report number, used only to ignore resends
-    uint32_t counterAt = 0;  // when it arrived
-    bool counterActive = false;
-    bool reported = false;  // the state the sensor last reported, for the event history
-    int8_t rssi = 0;        // signal of the last ESP-NOW packet, in dBm; 0 until one arrives
-    bool lowBattery = false;
-    int16_t rssiAvg8 = 0;  // smoothed signal, in eighths of a dBm
-    uint8_t rssiCount = 0;
-    bool weak = false;
-    uint32_t refused = 0;  // ESP-NOW messages refused, and why the last one was
-    const char* refusal = "";
-    CamBusyCount busy;  // its alerts in the last hour, to notice one firing far too often
-  };
-  // One per node folder: what is the same for each of its sensors. A sensor's Slot points to it.
-  struct Node {
-    bool used = false;
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    CamNodeSettings settings;  // from settings.txt in the node's folder
-    CamNodeInfo info;          // what the node last said about itself, from about.txt
-    // From pairing.txt: its own key, which its messages must be signed with instead of the shared one.
-    bool paired = false;
-    std::string key;
-    uint8_t publicKey[CAM_X25519_LEN] = {0};
-    int64_t batteryAt = 0;  // the newest reading in battery.txt
-    int daysLeft = -1;      // how long its battery will last, from that file; -1 unknown
-    // Only in memory:
-    uint32_t walkUntil = 0;                                   // the end of a walk test started on the page, on the hub's clock in seconds since 1970
-    bool sealed = false;                                      // its last report was sealed, so no one listening could read it
-    bool runningOut = false;                                  // its battery is forecast to run out within a week, and that was logged
-    uint32_t updateOffset = 0, updateSize = 0, updateAt = 0;  // how far a firmware update has got, and when it last asked
-    bool updating = false;
-    // The numbers the hub last gave it for its next report, the newest and the one before. A paired node's report that
-    // carries neither may be one recorded earlier and played back: it still counts as an alert, but not as the node
-    // being there, and the hub asks the node to prove it is.
-    uint32_t fresh = 0, freshBefore = 0;
-  };
-  struct Slot {
-    bool used = false;
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    uint8_t input = 0;
-    std::string name;            // from name.txt in the sensor's folder
-    CamSensorSettings settings;  // from settings.txt
-    int node = 0;                // its node, from 1
-  };
-  struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored
-    bool used = false;
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    uint8_t input = 0;
-    int8_t rssi = 0;
-    uint32_t heardAt = 0;
-    uint32_t messages = 0;
-  };
-  static const int MAX_UNKNOWN = 8;
+  using Health = CamSensorTable::Health;
+  using Node = CamSensorTable::Node;
+  using Slot = CamSensorTable::Slot;
 
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the parts outlive the alarm.
-  CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStore& store, CamStorage& storage, const CamNodeImages& images,
-           CamAlarmOutside& outside, CamMemoryFailures& failures, std::function<uint32_t()> millisFn);
+  CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStore& store, CamStorage& storage, CamSensorTable& table,
+           const CamNodeImages& images, CamAlarmOutside& outside, CamMemoryFailures& failures, std::function<uint32_t()> millisFn);
   void begin();             // reads the sensor table, the history and the alerts that were waiting
   void tick(uint32_t now);  // alerts, health checks, saving and confirming: once a pass, before serving the network
   void networkUp() { networkSeen_ = true; }
@@ -117,27 +61,10 @@ class CamAlarm {
   long long disarmSecondsLeft(uint32_t now) const;   // -1 when not known
   time_t lastTestAt() const { return lastTestAt_; }  // the newest test alert, kept after it leaves the events in memory
 
-  // ---- the sensor table. A sensor's id runs from 1, as 0 means none. ----
-  int findSlot(const uint8_t mac[6], uint8_t input) const;
-  int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
-  // To read: only the alarm changes them, through the calls below.
-  const Slot& slotOf(int id) const { return slots_[id - 1]; }
-  const Health& healthOf(int id) const { return health_[id - 1]; }
-  const Node& nodeOf(int id) const { return nodes_[slotOf(id).node - 1]; }
-  const Node& nodeAt(int number) const { return nodes_[number - 1]; }  // by its number, from 1, as Slot::node gives it
-  int sensorCount() const;                                             // the sensors in the table
-  const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
-  std::string slotName(int id) const;  // its folder, as "AA-BB-CC-DD-EE-FF/1"
-  uint32_t holdFor(int id) const;
-  uint32_t silentMsFor(int id) const;
-  int slotForPath(const std::string& path) const;  // the sensor whose folder this is, as "AA-BB-CC-DD-EE-FF/1", or 0
-  bool sensorFits(const std::string& path) const;  // false when the path would add a sensor beyond the limit
-  uint32_t sensorsTag() const;                     // changes when a sensor is added, deleted or renamed
-  void rescan();                                   // rebuilds the sensor table from the folders on storage
-  bool updateReady(int id) const;                  // a firmware update waits for this sensor's node
-  using UnknownList = UnknownSender[MAX_UNKNOWN];
-  const UnknownList& unknown() const { return unknown_; }
-  void refuseSignature(int id);  // a message from this sensor's node had the wrong signature
+  // ---- the sensors, as CamSensorTable holds them. A sensor's id runs from 1, as 0 means none. ----
+  void rescan();                   // reads the table again from the folders on storage, and lets go of sensors gone
+  bool updateReady(int id) const;  // a firmware update waits for this sensor's node
+  void refuseSignature(int id);    // a message from this sensor's node had the wrong signature
   // A walk test on the node, until that time in seconds since 1970, or 0 to stop it. False for a node without a folder.
   bool setWalkTest(const uint8_t mac[6], uint32_t until);
   void updateAsked(int id, uint32_t size);      // sensor id's node asked for a part of a firmware image this size
@@ -163,14 +90,7 @@ class CamAlarm {
 #endif
 
  private:
-  // These are the only places that turn an id into a table position.
-  Slot& slotRef(int id) { return slots_[id - 1]; }
-  const Slot& slotRef(int id) const { return slots_[id - 1]; }
-  Health& healthRef(int id) { return health_[id - 1]; }
-  const Health& healthRef(int id) const { return health_[id - 1]; }
-  Node& nodeRef(int id) { return nodes_[slotRef(id).node - 1]; }
-  const Node& nodeRef(int id) const { return nodes_[slotRef(id).node - 1]; }
-  Node* nodeByMac(const uint8_t mac[6]);  // nullptr for a node without a folder
+  uint32_t holdFor(int id) const;
   bool applyReport(int id, const SensorReport& report, uint32_t now, bool present = true);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
   void addEvent(const char* sensor, const char* text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
@@ -184,7 +104,6 @@ class CamAlarm {
   void saveWaiting();
   void loadWaiting();
   void writeAlive(uint32_t now);
-  void noteUnknown(const uint8_t mac[6], uint8_t input, int8_t rssi);
   void serviceDelayed(uint32_t now);
   void noteSignal(int id, int8_t rssi);
   void checkJamming(uint32_t now);
@@ -205,6 +124,7 @@ class CamAlarm {
   CamRadio* radio_;
   CamStore* store_;
   CamStorage& storage_;
+  CamSensorTable& table_;  // the alarm is the one part that changes it
   const CamNodeImages& images_;
   CamAlarmOutside& outside_;
   std::function<uint32_t()> millis_;
@@ -212,10 +132,6 @@ class CamAlarm {
 
   SensorBoard sensors_;
   CamEventLog log_;
-  std::vector<Slot> slots_;
-  std::vector<Node> nodes_;  // as many as there can be sensors
-  std::vector<Health> health_;
-  UnknownSender unknown_[MAX_UNKNOWN];
 
   // Waiting to be sent once the reports are saved: 6 bytes of MAC address, then the message. A fixed table, so an alert is
   // confirmed even when memory has run out.

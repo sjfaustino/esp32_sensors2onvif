@@ -22,6 +22,7 @@ CamWeb::CamWeb(const CamWebParts& p)
       logins_(p.logins),
       nodes_(p.nodes),
       alarm_(p.alarm),
+      table_(p.table),
       mqtt_(p.mqtt),
       events_(p.events),
       video_(p.video),

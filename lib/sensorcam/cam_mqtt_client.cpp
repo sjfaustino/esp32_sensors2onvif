@@ -126,7 +126,7 @@ void CamMqttClient::packet(const uint8_t* p, size_t len, uint32_t now) {
       size_t underscore = key.find('_');
       uint8_t input = 0;
       bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6) && camNumber(key.substr(13), input);
-      if (parsed) alarm_.testAlert(alarm_.findSlot(mac, input));
+      if (parsed) alarm_.testAlert(table_.findSlot(mac, input));
       return;
     }
     if (topic != "armed/set") return;
@@ -259,7 +259,7 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
   }
   bool alert = false;
   for (int id = 1; id <= alarm_.board().count(); id++)
-    alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
+    alert = alert || (table_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
   bool nvr = events_.nvrListening(now);
   bool armed = alarm_.armed(), home = alarm_.armMode() == CAM_ARMED_HOME;
   int64_t until = alarm_.disarmedUntil();
@@ -326,8 +326,8 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
 
 // alertsOnly: only a sensor whose alert started or ended, or that has never been sent.
 bool CamMqttClient::sensorState(int i, bool alertsOnly, uint32_t now, std::string& out) {
-  if (!alarm_.slotOf(i + 1).used) return false;
-  const CamAlarm::Health& h = alarm_.healthOf(i + 1);
+  if (!table_.slotOf(i + 1).used) return false;
+  const CamSensorTable::Health& h = table_.healthOf(i + 1);
   Shown& s = shown_[i];
   bool alert = alarm_.board().active(i + 1) && !alarm_.board().pastEvent(i + 1);  // a past event replaying for the NVR is not happening now
   bool changed = !s.told || alert != s.alert;
@@ -342,7 +342,7 @@ bool CamMqttClient::sensorState(int i, bool alertsOnly, uint32_t now, std::strin
         .flag("low_battery", h.lowBattery)
         .flag("weak_signal", h.weak);
   });
-  out = camMqttPublish(topicBase() + "/" + sensorKey(alarm_.slotOf(i + 1).mac, alarm_.slotOf(i + 1).input) + "/state", payload(json), true, 0);
+  out = camMqttPublish(topicBase() + "/" + sensorKey(table_.slotOf(i + 1).mac, table_.slotOf(i + 1).input) + "/state", payload(json), true, 0);
   s.told = true;
   s.alert = alert;
   s.silent = h.silent;
@@ -450,7 +450,7 @@ bool CamMqttClient::discoveryStep(int step, std::string& out) {
     return true;
   }
   int i = (step - HUB_STEPS) / SLOT_STEPS, k = (step - HUB_STEPS) % SLOT_STEPS;
-  const CamAlarm::Slot& s = alarm_.slotOf(i + 1);
+  const CamSensorTable::Slot& s = table_.slotOf(i + 1);
   Told& t = told_[i];
   if (k <= SENSOR_PARTS) {  // a sensor deleted, or replaced in its slot: its entities and its retained state are taken away
     if (!t.used || (s.used && memcmp(t.mac, s.mac, 6) == 0 && t.input == s.input)) return false;
@@ -464,7 +464,7 @@ bool CamMqttClient::discoveryStep(int step, std::string& out) {
   }
   if (!s.used) return false;
   int part = k - SENSOR_PARTS - 1;
-  std::string key = sensorKey(s.mac, s.input), id = hubId + "_" + key + "_" + SENSOR_PART[part], sensor = alarm_.slotName(i + 1);
+  std::string key = sensorKey(s.mac, s.input), id = hubId + "_" + key + "_" + SENSOR_PART[part], sensor = table_.slotName(i + 1);
   std::string json = jsonObject([&](CamJson& j) {
     static const char* const NAMES[SENSOR_PARTS] = {"Alert", "Battery", "Signal", "Problem", "Events", "Send test alert"};
     if (part == 5) {  // a button reads nothing, so it has a command topic instead of a state topic

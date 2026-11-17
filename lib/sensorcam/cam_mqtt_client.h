@@ -12,9 +12,9 @@
 class CamMqttClient {
  public:
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the others outlive the client.
-  CamMqttClient(const CamConfig& cfg, CamAlarm& alarm, CamChip& chip, const CamOnvifEvents& events, CamMemoryFailures& failures,
-                std::function<std::string()> localIp)
-      : cfg_(cfg), alarm_(alarm), chip_(&chip), events_(events), failures_(failures), localIp_(localIp), settings_(cfg.mqtt) {}
+  CamMqttClient(const CamConfig& cfg, CamAlarm& alarm, const CamSensorTable& table, CamChip& chip, const CamOnvifEvents& events,
+                CamMemoryFailures& failures, std::function<std::string()> localIp)
+      : cfg_(cfg), alarm_(alarm), table_(table), chip_(&chip), events_(events), failures_(failures), localIp_(localIp), settings_(cfg.mqtt) {}
   void begin() { eventsSent_ = alarm_.log().added(); }  // after the history is read: the run before sent those
   // Connects, gives up on a broker that stopped answering, and builds the next message. mayConnect: a socket is free for
   // a new connection. Running out of memory throws, and leaves the message to be built on a later pass.
@@ -76,6 +76,7 @@ class CamMqttClient {
 
   const CamConfig& cfg_;
   CamAlarm& alarm_;
+  const CamSensorTable& table_;
   CamChip* chip_;
   const CamOnvifEvents& events_;  // whether the NVR is listening
   CamMemoryFailures& failures_;

@@ -79,10 +79,12 @@ nodes build too: the node project has this repository as a git submodule. `lib/s
 (`cam_server.h`) owns the hub's parts and runs them in one select loop, each waiting on its own sockets; the PC build
 runs the same loop in one process, which is what the end-to-end tests drive. The parts:
 
-- `CamAlarm` (`cam_alarm.h`): the sensor table, reports, node health, arming, the event history, the alerts waiting for an
-  NVR record, and the delivery check. It decides; the others carry what it decides. Per-node data is in its `Node`
-  entries, one per node folder, which each sensor's `Slot` points to.
-- `CamNodes` (`cam_nodes.h`): pairing, and the node firmware files (`CamNodeImages`).
+- `CamSensorTable` (`cam_sensor_table.h`): a row for each sensor folder and each node folder, with what the hub knows of
+  each, read from storage. Per-node data is in its `Node` rows, which each sensor's `Slot` points to. The alarm changes
+  it; the other parts are given it const, to read.
+- `CamAlarm` (`cam_alarm.h`): reports, node health, arming, the event history, the alerts waiting for an NVR record,
+  and the delivery check. It decides; the others carry what it decides.
+- `CamNodes` (`cam_nodes.h`): pairing, and the node firmware updates.
 - `CamOnvifEvents` (`cam_onvif_events.h`): the NVR's event subscriptions (`SubTable`), the pushes to them, WS-Discovery,
   and whether the NVR is listening.
 - `CamVideo` (`cam_video.h`): the RTSP connections and the picture they send.

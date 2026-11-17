@@ -26,6 +26,7 @@ struct CamWebParts {
   CamLoginGuard& logins;
   CamNodes& nodes;
   CamAlarm& alarm;
+  const CamSensorTable& table;
   CamMqttClient& mqtt;
   CamOnvifEvents& events;
   CamVideo& video;
@@ -56,10 +57,10 @@ class CamWeb {
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
 
  private:
-  using Health = CamAlarm::Health;
-  using Node = CamAlarm::Node;
-  using Slot = CamAlarm::Slot;
-  using UnknownSender = CamAlarm::UnknownSender;
+  using Health = CamSensorTable::Health;
+  using Node = CamSensorTable::Node;
+  using Slot = CamSensorTable::Slot;
+  using UnknownSender = CamSensorTable::UnknownSender;
   struct HttpConn {
     int fd = -1;
     bool web = false;  // arrived on the web port rather than the ONVIF port
@@ -160,6 +161,7 @@ class CamWeb {
   CamLoginGuard& logins_;  // wrong passwords, on the web page, ONVIF and RTSP
   CamNodes& nodes_;
   CamAlarm& alarm_;
+  const CamSensorTable& table_;
   CamMqttClient& mqtt_;
   CamOnvifEvents& events_;
   CamVideo& video_;

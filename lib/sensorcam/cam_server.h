@@ -20,6 +20,7 @@
 #include "cam_node_images.h"
 #include "cam_nodes.h"
 #include "cam_onvif_events.h"
+#include "cam_sensor_table.h"
 #include "cam_storage.h"
 #include "cam_video.h"
 #include "cam_web_server.h"
@@ -73,7 +74,8 @@ class SensorCamServer : private CamAlarmOutside {
   CamStorage storage_;
   CamLoginGuard logins_;  // wrong passwords, on the web page, ONVIF and RTSP
   // Each part is made after those it uses. The alarm, made first, reaches the others through CamAlarmOutside.
-  CamNodeImages images_{storage_};  // the node firmware files, which the alarm and CamNodes both read
+  CamNodeImages images_{storage_};        // the node firmware files, which the alarm and CamNodes both read
+  CamSensorTable table_{cfg_, storage_};  // the sensors; the alarm changes it, the others read it
   CamAlarm alarm_;
   CamNodes nodes_;
   CamOnvifEvents events_;

@@ -103,8 +103,8 @@ std::string CamWeb::overviewJson(uint32_t now) {
     j.str("mode", camArmModeName(mode)).flag("timed", mode == CAM_DISARMED && alarm_.disarmedUntil());
     j.num("left_s", left >= 0, left).array("active");
     for (int id = 1; id <= alarm_.board().count(); id++)
-      if (alarm_.slotOf(id).used && alarm_.board().active(id))
-        j.object().str("sensor", alarm_.slotName(id)).str("name", alarm_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
+      if (table_.slotOf(id).used && alarm_.board().active(id))
+        j.object().str("sensor", table_.slotName(id)).str("name", table_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
     j.end().object("nvr").flag("set", !events_.nvrIp().empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount()).end();
     j.str("mqtt", mqtt_.state())
         .object("webhook")
@@ -113,10 +113,10 @@ std::string CamWeb::overviewJson(uint32_t now) {
         .end()
         .array("problems");
     for (int id = 1; id <= alarm_.board().count(); id++) {
-      const Health& h = alarm_.healthOf(id);
-      if (!alarm_.slotOf(id).used) continue;
+      const Health& h = table_.healthOf(id);
+      if (!table_.slotOf(id).used) continue;
       const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
-      if (problem) j.object().str("sensor", alarm_.slotName(id)).str("name", alarm_.slotOf(id).name).str("problem", problem).end();
+      if (problem) j.object().str("sensor", table_.slotName(id)).str("name", table_.slotOf(id).name).str("problem", problem).end();
     }
     j.end();
     if (last) {
@@ -133,7 +133,7 @@ std::string CamWeb::overviewJson(uint32_t now) {
       if (alarm_.log().recent(n).kind == CAM_EVENT_TEST_ALERT && alarm_.log().recent(n).received > lastTest)
         lastTest = alarm_.log().recent(n).received;
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER, heard = false;
-    for (int id = 1; id <= alarm_.board().count(); id++) heard = heard || (alarm_.slotOf(id).used && alarm_.healthOf(id).heard);
+    for (int id = 1; id <= alarm_.board().count(); id++) heard = heard || (table_.slotOf(id).used && table_.healthOf(id).heard);
     bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(cfg_.webPassword), cfg_.setupPasswordHash);
     bool testKnown = clockOk && lastTest >= CAM_CLOCK_VALID_AFTER && lastTest <= t;
     j.object("ready").flag("password", !cfg_.webPassword.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
@@ -145,21 +145,21 @@ std::string CamWeb::overviewJson(uint32_t now) {
 
 std::string CamWeb::statusJson(uint32_t now) {
   int known = 0;
-  for (int id = 1; id <= alarm_.board().count(); id++) known += alarm_.slotOf(id).used;
+  for (int id = 1; id <= alarm_.board().count(); id++) known += table_.slotOf(id).used;
   return jsonObject([&](CamJson& j) {
     j.num("sensors", known).array("active");
     for (int id = 1; id <= alarm_.board().count(); id++)
-      if (alarm_.board().active(id)) j.str(alarm_.slotName(id));
+      if (alarm_.board().active(id)) j.str(table_.slotName(id));
     j.end()
         .num("subscribers", events_.subs().count())
         .num("streams", video_.streamCount())
         .num("delayed_waiting", alarm_.delayedCount())
         .array("heard");
     for (int id = 1; id <= alarm_.board().count(); id++) {
-      const Health& h = alarm_.healthOf(id);
+      const Health& h = table_.healthOf(id);
       if (!h.heard) continue;
       j.object()
-          .str("sensor", alarm_.slotName(id))
+          .str("sensor", table_.slotName(id))
           .num("last_heard_s", (now - h.heardAt) / 1000)
           .num("battery", h.battery != CAM_BATTERY_UNKNOWN, h.battery)
           .flag("silent", h.silent)
