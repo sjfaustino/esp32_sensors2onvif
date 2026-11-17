@@ -262,6 +262,14 @@ void CamEventLog::load() {
   pending_.reserve(PENDING_KEPT);
 }
 
+size_t camLogFileMax(size_t total, size_t keep) {
+  const size_t least = 64 * CAM_EVENT_RECORD;
+  size_t room = total > keep ? (total - keep) / 4 : 0;
+  if (room >= CamEventLog::FILE_MAX) return CamEventLog::FILE_MAX;  // as always on a large board
+  room -= room % CAM_EVENT_RECORD;
+  return room > least ? room : least;
+}
+
 void CamEventLog::add(const CamEvent& e) {
   uint8_t r[CAM_EVENT_RECORD];
   camEventEncode(e, r);
@@ -272,11 +280,18 @@ void CamEventLog::add(const CamEvent& e) {
 
 bool CamEventLog::save(bool downloading) {
   if (pending_.empty()) return true;
-  if (!downloading && curBytes_ + pending_.size() > FILE_MAX && storage_.renameFile(LOG, LOG_OLD)) {
+  if (!downloading && curBytes_ + pending_.size() > fileMax_ && storage_.renameFile(LOG, LOG_OLD)) {
     oldBytes_ = curBytes_;
     curBytes_ = 0;
   }
   saveFailed_ = !storage_.writeAt(LOG, curBytes_, pending_.data(), pending_.size());
+  // Refused, as by full storage: the older log goes for room, as it would at the next new log anyway, since a report
+  // that cannot be saved cannot be confirmed. Not during a download, which reads both.
+  if (saveFailed_ && !downloading && curBytes_ && storage_.renameFile(LOG, LOG_OLD)) {
+    oldBytes_ = curBytes_;
+    curBytes_ = 0;
+    saveFailed_ = !storage_.writeAt(LOG, 0, pending_.data(), pending_.size());
+  }
   if (saveFailed_) return false;
   curBytes_ += pending_.size();
   pending_.clear();

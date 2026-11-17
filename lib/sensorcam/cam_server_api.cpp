@@ -17,7 +17,7 @@
 // to rewrite the saved files. Without that room no report could be saved, and so none could be confirmed.
 size_t SensorCamServer::historyRoom() const {
   size_t logs = log_.bytesOnStorage();
-  return HISTORY_ROOM + (logs < 2 * CamEventLog::FILE_MAX ? 2 * CamEventLog::FILE_MAX - logs : 0);
+  return HISTORY_ROOM + (logs < 2 * log_.fileMax() ? 2 * log_.fileMax() - logs : 0);
 }
 
 bool SensorCamServer::roomBesideHistory(size_t bytes) const {

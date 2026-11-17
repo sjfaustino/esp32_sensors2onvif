@@ -82,6 +82,10 @@ const size_t CAM_EVENT_RECORD = 96;
 void camEventEncode(const CamEvent& e, uint8_t out[CAM_EVENT_RECORD]);
 bool camEventDecode(const uint8_t in[CAM_EVENT_RECORD], CamEvent& out);  // false for a damaged record
 std::string camEventCsvLine(const CamEvent& e);                          // with its line break
+// The size at which the log becomes the older log, for storage of total bytes of which keep must stay free for other
+// files: CamEventLog::FILE_MAX, or on small storage, such as a 4 MB board's, a quarter of the rest, so both logs fit in
+// it with room for some pictures. Whole records, and never below 64 of them.
+size_t camLogFileMax(size_t total, size_t keep);
 
 class CamEventLog {
  public:
@@ -89,11 +93,14 @@ class CamEventLog {
   static const size_t FILE_MAX = 256 * 1024;  // then the log becomes the older log, so about 5400 events are kept
 
   explicit CamEventLog(const CamStorage& storage) : storage_(storage) {}
+  void setFileMax(size_t bytes) { fileMax_ = bytes; }  // see camLogFileMax
+  size_t fileMax() const { return fileMax_; }
   // Reads the newest events. Converts the history of firmware from before this log, once.
   void load();
   void add(const CamEvent& e);  // kept in memory until save()
-  // Adds what is waiting to the log. Starting a new log is put off while a download reads the old one. False when
-  // storage refused, in which case the events stay waiting and the next save tries again.
+  // Adds what is waiting to the log. Starting a new log is put off while a download reads the old one. When storage
+  // refuses, as when it is full, the older log is given up for room and the save tried once more. False when it still
+  // refused, in which case the events stay waiting and the next save tries again.
   bool save(bool downloading);
   bool waiting() const { return !pending_.empty(); }
   bool saveFailed() const { return saveFailed_; }
@@ -113,6 +120,7 @@ class CamEventLog {
   bool recordAt(size_t index, CamEvent& e);  // index over the older log, then the current one
   void remember(const CamEvent& e);
   const CamStorage& storage_;
+  size_t fileMax_ = FILE_MAX;
   CamEvent ring_[RECENT];
   int count_ = 0, next_ = 0;
   uint32_t added_ = 0;

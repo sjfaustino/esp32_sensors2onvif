@@ -303,6 +303,37 @@ static void the_history_can_be_one_sensors_last_days() {
   TEST_ASSERT_EQUAL((int)(total + 1), (int)std::count(whole.begin(), whole.end(), '\n'));
 }
 
+// A 4 MB board's storage holds some 190 KB: the history is kept small enough to fit, and storage that refuses a save
+// gives up the older log for room, as the report waiting on that save cannot be confirmed without it.
+static void a_small_storage_keeps_a_smaller_history_that_always_saves() {
+  TEST_ASSERT_EQUAL((int)CamEventLog::FILE_MAX, (int)camLogFileMax(12 * 1024 * 1024, 64 * 1024));  // 16 MB board: unchanged
+  size_t small = camLogFileMax(190 * 1024, 64 * 1024);
+  TEST_ASSERT_TRUE(small < 40 * 1024 && small > 20 * 1024);
+  TEST_ASSERT_EQUAL(0, (int)(small % CAM_EVENT_RECORD));
+  TEST_ASSERT_TRUE(2 * small + 64 * 1024 < 190 * 1024);  // both logs and the room kept fit, with some left for pictures
+  TEST_ASSERT_EQUAL(64 * (int)CAM_EVENT_RECORD, (int)camLogFileMax(10 * 1024, 64 * 1024));  // never below 64 records
+
+  std::string folder = tempFolder("cam_event_log_small");
+  CamStorage storage(folder);
+  CamEventLog log(storage);
+  log.setFileMax(10 * CAM_EVENT_RECORD);
+  log.load();
+  for (int i = 0; i < 35; i++) {
+    log.add(sampleEvent(i));
+    TEST_ASSERT_TRUE(log.save(false));
+  }
+  TEST_ASSERT_TRUE(log.bytesOnStorage() <= 2 * 10 * CAM_EVENT_RECORD);  // the older ones went, as on a full log
+
+  // Storage refusing the log, as full storage would: here the log is a folder, which cannot be written to.
+  storage.removeTree("events.log");
+  storage.makeDirs("events.log");
+  log.add(sampleEvent(99));
+  TEST_ASSERT_TRUE(log.save(false));  // the older log gave way, and the save went through
+  TEST_ASSERT_FALSE(log.saveFailed());
+  TEST_ASSERT_EQUAL((int)CAM_EVENT_RECORD, (int)storage.fileSize("events.log"));
+  TEST_ASSERT_EQUAL_STRING(sampleEvent(99).text, log.recent(0).text);
+}
+
 static void the_older_firmwares_history_is_kept() {
   std::string folder = tempFolder("cam_event_log_legacy");
   CamStorage storage(folder);
@@ -346,6 +377,7 @@ void runStorageTests() {
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);
   RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);
   RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);
+  RUN_TEST(a_small_storage_keeps_a_smaller_history_that_always_saves);
   RUN_TEST(the_history_can_be_one_sensors_last_days);
   RUN_TEST(the_older_firmwares_history_is_kept);
   RUN_TEST(a_node_image_is_told_from_other_files);

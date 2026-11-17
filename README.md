@@ -10,7 +10,9 @@ names the sensor that fired. The firmware knows nothing about NVR channels.
    the setup network, and optionally fill in the first Wi-Fi network to try. Set `WEB_PASSWORD` to choose the hub
    password; left empty, the setup network's password is used.
 2. Flash with `pio run -t upload`, which targets a regular ESP32 with 16 MB of flash. Add `-e esp32dev` for one with 4 MB,
-   or `-e esp32s3` for an ESP32-S3.
+   or `-e esp32s3` for an ESP32-S3. A 4 MB board keeps a shorter event history, about 650 events, so that it always
+   fits beside a few pictures; should storage still fill, the older half of the history gives way, since a report that
+   cannot be saved cannot be confirmed.
    Build from VS Code or PowerShell, because the pioarduino toolchain setup refuses to run under Git Bash.
 
 Open `http://esp-alarmhub.local` for the file manager, from a device on the same network as the hub. The name does not

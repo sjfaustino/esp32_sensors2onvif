@@ -81,6 +81,11 @@ bool SensorCamServer::begin() {
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
   nodeImages_.load();
+  if (cfg_.fsUsage) {  // a smaller history on small storage, so that it always fits
+    uint32_t used = 0, total = 0;
+    cfg_.fsUsage(used, total);
+    log_.setFileMax(camLogFileMax(total, HISTORY_ROOM));
+  }
   log_.load();
   mqttEventsSent_ = log_.added();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
