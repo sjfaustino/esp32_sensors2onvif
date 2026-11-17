@@ -1,4 +1,4 @@
-// SensorCamServer: MQTT, through which Home Assistant finds the hub and its sensors by itself.
+// CamMqttClient: MQTT, through which Home Assistant finds the hub and its sensors by itself.
 //
 // The hub keeps one connection to the broker and sends one message at a time, built only when the one before has gone,
 // so it never holds more than one. What it sends:
@@ -18,7 +18,7 @@
 #include "cam_mqtt.h"
 #include "cam_number.h"
 #include "cam_net.h"
-#include "cam_server.h"
+#include "cam_mqtt_client.h"
 #include "cam_server_internal.h"
 
 static const int HUB_PARTS = 4;  // the hub's entities: alert, NVR listening, events, the alarm panel
@@ -59,17 +59,17 @@ static std::string sensorKey(const uint8_t mac[6], uint8_t input) {
 
 static std::string payload(const std::string& json) { return json.substr(0, json.size() - 1); }  // without the line break
 
-std::string SensorCamServer::mqttBase() const { return "sensors2onvif/" + cfg_.serial; }
+std::string CamMqttClient::topicBase() const { return "sensors2onvif/" + cfg_.serial; }
 
-void SensorCamServer::startMqtt(uint32_t now) {
+void CamMqttClient::start(uint32_t now) {
   uint32_t host = inet_addr(cfg_.mqtt.host.c_str());
   if (host == INADDR_NONE) {
-    endMqtt("the broker address is not an IP address", now);
+    stop("the broker address is not an IP address", now);
     return;
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind.
   std::string hello =
-      camMqttConnect("sensors2onvif-" + cfg_.serial, cfg_.mqtt.user, cfg_.mqtt.password, mqttBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
+      camMqttConnect("sensors2onvif-" + cfg_.serial, cfg_.mqtt.user, cfg_.mqtt.password, topicBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return;  // tried again on the next pass
   netNonblock(fd);
@@ -77,47 +77,47 @@ void SensorCamServer::startMqtt(uint32_t now) {
   to.sin_family = AF_INET;
   to.sin_port = htons(cfg_.mqtt.port);
   to.sin_addr.s_addr = host;
-  mqtt_ = MqttIo();
-  mqtt_.fd = fd;
+  io_ = Io();
+  io_.fd = fd;
   if (connect(fd, (sockaddr*)&to, sizeof(to)) != 0 && !netWouldBlock()) {
-    endMqtt("could not connect to the broker", now);
+    stop("could not connect to the broker", now);
     return;
   }
-  mqtt_.out.swap(hello);
-  mqtt_.state = MqttIo::CONNECTING;
-  mqtt_.deadline = now + CAM_MQTT_WAIT_MS;
-  mqtt_.heardAt = mqtt_.sentAt = now;
+  io_.out.swap(hello);
+  io_.state = Io::CONNECTING;
+  io_.deadline = now + CAM_MQTT_WAIT_MS;
+  io_.heardAt = io_.sentAt = now;
 }
 
-// An event not yet acknowledged is sent again on the next connection, because mqttEventsSent_ moves only on its PUBACK.
-void SensorCamServer::endMqtt(const char* why, uint32_t now) {
-  if (mqtt_.fd >= 0) netClose(mqtt_.fd);
-  mqtt_ = MqttIo();
-  mqttWaiting_ = true;
-  mqttRetryAt_ = now + CAM_MQTT_RETRY_MS;
-  mqttResult_ = why;  // last, as the one step that needs memory
+// An event not yet acknowledged is sent again on the next connection, because eventsSent_ moves only on its PUBACK.
+void CamMqttClient::stop(const char* why, uint32_t now) {
+  if (io_.fd >= 0) netClose(io_.fd);
+  io_ = Io();
+  waiting_ = true;
+  retryAt_ = now + CAM_MQTT_RETRY_MS;
+  result_ = why;  // last, as the one step that needs memory
 }
 
-void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
-  mqtt_.heardAt = now;
+void CamMqttClient::packet(const uint8_t* p, size_t len, uint32_t now) {
+  io_.heardAt = now;
   uint8_t type = p[0] >> 4;
-  if (type == CAM_MQTT_CONNACK && mqtt_.state == MqttIo::WAIT_CONNACK) {
+  if (type == CAM_MQTT_CONNACK && io_.state == Io::WAIT_CONNACK) {
     uint8_t code = len >= 4 ? p[3] : 255;
     if (code != 0) {
-      endMqtt(camMqttRefusal(code), now);
+      stop(camMqttRefusal(code), now);
       return;
     }
-    mqtt_.state = MqttIo::READY;
-    mqttWaiting_ = false;
-    mqttConnectedAt_ = time(nullptr);
-    for (MqttShown& s : mqttShown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
-    mqttResult_ = "connected";
+    io_.state = Io::READY;
+    waiting_ = false;
+    connectedAt_ = time(nullptr);
+    for (Shown& s : shown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
+    result_ = "connected";
   } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, or a sensor's test button
     CamMqttMessage m;
     // A retained command was sent some time ago and is repeated by the broker on every connection: obeying it could
     // keep disarming the hub. Home Assistant does not retain its commands.
     if ((p[0] & 0x01) || !camMqttReadPublish(p, len, m)) return;
-    std::string topic(m.topic, m.topicLen), base = mqttBase() + "/";
+    std::string topic(m.topic, m.topicLen), base = topicBase() + "/";
     if (topic.compare(0, base.size(), base) != 0) return;
     topic.erase(0, base.size());
     if (topic.size() > 5 && topic.compare(topic.size() - 5, 5, "/test") == 0) {  // <sensor>/test, the sensor as its MAC address in hex, _, its input
@@ -126,150 +126,144 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
       size_t underscore = key.find('_');
       uint8_t input = 0;
       bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6) && camNumber(key.substr(13), input);
-      if (parsed) testAlert(alarm_.findSlot(mac, input));
+      if (parsed) alarm_.testAlert(alarm_.findSlot(mac, input));
       return;
     }
     if (topic != "armed/set") return;
     std::string command(m.payload, m.payloadLen);
     // ON and OFF are what the Armed switch of earlier firmware sent.
-    if (command == "ARM_AWAY" || command == "ON") setArmMode(CAM_ARMED_AWAY, "Home Assistant");
-    if (command == "ARM_HOME") setArmMode(CAM_ARMED_HOME, "Home Assistant");
-    if (command == "DISARM" || command == "OFF") setArmMode(CAM_DISARMED, "Home Assistant", cfg_.rearmMinutes);
-    mqtt_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
+    if (command == "ARM_AWAY" || command == "ON") alarm_.setArmMode(CAM_ARMED_AWAY, "Home Assistant");
+    if (command == "ARM_HOME") alarm_.setArmMode(CAM_ARMED_HOME, "Home Assistant");
+    if (command == "DISARM" || command == "OFF") alarm_.setArmMode(CAM_DISARMED, "Home Assistant", cfg_.rearmMinutes);
+    io_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {
     uint16_t id = (uint16_t)(p[2] << 8 | p[3]);
-    if (mqtt_.ackId && id == mqtt_.ackId) {
-      if (mqtt_.ackEvent > mqttEventsSent_) mqttEventsSent_ = mqtt_.ackEvent;
-      mqtt_.ackId = 0;
+    if (io_.ackId && id == io_.ackId) {
+      if (io_.ackEvent > eventsSent_) eventsSent_ = io_.ackEvent;
+      io_.ackId = 0;
     }
   }
 }
 
-void SensorCamServer::serviceMqtt(bool readable, bool writable, uint32_t now) {
-  if (mqtt_.state == MqttIo::CONNECTING) {
+void CamMqttClient::service(bool readable, bool writable, uint32_t now) {
+  if (io_.state == Io::CONNECTING) {
     if (!writable) return;
     int err = 0;
     socklen_t len = sizeof(err);
-    getsockopt(mqtt_.fd, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
+    getsockopt(io_.fd, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
     if (err) {
-      endMqtt("could not connect to the broker", now);
+      stop("could not connect to the broker", now);
       return;
     }
-    mqtt_.state = MqttIo::WAIT_CONNACK;  // the CONNECT is already in out
-    mqtt_.deadline = now + CAM_MQTT_WAIT_MS;
+    io_.state = Io::WAIT_CONNACK;  // the CONNECT is already in out
+    io_.deadline = now + CAM_MQTT_WAIT_MS;
   }
   if (readable) {
     uint8_t buf[256];
-    int n = (int)recv(mqtt_.fd, (char*)buf, sizeof(buf), 0);
+    int n = (int)recv(io_.fd, (char*)buf, sizeof(buf), 0);
     if (n == 0 || (n < 0 && !netWouldBlock())) {
-      endMqtt("the broker closed the connection", now);
+      stop("the broker closed the connection", now);
       return;
     }
     for (int at = 0; n > 0 && at < n;) {
-      if (mqtt_.skip) {  // the rest of a packet too large to keep, which the hub has no use for
-        size_t take = (size_t)(n - at) < mqtt_.skip ? (size_t)(n - at) : mqtt_.skip;
-        mqtt_.skip -= take;
+      if (io_.skip) {  // the rest of a packet too large to keep, which the hub has no use for
+        size_t take = (size_t)(n - at) < io_.skip ? (size_t)(n - at) : io_.skip;
+        io_.skip -= take;
         at += (int)take;
-        mqtt_.heardAt = now;
+        io_.heardAt = now;
         continue;
       }
-      size_t room = sizeof(mqtt_.in) - mqtt_.inLen, take = (size_t)(n - at) < room ? (size_t)(n - at) : room;
-      memcpy(mqtt_.in + mqtt_.inLen, buf + at, take);
-      mqtt_.inLen += take;
+      size_t room = sizeof(io_.in) - io_.inLen, take = (size_t)(n - at) < room ? (size_t)(n - at) : room;
+      memcpy(io_.in + io_.inLen, buf + at, take);
+      io_.inLen += take;
       at += (int)take;
-      while (mqtt_.inLen) {
-        long size = camMqttPacketSize(mqtt_.in, mqtt_.inLen);
+      while (io_.inLen) {
+        long size = camMqttPacketSize(io_.in, io_.inLen);
         if (size < 0) {
-          endMqtt("the broker sent something that is not MQTT", now);
+          stop("the broker sent something that is not MQTT", now);
           return;
         }
         if (size == 0) break;
-        if ((size_t)size > sizeof(mqtt_.in)) {
-          mqtt_.skip = (size_t)size - mqtt_.inLen;
-          mqtt_.inLen = 0;
-          mqtt_.heardAt = now;
+        if ((size_t)size > sizeof(io_.in)) {
+          io_.skip = (size_t)size - io_.inLen;
+          io_.inLen = 0;
+          io_.heardAt = now;
           break;
         }
-        if ((size_t)size > mqtt_.inLen) break;
-        mqttPacket(mqtt_.in, (size_t)size, now);
-        if (mqtt_.fd < 0) return;
-        memmove(mqtt_.in, mqtt_.in + size, mqtt_.inLen - (size_t)size);
-        mqtt_.inLen -= (size_t)size;
+        if ((size_t)size > io_.inLen) break;
+        packet(io_.in, (size_t)size, now);
+        if (io_.fd < 0) return;
+        memmove(io_.in, io_.in + size, io_.inLen - (size_t)size);
+        io_.inLen -= (size_t)size;
       }
     }
   }
-  if (writable && mqtt_.outPos < mqtt_.out.size()) {
-    int sent = (int)send(mqtt_.fd, mqtt_.out.data() + mqtt_.outPos, (int)(mqtt_.out.size() - mqtt_.outPos), 0);
+  if (writable && io_.outPos < io_.out.size()) {
+    int sent = (int)send(io_.fd, io_.out.data() + io_.outPos, (int)(io_.out.size() - io_.outPos), 0);
     if (sent < 0 && !netWouldBlock()) {
-      endMqtt("the connection to the broker failed", now);
+      stop("the connection to the broker failed", now);
       return;
     }
-    if (sent > 0) mqtt_.outPos += (size_t)sent;
-    if (mqtt_.outPos >= mqtt_.out.size()) {
-      std::string().swap(mqtt_.out);
-      mqtt_.outPos = 0;
-      mqtt_.sentAt = now;
+    if (sent > 0) io_.outPos += (size_t)sent;
+    if (io_.outPos >= io_.out.size()) {
+      std::string().swap(io_.out);
+      io_.outPos = 0;
+      io_.sentAt = now;
     }
   }
 }
 
-// In housekeeping, with its own guard: running out of memory here leaves the message unbuilt, to be built on a later
-// pass, and the rest of housekeeping still runs.
-void SensorCamServer::mqttHousekeeping(uint32_t now) {
+void CamMqttClient::tick(uint32_t now, bool mayConnect) {
   if (cfg_.mqtt.host.empty()) {
-    if (mqtt_.fd >= 0) netClose(mqtt_.fd);
-    mqtt_ = MqttIo();
-    mqttWaiting_ = false;
-    mqttEventsSent_ = alarm_.log().added();  // turned on later, it sends what happens from then on
+    if (io_.fd >= 0) netClose(io_.fd);
+    io_ = Io();
+    waiting_ = false;
+    eventsSent_ = alarm_.log().added();  // turned on later, it sends what happens from then on
     return;
   }
-  try {
-    if (mqtt_.state == MqttIo::OFF) {
-      if ((!mqttWaiting_ || (int32_t)(now - mqttRetryAt_) >= 0) && sharedSockets() < MAX_HTTP && !updating()) startMqtt(now);
-      return;
-    }
-    if (mqtt_.state != MqttIo::READY && (int32_t)(now - mqtt_.deadline) >= 0) {
-      endMqtt(mqtt_.state == MqttIo::CONNECTING ? "could not connect to the broker" : "the broker did not answer", now);
-      return;
-    }
-    if (mqtt_.state != MqttIo::READY) return;
-    if (now - mqtt_.heardAt > CAM_MQTT_SILENT_MS) {
-      endMqtt("the broker stopped answering", now);
-      return;
-    }
-    if (mqtt_.ackId && now - mqtt_.ackSince > CAM_MQTT_WAIT_MS) {
-      endMqtt("the broker did not acknowledge an event", now);
-      return;
-    }
-    if (!mqtt_.out.empty()) return;
-    std::string next;
-    if (mqttNext(now, next)) mqtt_.out.swap(next);
-  } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+  if (io_.state == Io::OFF) {
+    if ((!waiting_ || (int32_t)(now - retryAt_) >= 0) && mayConnect) start(now);
+    return;
   }
+  if (io_.state != Io::READY && (int32_t)(now - io_.deadline) >= 0) {
+    stop(io_.state == Io::CONNECTING ? "could not connect to the broker" : "the broker did not answer", now);
+    return;
+  }
+  if (io_.state != Io::READY) return;
+  if (now - io_.heardAt > CAM_MQTT_SILENT_MS) {
+    stop("the broker stopped answering", now);
+    return;
+  }
+  if (io_.ackId && now - io_.ackSince > CAM_MQTT_WAIT_MS) {
+    stop("the broker did not acknowledge an event", now);
+    return;
+  }
+  if (!io_.out.empty()) return;
+  std::string next;
+  if (nextMessage(now, next)) io_.out.swap(next);
 }
 
 // Alerts first, then events, then Home Assistant's discovery, then the rest of the sensors' states, then a ping.
 // Each piece of state is marked as sent only once its message is built.
-bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
-  if (!mqtt_.online) {
-    out = camMqttPublish(mqttBase() + "/status", "online", true, 0);
-    mqtt_.online = true;
+bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
+  if (!io_.online) {
+    out = camMqttPublish(topicBase() + "/status", "online", true, 0);
+    io_.online = true;
     return true;
   }
-  if (mqtt_.subscribed < 2) {
-    out = camMqttSubscribe(mqttBase() + (mqtt_.subscribed == 0 ? "/armed/set" : "/+/test"), mqtt_.nextId);
-    mqtt_.nextId = (uint16_t)(mqtt_.nextId == 0xffff ? 1 : mqtt_.nextId + 1);
-    mqtt_.subscribed++;
+  if (io_.subscribed < 2) {
+    out = camMqttSubscribe(topicBase() + (io_.subscribed == 0 ? "/armed/set" : "/+/test"), io_.nextId);
+    io_.nextId = (uint16_t)(io_.nextId == 0xffff ? 1 : io_.nextId + 1);
+    io_.subscribed++;
     return true;
   }
   bool alert = false;
   for (int id = 1; id <= alarm_.board().count(); id++) alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
-  bool nvr = nvrListening(now);
-  bool armed = this->armed(), home = armMode() == CAM_ARMED_HOME;
+  bool nvr = outside_.nvrListening(now);
+  bool armed = alarm_.armed(), home = alarm_.armMode() == CAM_ARMED_HOME;
   int64_t until = alarm_.disarmedUntil();
-  if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome ||
-      until != mqtt_.hubUntil) {
+  if (!io_.hubTold || alert != io_.hubAlert || nvr != io_.hubNvr || armed != io_.hubArmed || home != io_.hubHome ||
+      until != io_.hubUntil) {
     bool known = !armed && until > 1;
     std::string json = jsonObject([&](CamJson& j) {
       j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF");
@@ -279,51 +273,51 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
                              : "armed_away")
           .str("rearm_at", known, known ? iso((time_t)until) : std::string());
     });
-    out = camMqttPublish(mqttBase() + "/hub/state", payload(json), true, 0);
-    mqtt_.hubTold = true;
-    mqtt_.hubAlert = alert;
-    mqtt_.hubNvr = nvr;
-    mqtt_.hubArmed = armed;
-    mqtt_.hubHome = home;
-    mqtt_.hubUntil = until;
+    out = camMqttPublish(topicBase() + "/hub/state", payload(json), true, 0);
+    io_.hubTold = true;
+    io_.hubAlert = alert;
+    io_.hubNvr = nvr;
+    io_.hubArmed = armed;
+    io_.hubHome = home;
+    io_.hubUntil = until;
     return true;
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
-    if (mqttSensorState(i, true, now, out)) return true;
-  if (!mqtt_.ackId && mqttEvent(out)) {
-    mqtt_.ackSince = now;
+    if (sensorState(i, true, now, out)) return true;
+  if (!io_.ackId && eventMessage(out)) {
+    io_.ackSince = now;
     return true;
   }
-  if (!mqtt_.oldSwitchGone) {  // earlier firmware had a switch where the alarm panel now is
+  if (!io_.oldSwitchGone) {  // earlier firmware had a switch where the alarm panel now is
     out = camMqttPublish("homeassistant/switch/" + cfg_.serial + "/hub_armed/config", "", true, 0);
-    mqtt_.oldSwitchGone = true;
+    io_.oldSwitchGone = true;
     return true;
   }
-  while (mqtt_.discovery >= 0) {
-    int step = mqtt_.discovery;
-    bool made = mqttDiscoveryStep(step, out);
-    mqtt_.discovery = step + 1 < DISCOVERY_STEPS ? step + 1 : -1;
+  while (io_.discovery >= 0) {
+    int step = io_.discovery;
+    bool made = discoveryStep(step, out);
+    io_.discovery = step + 1 < DISCOVERY_STEPS ? step + 1 : -1;
     if (made) return true;
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
-    if (mqttSensorState(i, false, now, out)) return true;
-  if (chip_->tellsHealth() && (!mqtt_.healthTold || now - mqtt_.healthAt >= CAM_MQTT_HEALTH_MS)) {
+    if (sensorState(i, false, now, out)) return true;
+  if (chip_->tellsHealth() && (!io_.healthTold || now - io_.healthAt >= CAM_MQTT_HEALTH_MS)) {
     CamHealth h;
     chip_->health(h);
     time_t t = time(nullptr);
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
     std::string json = jsonObject([&](CamJson& j) {
       j.num("free_kb", h.freeHeap / 1024).num("lowest_kb", h.lowestFreeHeap / 1024).num("largest_kb", h.largestBlock / 1024);
-      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", memoryFailures()).num("espnow_dropped", h.espNowDropped);
+      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", outside_.memoryFailures()).num("espnow_dropped", h.espNowDropped);
       j.num("rssi", h.wifiRssi != 0, h.wifiRssi).num("uptime_s", (long long)h.uptimeS);
       j.str("started", clockOk, clockOk ? iso(t - (time_t)h.uptimeS) : std::string());
     });
-    out = camMqttPublish(mqttBase() + "/hub/health", payload(json), true, 0);
-    mqtt_.healthTold = true;
-    mqtt_.healthAt = now;
+    out = camMqttPublish(topicBase() + "/hub/health", payload(json), true, 0);
+    io_.healthTold = true;
+    io_.healthAt = now;
     return true;
   }
-  if (now - mqtt_.sentAt >= CAM_MQTT_PING_MS) {
+  if (now - io_.sentAt >= CAM_MQTT_PING_MS) {
     out = camMqttPing();
     return true;
   }
@@ -331,10 +325,10 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
 }
 
 // alertsOnly: only a sensor whose alert started or ended, or that has never been sent.
-bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std::string& out) {
+bool CamMqttClient::sensorState(int i, bool alertsOnly, uint32_t now, std::string& out) {
   if (!alarm_.slotOf(i + 1).used) return false;
-  const Health& h = alarm_.healthOf(i + 1);
-  MqttShown& s = mqttShown_[i];
+  const CamAlarm::Health& h = alarm_.healthOf(i + 1);
+  Shown& s = shown_[i];
   bool alert = alarm_.board().active(i + 1) && !alarm_.board().pastEvent(i + 1);  // a past event replaying for the NVR is not happening now
   bool changed = !s.told || alert != s.alert;
   if (alertsOnly && !changed) return false;
@@ -348,7 +342,7 @@ bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std:
         .flag("low_battery", h.lowBattery)
         .flag("weak_signal", h.weak);
   });
-  out = camMqttPublish(mqttBase() + "/" + sensorKey(alarm_.slotOf(i + 1).mac, alarm_.slotOf(i + 1).input) + "/state", payload(json), true, 0);
+  out = camMqttPublish(topicBase() + "/" + sensorKey(alarm_.slotOf(i + 1).mac, alarm_.slotOf(i + 1).input) + "/state", payload(json), true, 0);
   s.told = true;
   s.alert = alert;
   s.silent = h.silent;
@@ -361,15 +355,15 @@ bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std:
 }
 
 // The next event of the history not yet acknowledged. Events from before the start were sent by the run before.
-bool SensorCamServer::mqttEvent(std::string& out) {
+bool CamMqttClient::eventMessage(std::string& out) {
   uint32_t added = alarm_.log().added(), kept = (uint32_t)alarm_.log().count();
-  if (mqttEventsSent_ >= added) return false;
-  if (added - mqttEventsSent_ > kept) {  // more happened while the broker was away than the log keeps in memory
-    mqttEventsLost_ += added - mqttEventsSent_ - kept;
-    mqttEventsSent_ = added - kept;
+  if (eventsSent_ >= added) return false;
+  if (added - eventsSent_ > kept) {  // more happened while the broker was away than the log keeps in memory
+    eventsLost_ += added - eventsSent_ - kept;
+    eventsSent_ = added - kept;
     if (!kept) return false;
   }
-  uint32_t number = mqttEventsSent_ + 1;
+  uint32_t number = eventsSent_ + 1;
   const CamEvent& e = alarm_.log().recent((int)(added - number));
   bool hub = strcmp(e.sensor, "hub") == 0;
   std::string key = "hub";
@@ -377,7 +371,7 @@ bool SensorCamServer::mqttEvent(std::string& out) {
     uint8_t mac[6], input = 0;
     const char* slash = strchr(e.sensor, '/');
     if (!slash || !camParseMac(std::string(e.sensor, slash - e.sensor), mac) || !camNumber(std::string(slash + 1), input)) {
-      mqttEventsSent_ = number;  // cannot be placed; never happens for an event this hub logged
+      eventsSent_ = number;  // cannot be placed; never happens for an event this hub logged
       return false;
     }
     key = sensorKey(mac, input);
@@ -389,17 +383,17 @@ bool SensorCamServer::mqttEvent(std::string& out) {
     j.num("battery", e.battery != CAM_BATTERY_UNKNOWN, e.battery).str("time", clockOk, clockOk ? iso(e.received) : std::string());
     j.str("message", camEventMessage(e.kind, who, hub ? e.text : "", e.offS, e.delayed));
   });
-  uint16_t id = mqtt_.nextId;
-  out = camMqttPublish(mqttBase() + "/" + key + "/event", payload(json), false, id);
-  mqtt_.nextId = (uint16_t)(id == 0xffff ? 1 : id + 1);
-  mqtt_.ackId = id;
-  mqtt_.ackEvent = number;
+  uint16_t id = io_.nextId;
+  out = camMqttPublish(topicBase() + "/" + key + "/event", payload(json), false, id);
+  io_.nextId = (uint16_t)(id == 0xffff ? 1 : id + 1);
+  io_.ackId = id;
+  io_.ackEvent = number;
   return true;
 }
 
 // Home Assistant's discovery: one retained message per entity, under homeassistant/, naming the topic it reads.
-bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
-  std::string base = mqttBase(), hubId = "sensors2onvif_" + cfg_.serial;
+bool CamMqttClient::discoveryStep(int step, std::string& out) {
+  std::string base = topicBase(), hubId = "sensors2onvif_" + cfg_.serial;
   std::string hubName = cfg_.hostName.substr(0, cfg_.hostName.find('.'));
   auto common = [&](CamJson& j, const std::string& id, const char* name, const std::string& stateTopic) {
     j.str("name", name).str("unique_id", id).str("state_topic", stateTopic);
@@ -456,8 +450,8 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     return true;
   }
   int i = (step - HUB_STEPS) / SLOT_STEPS, k = (step - HUB_STEPS) % SLOT_STEPS;
-  const Slot& s = alarm_.slotOf(i + 1);
-  MqttTold& t = mqttTold_[i];
+  const CamAlarm::Slot& s = alarm_.slotOf(i + 1);
+  Told& t = told_[i];
   if (k <= SENSOR_PARTS) {  // a sensor deleted, or replaced in its slot: its entities and its retained state are taken away
     if (!t.used || (s.used && memcmp(t.mac, s.mac, 6) == 0 && t.input == s.input)) return false;
     std::string key = sensorKey(t.mac, t.input);
@@ -512,21 +506,26 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   return true;
 }
 
-std::string SensorCamServer::mqttState() const {
-  if (cfg_.mqtt.host.empty()) return "not set up";
-  return mqtt_.state == MqttIo::READY ? "connected" : mqtt_.state != MqttIo::OFF ? "connecting" : mqttResult_;
+void CamMqttClient::restart(uint32_t now) {
+  stop("connecting", now);
+  waiting_ = false;
 }
 
-std::string SensorCamServer::mqttJson() {
+std::string CamMqttClient::state() const {
+  if (cfg_.mqtt.host.empty()) return "not set up";
+  return io_.state == Io::READY ? "connected" : io_.state != Io::OFF ? "connecting" : result_;
+}
+
+std::string CamMqttClient::pageJson() {
   const CamMqtt& m = cfg_.mqtt;
-  bool ready = mqtt_.state == MqttIo::READY, clockOk = mqttConnectedAt_ >= CAM_CLOCK_VALID_AFTER;
-  uint32_t waiting = alarm_.log().added() - mqttEventsSent_;
+  bool ready = io_.state == Io::READY, clockOk = connectedAt_ >= CAM_CLOCK_VALID_AFTER;
+  uint32_t waiting = alarm_.log().added() - eventsSent_;
   return jsonObject([&](CamJson& j) {
     j.str("host", m.host).num("port", m.port).str("user", m.user).flag("password", !m.password.empty());
-    j.flag("connected", ready).str("state", mqttState());
-    j.str("since", ready && clockOk, ready && clockOk ? iso(mqttConnectedAt_) : std::string())
+    j.flag("connected", ready).str("state", state());
+    j.str("since", ready && clockOk, ready && clockOk ? iso(connectedAt_) : std::string())
         .num("waiting", m.host.empty() ? 0 : waiting)
-        .num("lost", mqttEventsLost_);
-    j.str("topic", mqttBase()).str("hub", cfg_.hostName.substr(0, cfg_.hostName.find('.')));
+        .num("lost", eventsLost_);
+    j.str("topic", topicBase()).str("hub", cfg_.hostName.substr(0, cfg_.hostName.find('.')));
   });
 }

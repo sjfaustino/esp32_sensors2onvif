@@ -26,7 +26,8 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       millis_(millisFn),
       signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot),
-      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodeImages_, *this, millisFn) {
+      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodeImages_, *this, millisFn),
+      mqtt_(cfg_, alarm_, *chip_, *this, localIp) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
 }
@@ -85,7 +86,7 @@ bool SensorCamServer::begin() {
   frameData_.reserve(CAM_MAX_FRAME);
   nodeImages_.load();
   alarm_.begin();
-  mqttEventsSent_ = alarm_.log().added();
+  mqtt_.begin();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
   if (pairingReady_) camX25519Public(hubPublic_, hubPrivate_);  // tens of milliseconds on the board, once  // the run before sent those
   subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
@@ -145,7 +146,7 @@ int SensorCamServer::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;
   for (const NotifyIo& n : notify_) open += n.fd >= 0;
-  return open + (hook_.fd >= 0) + (mqtt_.fd >= 0);
+  return open + (hook_.fd >= 0) + (mqtt_.fd() >= 0);
 }
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
@@ -845,7 +846,11 @@ void SensorCamServer::housekeeping(uint32_t now) {
     if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
   if (hook_.state == NotifyIo::IDLE && hooks_.count() && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
-  mqttHousekeeping(now);
+  try {  // on its own, so running out of memory there still leaves the picture to be sent
+    mqtt_.tick(now, sharedSockets() < MAX_HTTP && !updating());
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+  }
   pushFrames(now);
 }
 
@@ -887,10 +892,8 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
       add(n.fd, wr);
   }
   if (hook_.state != NotifyIo::IDLE) add(hook_.fd, hook_.state == NotifyIo::WAIT_CLOSE ? rd : wr);
-  if (mqtt_.fd >= 0) {
-    if (mqtt_.state != MqttIo::CONNECTING) add(mqtt_.fd, rd);
-    if (mqtt_.state == MqttIo::CONNECTING || mqtt_.outPos < mqtt_.out.size()) add(mqtt_.fd, wr);
-  }
+  if (mqtt_.wantsRead()) add(mqtt_.fd(), rd);
+  if (mqtt_.wantsWrite()) add(mqtt_.fd(), wr);
 
   int32_t untilFrame = (int32_t)(nextFrameAt_ - now);
   int wait = untilFrame < maxWaitMs ? (untilFrame < 0 ? 0 : untilFrame) : maxWaitMs;
@@ -915,5 +918,5 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   for (NotifyIo& n : notify_)
     if (n.state != NotifyIo::IDLE) serviceNotify(n, FD_ISSET(n.fd, &rd), FD_ISSET(n.fd, &wr), now);
   if (hook_.state != NotifyIo::IDLE) serviceNotify(hook_, FD_ISSET(hook_.fd, &rd), FD_ISSET(hook_.fd, &wr), now);
-  if (mqtt_.fd >= 0) serviceMqtt(FD_ISSET(mqtt_.fd, &rd), FD_ISSET(mqtt_.fd, &wr), now);
+  if (mqtt_.fd() >= 0) mqtt_.service(FD_ISSET(mqtt_.fd(), &rd), FD_ISSET(mqtt_.fd(), &wr), now);
 }

@@ -106,7 +106,7 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
       if (alarm_.slotOf(id).used && alarm_.board().active(id))
         j.object().str("sensor", alarm_.slotName(id)).str("name", alarm_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
     j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", streamCount()).end();
-    j.str("mqtt", mqttState()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hooks_.result()).end().array("problems");
+    j.str("mqtt", mqtt_.state()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hooks_.result()).end().array("problems");
     for (int id = 1; id <= alarm_.board().count(); id++) {
       const Health& h = alarm_.healthOf(id);
       if (!alarm_.slotOf(id).used) continue;

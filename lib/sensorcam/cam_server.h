@@ -13,6 +13,7 @@
 #include "cam_hook_queue.h"
 #include "cam_node_images.h"
 #include "cam_json.h"
+#include "cam_mqtt_client.h"
 #include "cam_pairing.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
@@ -21,7 +22,7 @@
 #include "cam_subs.h"
 #include "cam_timing.h"
 
-class SensorCamServer : private CamAlarmOutside {
+class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
  public:
   SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn);
   bool begin();
@@ -37,7 +38,7 @@ class SensorCamServer : private CamAlarmOutside {
   bool updating() const { return firmwareOwner_ != nullptr; }          // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see nvrListening
   // Times memory ran out and only that piece of work was dropped.
-  uint32_t memoryFailures() const { return memoryFailures_ + alarm_.memoryFailures(); }
+  uint32_t memoryFailures() const override { return memoryFailures_ + alarm_.memoryFailures(); }
   bool armed() const { return alarm_.armed(); }
   CamArmMode armMode() const { return alarm_.armMode(); }
   // See CamAlarm::setArmMode and CamAlarm::testAlert.
@@ -219,63 +220,7 @@ class SensorCamServer : private CamAlarmOutside {
   uint32_t pairingUntil_ = 0;
   PairRequest pairRequests_[MAX_PAIR_REQUESTS];
 
-  // ---- MQTT, for Home Assistant: cam_server_mqtt.cpp ----
-  struct MqttShown {  // a sensor's state as last published, so only a change is sent
-    bool told = false;
-    bool alert = false, silent = false, low = false, weak = false;
-    uint8_t battery = CAM_BATTERY_UNKNOWN;
-    int8_t rssi = 0;
-    uint32_t at = 0;
-  };
-  struct MqttTold {  // a sensor Home Assistant was told of, so one deleted or replaced is taken away again
-    bool used = false;
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    uint8_t input = 0;
-  };
-  struct MqttIo {
-    enum State { OFF, CONNECTING, WAIT_CONNACK, READY } state = OFF;
-    int fd = -1;
-    std::string out;
-    size_t outPos = 0;
-    uint8_t in[64];
-    size_t inLen = 0;
-    size_t skip = 0;  // bytes of a packet too large for in, read and dropped
-    uint32_t deadline = 0, sentAt = 0, heardAt = 0;
-    uint16_t nextId = 1;
-    uint16_t ackId = 0;     // the event sent and not yet acknowledged; 0 for none
-    uint32_t ackEvent = 0;  // its number, counting the events added to the log since the start
-    uint32_t ackSince = 0;
-    bool online = false;
-    int discovery = 0;  // the next discovery message; -1 once all are sent
-    bool hubTold = false, hubAlert = false, hubNvr = false, hubArmed = false, hubHome = false;
-    int64_t hubUntil = 0;
-    bool oldSwitchGone = false;  // the Armed switch of earlier firmware, taken away from Home Assistant
-    int subscribed = 0;          // topics subscribed to: the alarm panel's, then the test buttons'
-    bool healthTold = false;
-    uint32_t healthAt = 0;
-  };
-  void serviceMqtt(bool readable, bool writable, uint32_t now);
-  void mqttHousekeeping(uint32_t now);
-  void startMqtt(uint32_t now);
-  void endMqtt(const char* why, uint32_t now);
-  void mqttPacket(const uint8_t* p, size_t len, uint32_t now);
-  bool mqttNext(uint32_t now, std::string& out);  // the next message to send, if any
-  bool mqttDiscoveryStep(int step, std::string& out);
-  bool mqttSensorState(int i, bool alertsOnly, uint32_t now, std::string& out);
-  bool mqttEvent(std::string& out);
-  std::string mqttBase() const;  // the hub's topics start with this
-  std::string mqttJson();
-  std::string mqttState() const;  // as the page shows it
   std::string overviewJson(uint32_t now);
-  MqttIo mqtt_;
-  MqttShown mqttShown_[CAM_MAX_SENSORS];
-  MqttTold mqttTold_[CAM_MAX_SENSORS];
-  uint32_t mqttEventsSent_ = 0;  // the events published, counting as CamEventLog::added does
-  uint32_t mqttEventsLost_ = 0;  // more waited than the log keeps in memory
-  uint32_t mqttRetryAt_ = 0;
-  bool mqttWaiting_ = false;  // a connection failed, and the next waits until mqttRetryAt_
-  std::string mqttResult_ = "not set up";
-  time_t mqttConnectedAt_ = 0;
   void pushFrames(uint32_t now);
 
   CamConfig cfg_;
@@ -300,6 +245,7 @@ class SensorCamServer : private CamAlarmOutside {
   CamStorage storage_;
   CamNodeImages nodeImages_{storage_};
   CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodeImages_, which it uses
+  CamMqttClient mqtt_;
   std::string frameKey_;        // what frame_ currently shows; empty forces a reload
   std::string frameFile_;       // the file behind frame_; empty means a built-in picture
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page

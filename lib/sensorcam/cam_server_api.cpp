@@ -726,7 +726,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the setting");
     }
   } else if (r.is("GET", "/api/mqtt")) {
-    reply(c, 200, JSON_TYPE, mqttJson());
+    reply(c, 200, JSON_TYPE, mqtt_.pageJson());
   } else if (r.is("POST", "/api/mqtt")) {
     std::string form = r.form(), port = queryParam(form, "port");
     CamMqtt m;
@@ -749,8 +749,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       bool ok = store_->mqttSave(m);
       if (ok) {
         cfg_.mqtt = m;
-        endMqtt("connecting", millis_());  // the new settings apply at once
-        mqttWaiting_ = false;
+        mqtt_.restart(millis_());  // the new settings apply at once
       }
       c.out = saved(ok, "could not save the MQTT settings");
     }
