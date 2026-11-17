@@ -1,4 +1,4 @@
-// SensorCamServer: pairing sensor nodes with public keys (cam_pairing.h).
+// CamNodes: pairing sensor nodes with public keys (cam_pairing.h), and their firmware updates.
 //
 // A node says hello with its public key on each channel until the hub answers. While pairing is open, the hub lists it
 // for approval with its key's fingerprint, which the person compares with the node's label before approving. Approval
@@ -8,11 +8,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <new>
-#include "cam_server.h"
+#include "cam_nodes.h"
 #include "cam_server_internal.h"
 #include "cam_soap.h"
 
-void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
+void CamNodes::begin() {
+  images_.load();
+  pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
+  if (pairingReady_) camX25519Public(hubPublic_, hubPrivate_);
+}
+
+void CamNodes::hello(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
   uint8_t inputs = 0, key[CAM_X25519_LEN];
   if (!pairingReady_ || !camParseHello(data, len, inputs, key)) return;
   uint32_t now = millis_();
@@ -49,8 +55,8 @@ void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int
   radio_->espNowSend(mac, answer, CAM_ANSWER_LEN);
 }
 
-// Writes the node's key, then makes its inputs' folders. Takes tens of milliseconds on the board, once per node.
-bool SensorCamServer::approveNode(const uint8_t mac[6], std::string& error) {
+// Takes tens of milliseconds on the board, once per node.
+bool CamNodes::approve(const uint8_t mac[6], std::string& error) {
   PairRequest* request = nullptr;
   for (PairRequest& p : pairRequests_)
     if (p.used && memcmp(p.mac, mac, 6) == 0) request = &p;
@@ -83,7 +89,7 @@ bool SensorCamServer::approveNode(const uint8_t mac[6], std::string& error) {
   return true;
 }
 
-std::string SensorCamServer::pairingJson() {
+std::string CamNodes::pairingJson() {
   uint32_t now = millis_();
   return jsonObject([&](CamJson& j) {
     j.flag("ready", pairingReady_).num("open", pairingOpen(now) ? (pairingUntil_ - now + 999) / 1000 : 0);
@@ -101,37 +107,52 @@ std::string SensorCamServer::pairingJson() {
   });
 }
 
-bool SensorCamServer::apiPairing(const ApiRequest& r) {
-  HttpConn& c = r.c;
-  uint32_t now = millis_();
-  for (PairRequest& p : pairRequests_)  // forgotten once they stop asking
+void CamNodes::openPairing(bool open, uint32_t now) {
+  pairingOpen_ = open;
+  pairingUntil_ = now + CAM_PAIR_WINDOW_MS;
+}
+
+void CamNodes::forgetQuiet(uint32_t now) {
+  for (PairRequest& p : pairRequests_)
     if (p.used && now - p.heardAt > CAM_PAIR_FORGET_MS) p = PairRequest();
-  if (r.is("GET", "/api/pairing")) {
-    reply(c, 200, JSON_TYPE, pairingJson());
-  } else if (r.is("POST", "/api/pairing/open") || r.is("POST", "/api/pairing/close")) {
-    if (!pairingReady_) {
-      c.out = jsonFail(409, "pairing is not available: the hub has no pairing key");
-      return true;
-    }
-    pairingOpen_ = r.route == "/api/pairing/open";
-    pairingUntil_ = now + CAM_PAIR_WINDOW_MS;
-    c.out = jsonOk(JSON_OK);
-  } else if (r.is("POST", "/api/pairing/approve") || r.is("POST", "/api/pairing/reject")) {
-    uint8_t mac[6];
-    if (!camParseMac(queryParam(r.form(), "mac"), mac)) {
-      c.out = jsonFail(400, "give the node's MAC address, as AA-BB-CC-DD-EE-FF");
-      return true;
-    }
-    std::string error;
-    if (r.route == "/api/pairing/reject") {
-      for (PairRequest& p : pairRequests_)
-        if (p.used && memcmp(p.mac, mac, 6) == 0) p = PairRequest();
-      c.out = jsonOk(JSON_OK);
-    } else {
-      c.out = approveNode(mac, error) ? jsonOk(JSON_OK) : jsonFail(409, error);
-    }
-  } else {
-    return false;
+}
+
+void CamNodes::reject(const uint8_t mac[6]) {
+  for (PairRequest& p : pairRequests_)
+    if (p.used && memcmp(p.mac, mac, 6) == 0) p = PairRequest();
+}
+
+// Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
+void CamNodes::firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
+  int id = alarm_.findNode(mac);
+  if (!id || !radio_->hasEspNow()) return;
+  CamAlarm::Node& node = alarm_.nodeOf(id);
+  const std::string& key = alarm_.keyFor(&node);
+  CamFirmwareAsk ask;
+  CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
+  if (check == CAM_PACKET_INVALID) return;
+  if (check == CAM_PACKET_BAD_SIGNATURE) return alarm_.refuseSignature(id);
+  const CamNodeImage* f = images_.forChip(node.info.chip);
+  if (!f) return;
+  const CamNodeImage& image = *f;
+  node.updating = true;
+  node.updateAt = millis_();
+  node.updateSize = image.size;
+  uint8_t out[CAM_FIRMWARE_PART_LEN_MAX];
+  if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
+    int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(),
+                            key, out);
+    radio_->espNowSend(mac, out, n);
+    node.updateOffset = 0;
+    return;
   }
-  return true;
+  if (ask.offset >= image.size) return;
+  node.updateOffset = ask.offset;
+  uint8_t window[CAM_FIRMWARE_WINDOW * CAM_FIRMWARE_PART_MAX];
+  uint32_t length = image.size - ask.offset < sizeof(window) ? image.size - ask.offset : (uint32_t)sizeof(window);
+  if (!images_.read(image.chip, ask.offset, window, length)) return;
+  for (uint32_t at = 0; at < length; at += CAM_FIRMWARE_PART_MAX) {
+    int n = length - at < (uint32_t)CAM_FIRMWARE_PART_MAX ? (int)(length - at) : CAM_FIRMWARE_PART_MAX;
+    radio_->espNowSend(mac, out, camFirmwarePart(mac, image.number, image.size, ask.offset + at, window + at, n, key, out));
+  }
 }

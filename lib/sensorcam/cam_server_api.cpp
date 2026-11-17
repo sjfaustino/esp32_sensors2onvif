@@ -369,7 +369,7 @@ std::string SensorCamServer::espNowJson() {
     j.num("responseMs", info.responseMs != CAM_RESPONSE_UNKNOWN, info.responseMs)
         .str("chip", info.chip != CAM_CHIP_UNKNOWN ? camChipName(info.chip) : std::string());
     j.num("daysLeft", node.daysLeft >= 0, node.daysLeft).flag("sealed", node.sealed);
-    const CamNodeImage* image = imageFor(info.chip);
+    const CamNodeImage* image = nodes_.images().forChip(info.chip);
     std::string update = node.updating && node.updateSize ? "updating, " + std::to_string((uint64_t)node.updateOffset * 100 / node.updateSize) + "%"
                          : alarm_.updateReady(id)         ? "update ready"
                          : image && info.refused == image->number ? "update undone"
@@ -377,7 +377,7 @@ std::string SensorCamServer::espNowJson() {
     j.str("update", update).end();
   }
   j.end();
-  nodeImages_.json(j);
+  nodes_.images().json(j);
   j.array("unknown");
   for (const UnknownSender& u : alarm_.unknown()) {
     if (!u.used || alarm_.findSlot(u.mac, u.input)) continue;  // added since it was last heard

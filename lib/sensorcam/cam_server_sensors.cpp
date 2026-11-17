@@ -12,9 +12,9 @@
 void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
   try {
     if (len >= 1 && data[0] == CAM_FIRMWARE_ASK)
-      firmwareAskPacket(mac, data, len);
+      nodes_.firmwareAsk(mac, data, len);
     else if (len >= 1 && data[0] == CAM_HELLO)
-      helloPacket(mac, data, len, rssi);
+      nodes_.hello(mac, data, len, rssi);
     else
       alarm_.espNowReport(mac, data, len, rssi);
   } catch (const std::bad_alloc&) {

@@ -26,7 +26,8 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       millis_(millisFn),
       signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot),
-      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodeImages_, *this, millisFn),
+      nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
+      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
       mqtt_(cfg_, alarm_, *chip_, *this, localIp) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
@@ -84,11 +85,9 @@ bool SensorCamServer::begin() {
   nextFrameAt_ = millis_();
   lastGoodWait_ = nextFrameAt_;
   frameData_.reserve(CAM_MAX_FRAME);
-  nodeImages_.load();
+  nodes_.begin();
   alarm_.begin();
   mqtt_.begin();
-  pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
-  if (pairingReady_) camX25519Public(hubPublic_, hubPrivate_);  // tens of milliseconds on the board, once  // the run before sent those
   subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
   return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
@@ -426,7 +425,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
 
 void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || (c.nodeImage ? nodeImages_.write(data, take) : chip_->firmwareWrite((const uint8_t*)data, take));
+  bool written = !take || (c.nodeImage ? nodes_.images().write(data, take) : chip_->firmwareWrite((const uint8_t*)data, take));
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -518,7 +517,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (!contentLength || contentLength > CAM_MAX_NODE_IMAGE)
       return refuse(413, "that file is not the right size for a node's firmware", CAM_MAX_NODE_IMAGE);
     if (firmwareOwner_ || nodeImageOwner_) return refuse(507, "the hub is busy with another update; try again", CAM_MAX_NODE_IMAGE);
-    if (!nodeImages_.begin()) return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
+    if (!nodes_.images().begin()) return refuse(507, "could not save the file; storage may be full", CAM_MAX_NODE_IMAGE);
     startNodeImage(c, contentLength);
     std::string first = c.in.substr(headEnd + 4);
     c.in.clear();

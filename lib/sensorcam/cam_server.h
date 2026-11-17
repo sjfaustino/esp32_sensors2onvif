@@ -14,6 +14,7 @@
 #include "cam_node_images.h"
 #include "cam_json.h"
 #include "cam_mqtt_client.h"
+#include "cam_nodes.h"
 #include "cam_pairing.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
@@ -63,14 +64,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   using Node = CamAlarm::Node;
   using Slot = CamAlarm::Slot;
   using UnknownSender = CamAlarm::UnknownSender;
-  struct PairRequest {  // a node that said hello while pairing was open, waiting for approval
-    bool used = false;
-    uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    uint8_t inputs = 1;
-    uint8_t publicKey[CAM_X25519_LEN] = {0};
-    uint32_t heardAt = 0;
-    int8_t rssi = 0;
-  };
   struct HttpConn {
     int fd = -1;
     bool web = false;  // arrived on the web port rather than the ONVIF port
@@ -200,25 +193,13 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   bool apiSensors(const ApiRequest& r);
   void serviceDiscovery();
 
-  // ---- pairing nodes: cam_server_pairing.cpp ----
-  static const int MAX_PAIR_REQUESTS = 8;
-  void helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);
-  void firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len);
+  // ---- the web side of CamNodes: cam_server_nodes.cpp ----
   HttpConn* nodeImageOwner_ = nullptr;  // the upload of a node firmware file under way
-  const CamNodeImage* imageFor(uint16_t chip) const { return nodeImages_.forChip(chip); }
   void finishNodeImage(HttpConn& c, bool ok);
   void startNodeImage(HttpConn& c, size_t length);
   void dropNodeImage();  // an upload abandoned partway through
   bool apiNodeImages(const ApiRequest& r);
-  bool pairingOpen(uint32_t now) const { return pairingOpen_ && (int32_t)(pairingUntil_ - now) > 0; }
   bool apiPairing(const ApiRequest& r);
-  std::string pairingJson();
-  bool approveNode(const uint8_t mac[6], std::string& error);
-  bool pairingReady_ = false;
-  uint8_t hubPrivate_[CAM_X25519_LEN] = {0}, hubPublic_[CAM_X25519_LEN] = {0};
-  bool pairingOpen_ = false;
-  uint32_t pairingUntil_ = 0;
-  PairRequest pairRequests_[MAX_PAIR_REQUESTS];
 
   std::string overviewJson(uint32_t now);
   void pushFrames(uint32_t now);
@@ -243,8 +224,8 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   uint32_t accepted_ = 0;
   uint32_t refused_ = 0;
   CamStorage storage_;
-  CamNodeImages nodeImages_{storage_};
-  CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodeImages_, which it uses
+  CamNodes nodes_;  // before alarm_, which reads its firmware files
+  CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodes_, which it uses
   CamMqttClient mqtt_;
   std::string frameKey_;        // what frame_ currently shows; empty forces a reload
   std::string frameFile_;       // the file behind frame_; empty means a built-in picture
