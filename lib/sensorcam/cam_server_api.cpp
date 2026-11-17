@@ -664,7 +664,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/webhook")) {
-    reply(c, 200, JSON_TYPE, webhookJson());
+    reply(c, 200, JSON_TYPE, webhook_.pageJson());
   } else if (r.is("POST", "/api/webhook")) {
     std::string form = r.form();
     CamWebhook w;
@@ -687,7 +687,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "save an address first");
     } else {
       std::string message = "Test from " + cfg_.hostName;
-      queueHook(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
+      webhook_.queue(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/arm")) {

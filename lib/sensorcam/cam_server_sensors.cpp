@@ -81,3 +81,9 @@ void SensorCamServer::sensorsRescanned(bool listChanged) {
   video_.changed();
   if (listChanged) mqtt_.sensorsChanged();
 }
+
+void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) { webhook_.notify(id, kind, delayed); }
+
+void SensorCamServer::notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) {
+  webhook_.notifyHub(kind, detail, message);
+}

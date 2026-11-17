@@ -1,0 +1,43 @@
+// Messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy: alerts, node problems,
+// the hub's own events, and a daily check. Queued, and sent one at a time in SensorCamServer's loop.
+#pragma once
+#include <stdint.h>
+#include <functional>
+#include <string>
+#include "cam_alarm.h"
+#include "cam_config.h"
+#include "cam_hook_queue.h"
+#include "cam_post.h"
+
+class CamWebhookSender {
+ public:
+  // cfg is the server's, which it changes as settings are saved; it and the others outlive the sender.
+  CamWebhookSender(const CamConfig& cfg, const CamAlarm& alarm, CamChip& chip, std::function<bool(uint32_t now)> nvrListening)
+      : cfg_(cfg), alarm_(alarm), chip_(&chip), nvrListening_(nvrListening) {}
+  // A sensor's event, and the hub's own; each queued if the settings say it is wanted. Running out of memory drops the
+  // message, counted, and the alert goes on.
+  void notify(int id, CamEventKind kind, bool delayed);
+  void notifyHub(CamEventKind kind, const std::string& detail, const std::string& message);
+  void queue(const std::string& message, const std::string& json);  // as text or JSON, as the settings say
+  void dailyCheck(uint32_t now);                                    // queued at the minute the settings give
+  void tick(uint32_t now, bool mayConnect);                         // starts the next message; mayConnect: a socket is free
+  void watch(fd_set& rd, fd_set& wr, int& maxFd) const { post_.watch(rd, wr, maxFd); }
+  void serve(fd_set& rd, fd_set& wr, uint32_t now);
+  int fd() const { return post_.fd(); }
+  const std::string& result() const { return hooks_.result(); }  // how the last message went; empty before the first
+  std::string pageJson();
+  uint32_t memoryFailures() const { return memoryFailures_; }
+
+ private:
+  void start(uint32_t now);
+
+  const CamConfig& cfg_;
+  const CamAlarm& alarm_;
+  CamChip* chip_;
+  std::function<bool(uint32_t)> nvrListening_;
+  uint32_t memoryFailures_ = 0;
+  CamPost post_;
+  CamHookQueue hooks_;
+  bool dailySent_ = false;  // and when, so the minute it is due sends one
+  uint32_t dailySentAt_ = 0;
+};

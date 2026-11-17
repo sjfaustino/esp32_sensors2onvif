@@ -29,7 +29,9 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
       alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
       mqtt_(cfg_, alarm_, *chip_, *this, localIp),
-      video_(cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { subs_.heard(peer, now); }, millisFn) {
+      video_(
+          cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { subs_.heard(peer, now); }, millisFn),
+      webhook_(cfg_, alarm_, *chip_, [this](uint32_t now) { return nvrListening(now); }) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
 }
@@ -94,7 +96,7 @@ bool SensorCamServer::begin() {
 std::string SensorCamServer::debugLine() {
   int web = 0, video = video_.openCount(), push = 0;
   for (const HttpConn& c : http_) web += c.fd >= 0;
-  for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
+  for (const CamPost& n : notify_) push += !n.idle();
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
          ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " +
          std::to_string(push) + ", short of memory " + std::to_string(memoryFailures());
@@ -142,8 +144,8 @@ void SensorCamServer::closeHttp(HttpConn& c) {
 int SensorCamServer::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;
-  for (const NotifyIo& n : notify_) open += n.fd >= 0;
-  return open + (hook_.fd >= 0) + (mqtt_.fd() >= 0);
+  for (const CamPost& n : notify_) open += n.fd() >= 0;
+  return open + (webhook_.fd() >= 0) + (mqtt_.fd() >= 0);
 }
 
 void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
@@ -694,23 +696,8 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
 
 // ---- ONVIF event push ----
 
-void SensorCamServer::endNotify(NotifyIo& n, const char* result) {
-  bool hook = n.hook;
-  if (!hook && &n >= notify_ && &n < notify_ + SubTable::SIZE && n.state != NotifyIo::IDLE) {
-    // Ending before the whole message was sent means the NVR did not get it. Once it was sent, waiting for the NVR to
-    // close is all that is left, so any ending then is a delivery.
-    subs_.at((int)(&n - notify_)).pushFailed = n.state != NotifyIo::WAIT_CLOSE;
-  }
-  if (n.fd >= 0) netClose(n.fd);
-  n = NotifyIo();
-  if (hook) {  // last, as the one step that needs memory: running out then loses only the note
-    hooks_.noteResult(result, time(nullptr));
-  }
-}
-
 void SensorCamServer::startNotify(int i, uint32_t now) {
   CamSub& sub = subs_.at(i);
-  NotifyIo& n = notify_[i];
   HttpUrl url;
   if (!parseHttpUrl(sub.consumer, url)) {
     sub.pending = false;
@@ -726,68 +713,14 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
   out.reserve(out.size() + body.size());
   out += body;
   std::string().swap(body);
-  int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return;  // still pending, so it is tried again on the next pass
+  CamPost::Start started = notify_[i].start(url, out, CAM_NOTIFY_SEND_MS, CAM_NOTIFY_CLOSE_MS, now);
+  if (started == CamPost::NO_SOCKET) return;  // still pending, so it is tried again on the next pass
   sub.pending = false;
-  netNonblock(fd);
-  sockaddr_in to{};
-  to.sin_family = AF_INET;
-  to.sin_port = htons(url.port);
-  to.sin_addr.s_addr = inet_addr(url.host.c_str());
-  if (connect(fd, (sockaddr*)&to, sizeof(to)) != 0 && !netWouldBlock()) {
-    netClose(fd);
+  if (started == CamPost::REFUSED) {
     sub.pushFailed = true;
     return;
   }
   sub.initialized = true;
-  n.out.swap(out);
-  n.fd = fd;
-  n.outPos = 0;
-  n.state = NotifyIo::CONNECTING;
-  n.deadline = now + CAM_NOTIFY_SEND_MS;
-}
-
-void SensorCamServer::serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now) {
-  if (n.state == NotifyIo::CONNECTING && writable) {
-    int err = 0;
-    socklen_t len = sizeof(err);
-    getsockopt(n.fd, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
-    if (err) {
-      endNotify(n, "could not connect");
-      return;
-    }
-    n.state = NotifyIo::SENDING;
-  }
-  if (n.state == NotifyIo::SENDING && writable) {
-    int sent = (int)send(n.fd, n.out.data() + n.outPos, (int)(n.out.size() - n.outPos), 0);
-    if (sent < 0 && !netWouldBlock()) {
-      endNotify(n, "the connection failed");
-      return;
-    }
-    if (sent > 0) n.outPos += sent;
-    if (n.outPos >= n.out.size()) {
-      // The NVR closes without an HTTP reply, so this only waits for that close. A webhook replies.
-      std::string().swap(n.out);
-      n.outPos = 0;
-      n.state = NotifyIo::WAIT_CLOSE;
-      n.deadline = now + (n.hook ? CAM_HOOK_WAIT_MS : CAM_NOTIFY_CLOSE_MS);
-    }
-  }
-  if (n.state == NotifyIo::WAIT_CLOSE && readable) {
-    char buf[256];
-    int got = (int)recv(n.fd, buf, sizeof(buf), 0);
-    if (got >= 0 || !netWouldBlock()) {
-      char code[16];
-      const char* result = "closed without a reply";
-      if (got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0) {
-        snprintf(code, sizeof(code), "HTTP %.3s", buf + 9);
-        result = code;
-      }
-      endNotify(n, result);
-      return;
-    }
-  }
-  if ((int32_t)(now - n.deadline) >= 0) endNotify(n, n.state == NotifyIo::WAIT_CLOSE ? "no reply" : "could not connect");
 }
 
 // ---- WS-Discovery ----
@@ -826,7 +759,7 @@ void SensorCamServer::poll(int maxWaitMs) {
 
 void SensorCamServer::housekeeping(uint32_t now) {
   alarm_.tick(now);
-  dailyCheck(now);
+  webhook_.dailyCheck(now);
   subs_.expire(now);
   servicePolls(now);
   if (signal_.update(alarm_.board().anyActive(), now)) subs_.markAllPending();
@@ -838,10 +771,10 @@ void SensorCamServer::housekeeping(uint32_t now) {
   }
   for (int i = 0; i < SubTable::SIZE; i++) {
     CamSub& s = subs_.at(i);
-    if (s.used && s.push && s.pending && notify_[i].state == NotifyIo::IDLE && sharedSockets() <= MAX_HTTP) startNotify(i, now);
+    if (s.used && s.push && s.pending && notify_[i].idle() && sharedSockets() <= MAX_HTTP) startNotify(i, now);
   }
-  if (hook_.state == NotifyIo::IDLE && hooks_.count() && sharedSockets() < MAX_HTTP) startHook(now);  // leaves one for an event push
-  try {  // on its own, so running out of memory there still leaves the picture to be sent
+  webhook_.tick(now, sharedSockets() < MAX_HTTP);  // leaves one for an event push
+  try {                                            // on its own, so running out of memory there still leaves the picture to be sent
     mqtt_.tick(now, sharedSockets() < MAX_HTTP && !updating());
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
@@ -874,14 +807,8 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
     if (c.answered && !c.discardLeft) add(c.fd, wr);
   }
   video_.watch(rd, wr, maxFd, !updating());
-  for (NotifyIo& n : notify_) {
-    if (n.state == NotifyIo::IDLE) continue;
-    if (n.state == NotifyIo::WAIT_CLOSE)
-      add(n.fd, rd);
-    else
-      add(n.fd, wr);
-  }
-  if (hook_.state != NotifyIo::IDLE) add(hook_.fd, hook_.state == NotifyIo::WAIT_CLOSE ? rd : wr);
+  for (const CamPost& n : notify_) n.watch(rd, wr, maxFd);
+  webhook_.watch(rd, wr, maxFd);
   if (mqtt_.wantsRead()) add(mqtt_.fd(), rd);
   if (mqtt_.wantsWrite()) add(mqtt_.fd(), wr);
 
@@ -903,8 +830,11 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   for (HttpConn& c : http_)
     if (c.fd >= 0) serviceHttp(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
   video_.serve(rd, wr, now);
-  for (NotifyIo& n : notify_)
-    if (n.state != NotifyIo::IDLE) serviceNotify(n, FD_ISSET(n.fd, &rd), FD_ISSET(n.fd, &wr), now);
-  if (hook_.state != NotifyIo::IDLE) serviceNotify(hook_, FD_ISSET(hook_.fd, &rd), FD_ISSET(hook_.fd, &wr), now);
+  for (int i = 0; i < SubTable::SIZE; i++) {
+    CamPost& n = notify_[i];
+    // Ended before the whole message was sent, the NVR did not get it.
+    if (!n.idle() && n.service(FD_ISSET(n.fd(), &rd), FD_ISSET(n.fd(), &wr), now)) subs_.at(i).pushFailed = !n.delivered();
+  }
+  webhook_.serve(rd, wr, now);
   if (mqtt_.fd() >= 0) mqtt_.service(FD_ISSET(mqtt_.fd(), &rd), FD_ISSET(mqtt_.fd(), &wr), now);
 }

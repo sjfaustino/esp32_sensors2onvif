@@ -1,5 +1,5 @@
-// SensorCamServer: messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
-#include "cam_server.h"
+// CamWebhookSender: messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
+#include "cam_webhook.h"
 #include <string.h>
 #include <time.h>
 #include <new>
@@ -9,7 +9,7 @@
 
 // Alerts are sent when alerts are chosen, node problems when problems are. An alert the NVR missed is sent if either is,
 // because it means a recording is missing. A message there is no memory for is counted as dropped, and the alert goes on.
-void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
+void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
   const CamWebhook& w = cfg_.webhook;
   bool wanted = kind == CAM_EVENT_REPORT                                          ? w.alerts
                 : kind == CAM_EVENT_NOT_DELIVERED || kind == CAM_EVENT_TEST_ALERT ? w.alerts || w.problems
@@ -22,10 +22,10 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
     uint8_t battery = alarm_.healthOf(id).battery;
     time_t now = time(nullptr);
     bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
-    queueHook(message, jsonObject([&](CamJson& j) {
-                j.str("event", event).str("sensor", sensor).str("name", name).num("battery", battery != CAM_BATTERY_UNKNOWN, battery);
-                j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
-              }));
+    queue(message, jsonObject([&](CamJson& j) {
+            j.str("event", event).str("sensor", sensor).str("name", name).num("battery", battery != CAM_BATTERY_UNKNOWN, battery);
+            j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
+          }));
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
     hooks_.dropOne();
@@ -33,25 +33,34 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
 }
 
 // The hub's own events, sent with node problems, in the same shape as the event history.
-void SensorCamServer::notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) {
+void CamWebhookSender::notifyHub(CamEventKind kind, const std::string& detail, const std::string& message) {
   const CamWebhook& w = cfg_.webhook;
   if (w.url.empty() || !w.problems) return;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
   try {
-    queueHook(message, jsonObject([&](CamJson& j) {
-                j.str("event", camEventName(kind, true, false)).str("sensor", "hub").str("name", "").str("detail", detail).null("battery");
-                j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
-              }));
+    queue(message, jsonObject([&](CamJson& j) {
+            j.str("event", camEventName(kind, true, false)).str("sensor", "hub").str("name", "").str("detail", detail).null("battery");
+            j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
+          }));
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
     hooks_.dropOne();
   }
 }
 
-void SensorCamServer::queueHook(const std::string& message, const std::string& json) { hooks_.add(cfg_.webhook.text ? message : json); }
+void CamWebhookSender::queue(const std::string& message, const std::string& json) { hooks_.add(cfg_.webhook.text ? message : json); }
 
-void SensorCamServer::startHook(uint32_t now) {
+void CamWebhookSender::tick(uint32_t now, bool mayConnect) {
+  if (post_.idle() && hooks_.count() && mayConnect) start(now);
+}
+
+void CamWebhookSender::serve(fd_set& rd, fd_set& wr, uint32_t now) {
+  if (!post_.idle() && post_.service(FD_ISSET(post_.fd(), &rd), FD_ISSET(post_.fd(), &wr), now))
+    hooks_.noteResult(post_.result(), time(nullptr));  // last, as the one step that needs memory: running out then loses only the note
+}
+
+void CamWebhookSender::start(uint32_t now) {
   HttpUrl url;
   if (!parseHttpUrl(cfg_.webhook.url, url)) {  // the address was removed while messages waited
     hooks_.clear();
@@ -64,39 +73,25 @@ void SensorCamServer::startHook(uint32_t now) {
                     "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
   out.reserve(out.size() + body.size());
   out += body;
-  int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return;  // still queued, so it is tried again on the next pass
+  CamPost::Start started = post_.start(url, out, CAM_HOOK_WAIT_MS, CAM_HOOK_WAIT_MS, now);
+  if (started == CamPost::NO_SOCKET) return;  // still queued, so it is tried again on the next pass
   hooks_.takeOldest();
-  netNonblock(fd);
-  hook_ = NotifyIo();
-  hook_.hook = true;
-  hook_.fd = fd;
-  sockaddr_in to{};
-  to.sin_family = AF_INET;
-  to.sin_port = htons(url.port);
-  to.sin_addr.s_addr = inet_addr(url.host.c_str());
-  if (connect(fd, (sockaddr*)&to, sizeof(to)) != 0 && !netWouldBlock()) {
-    endNotify(hook_, "could not connect");
-    return;
-  }
-  hook_.out.swap(out);
-  hook_.state = NotifyIo::CONNECTING;
-  hook_.deadline = now + CAM_HOOK_WAIT_MS;
+  if (started == CamPost::REFUSED) hooks_.noteResult("could not connect", time(nullptr));
 }
 
-std::string SensorCamServer::webhookJson() {
+std::string CamWebhookSender::pageJson() {
   const CamWebhook& w = cfg_.webhook;
   bool clockOk = hooks_.resultAt() >= CAM_CLOCK_VALID_AFTER;
   return jsonObject([&](CamJson& j) {
     j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems).num("daily", w.dailyMinute);
     j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
-    j.num("waiting", hooks_.count() + (hook_.state != NotifyIo::IDLE)).num("dropped", hooks_.dropped());
+    j.num("waiting", hooks_.count() + !post_.idle()).num("dropped", hooks_.dropped());
   });
 }
 
 // At the minute set under Notifications, local time: what the hub knows of its nodes, its alerts and the NVR, in one
 // message. Needs the clock, so a hub whose clock is not set sends none, which is itself worth noticing.
-void SensorCamServer::dailyCheck(uint32_t now) {
+void CamWebhookSender::dailyCheck(uint32_t now) {
   const CamWebhook& w = cfg_.webhook;
   if (w.url.empty() || w.dailyMinute < 0 || chip_->localMinute() != w.dailyMinute) return;
   if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
@@ -106,8 +101,8 @@ void SensorCamServer::dailyCheck(uint32_t now) {
   try {
     CamDailyCheck d;
     d.hub = cfg_.hostName;
-    d.mode = camArmModeName(armMode());
-    d.nvrListening = nvrListening(now);
+    d.mode = camArmModeName(alarm_.armMode());
+    d.nvrListening = nvrListening_(now);
     for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
       if (!alarm_.nodeAt(n).used) continue;
       d.nodes++;
@@ -117,7 +112,7 @@ void SensorCamServer::dailyCheck(uint32_t now) {
       d.heard += heard;
     }
     for (int id = 1; id <= alarm_.board().count(); id++) {
-      const Health& h = alarm_.healthOf(id);
+      const CamAlarm::Health& h = alarm_.healthOf(id);
       if (!alarm_.slotOf(id).used) continue;
       const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
       if (problem) d.problems.push_back((alarm_.slotOf(id).name.empty() ? alarm_.slotName(id) : alarm_.slotOf(id).name) + ": " + problem);
@@ -135,14 +130,14 @@ void SensorCamServer::dailyCheck(uint32_t now) {
     }
     if (alarm_.log().count() < CamEventLog::RECENT) d.allCounted = true;  // nothing has been dropped from memory yet
     std::string message = camDailyMessage(d);
-    queueHook(message, jsonObject([&](CamJson& j) {
-                j.str("event", "daily check").str("sensor", "hub").str("name", "").str("time", iso(t)).str("hub", cfg_.hostName);
-                j.num("nodes", d.nodes).num("heard", d.heard).array("problems");
-                for (const std::string& p : d.problems) j.str(p);
-                j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
-                j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
-                j.str("message", message);
-              }));
+    queue(message, jsonObject([&](CamJson& j) {
+            j.str("event", "daily check").str("sensor", "hub").str("name", "").str("time", iso(t)).str("hub", cfg_.hostName);
+            j.num("nodes", d.nodes).num("heard", d.heard).array("problems");
+            for (const std::string& p : d.problems) j.str(p);
+            j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
+            j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
+            j.str("message", message);
+          }));
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
     hooks_.dropOne();

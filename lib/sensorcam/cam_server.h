@@ -15,7 +15,9 @@
 #include "cam_json.h"
 #include "cam_mqtt_client.h"
 #include "cam_nodes.h"
+#include "cam_post.h"
 #include "cam_video.h"
+#include "cam_webhook.h"
 #include "cam_pairing.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
@@ -40,7 +42,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   bool updating() const { return firmwareOwner_ != nullptr; }          // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see nvrListening
   // Times memory ran out and only that piece of work was dropped.
-  uint32_t memoryFailures() const override { return memoryFailures_ + alarm_.memoryFailures() + video_.memoryFailures(); }
+  uint32_t memoryFailures() const override { return memoryFailures_ + alarm_.memoryFailures() + video_.memoryFailures() + webhook_.memoryFailures(); }
   bool armed() const { return alarm_.armed(); }
   CamArmMode armMode() const { return alarm_.armMode(); }
   // See CamAlarm::setArmMode and CamAlarm::testAlert.
@@ -93,14 +95,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
     std::function<bool(size_t, char*, size_t)> reader;                 // this reply's own piece reader, a file or the picture; pull points at it
     // A body of unknown length, read piece by piece until it gives nothing, then ended by closing the connection.
     const std::function<size_t(size_t, char*, size_t)>* stream = nullptr;
-  };
-  struct NotifyIo {
-    enum State { IDLE, CONNECTING, SENDING, WAIT_CLOSE } state = IDLE;
-    int fd = -1;
-    std::string out;
-    size_t outPos = 0;
-    uint32_t deadline = 0;
-    bool hook = false;  // the webhook, rather than an ONVIF event push
   };
 
   int listenOn(uint16_t port);
@@ -156,16 +150,10 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
   std::string eventsTag() const;                  // changes whenever the Events page's list would, so an unchanged list is not built again
   void startNotify(int i, uint32_t now);
-  void serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now);
-  void endNotify(NotifyIo& n, const char* result = "");
-  void dailyCheck(uint32_t now);
   void notifyHook(int id, CamEventKind kind, bool delayed) override;
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) override;
   void sensorReset(int id) override;
   void sensorsRescanned(bool listChanged) override;
-  void queueHook(const std::string& message, const std::string& json);
-  void startHook(uint32_t now);
-  std::string webhookJson();
   bool apiSensors(const ApiRequest& r);
   void serviceDiscovery();
 
@@ -189,7 +177,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   SubTable subs_;
   int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1, udp_ = -1;
   HttpConn http_[MAX_HTTP];
-  NotifyIo notify_[SubTable::SIZE];
+  CamPost notify_[SubTable::SIZE];  // the event pushes, one for each subscription
   uint32_t messageNo_ = 1;
   uint32_t lastGoodWait_ = 0;
   uint32_t waitErrors_ = 0;
@@ -201,14 +189,11 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodes_, which it uses
   CamMqttClient mqtt_;
   CamVideo video_;
+  CamWebhookSender webhook_;
   std::string unsupported_[6];                                            // the ONVIF requests the hub could not answer, shown on the ONVIF page
   bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
   HttpConn* firmwareOwner_ = nullptr;
-  HttpConn* uploading_ = nullptr;  // the upload borrowing the picture buffer (CamVideo::lend)
-  NotifyIo hook_;
-  CamHookQueue hooks_;
+  HttpConn* uploading_ = nullptr;                           // the upload borrowing the picture buffer (CamVideo::lend)
   std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download
   std::function<bool(size_t, char*, size_t)> crashReader_;  // reads the chip's crash report for a download
-  bool dailySent_ = false;                                  // and when, so the minute it is due sends one
-  uint32_t dailySentAt_ = 0;
 };
