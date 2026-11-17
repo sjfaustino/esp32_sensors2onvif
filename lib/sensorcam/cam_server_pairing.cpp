@@ -22,13 +22,13 @@ void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int
   uint8_t inputs = 0, key[CAM_X25519_LEN];
   if (!pairingReady_ || !camParseHello(data, len, inputs, key)) return;
   uint32_t now = millis_();
-  uint8_t channel = (uint8_t)(cfg_.wifiChannel ? cfg_.wifiChannel() : 0);
+  uint8_t channel = (uint8_t)radio_->wifiChannel();
   uint8_t answer[CAM_ANSWER_LEN];
   // A paired node asking again, to find the hub's channel: answered at any time, signed so it can trust the answer.
   int id = findNode(mac);
   if (id && nodeOf(id).paired && memcmp(nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
     camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)nodeOf(id).key.data(), answer);
-    camCall(cfg_.espNowSend, mac, answer, CAM_ANSWER_LEN);
+    radio_->espNowSend(mac, answer, CAM_ANSWER_LEN);
     return;
   }
   if (!pairingOpen(now)) return;  // anything else only while pairing is open, so nothing can fill the list at other times
@@ -52,7 +52,7 @@ void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int
   entry->heardAt = now;
   entry->rssi = rssi;
   camHelloAnswer(mac, CAM_PAIR_WAITING, channel, hubPublic_, nullptr, answer);
-  camCall(cfg_.espNowSend, mac, answer, CAM_ANSWER_LEN);
+  radio_->espNowSend(mac, answer, CAM_ANSWER_LEN);
 }
 
 // Writes the node's key, then makes its inputs' folders. Takes tens of milliseconds on the board, once per node.

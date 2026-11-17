@@ -21,9 +21,8 @@ size_t SensorCamServer::historyRoom() const {
 }
 
 bool SensorCamServer::roomBesideHistory(size_t bytes) const {
-  if (!cfg_.fsUsage) return true;
   uint32_t used = 0, total = 0;
-  cfg_.fsUsage(used, total);
+  if (!chip_->storageUsage(used, total)) return true;
   size_t needed = (bytes + 4095) / 4096 * 4096 + 2 * 4096 + historyRoom();  // whole blocks, the new copy beside the old, and its folder
   return total > used && total - used >= needed;
 }
@@ -38,7 +37,7 @@ static bool hasFile(const std::vector<CamFsEntry>& items, const std::string& nam
 // Empty when the hub is too short of memory to build it.
 std::string SensorCamServer::treeJson() {
   uint32_t used = 0, total = 0;
-  if (cfg_.fsUsage) cfg_.fsUsage(used, total);
+  chip_->storageUsage(used, total);
   std::vector<CamFsEntry> root;
   storage_.list("", root);
   std::string out;
@@ -245,7 +244,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
                                 size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
-  bool inSetup = camCall(cfg_.setupActive);
+  bool inSetup = radio_->setupActive();
   bool setupRoute = route == "/setup" || route == "/api/wifi" || route == "/api/wifi/scan" || (inSetup && route == "/");
   if (!(inSetup && setupRoute) && !authorized(c, headers)) {
     c.out = UNAUTHORIZED;
@@ -263,14 +262,14 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
     sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, PAGE_HEADERS);
   } else if (r.is("GET", "/api/wifi/scan")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.wifiNetworks, j); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { radio_->wifiNetworks(j); }));
   } else if (r.is("POST", "/api/wifi")) {
     std::string form = r.form();
     std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
     if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63)))
       c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
     else
-      c.out = saved(camCall(cfg_.wifiSave, ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
+      c.out = saved(radio_->wifiSave(ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
   } else {
     c.out = jsonFail(404, "not found");
   }
@@ -337,10 +336,7 @@ std::string SensorCamServer::espNowJson() {
   out.reserve(room);
   CamJson j(out);
   j.object();
-  if (cfg_.espNowInfo)
-    cfg_.espNowInfo(j);
-  else
-    j.str("mac", "").num("channel", 0);
+  radio_->espNowInfo(j);
   j.str("key", cfg_.espNowKey).array("nodes");
   uint32_t now = millis_();
   for (int id = 1; id <= sensors_.count(); id++) {
@@ -400,29 +396,29 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
     int known = 0;
     for (const Slot& s : slots_) known += s.used;
     uint32_t used = 0, total = 0;
-    if (cfg_.fsUsage) cfg_.fsUsage(used, total);
+    chip_->storageUsage(used, total);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.array("rows");
-      camCall(cfg_.deviceRows, j);
+      chip_->deviceRows(j);
       auto row = [&](const char* label, const std::string& value) { j.array().str(label).str(value).end(); };
       row("Picture storage", std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB");
       row("Sensors", std::to_string(known));
       row("Video streams open", std::to_string(streamCount()));
       row("Event subscribers", std::to_string(subs_.count()));
       if (log_.saveFailed()) row("Event history", "Could not be saved; storage may be full");
-      j.end().num("crash", cfg_.crashSize ? cfg_.crashSize() : 0);
+      j.end().num("crash", chip_->crashSize());
     }));
   } else if (r.is("GET", "/api/crash")) {  // read from flash 1 KB at a time, because it can be larger than any free block
-    size_t size = cfg_.crashSize && cfg_.crashRead ? cfg_.crashSize() : 0;
+    size_t size = chip_->crashSize();
     if (!size) {
       c.out = jsonFail(404, "no crash report is saved");
     } else {
       c.out = httpHead(200, "application/octet-stream", size, "Content-Disposition: attachment; filename=\"hub-crash.bin\"\r\n");
-      c.pull = &cfg_.crashRead;
+      c.pull = &crashReader_;
       c.staticLen = size;
     }
   } else if (r.is("POST", "/api/crash/delete")) {
-    c.out = saved(cfg_.crashDelete && cfg_.crashDelete(), "could not delete the crash report");
+    c.out = saved(chip_->crashDelete(), "could not delete the crash report");
   } else if (r.is("GET", "/api/events")) {
     // The Events page asks every 3 seconds. The browser sends back the tag of the list it has, so an unchanged list costs
     // the hub nothing to build.
@@ -462,7 +458,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
 bool SensorCamServer::apiSystem(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/time")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.timeInfo, j); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { chip_->timeInfo(j); }));
   } else if (r.is("POST", "/api/time")) {
     std::string form = r.form(), epochText = queryParam(form, "epoch");
     CamTime t;
@@ -482,7 +478,7 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       t.offsetMinutes = (int)offset;
       t.dst = (int)dst;
       t.epoch = epoch;
-      c.out = saved(camCall(cfg_.timeSave, t), "could not save the time settings");
+      c.out = saved(chip_->timeSave(t), "could not save the time settings");
     }
   } else if (r.is("GET", "/api/schedule")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", cfg_.schedule.on).num("day", cfg_.schedule.day).num("minute", cfg_.schedule.minute); }));
@@ -497,41 +493,41 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
       s.on = queryParam(form, "on") == "1";
       s.day = (int)day;
       s.minute = (int)minute;
-      bool ok = camCall(cfg_.scheduleSave, s);
+      bool ok = store_->scheduleSave(s);
       if (ok) cfg_.schedule = s;
       c.out = saved(ok, "could not save the schedule");
     }
   } else if (r.is("GET", "/api/radio-test") || r.is("POST", "/api/radio-test")) {
-    if (!cfg_.radioTest) {
+    if (!radio_->hasRadioTest()) {
       c.out = jsonFail(404, "this board has no radio test");
     } else {
       bool ok = true;
-      std::string body = jsonObject([&](CamJson& j) { ok = cfg_.radioTest(r.method == "POST", j); });
+      std::string body = jsonObject([&](CamJson& j) { ok = radio_->radioTest(r.method == "POST", j); });
       c.out = ok ? jsonOk(body) : jsonFail(409, "the test is running already, or the hub is off its Wi-Fi network");
     }
   } else if (r.is("POST", "/api/reboot")) {
-    c.out = saved(camCall(cfg_.maintenance, "reboot"), "could not do that");
+    c.out = saved(chip_->maintenance("reboot"), "could not do that");
   } else if (r.is("POST", "/api/reset")) {
     if (queryParam(r.form(), "confirm") != "yes")
       c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
     else
-      c.out = saved(camCall(cfg_.maintenance, "reset"), "could not do that");
+      c.out = saved(chip_->maintenance("reset"), "could not do that");
   } else if (r.is("POST", "/api/newkeys")) {
     // Every node and HTTP sensor stops being heard until set up again, so a stray request must not do it.
     if (queryParam(r.form(), "confirm") != "yes")
       c.out = jsonFail(400, "not confirmed");
     else
-      c.out = saved(camCall(cfg_.maintenance, "newkeys"), "could not do that");
+      c.out = saved(chip_->maintenance("newkeys"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
   } else if (r.is("POST", "/api/alerts")) {
-    bool on = queryParam(r.form(), "alarm") == "1", ok = camCall(cfg_.healthSave, on);
+    bool on = queryParam(r.form(), "alarm") == "1", ok = store_->healthSave(on);
     if (ok) cfg_.healthAlarm = on;
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("GET", "/api/backup")) {
-    c.out = httpResponse(200, "text/plain", camCall(cfg_.backupText));
+    c.out = httpResponse(200, "text/plain", store_->backupText());
   } else if (r.is("POST", "/api/restore")) {
-    c.out = camCall(cfg_.restoreText, std::string(r.body, r.bodyLen))
+    c.out = store_->restoreText(std::string(r.body, r.bodyLen))
                 ? jsonOk(JSON_OK)
                 : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
   } else {
@@ -559,7 +555,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     if (!ip.empty() && !parseIpv4(ip, parsed)) {
       c.out = jsonFail(400, "check the IP address");
     } else {
-      bool ok = camCall(cfg_.nvrSave, ip);
+      bool ok = store_->nvrSave(ip);
       if (ok) {
         cfg_.nvrIp = ip;
         subs_.protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
@@ -567,7 +563,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       c.out = saved(ok, "could not save the NVR address");
     }
   } else if (r.is("GET", "/api/network")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { camCall(cfg_.addressInfo, j); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { radio_->addressInfo(j); }));
   } else if (r.is("POST", "/api/network")) {
     std::string form = r.form();
     CamAddress a;
@@ -579,7 +575,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
     if (!a.dhcp && !validAddress(a))
       c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
     else
-      c.out = saved(camCall(cfg_.addressSave, a), "could not save the address");
+      c.out = saved(radio_->addressSave(a), "could not save the address");
   } else if (r.is("POST", "/api/settings")) {
     std::string form = r.form();
     auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
@@ -611,7 +607,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       s.password = password;
       s.hostsGiven = hostsGiven;
       s.hosts = hosts;
-      c.out = saved(camCall(cfg_.settingsSave, s), "could not save the settings");
+      c.out = saved(store_->settingsSave(s), "could not save the settings");
     }
   } else {
     return false;
@@ -687,7 +683,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     } else if (!daily.empty() && daily != "-1" && !camNumberIn(daily, 0, 1439, w.dailyMinute)) {
       c.out = jsonFail(400, "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none");
     } else {
-      bool ok = camCall(cfg_.webhookSave, w);
+      bool ok = store_->webhookSave(w);
       if (ok) cfg_.webhook = w;
       c.out = saved(ok, "could not save the notification settings");
     }
@@ -727,7 +723,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     if (!wholeNumber(queryParam(r.form(), "minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
-      bool ok = camCall(cfg_.rearmSave, (uint32_t)minutes);
+      bool ok = store_->rearmSave((uint32_t)minutes);
       if (ok) cfg_.rearmMinutes = (uint32_t)minutes;
       c.out = saved(ok, "could not save the setting");
     }
@@ -752,7 +748,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       m.port = (uint16_t)n;
       if (m.password.empty() && !m.user.empty()) m.password = cfg_.mqtt.password;  // left blank, the saved one is kept
       if (m.user.empty()) m.password.clear();
-      bool ok = camCall(cfg_.mqttSave, m);
+      bool ok = store_->mqttSave(m);
       if (ok) {
         cfg_.mqtt = m;
         endMqtt("connecting", millis_());  // the new settings apply at once

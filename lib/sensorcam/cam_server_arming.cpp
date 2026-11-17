@@ -48,7 +48,7 @@ bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint3
   time_t t = time(nullptr);
   int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
   if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
-  if (!camCall(cfg_.armedSave, mode, until)) return false;
+  if (!store_->armedSave(mode, until)) return false;
   uint32_t now = millis_();
   if (was == CAM_ARMED_AWAY) interiorOffAt_ = now;  // a change of end keeps when a disarm began
   if (was != CAM_DISARMED && mode == CAM_DISARMED) perimeterOffAt_ = now;

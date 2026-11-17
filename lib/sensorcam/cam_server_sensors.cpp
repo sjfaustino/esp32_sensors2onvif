@@ -192,7 +192,7 @@ uint32_t SensorCamServer::holdFor(int id) const {
   return seconds ? seconds * 1000 : cfg_.holdMs;
 }
 
-bool SensorCamServer::quietNow(int id) const { return camQuiet(slotOf(id).settings, cfg_.localMinute ? cfg_.localMinute() : -1); }
+bool SensorCamServer::quietNow(int id) const { return camQuiet(slotOf(id).settings, chip_->localMinute()); }
 
 // present: the report shows the sensor is there now. One that may have been recorded and played back still raises its
 // alert, as a false alert is better than a missed one, but says nothing of the node being there or of its battery.
@@ -450,7 +450,7 @@ bool SensorCamServer::updateReady(int id) const {
 // Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
 void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* data, int len) {
   int id = findNode(mac);
-  if (!id || !cfg_.espNowSend) return;
+  if (!id || !radio_->hasEspNow()) return;
   Node& node = nodeOf(id);
   const std::string& key = keyFor(&node);
   CamFirmwareAsk ask;
@@ -467,7 +467,7 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
   if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
     int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(),
                             key, out);
-    cfg_.espNowSend(mac, out, n);
+    radio_->espNowSend(mac, out, n);
     node.updateOffset = 0;
     return;
   }
@@ -478,7 +478,7 @@ void SensorCamServer::firmwareAskPacket(const uint8_t mac[6], const uint8_t* dat
   if (!nodeImages_.read(image.chip, ask.offset, window, length)) return;
   for (uint32_t at = 0; at < length; at += CAM_FIRMWARE_PART_MAX) {
     int n = length - at < (uint32_t)CAM_FIRMWARE_PART_MAX ? (int)(length - at) : CAM_FIRMWARE_PART_MAX;
-    cfg_.espNowSend(mac, out, camFirmwarePart(mac, image.number, image.size, ask.offset + at, window + at, n, key, out));
+    radio_->espNowSend(mac, out, camFirmwarePart(mac, image.number, image.size, ask.offset + at, window + at, n, key, out));
   }
 }
 
@@ -580,7 +580,7 @@ void SensorCamServer::checkJamming(uint32_t now) {
 // message. Needs the clock, so a hub whose clock is not set sends none, which is itself worth noticing.
 void SensorCamServer::dailyCheck(uint32_t now) {
   const CamWebhook& w = cfg_.webhook;
-  if (w.url.empty() || w.dailyMinute < 0 || !cfg_.localMinute || cfg_.localMinute() != w.dailyMinute) return;
+  if (w.url.empty() || w.dailyMinute < 0 || chip_->localMinute() != w.dailyMinute) return;
   if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
   dailySent_ = true;
   dailySentAt_ = now;

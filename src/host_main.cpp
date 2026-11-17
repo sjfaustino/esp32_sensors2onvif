@@ -147,60 +147,88 @@ static uint32_t nowMs() {
   return (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-int main(int argc, char** argv) {
-  if (argc < 3) {
-    fprintf(stderr, "usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD [SILENT_MS]]\n");
-    return 1;
+// ---- the PC build's pretend board, for tools/e2e_test.py ----
+
+static std::string storageFolder;
+
+class TestChip : public CamChip {
+ public:
+  bool storageUsage(uint32_t& used, uint32_t& total) override {  // what is really stored, of a pretend storage size
+    std::function<uint32_t(const CamStorage&, const std::string&)> sum = [&](const CamStorage& s, const std::string& path) {
+      std::vector<CamFsEntry> items;
+      s.list(path, items);
+      uint32_t bytes = 0;
+      for (const CamFsEntry& e : items) bytes += e.dir ? sum(s, path.empty() ? e.name : path + "/" + e.name) : (e.size + 4095) / 4096 * 4096;
+      return bytes;
+    };
+    used = sum(CamStorage(storageFolder), "");
+    total = diskTotal > used ? diskTotal : used;
+    return true;
   }
-  CamConfig cfg;
-  cfg.loopbackOnly = true;
-  cfg.onvifPort = 18899;
-  cfg.webPort = 18080;
-  cfg.captivePort = 18081;
-  cfg.settingsSave = [](const CamSettings&) { return true; };  // the test checks validation; restarting is the board's job
-  cfg.addressInfo = [](CamJson& j) {
-    j.str("type", "WiFi").flag("dhcp", true).str("staticFor", "").str("ip", "127.0.0.1").str("mask", "255.0.0.0").str("gateway", "127.0.0.1");
-    j.str("dns", "127.0.0.1").str("mac", "02:00:00:00:00:01");
-  };
-  cfg.addressSave = [](const CamAddress&) { return true; };
-  static bool firmwareGood = false;
-  cfg.firmwareBegin = [](size_t) {
+  bool firmwareBegin(size_t) override {
     firmwareGood = false;
     return !firmwareRefused;
-  };
-  cfg.firmwareWrite = [](const uint8_t* data, size_t len) {
-    static bool first = true;
+  }
+  bool firmwareWrite(const uint8_t* data, size_t len) override {
     if (first || !firmwareGood) firmwareGood = len && data[0] == 0xE9;
     first = false;
     return firmwareGood;
-  };
-  cfg.firmwareEnd = [](bool commit) { return !commit || firmwareGood; };
-  cfg.backupText = [] { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); };
-  cfg.restoreText = [](const std::string& text) { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; };
-  cfg.healthSave = [](bool) { return true; };
-  cfg.nvrSave = [](const std::string&) { return true; };
-  cfg.timeInfo = [](CamJson& j) {
-    j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00");
-  };
-  cfg.timeSave = [](const CamTime&) { return true; };
-  cfg.scheduleSave = [](const CamSchedule&) { return true; };
-  cfg.deviceRows = [](CamJson& j) { j.array().str("Firmware version").str("test").end(); };
+  }
+  bool firmwareEnd(bool commit) override { return !commit || firmwareGood; }
   // A pretend 3000-byte crash report, byte i being i % 251, so the test can check a download read in pieces.
-  static size_t crashLeft = 3000;
-  cfg.crashSize = [] { return crashLeft; };
-  cfg.crashRead = [](size_t offset, char* out, size_t len) {
+  size_t crashSize() override { return crashLeft; }
+  bool crashRead(size_t offset, char* out, size_t len) override {
     for (size_t i = 0; i < len; i++) out[i] = (char)((offset + i) % 251);
     return offset + len <= crashLeft;
-  };
-  cfg.crashDelete = [] {
+  }
+  bool crashDelete() override {
     crashLeft = 0;
     return true;
-  };
-  cfg.maintenance = [](const std::string&) { return true; };  // the test checks the requests; restarting is the board's job
-  cfg.espNowKey = ESPNOW_KEY;
-  cfg.pairingKey = "a8abababababababababababababababababababababababababababababab6b";  // fixed, so the test knows the hub's key
-  cfg.wifiChannel = [] { return 6; };
-  cfg.espNowSend = [](const uint8_t mac[6], const uint8_t* data, int len) {
+  }
+  bool maintenance(const std::string&) override { return true; }  // the test checks the requests; restarting is the board's job
+  void deviceRows(CamJson& j) override { j.array().str("Firmware version").str("test").end(); }
+  bool tellsHealth() override { return true; }
+  void health(CamHealth& h) override {  // pretend figures, so the test can check they arrive
+    h.freeHeap = 140 * 1024;
+    h.lowestFreeHeap = 120 * 1024;
+    h.largestBlock = 76 * 1024;
+    h.worstLargestBlock = 60 * 1024;
+    h.wifiRssi = -58;
+    h.uptimeS = 3600;
+  }
+  int localMinute() override { return (int)(time(nullptr) / 60 % 1440); }  // UTC, which the test also uses
+  void timeInfo(CamJson& j) override {
+    j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00");
+  }
+  bool timeSave(const CamTime&) override { return true; }
+
+ private:
+  bool firmwareGood = false, first = true;
+  size_t crashLeft = 3000;
+};
+
+class TestRadio : public CamRadio {
+ public:
+  bool setupActive() override { return setupOn; }
+  void wifiNetworks(CamJson& j) override {  // a network name can hold any character, so the second one tests the escaping
+    j.str("name", "hub.local").str("current", "").str("backup", "").flag("scanning", false).array("networks");
+    j.object().str("ssid", "test-net").num("rssi", -40).flag("open", false).end();
+    j.object().str("ssid", "say \"hi\" \\ to\tall\x01").num("rssi", -70).flag("open", true).end();
+    j.end();
+  }
+  // Checks what the WiFi form passes on: the backup flag, and the password decoded exactly.
+  bool wifiSave(const std::string& ssid, const std::string& password, bool backup) override {
+    if (ssid == "want-backup") return backup;
+    return password == "p%ss w+rd&ok";
+  }
+  void addressInfo(CamJson& j) override {
+    j.str("type", "WiFi").flag("dhcp", true).str("staticFor", "").str("ip", "127.0.0.1").str("mask", "255.0.0.0").str("gateway", "127.0.0.1");
+    j.str("dns", "127.0.0.1").str("mac", "02:00:00:00:00:01");
+  }
+  bool addressSave(const CamAddress&) override { return true; }
+  int wifiChannel() override { return 6; }
+  bool hasEspNow() override { return true; }
+  void espNowSend(const uint8_t mac[6], const uint8_t* data, int len) override {
     char hex[3];
     lastSent.clear();
     for (int i = 0; i < 6; i++) {
@@ -213,50 +241,49 @@ int main(int argc, char** argv) {
       lastSent += hex;
     }
     if (allSent.size() < 400000) allSent += (allSent.empty() ? "" : ";") + lastSent;
-  };
+  }
+};
+
+// Saving always works here: the test checks validation, and keeping settings is the board's job.
+class TestStore : public CamStore {
+ public:
+  bool settingsSave(const CamSettings&) override { return true; }
+  bool healthSave(bool) override { return true; }
+  std::string backupText() override { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); }
+  bool restoreText(const std::string& text) override { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; }
+  bool scheduleSave(const CamSchedule&) override { return true; }
+  bool webhookSave(const CamWebhook&) override { return true; }
+  bool armedSave(CamArmMode, int64_t) override { return true; }
+  bool rearmSave(uint32_t) override { return true; }
+  bool mqttSave(const CamMqtt&) override { return true; }
+  bool nvrSave(const std::string&) override { return true; }
+};
+
+int main(int argc, char** argv) {
+  if (argc < 3) {
+    fprintf(stderr, "usage: program HOLD_MS STORAGE_FOLDER [WEB_PASSWORD [SILENT_MS]]\n");
+    return 1;
+  }
+  CamConfig cfg;
+  cfg.loopbackOnly = true;
+  cfg.onvifPort = 18899;
+  cfg.webPort = 18080;
+  cfg.captivePort = 18081;
+  cfg.espNowKey = ESPNOW_KEY;
+  cfg.pairingKey = "a8abababababababababababababababababababababababababababababab6b";  // fixed, so the test knows the hub's key
   cfg.startReason = "PC build started";
   cfg.snapshotSecret = "test-snapshot-secret";
   cfg.sealStart = 0x5EA10000;
-  static std::string storageFolder = argv[2];
-  cfg.fsUsage = [](uint32_t& used, uint32_t& total) {  // what is really stored, of a pretend storage size
-    std::function<uint32_t(const CamStorage&, const std::string&)> sum = [&](const CamStorage& s, const std::string& path) {
-      std::vector<CamFsEntry> items;
-      s.list(path, items);
-      uint32_t bytes = 0;
-      for (const CamFsEntry& e : items) bytes += e.dir ? sum(s, path.empty() ? e.name : path + "/" + e.name) : (e.size + 4095) / 4096 * 4096;
-      return bytes;
-    };
-    used = sum(CamStorage(storageFolder), "");
-    total = diskTotal > used ? diskTotal : used;
-  };
-  cfg.webhookSave = [](const CamWebhook&) { return true; };
-  cfg.mqttSave = [](const CamMqtt&) { return true; };
-  cfg.armedSave = [](CamArmMode, int64_t) { return true; };
-  cfg.rearmSave = [](uint32_t) { return true; };
+  storageFolder = argv[2];
   cfg.firmwareVersion = "test";
-  cfg.healthInfo = [](CamHealth& h) {  // pretend figures, so the test can check they arrive
-    h.freeHeap = 140 * 1024;
-    h.lowestFreeHeap = 120 * 1024;
-    h.largestBlock = 76 * 1024;
-    h.worstLargestBlock = 60 * 1024;
-    h.wifiRssi = -58;
-    h.uptimeS = 3600;
-  };
-  cfg.localMinute = [] { return (int)(time(nullptr) / 60 % 1440); };  // UTC, which the test also uses
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
-  cfg.setupActive = [] { return setupOn; };
-  cfg.wifiNetworks = [](CamJson& j) {  // a network name can hold any character, so the second one tests the escaping
-    j.str("name", "hub.local").str("current", "").str("backup", "").flag("scanning", false).array("networks");
-    j.object().str("ssid", "test-net").num("rssi", -40).flag("open", false).end();
-    j.object().str("ssid", "say \"hi\" \\ to\tall\x01").num("rssi", -70).flag("open", true).end();
-    j.end();
-  };
-  // Checks what the WiFi form passes on: the backup flag, and the password decoded exactly.
-  cfg.wifiSave = [](const std::string& ssid, const std::string& password, bool backup) {
-    if (ssid == "want-backup") return backup;
-    return password == "p%ss w+rd&ok";
-  };
+  static TestChip chip;
+  static TestRadio radio;
+  static TestStore store;
+  cfg.chip = &chip;
+  cfg.radio = &radio;
+  cfg.store = &store;
   cfg.rtspPort = 18554;
   cfg.discoveryPort = 13702;
   cfg.serial = "0123456789ab";

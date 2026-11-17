@@ -265,13 +265,60 @@ static bool restoreBackup(const std::string& text) {
 
 static bool radioTest(bool start, CamJson& j);
 
-static CamConfig makeConfig() {
-  CamConfig c;
-  c.onvifPort = settings.onvifPort;
-  c.webPort = settings.webPort;
-  c.settingsSave = saveSettings;
-  c.espNowInfo = [](CamJson& j) { j.str("mac", WiFi.macAddress().c_str()).num("channel", WiFi.channel()); };
-  c.onvifNetwork = [](SoapContext& s) {
+// ---- what the board does for the hub: the chip, the radio, and where settings are kept ----
+
+class HubChip : public CamChip {
+ public:
+  bool storageUsage(uint32_t& used, uint32_t& total) override {
+    used = LittleFS.usedBytes();
+    total = LittleFS.totalBytes();
+    return true;
+  }
+  // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
+  bool canAllocate(size_t n) override { return largestBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; }
+  bool hasHeadroom() override { return ESP.getFreeHeap() >= 10 * 1024; }
+  bool firmwareBegin(size_t size) override {
+    confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
+    updateProof.mark = UPDATE_PROOF_MARK;
+    updateProof.needNvr = server && server->nvrListeningNow();
+    return Update.begin(size, U_FLASH);
+  }
+  bool firmwareWrite(const uint8_t* data, size_t len) override { return Update.write((uint8_t*)data, len) == len; }
+  bool firmwareEnd(bool commit) override {
+    if (!commit) {
+      Update.abort();
+      return true;
+    }
+    bool ok = Update.end(true);
+    if (ok) requestRestart(RESTART_FIRMWARE);
+    return ok;
+  }
+  size_t crashSize() override { return ::crashSize(); }
+  bool crashRead(size_t offset, char* out, size_t len) override { return readCrash(offset, out, len); }
+  bool crashDelete() override { return deleteCrash(); }
+  bool maintenance(const std::string& action) override { return ::maintenance(action); }
+  void deviceRows(CamJson& j) override { hubDeviceRows(j); }
+  bool tellsHealth() override { return true; }
+  void health(CamHealth& h) override { hubHealth(h); }
+  int localMinute() override {
+    time_t now = time(nullptr);
+    if (now < CAM_CLOCK_VALID_AFTER) return -1;
+    struct tm local;
+    localtime_r(&now, &local);
+    return local.tm_hour * 60 + local.tm_min;
+  }
+  void timeInfo(CamJson& j) override { ::timeInfo(j); }
+  bool timeSave(const CamTime& t) override { return saveTime(t); }
+};
+
+class HubRadio : public CamRadio {
+ public:
+  bool setupActive() override { return setupOpen; }
+  void wifiNetworks(CamJson& j) override { networksInfo(j); }
+  bool wifiSave(const std::string& ssid, const std::string& password, bool backup) override { return saveWifi(ssid, password, backup); }
+  void addressInfo(CamJson& j) override { ::addressInfo(j); }
+  bool addressSave(const CamAddress& a) override { return saveAddress(a); }
+  void onvifNetwork(SoapContext& s) override {
     s.ip = WiFi.localIP().toString().c_str();
     s.mac = WiFi.macAddress().c_str();
     s.gateway = WiFi.gatewayIP().toString().c_str();
@@ -282,37 +329,52 @@ static CamConfig makeConfig() {
     s.dhcp = !usingStatic;
     s.firmwareVersion = FIRMWARE_VERSION;
     s.timeFromNtp = settings.timeNtp;
-  };
-  c.timeInfo = timeInfo;
-  c.timeSave = saveTime;
+  }
+  void espNowInfo(CamJson& j) override { j.str("mac", WiFi.macAddress().c_str()).num("channel", WiFi.channel()); }
+  int wifiChannel() override { return (int)WiFi.channel(); }
+  bool hasEspNow() override { return true; }
+  void espNowSend(const uint8_t mac[6], const uint8_t* data, int len) override { sendToNode(mac, data, len); }
+  bool hasRadioTest() override { return true; }
+  bool radioTest(bool start, CamJson& j) override { return ::radioTest(start, j); }
+};
+
+class HubStore : public CamStore {
+ public:
+  bool settingsSave(const CamSettings& s) override { return saveSettings(s); }
+  bool healthSave(bool alarm) override { return storeHealthAlarm(alarm); }
+  std::string backupText() override { return ::backupText(); }
+  bool restoreText(const std::string& text) override { return restoreBackup(text); }
+  bool scheduleSave(const CamSchedule& s) override { return storeSchedule(s); }
+  bool webhookSave(const CamWebhook& w) override { return storeWebhook(w); }
+  bool armedSave(CamArmMode mode, int64_t until) override { return storeArmed(mode, until); }
+  bool rearmSave(uint32_t minutes) override { return storeRearm(minutes); }
+  bool mqttSave(const CamMqtt& m) override { return storeMqtt(m); }
+  bool nvrSave(const std::string& ip) override { return storeNvr(ip); }
+};
+
+static HubChip hubChip;
+static HubRadio hubRadio;
+static HubStore hubStore;
+
+static CamConfig makeConfig() {
+  CamConfig c;
+  c.chip = &hubChip;
+  c.radio = &hubRadio;
+  c.store = &hubStore;
+  c.onvifPort = settings.onvifPort;
+  c.webPort = settings.webPort;
   c.schedule = settings.schedule;
-  c.scheduleSave = storeSchedule;
-  c.deviceRows = hubDeviceRows;
-  c.crashSize = crashSize;
-  c.crashRead = readCrash;
-  c.crashDelete = deleteCrash;
-  c.maintenance = maintenance;
   c.nvrIp = settings.nvrIp;
-  c.nvrSave = storeNvr;
-  c.addressInfo = addressInfo;
-  c.addressSave = saveAddress;
   if (settings.webPort != 80) c.setupAddress += ":" + std::to_string(settings.webPort);
   c.hostName = std::string(settings.hubName.c_str()) + ".local";
-  c.setupActive = [] { return setupOpen; };
-  c.wifiNetworks = networksInfo;
-  c.wifiSave = saveWifi;
   c.rtspPort = settings.rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
   c.sensorToken = settings.sensorToken.c_str();
   c.webPassword = settings.webPassword.c_str();
   c.onvifPassword = settings.webPassword.c_str();
   c.healthAlarm = settings.healthAlarm;
-  c.healthSave = storeHealthAlarm;
   c.espNowKey = settings.espNowKey.c_str();
   c.pairingKey = settings.pairingKey.c_str();
-  c.wifiChannel = [] { return (int)WiFi.channel(); };
-  c.radioTest = radioTest;
-  c.espNowSend = sendToNode;
   c.startReason = lastRestartText();
   c.startPlanned = startWasPlanned();
   c.snapshotSecret = settings.snapshotKey.c_str();
@@ -320,48 +382,11 @@ static CamConfig makeConfig() {
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
   c.setupPasswordHash = strlen(SETUP_AP_PASSWORD) ? camSha1(SETUP_AP_PASSWORD) : std::string();
-  c.webhookSave = storeWebhook;
   c.mqtt = settings.mqtt;
-  c.mqttSave = storeMqtt;
   c.armMode = settings.armMode;
-  c.armedSave = storeArmed;
   c.disarmedUntil = settings.disarmedUntil;
   c.rearmMinutes = settings.rearmMinutes;
-  c.rearmSave = storeRearm;
   c.firmwareVersion = FIRMWARE_VERSION;
-  c.healthInfo = hubHealth;
-  c.localMinute = [] {
-    time_t now = time(nullptr);
-    if (now < CAM_CLOCK_VALID_AFTER) return -1;
-    struct tm local;
-    localtime_r(&now, &local);
-    return local.tm_hour * 60 + local.tm_min;
-  };
-  c.firmwareBegin = [](size_t size) {
-    confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
-    updateProof.mark = UPDATE_PROOF_MARK;
-    updateProof.needNvr = server && server->nvrListeningNow();
-    return Update.begin(size, U_FLASH);
-  };
-  c.firmwareWrite = [](const uint8_t* data, size_t len) { return Update.write((uint8_t*)data, len) == len; };
-  c.firmwareEnd = [](bool commit) {
-    if (!commit) {
-      Update.abort();
-      return true;
-    }
-    bool ok = Update.end(true);
-    if (ok) requestRestart(RESTART_FIRMWARE);
-    return ok;
-  };
-  c.backupText = backupText;
-  c.restoreText = restoreBackup;
-  // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
-  c.canAllocate = [](size_t n) { return largestBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; };
-  c.hasHeadroom = [] { return ESP.getFreeHeap() >= 10 * 1024; };
-  c.fsUsage = [](uint32_t& used, uint32_t& total) {
-    used = LittleFS.usedBytes();
-    total = LittleFS.totalBytes();
-  };
   c.serial = macSerial();
   return c;
 }

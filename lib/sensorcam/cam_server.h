@@ -115,72 +115,97 @@ struct CamAddress {
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway
 };
 
-// What the board provides. Any std::function may be left unset: the feature it serves is then refused or left out,
-// so a PC build or a test sets only what it uses.
-struct CamConfig {
-  std::string fsRoot = "/littlefs";
-  std::string webPassword;  // when set, the file manager requires Basic auth as "admin"
-  std::function<void(uint32_t& used, uint32_t& total)> fsUsage;
-  std::function<bool(size_t)> canAllocate;  // lets large requests be refused before they exhaust RAM
-  std::function<bool()> hasHeadroom;        // whether new connections and video frames are safe right now
-  // Wi-Fi setup page. The board supplies these; the setup network is the hub's own access point.
-  std::function<bool()> setupActive;           // the setup network is open
-  std::string hostName;                        // the name shown in the web menu, such as esp-alarmhub.local
-  std::string setupAddress = "192.168.4.1";    // where visitors to the setup network are sent
-  std::function<void(CamJson&)> wifiNetworks;  // the setup page's members: name, current, backup, scanning, networks
-  std::function<bool(const std::string& ssid, const std::string& password, bool backup)> wifiSave;
-  uint16_t onvifPort = 8899;                             // ONVIF requests only
-  uint16_t webPort = 80;                                 // the file manager, sensor input, status and events
-  uint16_t captivePort = 80;                             // answered only while the setup network is open, because phones probe it; 0 for none
-  std::function<bool(const CamSettings&)> settingsSave;  // stores new settings; they apply after a restart
-  std::string onvifPassword;                             // when set, ONVIF and RTSP need the user admin and this password
-  bool healthAlarm = false;                              // a silent node or low battery also raises an NVR alarm
-  std::function<bool(bool)> healthSave;
-  std::function<bool(size_t size)> firmwareBegin;
-  std::function<bool(const uint8_t* data, size_t len)> firmwareWrite;
-  std::function<bool(bool commit)> firmwareEnd;  // commit restarts the hub shortly after the reply
-  std::function<std::string()> backupText;
-  std::function<bool(const std::string& text)> restoreText;
-  std::function<void(SoapContext&)> onvifNetwork;  // fills in the hub's network details for ONVIF clients
-  std::function<void(CamJson&)> timeInfo;          // the Time page's members
-  std::function<bool(const CamTime&)> timeSave;
-  CamSchedule schedule;
-  std::function<bool(const CamSchedule&)> scheduleSave;
-  std::function<void(CamJson&)> deviceRows;  // ["label","value"] arrays for the Device Info page
-  std::function<size_t()> crashSize;         // bytes of the crash report the chip saved to flash; 0 when there is none
-  std::function<bool(size_t offset, char* out, size_t len)> crashRead;
-  std::function<bool()> crashDelete;
-  std::function<bool(const std::string& action)> maintenance;  // "reboot", "reset" or "newkeys"; restarts shortly after replying
-  std::function<void(CamJson&)> espNowInfo;                    // members for the Nodes and pairing page: the hub's mac and channel
-  std::string espNowKey;                                       // signs the ESP-NOW messages of nodes not paired
-  std::string pairingKey;                                      // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
-  std::function<int()> wifiChannel;                            // told to nodes in the pairing answer
+// What the board does for the hub, in three parts: the chip, its radio and network, and where settings are kept. Each
+// method's default is what a board without it does, so the feature it serves is refused or left out: a PC build or a
+// test overrides only what it uses, and a part left out of CamConfig is one with every default.
+
+// The chip: memory, storage, firmware updates, the crash report, restarts, the clock and Device Info.
+class CamChip {
+ public:
+  virtual ~CamChip() = default;
+  virtual bool storageUsage(uint32_t& used, uint32_t& total) { return false; }  // false: not known, and nothing is limited by it
+  virtual bool canAllocate(size_t bytes) { return true; }                       // lets large requests be refused before they exhaust RAM
+  virtual bool hasHeadroom() { return true; }                                   // whether new connections and video frames are safe right now
+  virtual bool firmwareBegin(size_t size) { return false; }
+  virtual bool firmwareWrite(const uint8_t* data, size_t len) { return false; }
+  virtual bool firmwareEnd(bool commit) { return false; }  // commit restarts the hub shortly after the reply
+  virtual size_t crashSize() { return 0; }                 // bytes of the crash report the chip saved to flash; 0 when there is none
+  virtual bool crashRead(size_t offset, char* out, size_t len) { return false; }
+  virtual bool crashDelete() { return false; }
+  virtual bool maintenance(const std::string& action) { return false; }  // "reboot", "reset" or "newkeys"; restarts shortly after replying
+  virtual void deviceRows(CamJson& j) {}                                 // ["label","value"] arrays for the Device Info page
+  virtual bool tellsHealth() { return false; }                           // health() has figures, for Home Assistant's diagnostic sensors
+  virtual void health(CamHealth& h) {}
+  virtual int localMinute() { return -1; }  // minutes after local midnight, or -1 when the clock is not set; for quiet hours
+  virtual void timeInfo(CamJson& j) {}      // the Time page's members
+  virtual bool timeSave(const CamTime& t) { return false; }
+};
+
+// The radio: Wi-Fi and its setup network, the hub's address, and ESP-NOW.
+class CamRadio {
+ public:
+  virtual ~CamRadio() = default;
+  virtual bool setupActive() { return false; }  // the setup network is open
+  virtual void wifiNetworks(CamJson& j) {}      // the setup page's members: name, current, backup, scanning, networks
+  virtual bool wifiSave(const std::string& ssid, const std::string& password, bool backup) { return false; }
+  virtual void addressInfo(CamJson& j) {}                                      // the Network page's members
+  virtual bool addressSave(const CamAddress& a) { return false; }              // stores DHCP or a fixed address; applies after a restart
+  virtual void onvifNetwork(SoapContext& s) {}                                 // fills in the hub's network details for ONVIF clients
+  virtual void espNowInfo(CamJson& j) { j.str("mac", "").num("channel", 0); }  // the Nodes and pairing page's: the hub's mac and channel
+  virtual int wifiChannel() { return 0; }                                      // told to nodes in the pairing answer
+  virtual bool hasEspNow() { return false; }
+  // Sends an ESP-NOW message, a confirmation, to a sensor node. Called from the task that calls poll().
+  virtual void espNowSend(const uint8_t mac[6], const uint8_t* data, int len) {}
   // The Long Range radio test, /api/radio-test: start it, or say how it is going or went, as members of j. False when it
   // cannot start: running already, or the hub is off its Wi-Fi network.
-  std::function<bool(bool start, CamJson& j)> radioTest;
-  // Sends an ESP-NOW message, a confirmation, to a sensor node. Call it from the task that calls poll().
-  std::function<void(const uint8_t mac[6], const uint8_t* data, int len)> espNowSend;
+  virtual bool hasRadioTest() { return false; }
+  virtual bool radioTest(bool start, CamJson& j) { return false; }
+};
+
+// Where settings are kept, so they last through a restart. Each is false when they could not be kept.
+class CamStore {
+ public:
+  virtual ~CamStore() = default;
+  virtual bool settingsSave(const CamSettings& s) { return false; }  // new settings; they apply after a restart
+  virtual bool healthSave(bool alarm) { return false; }
+  virtual std::string backupText() { return std::string(); }
+  virtual bool restoreText(const std::string& text) { return false; }
+  virtual bool scheduleSave(const CamSchedule& s) { return false; }
+  virtual bool webhookSave(const CamWebhook& w) { return false; }
+  virtual bool armedSave(CamArmMode mode, int64_t until) { return false; }
+  virtual bool rearmSave(uint32_t minutes) { return false; }
+  virtual bool mqttSave(const CamMqtt& m) { return false; }
+  virtual bool nvrSave(const std::string& ip) { return false; }
+};
+
+struct CamConfig {
+  CamChip* chip = nullptr;  // the board's parts, which outlive the server; any may be left out
+  CamRadio* radio = nullptr;
+  CamStore* store = nullptr;
+  std::string fsRoot = "/littlefs";
+  std::string webPassword;                   // when set, the file manager requires Basic auth as "admin"
+  std::string hostName;                      // the name shown in the web menu, such as esp-alarmhub.local
+  std::string setupAddress = "192.168.4.1";  // where visitors to the setup network are sent
+  uint16_t onvifPort = 8899;                 // ONVIF requests only
+  uint16_t webPort = 80;                     // the file manager, sensor input, status and events
+  uint16_t captivePort = 80;                 // answered only while the setup network is open, because phones probe it; 0 for none
+  std::string onvifPassword;                 // when set, ONVIF and RTSP need the user admin and this password
+  bool healthAlarm = false;                  // a silent node or low battery also raises an NVR alarm
+  CamSchedule schedule;
+  std::string espNowKey;   // signs the ESP-NOW messages of nodes not paired
+  std::string pairingKey;  // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
   CamWebhook webhook;
   // SHA-1 of the setup network's password, which is built into the firmware, so the Overview can tell a web password
   // that is still that one. Empty when there is none.
   std::string setupPasswordHash;
-  std::function<bool(const CamWebhook&)> webhookSave;
   CamMqtt mqtt;
   // Disarmed, alerts are logged but not sent to the NVR or the webhook, as in quiet hours. Kept across restarts.
   // Armed home, interior sensors are logged but not sent to the NVR.
   CamArmMode armMode = CAM_ARMED_AWAY;
-  int64_t disarmedUntil = 0;  // see camTimedDisarmOver; 0 for a disarm without an end
-  std::function<bool(CamArmMode mode, int64_t until)> armedSave;
-  uint32_t rearmMinutes = 0;  // how long a disarm from Home Assistant lasts; 0 until armed again
-  std::function<bool(uint32_t)> rearmSave;
-  std::function<bool(const CamMqtt&)> mqttSave;
-  std::string firmwareVersion;                 // told to Home Assistant
-  std::function<void(CamHealth&)> healthInfo;  // for Home Assistant's diagnostic sensors; unset sends none
-  std::function<int()> localMinute;            // minutes after local midnight, or -1 when the clock is not set; for quiet hours
-  std::string nvrIp;                           // only for the connection status on the NVR page; the hub never contacts the NVR
-  std::function<bool(const std::string& ip)> nvrSave;
-  std::function<void(CamJson&)> addressInfo;           // the Network page's members
-  std::function<bool(const CamAddress&)> addressSave;  // stores DHCP or a fixed address; applies after a restart
+  int64_t disarmedUntil = 0;    // see camTimedDisarmOver; 0 for a disarm without an end
+  uint32_t rearmMinutes = 0;    // how long a disarm from Home Assistant lasts; 0 until armed again
+  std::string firmwareVersion;  // told to Home Assistant
+  std::string nvrIp;            // only for the connection status on the NVR page; the hub never contacts the NVR
   uint16_t rtspPort = 8554;
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
@@ -408,8 +433,8 @@ class SensorCamServer {
   void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed = false);
   uint32_t memoryFailures_ = 0;
   int streamCount() const;
-  bool roomFor(size_t bytes) const { return !cfg_.canAllocate || cfg_.canAllocate(bytes); }
-  bool hasHeadroom() const { return !cfg_.hasHeadroom || cfg_.hasHeadroom(); }
+  bool roomFor(size_t bytes) const { return chip_->canAllocate(bytes); }
+  bool hasHeadroom() const { return chip_->hasHeadroom(); }
   std::string treeJson();
   bool applyReport(int id, const SensorReport& report, uint32_t now, bool present = true);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
@@ -565,6 +590,9 @@ class SensorCamServer {
   void pushFrames(uint32_t now);
 
   CamConfig cfg_;
+  CamChip* chip_;  // the board's parts, or ones with every default for a part left out
+  CamRadio* radio_;
+  CamStore* store_;
   std::function<std::string()> localIp_;
   std::function<uint32_t()> millis_;
   SensorBoard sensors_;
@@ -618,8 +646,9 @@ class SensorCamServer {
   bool delayedGap_ = false;
   NotifyIo hook_;
   CamHookQueue hooks_;
-  std::function<size_t(size_t, char*, size_t)> csvRead_;  // streams the whole history for a download
-  uint32_t nvrSeenAt_ = 0;                                // when the NVR was last listening, or the hub started
+  std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download
+  std::function<bool(size_t, char*, size_t)> crashReader_;  // reads the chip's crash report for a download
+  uint32_t nvrSeenAt_ = 0;                                  // when the NVR was last listening, or the hub started
   bool nvrGone_ = false;
   uint32_t nvrGoneMs_ = CAM_NVR_GONE_MS;  // a test may shorten it
   CamJamWatch jam_;

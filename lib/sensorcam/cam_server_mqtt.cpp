@@ -307,9 +307,9 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
   }
   for (int i = 0; i < CAM_MAX_SENSORS; i++)
     if (mqttSensorState(i, false, now, out)) return true;
-  if (cfg_.healthInfo && (!mqtt_.healthTold || now - mqtt_.healthAt >= CAM_MQTT_HEALTH_MS)) {
+  if (chip_->tellsHealth() && (!mqtt_.healthTold || now - mqtt_.healthAt >= CAM_MQTT_HEALTH_MS)) {
     CamHealth h;
-    cfg_.healthInfo(h);
+    chip_->health(h);
     time_t t = time(nullptr);
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
     std::string json = jsonObject([&](CamJson& j) {
@@ -441,7 +441,7 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     return true;
   }
   if (step < HUB_STEPS) {  // the hub's health
-    if (!cfg_.healthInfo) return false;
+    if (!chip_->tellsHealth()) return false;
     const HealthPart& p = HEALTH[step - HUB_PARTS];
     std::string id = hubId + "_hub_" + p.part,
                 json = jsonObject([&](CamJson& j) {

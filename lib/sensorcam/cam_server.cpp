@@ -12,8 +12,16 @@
 #include "cam_soap.h"
 #include "cam_server_internal.h"
 
+// A part the board leaves out: every feature it serves refused or left out.
+static CamChip noChip;
+static CamRadio noRadio;
+static CamStore noStore;
+
 SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn)
     : cfg_(cfg),
+      chip_(cfg.chip ? cfg.chip : &noChip),
+      radio_(cfg.radio ? cfg.radio : &noRadio),
+      store_(cfg.store ? cfg.store : &noStore),
       localIp_(localIp),
       millis_(millisFn),
       sensors_(CAM_MAX_SENSORS, cfg.holdMs),
@@ -23,6 +31,7 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       nodes_(CAM_MAX_SENSORS),
       health_(CAM_MAX_SENSORS) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
+  crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
   sealNumber_ = cfg.sealStart;
 }
 
@@ -81,11 +90,8 @@ bool SensorCamServer::begin() {
   notGot_.reserve(CAM_MAX_SENSORS);
   rescan();
   nodeImages_.load();
-  if (cfg_.fsUsage) {  // a smaller history on small storage, so that it always fits
-    uint32_t used = 0, total = 0;
-    cfg_.fsUsage(used, total);
-    log_.setFileMax(camLogFileMax(total, HISTORY_ROOM));
-  }
+  uint32_t used = 0, total = 0;
+  if (chip_->storageUsage(used, total)) log_.setFileMax(camLogFileMax(total, HISTORY_ROOM));  // a smaller history on small storage
   log_.load();
   mqttEventsSent_ = log_.added();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
@@ -140,7 +146,7 @@ void SensorCamServer::closeHttp(HttpConn& c) {
   if (c.firmwareActive && c.nodeImage) {
     dropNodeImage();
   } else if (c.firmwareActive) {  // the browser went away partway through, so the update is abandoned
-    camCall(cfg_.firmwareEnd, false);
+    chip_->firmwareEnd(false);
     firmwareOwner_ = nullptr;
   }
   if (uploading_ == &c) {
@@ -168,7 +174,7 @@ void SensorCamServer::acceptHttp(int listenFd, uint32_t now) {
   socklen_t len = sizeof(a);
   int fd = (int)accept(listenFd, (sockaddr*)&a, &len);
   if (fd < 0) return;
-  if (listenFd == captiveListen_ && !camCall(cfg_.setupActive)) {
+  if (listenFd == captiveListen_ && !radio_->setupActive()) {
     netClose(fd);
     return;
   }
@@ -279,7 +285,7 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   ctx.rtspPort = cfg_.rtspPort;
   ctx.serial = cfg_.serial;
   ctx.onvifPort = cfg_.onvifPort;
-  if (cfg_.onvifNetwork) cfg_.onvifNetwork(ctx);
+  radio_->onvifNetwork(ctx);
   ctx.now = time(nullptr);
   if (!cfg_.onvifPassword.empty()) {
     ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword);
@@ -423,8 +429,8 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
     finishNodeImage(c, ok);
     return;
   }
-  bool done = ok && camCall(cfg_.firmwareEnd, true);
-  if (!ok) camCall(cfg_.firmwareEnd, false);
+  bool done = ok && chip_->firmwareEnd(true);
+  if (!ok) chip_->firmwareEnd(false);
   firmwareOwner_ = nullptr;
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
@@ -435,7 +441,7 @@ void SensorCamServer::finishFirmware(HttpConn& c, bool ok) {
 
 void SensorCamServer::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || (c.nodeImage ? nodeImages_.write(data, take) : camCall(cfg_.firmwareWrite, (const uint8_t*)data, take));
+  bool written = !take || (c.nodeImage ? nodeImages_.write(data, take) : chip_->firmwareWrite((const uint8_t*)data, take));
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -487,7 +493,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
   bool isOnvif = isSnapshot || (!isApi && !isGet);
   if (isOnvif == c.web) return refuse(404, "not available on this port");
   // Phones and laptops probe a known site on joining a network; sending them here is what opens the setup page by itself.
-  if (c.web && isGet && camCall(cfg_.setupActive) && headerValue(headers, "host") != cfg_.setupAddress) {
+  if (c.web && isGet && radio_->setupActive() && headerValue(headers, "host") != cfg_.setupAddress) {
     c.out = "HTTP/1.1 302 Found\r\nLocation: http://" + cfg_.setupAddress + "/setup\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     c.answered = true;
     return true;
@@ -508,7 +514,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     // A refused firmware is read to its end before the reply, as the browser reports a reply that comes while it is
     // still sending as a bare network error, without the reason.
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
-    if (firmwareOwner_ || !camCall(cfg_.firmwareBegin, contentLength))
+    if (firmwareOwner_ || !chip_->firmwareBegin(contentLength))
       return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;
     c.firmwareActive = true;
@@ -854,8 +860,8 @@ void SensorCamServer::housekeeping(uint32_t now) {
   // Reports that arrived since the last pass are saved together, and only then confirmed.
   if (confirmCount_) {
     bool kept = persist();
-    for (int i = 0; kept && cfg_.espNowSend && i < confirmCount_; i++)
-      cfg_.espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
+    for (int i = 0; kept && radio_->hasEspNow() && i < confirmCount_; i++)
+      radio_->espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
     confirmCount_ = 0;  // unconfirmed, the sensors resend, and each resend tries the save again
   }
   if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap

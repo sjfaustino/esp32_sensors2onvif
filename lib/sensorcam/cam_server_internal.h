@@ -32,14 +32,6 @@ static const char ALIVE_FILE[] = "alive.bin";
 static const char MULTICAST_GROUP[] = "239.255.255.250";
 static const uint16_t MULTICAST_PORT = 3702;
 
-// Calls a callback the board may leave unset. An unset one does nothing and gives false, an empty text or nothing,
-// so a missing feature is refused, not a crash.
-template <typename R, typename... P, typename... A>
-inline R camCall(const std::function<R(P...)>& f, A&&... a) {
-  if (!f) return R();
-  return f(std::forward<A>(a)...);
-}
-
 // ---- HTTP replies ----
 
 inline std::string httpHead(int status, const char* type, size_t length, const std::string& extraHeaders = std::string()) {
