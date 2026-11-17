@@ -20,8 +20,8 @@
 class CamAlarmOutside {
  public:
   virtual ~CamAlarmOutside() = default;
-  virtual bool nvrListening(uint32_t now) const = 0;  // whether an alert started now would reach the NVR
-  virtual bool downloadingHistory() const = 0;        // the history is being sent, so its files must not be rotated
+  virtual bool nvrListening(uint32_t now) const = 0;                     // whether an alert started now would reach the NVR
+  virtual bool downloadingHistory() const = 0;                           // the history is being sent, so its files must not be rotated
   virtual void notifyHook(int id, CamEventKind kind, bool delayed) = 0;  // a sensor's event, for the webhook
   virtual void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) = 0;
   virtual void sensorReset(int id) = 0;                 // sensor id is new or gone, so what was shown of it is forgotten
@@ -114,7 +114,7 @@ class CamAlarm {
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0);
   // An alert from sensor id that takes the whole path, whatever the arm mode, and is logged as a test. False for no such sensor.
   bool testAlert(int id);
-  long long disarmSecondsLeft(uint32_t now) const;  // -1 when not known
+  long long disarmSecondsLeft(uint32_t now) const;   // -1 when not known
   time_t lastTestAt() const { return lastTestAt_; }  // the newest test alert, kept after it leaves the events in memory
 
   // ---- the sensor table. A sensor's id runs from 1, as 0 means none. ----
@@ -129,7 +129,7 @@ class CamAlarm {
   Node& nodeOf(int id) { return nodes_[slotOf(id).node - 1]; }
   const Node& nodeOf(int id) const { return nodes_[slotOf(id).node - 1]; }
   const Node& nodeAt(int number) const { return nodes_[number - 1]; }  // by its number, from 1, as Slot::node gives it
-  int sensorCount() const;                                               // the sensors in the table
+  int sensorCount() const;                                             // the sensors in the table
   const std::string& keyFor(const Node* n) const { return n && n->paired ? n->key : cfg_.espNowKey; }
   std::string slotName(int id) const;  // its folder, as "AA-BB-CC-DD-EE-FF/1"
   uint32_t holdFor(int id) const;
@@ -141,7 +141,7 @@ class CamAlarm {
   bool updateReady(int id) const;                  // a firmware update waits for this sensor's node
   using UnknownList = UnknownSender[MAX_UNKNOWN];
   const UnknownList& unknown() const { return unknown_; }
-  void refuseSignature(int id);                              // a message from this sensor's node had the wrong signature
+  void refuseSignature(int id);  // a message from this sensor's node had the wrong signature
 
   const SensorBoard& board() const { return sensors_; }  // which alerts are on, for the NVR and the picture
   CamEventLog& log() { return log_; }

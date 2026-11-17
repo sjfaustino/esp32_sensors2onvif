@@ -92,7 +92,11 @@ std::string SensorCamServer::pairingJson() {
       if (!p.used) continue;
       int id = alarm_.findNode(p.mac);
       j.object().str("mac", camMacText(p.mac)).num("inputs", p.inputs).str("fingerprint", camKeyFingerprint(p.publicKey));
-      j.num("ago", (now - p.heardAt) / 1000).num("rssi", p.rssi != 0, p.rssi).flag("known", id != 0).flag("paired", id && alarm_.nodeOf(id).paired).end();
+      j.num("ago", (now - p.heardAt) / 1000)
+          .num("rssi", p.rssi != 0, p.rssi)
+          .flag("known", id != 0)
+          .flag("paired", id && alarm_.nodeOf(id).paired)
+          .end();
     }
   });
 }

@@ -33,7 +33,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   std::string debugLine();                                                                 // counters for the serial heartbeat
   void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }    // for the PC tests
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
-  void saveNow() { alarm_.saveNow(); }                              // writes any events not yet saved; call before a restart
+  void saveNow() { alarm_.saveNow(); }                                                     // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return firmwareOwner_ != nullptr; }          // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see nvrListening
@@ -44,12 +44,12 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   // See CamAlarm::setArmMode and CamAlarm::testAlert.
   bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0) { return alarm_.setArmMode(mode, from, minutes); }
   bool testAlert(int id) { return alarm_.testAlert(id); }
-#ifdef CAM_TEST_HOOKS                                                 // only in the PC builds, for the tests
-  void endAlerts() { alarm_.endAlerts(); }                            // ends every alert now, without waiting for its hold
-  void setNvrGoneMs(uint32_t ms) { alarm_.setNvrGoneMs(ms); }         // how soon the NVR counts as gone, instead of 3 minutes
-  void setMinuteMs(uint32_t ms) { alarm_.setMinuteMs(ms); }           // how long a minute of a timed disarm lasts
-  void setBusyAlerts(int n) { alarm_.setBusyAlerts(n); }              // how many alerts within an hour count as firing often
-  void setOverdueMs(uint32_t ms) { alarm_.setOverdueMs(ms); }         // how late a node's report is overdue, instead of from its report time; 0 for that
+#ifdef CAM_TEST_HOOKS                                          // only in the PC builds, for the tests
+  void endAlerts() { alarm_.endAlerts(); }                     // ends every alert now, without waiting for its hold
+  void setNvrGoneMs(uint32_t ms) { alarm_.setNvrGoneMs(ms); }  // how soon the NVR counts as gone, instead of 3 minutes
+  void setMinuteMs(uint32_t ms) { alarm_.setMinuteMs(ms); }    // how long a minute of a timed disarm lasts
+  void setBusyAlerts(int n) { alarm_.setBusyAlerts(n); }       // how many alerts within an hour count as firing often
+  void setOverdueMs(uint32_t ms) { alarm_.setOverdueMs(ms); }  // how late a node's report is overdue, instead of from its report time; 0 for that
 #endif
 
  private:
@@ -137,7 +137,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   bool handleHttp(HttpConn& c, uint32_t now);
   std::string handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status);
   std::string handleSensor(const std::string& target, int& status);
-  int sharedSockets() const;                       // web connections and event pushes in progress
+  int sharedSockets() const;  // web connections and event pushes in progress
   const CamFrame& frameToShow(uint32_t now);
   bool loadFrame(const std::string& path);
   bool authorized(const HttpConn& c, const std::string& headers);
@@ -263,6 +263,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamHookQueue hooks_;
   std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download
   std::function<bool(size_t, char*, size_t)> crashReader_;  // reads the chip's crash report for a download
-  bool dailySent_ = false;  // and when, so the minute it is due sends one
+  bool dailySent_ = false;                                  // and when, so the minute it is due sends one
   uint32_t dailySentAt_ = 0;
 };

@@ -258,12 +258,12 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
     return true;
   }
   bool alert = false;
-  for (int id = 1; id <= alarm_.board().count(); id++) alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
+  for (int id = 1; id <= alarm_.board().count(); id++)
+    alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
   bool nvr = outside_.nvrListening(now);
   bool armed = alarm_.armed(), home = alarm_.armMode() == CAM_ARMED_HOME;
   int64_t until = alarm_.disarmedUntil();
-  if (!io_.hubTold || alert != io_.hubAlert || nvr != io_.hubNvr || armed != io_.hubArmed || home != io_.hubHome ||
-      until != io_.hubUntil) {
+  if (!io_.hubTold || alert != io_.hubAlert || nvr != io_.hubNvr || armed != io_.hubArmed || home != io_.hubHome || until != io_.hubUntil) {
     bool known = !armed && until > 1;
     std::string json = jsonObject([&](CamJson& j) {
       j.str("alert", alert ? "ON" : "OFF").str("nvr", nvr ? "ON" : "OFF").str("armed", armed ? "ON" : "OFF");

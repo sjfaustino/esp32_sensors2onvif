@@ -180,7 +180,8 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
     frame_ = &CAM_FRAMES[builtinFrame(on, delayed)];
     return *frame_;
   }
-  std::string key = on ? alarm_.slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (alarm_.board().several(id) ? "s" : "") : "clear";
+  std::string key =
+      on ? alarm_.slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (alarm_.board().several(id) ? "s" : "") : "clear";
   if (key == frameKey_) return *frame_;
   frameKey_ = key;
   frameFile_.clear();

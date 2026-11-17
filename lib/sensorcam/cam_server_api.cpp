@@ -343,7 +343,11 @@ std::string SensorCamServer::espNowJson() {
     const Health& h = alarm_.healthOf(id);
     std::string name = alarm_.slotName(id);
     const char* state = alarm_.board().active(id) ? "active" : h.silent ? "silent" : !h.heard ? "never" : "idle";
-    j.object().flag("low", h.lowBattery).str("name", alarm_.slotOf(id).name).str("node", name.substr(0, name.find('/'))).num("input", alarm_.slotOf(id).input);
+    j.object()
+        .flag("low", h.lowBattery)
+        .str("name", alarm_.slotOf(id).name)
+        .str("node", name.substr(0, name.find('/')))
+        .num("input", alarm_.slotOf(id).input);
     j.str("state", state).num("ago", h.heard, (now - h.heardAt) / 1000).num("battery", h.heard && h.battery != CAM_BATTERY_UNKNOWN, h.battery);
     j.num("rssi", h.rssi != 0, h.rssi)
         .num("counter", h.counterSeen, h.counter)
@@ -367,7 +371,7 @@ std::string SensorCamServer::espNowJson() {
     j.num("daysLeft", node.daysLeft >= 0, node.daysLeft).flag("sealed", node.sealed);
     const CamNodeImage* image = imageFor(info.chip);
     std::string update = node.updating && node.updateSize ? "updating, " + std::to_string((uint64_t)node.updateOffset * 100 / node.updateSize) + "%"
-                         : alarm_.updateReady(id)                ? "update ready"
+                         : alarm_.updateReady(id)         ? "update ready"
                          : image && info.refused == image->number ? "update undone"
                                                                   : "";
     j.str("update", update).end();

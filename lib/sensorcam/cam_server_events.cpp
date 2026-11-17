@@ -125,7 +125,8 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
     // For the Overview's checklist: what must be right before the hub can be trusted.
     time_t t = time(nullptr), lastTest = alarm_.lastTestAt();
     for (int n = 0; n < alarm_.log().count(); n++)
-      if (alarm_.log().recent(n).kind == CAM_EVENT_TEST_ALERT && alarm_.log().recent(n).received > lastTest) lastTest = alarm_.log().recent(n).received;
+      if (alarm_.log().recent(n).kind == CAM_EVENT_TEST_ALERT && alarm_.log().recent(n).received > lastTest)
+        lastTest = alarm_.log().recent(n).received;
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER, heard = false;
     for (int id = 1; id <= alarm_.board().count(); id++) heard = heard || (alarm_.slotOf(id).used && alarm_.healthOf(id).heard);
     bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(cfg_.webPassword), cfg_.setupPasswordHash);
