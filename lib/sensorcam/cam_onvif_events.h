@@ -1,6 +1,6 @@
 // How the NVR hears of an alert: its ONVIF event subscriptions, the events pushed to those that take pushes, and the
 // WS-Discovery that lets it find the hub. Whether the NVR is listening is worked out here too. SensorCamServer owns one;
-// the subscriptions that pull are answered over HTTP, which stays the server's.
+// the subscriptions that pull are answered over HTTP, by CamWeb.
 #pragma once
 #include <stdint.h>
 #include <functional>

@@ -1,4 +1,4 @@
-// Shared by the files that make up SensorCamServer. Not part of the library's interface.
+// Shared by the files that make up the hub's parts (SensorCamServer and what it owns). Not part of the library's interface.
 #pragma once
 #include <stdint.h>
 #include <stddef.h>

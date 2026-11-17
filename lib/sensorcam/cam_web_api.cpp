@@ -1,5 +1,5 @@
-// SensorCamServer: the web page's API, and the JSON it reads.
-#include "cam_server.h"
+// CamWeb: the web page's API, and the JSON it reads.
+#include "cam_web_server.h"
 #include "cam_number.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -15,12 +15,12 @@
 
 // Pictures may use the storage only up to what the event history still needs: its full size, both CSV files, and room
 // to rewrite the saved files. Without that room no report could be saved, and so none could be confirmed.
-size_t SensorCamServer::historyRoom() const {
+size_t CamWeb::historyRoom() const {
   size_t logs = alarm_.log().bytesOnStorage();
   return HISTORY_ROOM + (logs < 2 * alarm_.log().fileMax() ? 2 * alarm_.log().fileMax() - logs : 0);
 }
 
-bool SensorCamServer::roomBesideHistory(size_t bytes) const {
+bool CamWeb::roomBesideHistory(size_t bytes) const {
   uint32_t used = 0, total = 0;
   if (!chip_->storageUsage(used, total)) return true;
   size_t needed = (bytes + 4095) / 4096 * 4096 + 2 * 4096 + historyRoom();  // whole blocks, the new copy beside the old, and its folder
@@ -35,7 +35,7 @@ static bool hasFile(const std::vector<CamFsEntry>& items, const std::string& nam
 
 // Built as one string that grows only when the memory for it is there, and is never copied.
 // Empty when the hub is too short of memory to build it.
-std::string SensorCamServer::treeJson() {
+std::string CamWeb::treeJson() {
   uint32_t used = 0, total = 0;
   chip_->storageUsage(used, total);
   std::vector<CamFsEntry> root;
@@ -235,8 +235,8 @@ static int backupCheck(const std::string& key, const std::string& value) {
 bool camBackupValueValid(const std::string& key, const std::string& value) { return backupCheck(key, value) == 1; }
 bool camBackupKeyKnown(const std::string& key) { return backupCheck(key, "") != -1; }
 
-void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body,
-                                size_t bodyLen) {
+void CamWeb::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body,
+                       size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
   // On the setup network the password of that network already guards these, and a captive-portal window may not offer a login.
   bool inSetup = radio_->setupActive();
@@ -252,7 +252,7 @@ void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const st
     apiFiles(r);
 }
 
-void SensorCamServer::apiSetup(const ApiRequest& r) {
+void CamWeb::apiSetup(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
     sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, PAGE_HEADERS);
@@ -270,7 +270,7 @@ void SensorCamServer::apiSetup(const ApiRequest& r) {
   }
 }
 
-bool SensorCamServer::apiPages(const ApiRequest& r) {
+bool CamWeb::apiPages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/") || r.is("GET", "/files")) {
     sendBody(c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, PAGE_HEADERS);
@@ -322,7 +322,7 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
 }
 
 // Sized for the sensors that exist, and empty when the hub is too short of memory to build it.
-std::string SensorCamServer::espNowJson() {
+std::string CamWeb::espNowJson() {
   int known = alarm_.sensorCount();
   size_t room = (size_t)known * 760 + CamAlarm::MAX_UNKNOWN * 120 + 8 * 120 + 256;  // the longest possible entries
   if (!roomFor(room)) return std::string();
@@ -388,7 +388,7 @@ std::string SensorCamServer::espNowJson() {
   return out;
 }
 
-bool SensorCamServer::apiInfo(const ApiRequest& r) {
+bool CamWeb::apiInfo(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/device")) {
     int known = alarm_.sensorCount();
@@ -444,7 +444,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
           .num("rtspPort", cfg_.rtspPort)
           .num("streams", video_.streamCount())
           .num("subscribers", events_.subs().count());
-      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", armed());
+      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", alarm_.armed());
     }));
   } else {
     return false;
@@ -452,7 +452,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
   return true;
 }
 
-bool SensorCamServer::apiSystem(const ApiRequest& r) {
+bool CamWeb::apiSystem(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/time")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { chip_->timeInfo(j); }));
@@ -533,7 +533,7 @@ bool SensorCamServer::apiSystem(const ApiRequest& r) {
   return true;
 }
 
-bool SensorCamServer::apiNetwork(const ApiRequest& r) {
+bool CamWeb::apiNetwork(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/nvr")) {
     uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
@@ -611,7 +611,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
 }
 
 // Per-sensor settings, the webhook and the full event history.
-bool SensorCamServer::apiSensors(const ApiRequest& r) {
+bool CamWeb::apiSensors(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path"), form = r.form();
@@ -692,9 +692,9 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
     }
   } else if (r.is("GET", "/api/arm")) {
     long long left = alarm_.disarmSecondsLeft(millis_());
-    bool timed = !armed() && alarm_.disarmedUntil();
+    bool timed = !alarm_.armed() && alarm_.disarmedUntil();
     c.out = jsonOk(jsonObject([&](CamJson& j) {
-      j.flag("armed", armed()).str("mode", camArmModeName(armMode()));
+      j.flag("armed", alarm_.armed()).str("mode", camArmModeName(alarm_.armMode()));
       j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
     }));
   } else if (r.is("POST", "/api/arm")) {
@@ -707,10 +707,10 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
       CamArmMode m = mode == "away" ? CAM_ARMED_AWAY : mode == "home" ? CAM_ARMED_HOME : CAM_DISARMED;
-      c.out = saved(setArmMode(m, "the web page", (uint32_t)minutes), "could not save the setting");
+      c.out = saved(alarm_.setArmMode(m, "the web page", (uint32_t)minutes), "could not save the setting");
     }
   } else if (r.is("POST", "/api/test-alert")) {
-    c.out = testAlert(alarm_.slotForPath(queryParam(r.target, "path"))) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
+    c.out = alarm_.testAlert(alarm_.slotForPath(queryParam(r.target, "path"))) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
   } else if (r.is("GET", "/api/overview")) {
     reply(c, 200, JSON_TYPE, overviewJson(millis_()));
   } else if (r.is("POST", "/api/arm/rearm")) {
@@ -779,7 +779,7 @@ bool SensorCamServer::apiSensors(const ApiRequest& r) {
   return true;
 }
 
-void SensorCamServer::apiFiles(const ApiRequest& r) {
+void CamWeb::apiFiles(const ApiRequest& r) {
   HttpConn& c = r.c;
   const std::string& method = r.method;
   bool fileRoute = r.route == "/api/file", mkdirRoute = r.route == "/api/mkdir";

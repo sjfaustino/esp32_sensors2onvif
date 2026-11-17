@@ -1,5 +1,5 @@
-// SensorCamServer: the event history, and what the Events, Overview and status pages read.
-#include "cam_server.h"
+// CamWeb: the event history, and what the Events, Overview and status pages read.
+#include "cam_web_server.h"
 #include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -48,7 +48,7 @@ static void eventJson(std::string& out, const CamEvent& e) {
 }
 
 // Measured an event at a time first, then built at its exact size, so it needs one block no larger than itself.
-std::string SensorCamServer::eventsJson(bool* whole) {
+std::string CamWeb::eventsJson(bool* whole) {
   int count = alarm_.log().count() < CamEventLog::RECENT ? alarm_.log().count() : CamEventLog::RECENT;
   size_t sizes[CamEventLog::RECENT];
   std::string one;
@@ -76,7 +76,7 @@ std::string SensorCamServer::eventsJson(bool* whole) {
   return out;
 }
 
-std::string SensorCamServer::eventsTag() const {
+std::string CamWeb::eventsTag() const {
   uint32_t h = 2166136261u;  // FNV-1a over the newest event: with the count of events added, it changes with the list
   if (alarm_.log().count()) {
     uint8_t r[CAM_EVENT_RECORD];
@@ -89,9 +89,9 @@ std::string SensorCamServer::eventsTag() const {
 }
 
 // The overview page: what someone checking the hub wants at a glance.
-std::string SensorCamServer::overviewJson(uint32_t now) {
+std::string CamWeb::overviewJson(uint32_t now) {
   long long left = alarm_.disarmSecondsLeft(now);
-  CamArmMode mode = armMode();
+  CamArmMode mode = alarm_.armMode();
   const CamEvent* last = nullptr;  // the newest alert, whatever became of it
   for (int n = 0; n < alarm_.log().count() && !last; n++) {
     const CamEvent& e = alarm_.log().recent(n);
@@ -137,7 +137,7 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
   });
 }
 
-std::string SensorCamServer::statusJson(uint32_t now) {
+std::string CamWeb::statusJson(uint32_t now) {
   int known = 0;
   for (int id = 1; id <= alarm_.board().count(); id++) known += alarm_.slotOf(id).used;
   return jsonObject([&](CamJson& j) {
@@ -159,6 +159,6 @@ std::string SensorCamServer::statusJson(uint32_t now) {
           .flag("silent", h.silent)
           .end();
     }
-    j.end().num("uptime_s", now / 1000).flag("armed", armed()).str("mode", camArmModeName(armMode()));
+    j.end().num("uptime_s", now / 1000).flag("armed", alarm_.armed()).str("mode", camArmModeName(alarm_.armMode()));
   });
 }

@@ -41,3 +41,22 @@ inline std::string netAddressText(uint32_t address) {
   const uint8_t* b = (const uint8_t*)&address;
   return std::to_string(b[0]) + "." + std::to_string(b[1]) + "." + std::to_string(b[2]) + "." + std::to_string(b[3]);
 }
+
+// A TCP socket listening on port, without blocking; -1 when it cannot be had. loopbackOnly: for the PC tests, nothing
+// from another machine.
+inline int netListen(uint16_t port, bool loopbackOnly) {
+  int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) return -1;
+  int on = 1;
+  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&on, sizeof(on));
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_port = htons(port);
+  a.sin_addr.s_addr = loopbackOnly ? htonl(INADDR_LOOPBACK) : htonl(INADDR_ANY);
+  if (bind(fd, (sockaddr*)&a, sizeof(a)) != 0 || listen(fd, 4) != 0) {
+    netClose(fd);
+    return -1;
+  }
+  netNonblock(fd);
+  return fd;
+}

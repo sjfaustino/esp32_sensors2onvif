@@ -1,24 +1,24 @@
-// SensorCamServer: the web side of CamNodes. Pairing, and the node firmware files, which the nodes fetch over ESP-NOW
+// CamWeb: the web side of CamNodes. Pairing, and the node firmware files, which the nodes fetch over ESP-NOW
 // (see CamNodes::firmwareAsk).
 #include <stdlib.h>
 #include <string.h>
-#include "cam_server.h"
+#include "cam_web_server.h"
 #include "cam_number.h"
 #include "cam_server_internal.h"
 
-void SensorCamServer::startNodeImage(HttpConn& c, size_t length) {
+void CamWeb::startNodeImage(HttpConn& c, size_t length) {
   nodeImageOwner_ = &c;
   c.firmwareActive = true;
   c.nodeImage = true;
   c.firmwareLeft = length;
 }
 
-void SensorCamServer::dropNodeImage() {
+void CamWeb::dropNodeImage() {
   nodes_.images().abandon();
   nodeImageOwner_ = nullptr;
 }
 
-void SensorCamServer::finishNodeImage(HttpConn& c, bool ok) {
+void CamWeb::finishNodeImage(HttpConn& c, bool ok) {
   nodeImageOwner_ = nullptr;
   c.firmwareActive = false;
   c.nodeImage = false;
@@ -37,7 +37,7 @@ void SensorCamServer::finishNodeImage(HttpConn& c, bool ok) {
   }
 }
 
-bool SensorCamServer::apiNodeImages(const ApiRequest& r) {
+bool CamWeb::apiNodeImages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (!r.is("POST", "/api/node-firmware/delete")) return false;
   std::string chip = queryParam(r.form(), "chip");
@@ -49,7 +49,7 @@ bool SensorCamServer::apiNodeImages(const ApiRequest& r) {
   return true;
 }
 
-bool SensorCamServer::apiPairing(const ApiRequest& r) {
+bool CamWeb::apiPairing(const ApiRequest& r) {
   HttpConn& c = r.c;
   uint32_t now = millis_();
   nodes_.forgetQuiet(now);

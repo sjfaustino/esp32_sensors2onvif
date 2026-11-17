@@ -1,5 +1,5 @@
 // The messages waiting for the webhook, sent one at a time, oldest first, and how the last one went. The sending itself
-// is SensorCamServer's, on the same sockets as the ONVIF event pushes.
+// is CamWebhookSender's, through a CamPost, as the ONVIF event pushes are.
 #pragma once
 #include <stdint.h>
 #include <time.h>
