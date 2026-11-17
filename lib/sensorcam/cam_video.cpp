@@ -6,14 +6,58 @@
 #include "cam_number.h"
 #include "cam_frames.h"
 #include "cam_net.h"
-#include "cam_server.h"
+#include "cam_video.h"
 #include "cam_server_internal.h"
 
 // ---- RTSP ----
 
+bool CamVideo::begin(int listenFd) {
+  listen_ = listenFd;
+  nextFrameAt_ = millis_();
+  frameData_.reserve(CAM_MAX_FRAME);
+  return listen_ >= 0;
+}
+
+void CamVideo::watch(fd_set& rd, fd_set& wr, int& maxFd, bool accepting) const {
+  if (listen_ >= 0 && accepting) netWatch(listen_, rd, maxFd);
+  for (const RtspConn& c : rtsp_) {
+    if (c.fd < 0) continue;
+    netWatch(c.fd, rd, maxFd);
+    if (!c.out.empty() || c.packetPos < c.packetLen || c.video.frame) netWatch(c.fd, wr, maxFd);
+  }
+}
+
+void CamVideo::serve(fd_set& rd, fd_set& wr, uint32_t now) {
+  if (listen_ >= 0 && FD_ISSET(listen_, &rd)) acceptViewer(now);
+  for (RtspConn& c : rtsp_)
+    if (c.fd >= 0) serviceConn(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
+}
+
+void CamVideo::closeAll() {
+  for (RtspConn& c : rtsp_)
+    if (c.fd >= 0) closeConn(c);
+}
+
+int CamVideo::openCount() const {
+  int open = 0;
+  for (const RtspConn& c : rtsp_) open += c.fd >= 0;
+  return open;
+}
+
+bool CamVideo::playingTo(uint32_t peer) const {
+  for (const RtspConn& c : rtsp_)
+    if (peer && c.fd >= 0 && c.playing && c.peer == peer) return true;
+  return false;
+}
+
+void CamVideo::viewers(CamJson& j) const {
+  for (const RtspConn& c : rtsp_)
+    if (c.fd >= 0 && c.playing) j.str(netAddressText(c.peer));
+}
+
 // Sends what the connection can take: the rest of the packet under way, then any RTSP reply, then the frame's next
 // packets. A reply never goes between the parts of a packet, which would break the stream's framing.
-void SensorCamServer::flushRtsp(RtspConn& c, uint32_t now) {
+void CamVideo::flush(RtspConn& c, uint32_t now) {
   for (;;) {
     bool inPacket = c.packetPos < c.packetLen;
     if (!inPacket && c.outPos >= c.out.size() && !c.video.frame) return;
@@ -26,7 +70,7 @@ void SensorCamServer::flushRtsp(RtspConn& c, uint32_t now) {
     size_t left = inPacket ? c.packetLen - c.packetPos : c.out.size() - c.outPos;
     int n = (int)send(c.fd, data, (int)left, 0);
     if (n < 0 && !netWouldBlock()) {
-      closeRtsp(c);
+      closeConn(c);
       return;
     }
     if (n <= 0) return;
@@ -39,7 +83,7 @@ void SensorCamServer::flushRtsp(RtspConn& c, uint32_t now) {
         c.out.clear();
         c.outPos = 0;
         if (c.closeAfterSend) {
-          closeRtsp(c);
+          closeConn(c);
           return;
         }
       }
@@ -48,7 +92,7 @@ void SensorCamServer::flushRtsp(RtspConn& c, uint32_t now) {
   }
 }
 
-void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, uint32_t now) {
+void CamVideo::request(RtspConn& c, const std::string& text, uint32_t now) {
   std::string line = text.substr(0, text.find("\r\n"));
   std::string method = line.substr(0, line.find(' '));
   size_t a = line.find(' '), b = line.rfind(' ');
@@ -56,7 +100,7 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
   std::string cseq = headerValue(text, "cseq");
   static const char SESSION[] = "53454E53";
   std::string head = "RTSP/1.0 200 OK\r\nCSeq: " + cseq + "\r\nServer: SensorCam\r\n";
-  subs_.heard(c.peer, now);
+  heard_(c.peer, now);
 
   if (!cfg_.onvifPassword.empty() && method != "OPTIONS" && !c.authed) {
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
@@ -105,12 +149,12 @@ void SensorCamServer::handleRtspRequest(RtspConn& c, const std::string& text, ui
   }
 }
 
-void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uint32_t now) {
+void CamVideo::serviceConn(RtspConn& c, bool readable, bool writable, uint32_t now) {
   if (readable) {
     char buf[1024];
     int n = (int)recv(c.fd, buf, sizeof(buf), 0);
     if (n == 0 || (n < 0 && !netWouldBlock())) {
-      closeRtsp(c);
+      closeConn(c);
       return;
     }
     if (n > 0) {
@@ -127,40 +171,47 @@ void SensorCamServer::serviceRtsp(RtspConn& c, bool readable, bool writable, uin
         size_t end = c.in.find("\r\n\r\n");
         if (end == std::string::npos) break;
         try {
-          handleRtspRequest(c, c.in.substr(0, end + 2), now);
+          request(c, c.in.substr(0, end + 2), now);
         } catch (const std::bad_alloc&) {  // the viewer reconnects, as it does after any dropped connection
           memoryFailures_++;
-          closeRtsp(c);
+          closeConn(c);
           return;
         }
         c.in.erase(0, end + 4);
       }
       if (c.in.size() > MAX_HEADERS) {
-        closeRtsp(c);
+        closeConn(c);
         return;
       }
     }
   }
-  if (c.fd >= 0 && (writable || !c.out.empty())) flushRtsp(c, now);  // a new reply is tried at once
-  if (c.fd >= 0 && (now - c.activityAt > (c.playing ? CAM_RTSP_STALL_MS : CAM_RTSP_IDLE_MS))) closeRtsp(c);
+  if (c.fd >= 0 && (writable || !c.out.empty())) flush(c, now);  // a new reply is tried at once
+  if (c.fd >= 0 && (now - c.activityAt > (c.playing ? CAM_RTSP_STALL_MS : CAM_RTSP_IDLE_MS))) closeConn(c);
 }
 
-void SensorCamServer::pushFrames(uint32_t now) {
+void CamVideo::tick(uint32_t now) {
   if ((int32_t)(now - nextFrameAt_) < 0) return;
   nextFrameAt_ = now + 1000 / CAM_FPS;
-  const CamFrame& frame = frameToShow(now);
-  if (!hasHeadroom()) return;  // every frame stands alone, so skipping some lets the network stack drain
+  const CamFrame& frame = show(now);
+  if (!chip_->hasHeadroom()) return;  // every frame stands alone, so skipping some lets the network stack drain
   for (RtspConn& c : rtsp_) {
     // Every frame is independently decodable, so a viewer still sending the last one just skips this one.
     if (c.fd < 0 || !c.playing || c.video.frame || c.packetPos < c.packetLen || !c.out.empty()) continue;
     rtpStartFrame(c.video, frame, c.rtp, now);
-    flushRtsp(c, now);
+    flush(c, now);
   }
 }
 
 // ---- pictures, driven by the folders on storage ----
 
-bool SensorCamServer::loadFrame(const std::string& path) {
+std::string& CamVideo::lend() {
+  releasePicture();
+  frame_ = nullptr;
+  lent_ = true;
+  return frameData_;
+}
+
+bool CamVideo::loadFrame(const std::string& path) {
   // frameData_ is one fixed buffer reserved at boot. Allocating per picture is what exhausted RAM.
   releasePicture();
   if (!storage_.readFile(path, frameData_, CAM_MAX_FRAME)) return false;
@@ -168,12 +219,12 @@ bool SensorCamServer::loadFrame(const std::string& path) {
 }
 
 // A missing picture falls back to the nearest one that exists, then to the built-in pictures.
-const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
+const CamFrame& CamVideo::show(uint32_t now) {
   int id = 0;
   uint8_t direction = 0;
   bool delayed = false;
   bool on = alarm_.board().shown(now, id, direction, delayed);
-  if (uploading_) {  // an upload is using the picture buffer
+  if (lent_) {  // an upload is using the picture buffer
     if (!frameKey_.empty()) liveSeq_++;
     frameKey_.clear();
     frameFile_.clear();
@@ -211,23 +262,23 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
 
 // Streams partway through the loaded picture drop the rest of that frame; each frame stands alone, so the next one plays
 // as normal. A download of it stops, and the page asks again.
-void SensorCamServer::releasePicture() {
+void CamVideo::releasePicture() {
   pictureGen_++;
   for (RtspConn& c : rtsp_)
     if (c.video.frame == &loadedFrame_) c.video.frame = nullptr;  // the packet already made is a copy, and still goes out whole
 }
 
-void SensorCamServer::closeRtsp(RtspConn& c) {
+void CamVideo::closeConn(RtspConn& c) {
   if (c.fd >= 0) netClose(c.fd);
   c = RtspConn();
 }
 
-void SensorCamServer::acceptRtsp(uint32_t now) {
+void CamVideo::acceptViewer(uint32_t now) {
   sockaddr_in a{};
   socklen_t len = sizeof(a);
-  int fd = (int)accept(rtspListen_, (sockaddr*)&a, &len);
+  int fd = (int)accept(listen_, (sockaddr*)&a, &len);
   if (fd < 0) return;
-  if (!hasHeadroom()) {
+  if (!chip_->hasHeadroom()) {
     netClose(fd);
     return;
   }
@@ -242,7 +293,7 @@ void SensorCamServer::acceptRtsp(uint32_t now) {
   netClose(fd);
 }
 
-int SensorCamServer::streamCount() const {
+int CamVideo::streamCount() const {
   int streams = 0;
   for (const RtspConn& c : rtsp_) streams += c.playing;
   return streams;

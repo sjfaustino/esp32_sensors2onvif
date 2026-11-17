@@ -15,6 +15,7 @@
 #include "cam_json.h"
 #include "cam_mqtt_client.h"
 #include "cam_nodes.h"
+#include "cam_video.h"
 #include "cam_pairing.h"
 #include "cam_rtp.h"
 #include "cam_sensors.h"
@@ -39,7 +40,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   bool updating() const { return firmwareOwner_ != nullptr; }          // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see nvrListening
   // Times memory ran out and only that piece of work was dropped.
-  uint32_t memoryFailures() const override { return memoryFailures_ + alarm_.memoryFailures(); }
+  uint32_t memoryFailures() const override { return memoryFailures_ + alarm_.memoryFailures() + video_.memoryFailures(); }
   bool armed() const { return alarm_.armed(); }
   CamArmMode armMode() const { return alarm_.armMode(); }
   // See CamAlarm::setArmMode and CamAlarm::testAlert.
@@ -58,7 +59,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   // and web connections, event pushes, the webhook and MQTT share the other 7. All but the pushes together stop at 6,
   // so a push can always start.
   static const int MAX_HTTP = 6;
-  static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
 
   using Health = CamAlarm::Health;
   using Node = CamAlarm::Node;
@@ -75,7 +75,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
     const char* staticBody = nullptr;  // sent after out without being copied into it: flash data, or the borrowed buffer
     size_t staticLen = 0;
     std::string body;            // a reply too large to copy; staticBody points into it
-    bool toFrameBuffer = false;  // the body of this picture upload is going into frameData_
+    bool toFrameBuffer = false;  // the body of this picture upload is going into the picture buffer (CamVideo::lend)
     size_t bodyWanted = 0;
     size_t discardLeft = 0;    // body still to read and drop, so a refusal arrives as a reply rather than a reset
     bool pollWaiting = false;  // a PullMessages held until something changes or pollUntil
@@ -94,22 +94,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
     // A body of unknown length, read piece by piece until it gives nothing, then ended by closing the connection.
     const std::function<size_t(size_t, char*, size_t)>* stream = nullptr;
   };
-  struct RtspConn {
-    int fd = -1;
-    uint32_t peer = 0;
-    uint32_t activityAt = 0;
-    std::string in, out;  // out holds the RTSP replies; video goes through packet
-    size_t outPos = 0;
-    RtpSend video;                   // the frame being sent, packet by packet
-    uint8_t packet[RTP_PACKET_MAX];  // the packet being sent, which may go out in parts
-    size_t packetLen = 0, packetPos = 0;
-    bool playing = false;
-    bool closeAfterSend = false;
-    bool authed = false;
-    std::string nonce;
-    int channel = 0;
-    RtpState rtp;
-  };
   struct NotifyIo {
     enum State { IDLE, CONNECTING, SENDING, WAIT_CLOSE } state = IDLE;
     int fd = -1;
@@ -122,17 +106,12 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   int listenOn(uint16_t port);
   void openDiscovery();
   void acceptHttp(int listenFd, uint32_t now);
-  void acceptRtsp(uint32_t now);
   void serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now);
-  void serviceRtsp(RtspConn& c, bool readable, bool writable, uint32_t now);
   void closeHttp(HttpConn& c);
-  void closeRtsp(RtspConn& c);
   bool handleHttp(HttpConn& c, uint32_t now);
   std::string handleOnvif(HttpConn& c, const std::string& headers, const std::string& body, uint32_t now, int& status);
   std::string handleSensor(const std::string& target, int& status);
   int sharedSockets() const;  // web connections and event pushes in progress
-  const CamFrame& frameToShow(uint32_t now);
-  bool loadFrame(const std::string& path);
   bool authorized(const HttpConn& c, const std::string& headers);
   bool knownHost(const std::string& hostHeader) const;
   CamLoginGuard logins_;  // wrong passwords, on the web page, ONVIF and RTSP
@@ -162,7 +141,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   void housekeeping(uint32_t now);  // alerts, saving, the NVR and video: the part of poll() before waiting
   void pollOnce(int maxWaitMs);     // waits for the network, then serves the connections
   uint32_t memoryFailures_ = 0;
-  int streamCount() const;
   bool roomFor(size_t bytes) const { return chip_->canAllocate(bytes); }
   bool hasHeadroom() const { return chip_->hasHeadroom(); }
   std::string treeJson();
@@ -177,8 +155,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   std::string statusJson(uint32_t now);
   std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
   std::string eventsTag() const;                  // changes whenever the Events page's list would, so an unchanged list is not built again
-  void handleRtspRequest(RtspConn& c, const std::string& text, uint32_t now);
-  void flushRtsp(RtspConn& c, uint32_t now);
   void startNotify(int i, uint32_t now);
   void serviceNotify(NotifyIo& n, bool readable, bool writable, uint32_t now);
   void endNotify(NotifyIo& n, const char* result = "");
@@ -202,7 +178,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   bool apiPairing(const ApiRequest& r);
 
   std::string overviewJson(uint32_t now);
-  void pushFrames(uint32_t now);
 
   CamConfig cfg_;
   CamChip* chip_;  // the board's parts, or ones with every default for a part left out
@@ -212,11 +187,9 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   std::function<uint32_t()> millis_;
   MotionSignal signal_;
   SubTable subs_;
-  int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1, rtspListen_ = -1, udp_ = -1;
+  int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1, udp_ = -1;
   HttpConn http_[MAX_HTTP];
-  RtspConn rtsp_[MAX_RTSP];
   NotifyIo notify_[SubTable::SIZE];
-  uint32_t nextFrameAt_ = 0;
   uint32_t messageNo_ = 1;
   uint32_t lastGoodWait_ = 0;
   uint32_t waitErrors_ = 0;
@@ -227,19 +200,11 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamNodes nodes_;  // before alarm_, which reads its firmware files
   CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodes_, which it uses
   CamMqttClient mqtt_;
-  std::string frameKey_;        // what frame_ currently shows; empty forces a reload
-  std::string frameFile_;       // the file behind frame_; empty means a built-in picture
-  std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
-  uint32_t liveSeq_ = 0;        // changes whenever the picture being sent changes, so the Live page fetches only new ones
-  const CamFrame* frame_ = nullptr;
-  std::string frameData_;    // the picture loaded from storage, in one buffer reserved at boot
-  uint32_t pictureGen_ = 0;  // changes whenever frameData_ is about to be overwritten, so a reply reading it stops
-  void releasePicture();     // before frameData_ is overwritten: nothing may still be reading the old picture
+  CamVideo video_;
+  std::string unsupported_[6];                                            // the ONVIF requests the hub could not answer, shown on the ONVIF page
   bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
   HttpConn* firmwareOwner_ = nullptr;
-  HttpConn* uploading_ = nullptr;  // the upload borrowing frameData_, during which the built-in pictures are shown
-  CamNal frameNals_[3];
-  CamFrame loadedFrame_{frameNals_, 3};
+  HttpConn* uploading_ = nullptr;  // the upload borrowing the picture buffer (CamVideo::lend)
   NotifyIo hook_;
   CamHookQueue hooks_;
   std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download

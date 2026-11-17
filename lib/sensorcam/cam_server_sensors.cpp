@@ -78,6 +78,6 @@ bool SensorCamServer::nvrListening(uint32_t now) const {
 void SensorCamServer::sensorReset(int id) { mqtt_.sensorReset(id); }
 
 void SensorCamServer::sensorsRescanned(bool listChanged) {
-  frameKey_.clear();
+  video_.changed();
   if (listChanged) mqtt_.sensorsChanged();
 }

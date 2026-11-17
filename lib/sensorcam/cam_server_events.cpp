@@ -105,7 +105,7 @@ std::string SensorCamServer::overviewJson(uint32_t now) {
     for (int id = 1; id <= alarm_.board().count(); id++)
       if (alarm_.slotOf(id).used && alarm_.board().active(id))
         j.object().str("sensor", alarm_.slotName(id)).str("name", alarm_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
-    j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", streamCount()).end();
+    j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount()).end();
     j.str("mqtt", mqtt_.state()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", hooks_.result()).end().array("problems");
     for (int id = 1; id <= alarm_.board().count(); id++) {
       const Health& h = alarm_.healthOf(id);
@@ -144,7 +144,7 @@ std::string SensorCamServer::statusJson(uint32_t now) {
     j.num("sensors", known).array("active");
     for (int id = 1; id <= alarm_.board().count(); id++)
       if (alarm_.board().active(id)) j.str(alarm_.slotName(id));
-    j.end().num("subscribers", subs_.count()).num("streams", streamCount()).num("delayed_waiting", alarm_.delayedCount()).array("heard");
+    j.end().num("subscribers", subs_.count()).num("streams", video_.streamCount()).num("delayed_waiting", alarm_.delayedCount()).array("heard");
     for (int id = 1; id <= alarm_.board().count(); id++) {
       const Health& h = alarm_.healthOf(id);
       if (!h.heard) continue;

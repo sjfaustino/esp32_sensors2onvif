@@ -28,7 +28,8 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       storage_(cfg.fsRoot),
       nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
       alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
-      mqtt_(cfg_, alarm_, *chip_, *this, localIp) {
+      mqtt_(cfg_, alarm_, *chip_, *this, localIp),
+      video_(cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { subs_.heard(peer, now); }, millisFn) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
 }
@@ -80,22 +81,19 @@ bool SensorCamServer::begin() {
   webListen_ = listenOn(cfg_.webPort);
   if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort)
     captiveListen_ = listenOn(cfg_.captivePort);
-  rtspListen_ = listenOn(cfg_.rtspPort);
+  bool videoOk = video_.begin(listenOn(cfg_.rtspPort));
   openDiscovery();
-  nextFrameAt_ = millis_();
-  lastGoodWait_ = nextFrameAt_;
-  frameData_.reserve(CAM_MAX_FRAME);
+  lastGoodWait_ = millis_();
   nodes_.begin();
   alarm_.begin();
   mqtt_.begin();
   subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
-  return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
+  return onvifListen_ >= 0 && webListen_ >= 0 && videoOk;
 }
 
 std::string SensorCamServer::debugLine() {
-  int web = 0, video = 0, push = 0;
+  int web = 0, video = video_.openCount(), push = 0;
   for (const HttpConn& c : http_) web += c.fd >= 0;
-  for (const RtspConn& c : rtsp_) video += c.fd >= 0;
   for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
          ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " +
@@ -135,7 +133,7 @@ void SensorCamServer::closeHttp(HttpConn& c) {
   }
   if (uploading_ == &c) {
     uploading_ = nullptr;
-    frameKey_.clear();
+    video_.giveBack();
   }
   if (c.fd >= 0) netClose(c.fd);
   c = HttpConn();
@@ -209,7 +207,7 @@ void SensorCamServer::shortOfMemory(HttpConn& c) {
   if (c.toFrameBuffer) {
     uploading_ = nullptr;
     c.toFrameBuffer = false;
-    frameKey_.clear();
+    video_.giveBack();
   }
   std::string().swap(c.in);
   std::string().swap(c.body);
@@ -354,8 +352,8 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
 
 // The JPEG of the picture being sent, or the built-in one for the same state when that picture has none.
 void SensorCamServer::serveSnapshot(HttpConn& c) {
-  if (!frame_) frameToShow(millis_());
-  if (!frameFile_.empty() && sendFile(c, camPreviewPath(frameFile_), "image/jpeg")) return;
+  video_.current(millis_());
+  if (!video_.file().empty() && sendFile(c, camPreviewPath(video_.file()), "image/jpeg")) return;
   int id = 0;
   uint8_t direction = 0;
   bool delayed = false;
@@ -504,8 +502,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     c.firmwareActive = true;
     // Video is what uses the network's memory most, and an update that runs out of it stops the hub. The NVR
     // reconnects after the restart that follows, or at once if the update fails.
-    for (RtspConn& r : rtsp_)
-      if (r.fd >= 0) closeRtsp(r);
+    video_.closeAll();
     c.firmwareLeft = contentLength;
     std::string first = c.in.substr(headEnd + 4);
     c.in.clear();
@@ -545,13 +542,11 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     uploading_ = &c;
     c.toFrameBuffer = true;
     c.bodyWanted = contentLength;
-    releasePicture();
-    frame_ = nullptr;  // the built-in pictures are shown until the upload ends
-    frameData_.assign(c.in, headEnd + 4, std::string::npos);
+    video_.lend().assign(c.in, headEnd + 4, std::string::npos);  // the built-in pictures are shown until the upload ends
     c.in.resize(headEnd + 4);
   }
   if (c.toFrameBuffer) {
-    if (frameData_.size() < contentLength) return false;
+    if (video_.buffer().size() < contentLength) return false;
   } else {
     // Room for the body is claimed once at its exact size, because string growth would briefly need about twice that.
     size_t whole = headEnd + 4 + contentLength;
@@ -566,11 +561,11 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
 
   int status = 200;
   if (isApi) {
-    handleApi(c, method, target, headers, c.toFrameBuffer ? frameData_.data() : c.in.data() + headEnd + 4, contentLength);
+    handleApi(c, method, target, headers, c.toFrameBuffer ? video_.buffer().data() : c.in.data() + headEnd + 4, contentLength);
     if (c.toFrameBuffer) {
       uploading_ = nullptr;
       c.toFrameBuffer = false;
-      frameKey_.clear();
+      video_.giveBack();
     }
   } else if (isSnapshot) {
     if (!cfg_.onvifPassword.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword)))
@@ -643,8 +638,9 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
       // a held request needs nothing more from the client
     } else if (n > 0) {
       if (c.toFrameBuffer) {
-        size_t room = c.bodyWanted > frameData_.size() ? c.bodyWanted - frameData_.size() : 0;
-        frameData_.append(buf, (size_t)n < room ? (size_t)n : room);
+        std::string& picture = video_.buffer();
+        size_t room = c.bodyWanted > picture.size() ? c.bodyWanted - picture.size() : 0;
+        picture.append(buf, (size_t)n < room ? (size_t)n : room);
       } else {
         c.in.append(buf, n);
       }
@@ -850,7 +846,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   } catch (const std::bad_alloc&) {
     memoryFailures_++;
   }
-  pushFrames(now);
+  video_.tick(now);
 }
 
 void SensorCamServer::pollOnce(int maxWaitMs) {
@@ -871,18 +867,13 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   if (onvifListen_ >= 0 && room) add(onvifListen_, rd);
   if (webListen_ >= 0 && room) add(webListen_, rd);
   if (captiveListen_ >= 0 && room) add(captiveListen_, rd);
-  if (rtspListen_ >= 0 && !updating()) add(rtspListen_, rd);
   if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {
     if (c.fd < 0) continue;
     add(c.fd, rd);
     if (c.answered && !c.discardLeft) add(c.fd, wr);
   }
-  for (RtspConn& c : rtsp_) {
-    if (c.fd < 0) continue;
-    add(c.fd, rd);
-    if (!c.out.empty() || c.packetPos < c.packetLen || c.video.frame) add(c.fd, wr);
-  }
+  video_.watch(rd, wr, maxFd, !updating());
   for (NotifyIo& n : notify_) {
     if (n.state == NotifyIo::IDLE) continue;
     if (n.state == NotifyIo::WAIT_CLOSE)
@@ -894,7 +885,7 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   if (mqtt_.wantsRead()) add(mqtt_.fd(), rd);
   if (mqtt_.wantsWrite()) add(mqtt_.fd(), wr);
 
-  int32_t untilFrame = (int32_t)(nextFrameAt_ - now);
+  int32_t untilFrame = video_.untilFrame(now);
   int wait = untilFrame < maxWaitMs ? (untilFrame < 0 ? 0 : untilFrame) : maxWaitMs;
   timeval tv{wait / 1000, (wait % 1000) * 1000};
   if (maxFd >= 0 && select(maxFd + 1, &rd, &wr, nullptr, &tv) < 0) {
@@ -908,12 +899,10 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   if (onvifListen_ >= 0 && FD_ISSET(onvifListen_, &rd)) acceptHttp(onvifListen_, now);
   if (webListen_ >= 0 && FD_ISSET(webListen_, &rd)) acceptHttp(webListen_, now);
   if (captiveListen_ >= 0 && FD_ISSET(captiveListen_, &rd)) acceptHttp(captiveListen_, now);
-  if (rtspListen_ >= 0 && FD_ISSET(rtspListen_, &rd)) acceptRtsp(now);
   if (udp_ >= 0 && FD_ISSET(udp_, &rd)) serviceDiscovery();
   for (HttpConn& c : http_)
     if (c.fd >= 0) serviceHttp(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
-  for (RtspConn& c : rtsp_)
-    if (c.fd >= 0) serviceRtsp(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
+  video_.serve(rd, wr, now);
   for (NotifyIo& n : notify_)
     if (n.state != NotifyIo::IDLE) serviceNotify(n, FD_ISSET(n.fd, &rd), FD_ISSET(n.fd, &wr), now);
   if (hook_.state != NotifyIo::IDLE) serviceNotify(hook_, FD_ISSET(hook_.fd, &rd), FD_ISSET(hook_.fd, &wr), now);

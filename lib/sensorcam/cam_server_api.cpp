@@ -235,11 +235,6 @@ static int backupCheck(const std::string& key, const std::string& value) {
 bool camBackupValueValid(const std::string& key, const std::string& value) { return backupCheck(key, value) == 1; }
 bool camBackupKeyKnown(const std::string& key) { return backupCheck(key, "") != -1; }
 
-static std::string peerText(uint32_t peer) {
-  const uint8_t* b = (const uint8_t*)&peer;
-  return std::to_string(b[0]) + "." + std::to_string(b[1]) + "." + std::to_string(b[2]) + "." + std::to_string(b[3]);
-}
-
 void SensorCamServer::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body,
                                 size_t bodyLen) {
   std::string route = target.substr(0, target.find('?'));
@@ -286,18 +281,18 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
     else
       sendBody(c, JSON_TYPE, c.body.data(), c.body.size());
   } else if (r.is("GET", "/api/live")) {
-    if (!frame_) frameToShow(millis_());
-    c.out = jsonOk(jsonObject([&](CamJson& j) { j.num("seq", liveSeq_).str("file", frameFile_.empty() ? std::string("built-in") : frameFile_); }));
+    video_.current(millis_());
+    c.out = jsonOk(
+        jsonObject([&](CamJson& j) { j.num("seq", video_.seq()).str("file", video_.file().empty() ? std::string("built-in") : video_.file()); }));
   } else if (r.is("GET", "/api/live/frame")) {
     // Read from the picture as it is sent, each NAL after a start code. If the picture is replaced meanwhile, the reply
     // stops short and the page asks again.
-    if (!frame_) frameToShow(millis_());
-    const CamFrame* frame = frame_;
+    const CamFrame* frame = &video_.current(millis_());
     size_t size = 0;
     for (int i = 0; i < frame->count; i++) size += 4 + frame->nals[i].len;
-    uint32_t gen = pictureGen_;
+    uint32_t gen = video_.gen();
     c.reader = [this, frame, gen](size_t offset, char* out, size_t len) {
-      if (frame == &loadedFrame_ && pictureGen_ != gen) return false;  // the built-in pictures never change
+      if (video_.isLoaded(frame) && video_.gen() != gen) return false;  // the built-in pictures never change
       for (int i = 0; i < frame->count && len; i++) {
         static const char START[4] = {0, 0, 0, 1};
         const CamNal& n = frame->nals[i];
@@ -319,7 +314,7 @@ bool SensorCamServer::apiPages(const ApiRequest& r) {
     };
     c.pull = &c.reader;
     c.staticLen = size;
-    c.out = httpHead(200, "video/h264", size, "X-Frame-Seq: " + std::to_string(liveSeq_) + "\r\n");
+    c.out = httpHead(200, "video/h264", size, "X-Frame-Seq: " + std::to_string(video_.seq()) + "\r\n");
   } else {
     return false;
   }
@@ -405,7 +400,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
       auto row = [&](const char* label, const std::string& value) { j.array().str(label).str(value).end(); };
       row("Picture storage", std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB");
       row("Sensors", std::to_string(known));
-      row("Video streams open", std::to_string(streamCount()));
+      row("Video streams open", std::to_string(video_.streamCount()));
       row("Event subscribers", std::to_string(subs_.count()));
       if (alarm_.log().saveFailed()) row("Event history", "Could not be saved; storage may be full");
       j.end().num("crash", chip_->crashSize());
@@ -447,7 +442,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
       j.num("onvifPort", cfg_.onvifPort)
           .num("webPort", cfg_.webPort)
           .num("rtspPort", cfg_.rtspPort)
-          .num("streams", streamCount())
+          .num("streams", video_.streamCount())
           .num("subscribers", subs_.count());
       j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", armed());
     }));
@@ -542,13 +537,11 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/nvr")) {
     uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
-    bool video = false, events = false;
-    for (RtspConn& v : rtsp_) video = video || (nvr && v.fd >= 0 && v.playing && v.peer == nvr);
+    bool video = video_.playingTo(nvr), events = false;
     for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && subs_.at(i).used && subs_.at(i).peer == nvr);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.str("ip", cfg_.nvrIp).flag("video", video).flag("events", events).array("viewers");
-      for (RtspConn& v : rtsp_)
-        if (v.fd >= 0 && v.playing) j.str(peerText(v.peer));
+      video_.viewers(j);
       j.end();
     }));
   } else if (r.is("POST", "/api/nvr")) {
