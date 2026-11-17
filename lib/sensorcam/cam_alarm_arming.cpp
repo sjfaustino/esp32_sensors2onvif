@@ -1,5 +1,5 @@
-// SensorCamServer: arming away and home, timed disarms, and test alerts.
-#include "cam_server.h"
+// CamAlarm: arming away and home, timed disarms, and test alerts.
+#include "cam_alarm.h"
 #include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -31,7 +31,7 @@ bool camTimedDisarmOver(int64_t until, time_t wallNow, uint32_t msSinceStart, ui
 // Disarmed, no sensor counts; armed home, interior ones do not. A report of something that happened while its sensor
 // still counted counts, and so does one whose time is not known: a false alert is better than a missed one. A mode
 // kept from before the start counts from the start, as nothing earlier is known.
-CamEventKind SensorCamServer::heldAs(int id, const SensorReport& r, uint32_t now) const {
+CamEventKind CamAlarm::heldAs(int id, const SensorReport& r, uint32_t now) const {
   bool interior = slotOf(id).settings.interior;
   bool held = armMode() == CAM_DISARMED || (armMode() == CAM_ARMED_HOME && interior);
   if (!held || r.age == CAM_AGE_UNKNOWN) return CAM_EVENT_REPORT;
@@ -41,19 +41,19 @@ CamEventKind SensorCamServer::heldAs(int id, const SensorReport& r, uint32_t now
 }
 
 // A disarm can be given an end, or have its end changed, while disarmed; arming always ends it.
-bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes) {
+bool CamAlarm::setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes) {
   CamArmMode was = armMode();
   if (mode != CAM_DISARMED) minutes = 0;
   if (mode == was && mode != CAM_DISARMED) return true;
   time_t t = time(nullptr);
   int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
-  if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !cfg_.disarmedUntil) return true;  // nothing changes
+  if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !disarmedUntil_) return true;  // nothing changes
   if (!store_->armedSave(mode, until)) return false;
   uint32_t now = millis_();
   if (was == CAM_ARMED_AWAY) interiorOffAt_ = now;  // a change of end keeps when a disarm began
   if (was != CAM_DISARMED && mode == CAM_DISARMED) perimeterOffAt_ = now;
-  cfg_.armMode = mode;
-  cfg_.disarmedUntil = until;
+  armMode_ = mode;
+  disarmedUntil_ = until;
   disarmEndKnown_ = minutes != 0;
   disarmEndsAt_ = now + minutes * minuteMs_;
   std::string detail = minutes ? from + ", for " + camMinutesText(minutes) : from;
@@ -62,7 +62,7 @@ bool SensorCamServer::setArmMode(CamArmMode mode, const std::string& from, uint3
   return true;
 }
 
-bool SensorCamServer::testAlert(int id) {
+bool CamAlarm::testAlert(int id) {
   if (id < 1 || id > CAM_MAX_SENSORS || !slotOf(id).used) return false;
   uint32_t now = millis_();
   interruptPastEvent(now);
@@ -73,21 +73,21 @@ bool SensorCamServer::testAlert(int id) {
   r.active = true;
   r.battery = healthOf(id).battery;
   logEvent(id, r, false, CAM_EVENT_TEST_ALERT);
-  notifyHook(id, CAM_EVENT_TEST_ALERT, false);
+  outside_.notifyHook(id, CAM_EVENT_TEST_ALERT, false);
   return true;
 }
 
-void SensorCamServer::rearmWhenDue(uint32_t now) {
-  if (armed() || !cfg_.disarmedUntil) return;
+void CamAlarm::rearmWhenDue(uint32_t now) {
+  if (armed() || !disarmedUntil_) return;
   bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
-                             : camTimedDisarmOver(cfg_.disarmedUntil, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
+                             : camTimedDisarmOver(disarmedUntil_, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
   if (due) setArmMode(CAM_ARMED_AWAY, "the re-arm timer");  // away, the safer; if it cannot be saved, it is tried again on the next pass
 }
 
-long long SensorCamServer::disarmSecondsLeft(uint32_t now) const {
-  if (armed() || !cfg_.disarmedUntil) return -1;
+long long CamAlarm::disarmSecondsLeft(uint32_t now) const {
+  if (armed() || !disarmedUntil_) return -1;
   if (disarmEndKnown_) return (int32_t)(disarmEndsAt_ - now) > 0 ? (disarmEndsAt_ - now + 999) / 1000 : 0;
   time_t t = time(nullptr);
-  if (cfg_.disarmedUntil > 1 && t >= CAM_CLOCK_VALID_AFTER) return cfg_.disarmedUntil > t ? cfg_.disarmedUntil - t : 0;
+  if (disarmedUntil_ > 1 && t >= CAM_CLOCK_VALID_AFTER) return disarmedUntil_ > t ? disarmedUntil_ - t : 0;
   return -1;
 }

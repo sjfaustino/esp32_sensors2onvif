@@ -12,12 +12,6 @@
 #include "cam_server_internal.h"
 #include "cam_soap.h"
 
-int SensorCamServer::findNode(const uint8_t mac[6]) const {
-  for (int i = 0; i < CAM_MAX_SENSORS; i++)
-    if (slots_[i].used && memcmp(slots_[i].mac, mac, 6) == 0) return i + 1;
-  return 0;
-}
-
 void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi) {
   uint8_t inputs = 0, key[CAM_X25519_LEN];
   if (!pairingReady_ || !camParseHello(data, len, inputs, key)) return;
@@ -25,9 +19,9 @@ void SensorCamServer::helloPacket(const uint8_t mac[6], const uint8_t* data, int
   uint8_t channel = (uint8_t)radio_->wifiChannel();
   uint8_t answer[CAM_ANSWER_LEN];
   // A paired node asking again, to find the hub's channel: answered at any time, signed so it can trust the answer.
-  int id = findNode(mac);
-  if (id && nodeOf(id).paired && memcmp(nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
-    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)nodeOf(id).key.data(), answer);
+  int id = alarm_.findNode(mac);
+  if (id && alarm_.nodeOf(id).paired && memcmp(alarm_.nodeOf(id).publicKey, key, CAM_X25519_LEN) == 0) {
+    camHelloAnswer(mac, CAM_PAIR_PAIRED, channel, hubPublic_, (const uint8_t*)alarm_.nodeOf(id).key.data(), answer);
     radio_->espNowSend(mac, answer, CAM_ANSWER_LEN);
     return;
   }
@@ -65,9 +59,8 @@ bool SensorCamServer::approveNode(const uint8_t mac[6], std::string& error) {
     return false;
   }
   std::string node = camMacText(mac);
-  int free = 0, needed = 0;
-  for (const Slot& s : slots_) free += !s.used;
-  for (int input = 1; input <= request->inputs; input++) needed += !findSlot(mac, (uint8_t)input);
+  int free = CAM_MAX_SENSORS - alarm_.sensorCount(), needed = 0;
+  for (int input = 1; input <= request->inputs; input++) needed += !alarm_.findSlot(mac, (uint8_t)input);
   if (needed > free) {
     error = "the hub has room for " + std::to_string(CAM_MAX_SENSORS) + " sensors, and this node's would go beyond that";
     return false;
@@ -81,7 +74,7 @@ bool SensorCamServer::approveNode(const uint8_t mac[6], std::string& error) {
   memset(key, 0, sizeof(key));
   bool ok = storage_.writeFile(node + "/pairing.txt", text.data(), text.size());
   for (int input = 1; ok && input <= request->inputs; input++) ok = storage_.makeDirs(node + "/" + std::to_string(input));
-  rescan();
+  alarm_.rescan();
   if (!ok) {
     error = "could not save the node; storage may be full";
     return false;
@@ -97,9 +90,9 @@ std::string SensorCamServer::pairingJson() {
     j.str("hub", pairingReady_ ? camKeyFingerprint(hubPublic_) : std::string()).array("waiting");
     for (const PairRequest& p : pairRequests_) {
       if (!p.used) continue;
-      int id = findNode(p.mac);
+      int id = alarm_.findNode(p.mac);
       j.object().str("mac", camMacText(p.mac)).num("inputs", p.inputs).str("fingerprint", camKeyFingerprint(p.publicKey));
-      j.num("ago", (now - p.heardAt) / 1000).num("rssi", p.rssi != 0, p.rssi).flag("known", id != 0).flag("paired", id && nodeOf(id).paired).end();
+      j.num("ago", (now - p.heardAt) / 1000).num("rssi", p.rssi != 0, p.rssi).flag("known", id != 0).flag("paired", id && alarm_.nodeOf(id).paired).end();
     }
   });
 }

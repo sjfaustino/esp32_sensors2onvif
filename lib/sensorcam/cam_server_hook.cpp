@@ -17,9 +17,9 @@ void SensorCamServer::notifyHook(int id, CamEventKind kind, bool delayed) {
   if (w.url.empty() || !wanted) return;
   try {
     std::string event = camEventName(kind, true, delayed);
-    std::string sensor = slotName(id), name = slotOf(id).name;
+    std::string sensor = alarm_.slotName(id), name = alarm_.slotOf(id).name;
     std::string message = camEventMessage(kind, name.empty() ? sensor : name + " (" + sensor + ")", "", CAM_AGE_UNKNOWN, delayed);
-    uint8_t battery = healthOf(id).battery;
+    uint8_t battery = alarm_.healthOf(id).battery;
     time_t now = time(nullptr);
     bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
     queueHook(message, jsonObject([&](CamJson& j) {
@@ -92,4 +92,59 @@ std::string SensorCamServer::webhookJson() {
     j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
     j.num("waiting", hooks_.count() + (hook_.state != NotifyIo::IDLE)).num("dropped", hooks_.dropped());
   });
+}
+
+// At the minute set under Notifications, local time: what the hub knows of its nodes, its alerts and the NVR, in one
+// message. Needs the clock, so a hub whose clock is not set sends none, which is itself worth noticing.
+void SensorCamServer::dailyCheck(uint32_t now) {
+  const CamWebhook& w = cfg_.webhook;
+  if (w.url.empty() || w.dailyMinute < 0 || chip_->localMinute() != w.dailyMinute) return;
+  if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
+  dailySent_ = true;
+  dailySentAt_ = now;
+  time_t t = time(nullptr);
+  try {
+    CamDailyCheck d;
+    d.hub = cfg_.hostName;
+    d.mode = camArmModeName(armMode());
+    d.nvrListening = nvrListening(now);
+    for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
+      if (!alarm_.nodeAt(n).used) continue;
+      d.nodes++;
+      bool heard = false;
+      for (int id = 1; id <= CAM_MAX_SENSORS && !heard; id++)
+        heard = alarm_.slotOf(id).used && alarm_.slotOf(id).node == n && alarm_.healthOf(id).heard && now - alarm_.healthOf(id).heardAt < 86400000u;
+      d.heard += heard;
+    }
+    for (int id = 1; id <= alarm_.board().count(); id++) {
+      const Health& h = alarm_.healthOf(id);
+      if (!alarm_.slotOf(id).used) continue;
+      const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
+      if (problem) d.problems.push_back((alarm_.slotOf(id).name.empty() ? alarm_.slotName(id) : alarm_.slotOf(id).name) + ": " + problem);
+    }
+    d.allCounted = false;
+    for (int n = 0; n < alarm_.log().count(); n++) {
+      const CamEvent& e = alarm_.log().recent(n);
+      if (e.kind == CAM_EVENT_TEST_ALERT && d.testAgoS < 0 && e.received <= t) d.testAgoS = (long long)(t - e.received);
+      if (e.received < t - 86400) {
+        d.allCounted = true;  // an older event is kept, so every one of the last day is too
+        continue;
+      }
+      d.alerts += e.kind == CAM_EVENT_REPORT && e.active;
+      d.notDelivered += e.kind == CAM_EVENT_NOT_DELIVERED;
+    }
+    if (alarm_.log().count() < CamEventLog::RECENT) d.allCounted = true;  // nothing has been dropped from memory yet
+    std::string message = camDailyMessage(d);
+    queueHook(message, jsonObject([&](CamJson& j) {
+                j.str("event", "daily check").str("sensor", "hub").str("name", "").str("time", iso(t)).str("hub", cfg_.hostName);
+                j.num("nodes", d.nodes).num("heard", d.heard).array("problems");
+                for (const std::string& p : d.problems) j.str(p);
+                j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
+                j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
+                j.str("message", message);
+              }));
+  } catch (const std::bad_alloc&) {
+    memoryFailures_++;
+    hooks_.dropOne();
+  }
 }

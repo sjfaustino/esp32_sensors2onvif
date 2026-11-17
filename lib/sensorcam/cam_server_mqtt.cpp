@@ -126,7 +126,7 @@ void SensorCamServer::mqttPacket(const uint8_t* p, size_t len, uint32_t now) {
       size_t underscore = key.find('_');
       uint8_t input = 0;
       bool parsed = underscore == 12 && camParseHex(key.substr(0, 12), mac, 6) && camNumber(key.substr(13), input);
-      if (parsed) testAlert(findSlot(mac, input));
+      if (parsed) testAlert(alarm_.findSlot(mac, input));
       return;
     }
     if (topic != "armed/set") return;
@@ -220,7 +220,7 @@ void SensorCamServer::mqttHousekeeping(uint32_t now) {
     if (mqtt_.fd >= 0) netClose(mqtt_.fd);
     mqtt_ = MqttIo();
     mqttWaiting_ = false;
-    mqttEventsSent_ = log_.added();  // turned on later, it sends what happens from then on
+    mqttEventsSent_ = alarm_.log().added();  // turned on later, it sends what happens from then on
     return;
   }
   try {
@@ -264,10 +264,10 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
     return true;
   }
   bool alert = false;
-  for (int id = 1; id <= sensors_.count(); id++) alert = alert || (slotOf(id).used && sensors_.active(id) && !sensors_.pastEvent(id));
+  for (int id = 1; id <= alarm_.board().count(); id++) alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
   bool nvr = nvrListening(now);
   bool armed = this->armed(), home = armMode() == CAM_ARMED_HOME;
-  int64_t until = cfg_.disarmedUntil;
+  int64_t until = alarm_.disarmedUntil();
   if (!mqtt_.hubTold || alert != mqtt_.hubAlert || nvr != mqtt_.hubNvr || armed != mqtt_.hubArmed || home != mqtt_.hubHome ||
       until != mqtt_.hubUntil) {
     bool known = !armed && until > 1;
@@ -314,7 +314,7 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
     std::string json = jsonObject([&](CamJson& j) {
       j.num("free_kb", h.freeHeap / 1024).num("lowest_kb", h.lowestFreeHeap / 1024).num("largest_kb", h.largestBlock / 1024);
-      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", memoryFailures_).num("espnow_dropped", h.espNowDropped);
+      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", memoryFailures()).num("espnow_dropped", h.espNowDropped);
       j.num("rssi", h.wifiRssi != 0, h.wifiRssi).num("uptime_s", (long long)h.uptimeS);
       j.str("started", clockOk, clockOk ? iso(t - (time_t)h.uptimeS) : std::string());
     });
@@ -332,10 +332,10 @@ bool SensorCamServer::mqttNext(uint32_t now, std::string& out) {
 
 // alertsOnly: only a sensor whose alert started or ended, or that has never been sent.
 bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std::string& out) {
-  if (!slots_[i].used) return false;
-  const Health& h = health_[i];
+  if (!alarm_.slotOf(i + 1).used) return false;
+  const Health& h = alarm_.healthOf(i + 1);
   MqttShown& s = mqttShown_[i];
-  bool alert = sensors_.active(i + 1) && !sensors_.pastEvent(i + 1);  // a past event replaying for the NVR is not happening now
+  bool alert = alarm_.board().active(i + 1) && !alarm_.board().pastEvent(i + 1);  // a past event replaying for the NVR is not happening now
   bool changed = !s.told || alert != s.alert;
   if (alertsOnly && !changed) return false;
   int moved = h.rssi - s.rssi;
@@ -348,7 +348,7 @@ bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std:
         .flag("low_battery", h.lowBattery)
         .flag("weak_signal", h.weak);
   });
-  out = camMqttPublish(mqttBase() + "/" + sensorKey(slots_[i].mac, slots_[i].input) + "/state", payload(json), true, 0);
+  out = camMqttPublish(mqttBase() + "/" + sensorKey(alarm_.slotOf(i + 1).mac, alarm_.slotOf(i + 1).input) + "/state", payload(json), true, 0);
   s.told = true;
   s.alert = alert;
   s.silent = h.silent;
@@ -362,7 +362,7 @@ bool SensorCamServer::mqttSensorState(int i, bool alertsOnly, uint32_t now, std:
 
 // The next event of the history not yet acknowledged. Events from before the start were sent by the run before.
 bool SensorCamServer::mqttEvent(std::string& out) {
-  uint32_t added = log_.added(), kept = (uint32_t)log_.count();
+  uint32_t added = alarm_.log().added(), kept = (uint32_t)alarm_.log().count();
   if (mqttEventsSent_ >= added) return false;
   if (added - mqttEventsSent_ > kept) {  // more happened while the broker was away than the log keeps in memory
     mqttEventsLost_ += added - mqttEventsSent_ - kept;
@@ -370,7 +370,7 @@ bool SensorCamServer::mqttEvent(std::string& out) {
     if (!kept) return false;
   }
   uint32_t number = mqttEventsSent_ + 1;
-  const CamEvent& e = log_.recent((int)(added - number));
+  const CamEvent& e = alarm_.log().recent((int)(added - number));
   bool hub = strcmp(e.sensor, "hub") == 0;
   std::string key = "hub";
   if (!hub) {
@@ -456,7 +456,7 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
     return true;
   }
   int i = (step - HUB_STEPS) / SLOT_STEPS, k = (step - HUB_STEPS) % SLOT_STEPS;
-  const Slot& s = slots_[i];
+  const Slot& s = alarm_.slotOf(i + 1);
   MqttTold& t = mqttTold_[i];
   if (k <= SENSOR_PARTS) {  // a sensor deleted, or replaced in its slot: its entities and its retained state are taken away
     if (!t.used || (s.used && memcmp(t.mac, s.mac, 6) == 0 && t.input == s.input)) return false;
@@ -470,7 +470,7 @@ bool SensorCamServer::mqttDiscoveryStep(int step, std::string& out) {
   }
   if (!s.used) return false;
   int part = k - SENSOR_PARTS - 1;
-  std::string key = sensorKey(s.mac, s.input), id = hubId + "_" + key + "_" + SENSOR_PART[part], sensor = slotName(i + 1);
+  std::string key = sensorKey(s.mac, s.input), id = hubId + "_" + key + "_" + SENSOR_PART[part], sensor = alarm_.slotName(i + 1);
   std::string json = jsonObject([&](CamJson& j) {
     static const char* const NAMES[SENSOR_PARTS] = {"Alert", "Battery", "Signal", "Problem", "Events", "Send test alert"};
     if (part == 5) {  // a button reads nothing, so it has a command topic instead of a state topic
@@ -520,7 +520,7 @@ std::string SensorCamServer::mqttState() const {
 std::string SensorCamServer::mqttJson() {
   const CamMqtt& m = cfg_.mqtt;
   bool ready = mqtt_.state == MqttIo::READY, clockOk = mqttConnectedAt_ >= CAM_CLOCK_VALID_AFTER;
-  uint32_t waiting = log_.added() - mqttEventsSent_;
+  uint32_t waiting = alarm_.log().added() - mqttEventsSent_;
   return jsonObject([&](CamJson& j) {
     j.str("host", m.host).num("port", m.port).str("user", m.user).flag("password", !m.password.empty());
     j.flag("connected", ready).str("state", mqttState());

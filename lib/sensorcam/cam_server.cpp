@@ -24,15 +24,11 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       store_(cfg.store ? cfg.store : &noStore),
       localIp_(localIp),
       millis_(millisFn),
-      sensors_(CAM_MAX_SENSORS, cfg.holdMs),
       signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot),
-      slots_(CAM_MAX_SENSORS),
-      nodes_(CAM_MAX_SENSORS),
-      health_(CAM_MAX_SENSORS) {
-  csvRead_ = [this](size_t offset, char* out, size_t len) { return log_.csvRead(offset, out, len); };  // see HttpConn::stream
+      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodeImages_, *this, millisFn) {
+  csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
-  sealNumber_ = cfg.sealStart;
 }
 
 int SensorCamServer::listenOn(uint16_t port) {
@@ -87,23 +83,11 @@ bool SensorCamServer::begin() {
   nextFrameAt_ = millis_();
   lastGoodWait_ = nextFrameAt_;
   frameData_.reserve(CAM_MAX_FRAME);
-  notGot_.reserve(CAM_MAX_SENSORS);
-  rescan();
   nodeImages_.load();
-  uint32_t used = 0, total = 0;
-  if (chip_->storageUsage(used, total)) log_.setFileMax(camLogFileMax(total, HISTORY_ROOM));  // a smaller history on small storage
-  log_.load();
-  mqttEventsSent_ = log_.added();
+  alarm_.begin();
+  mqttEventsSent_ = alarm_.log().added();
   pairingReady_ = camParseHex(cfg_.pairingKey, hubPrivate_, CAM_X25519_LEN);
   if (pairingReady_) camX25519Public(hubPublic_, hubPrivate_);  // tens of milliseconds on the board, once  // the run before sent those
-  loadWaiting();
-  std::string alive;
-  if (storage_.readFile(ALIVE_FILE, alive, 16) && alive.size() == 8) {  // seconds since 1970, little-endian
-    uint64_t t = 0;
-    for (int i = 7; i >= 0; i--) t = t << 8 | (uint8_t)alive[i];
-    lastAlive_ = (time_t)(int64_t)t;
-  }
-  beganAt_ = nvrSeenAt_ = perimeterOffAt_ = interiorOffAt_ = millis_();
   subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
   return onvifListen_ >= 0 && webListen_ >= 0 && rtspListen_ >= 0;
 }
@@ -115,11 +99,11 @@ std::string SensorCamServer::debugLine() {
   for (const NotifyIo& n : notify_) push += n.state != NotifyIo::IDLE;
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
          ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " +
-         std::to_string(push) + ", short of memory " + std::to_string(memoryFailures_);
+         std::to_string(push) + ", short of memory " + std::to_string(memoryFailures());
 }
 
 void SensorCamServer::networkUp() {
-  networkSeen_ = true;
+  alarm_.networkUp();
   openDiscovery();
   if (cfg_.loopbackOnly || udp_ < 0) return;
   std::string hello = discoveryHello(localIp_(), cfg_.onvifPort, cfg_.serial, messageNo_++);
@@ -318,7 +302,7 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   } else if (action == "PullMessages") {
     CamSub* sub = ownSub(subs_, path, c.peer);
     if (sub) sub->pulledAt = now;
-    int state = sensors_.anyActive() ? 1 : 0;
+    int state = alarm_.board().anyActive() ? 1 : 0;
     bool changed = sub && sub->lastPull != state;
     uint32_t wait = pollWaitMs(xmlFirstText(body, "Timeout"));
     int waiting = 0;
@@ -375,13 +359,13 @@ void SensorCamServer::serveSnapshot(HttpConn& c) {
   int id = 0;
   uint8_t direction = 0;
   bool delayed = false;
-  bool on = sensors_.shown(millis_(), id, direction, delayed);
+  bool on = alarm_.board().shown(millis_(), id, direction, delayed);
   const CamJpeg& builtin = CAM_SNAPSHOTS[builtinFrame(on, delayed)];
   sendBody(c, "image/jpeg", (const char*)builtin.data, builtin.len);
 }
 
 void SensorCamServer::servicePolls(uint32_t now) {
-  int state = sensors_.anyActive() ? 1 : 0;
+  int state = alarm_.board().anyActive() ? 1 : 0;
   for (HttpConn& c : http_) {
     if (c.fd < 0 || !c.pollWaiting) continue;
     CamSub* sub = subs_.find(c.pollSub);
@@ -738,7 +722,7 @@ void SensorCamServer::startNotify(int i, uint32_t now) {
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
   // and is tried again on the next pass.
-  std::string body = soapNotify(sensors_.anyActive(), !sub.initialized, time(nullptr));
+  std::string body = soapNotify(alarm_.board().anyActive(), !sub.initialized, time(nullptr));
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
                     "\r\nContent-Type: application/soap+xml; charset=utf-8; "
                     "action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
@@ -845,35 +829,11 @@ void SensorCamServer::poll(int maxWaitMs) {
 }
 
 void SensorCamServer::housekeeping(uint32_t now) {
-  rearmWhenDue(now);  // first, so an alert in this pass already counts
-  sensors_.tick(now);
-  serviceDelayed(now);
-  // Latched, so a long-dead sensor stays silent when the millisecond counter wraps.
-  for (int i = 0; i < CAM_MAX_SENSORS; i++) {
-    Health& h = health_[i];
-    if (!slots_[i].used || h.silent || now - (h.heard ? h.heardAt : h.watchedAt) <= silentMsFor(i + 1)) continue;
-    h.silent = true;
-    healthAlert(i + 1, CAM_EVENT_SILENT, now);
-  }
-  for (Node& n : nodes_)  // a node that stopped asking has given up, or restarted with what it had
-    if (n.updating && now - n.updateAt > CAM_UPDATE_IDLE_MS) n.updating = false;
-  // Reports that arrived since the last pass are saved together, and only then confirmed.
-  if (confirmCount_) {
-    bool kept = persist();
-    for (int i = 0; kept && radio_->hasEspNow() && i < confirmCount_; i++)
-      radio_->espNowSend(confirmations_[i], confirmations_[i] + 7, confirmations_[i][6]);
-    confirmCount_ = 0;  // unconfirmed, the sensors resend, and each resend tries the save again
-  }
-  if (log_.waiting()) log_.save(downloadingHistory());  // events from anything else: an addition to the log is cheap
-  if (waitingDirty_) saveWaiting();                     // small, and it is what a restart would replay
-  if (!startNoted_) noteHubStart(now);
-  if (startNoted_ && (!aliveWritten_ || now - aliveAt_ >= CAM_ALIVE_EVERY_MS)) writeAlive(now);  // after the start is noted, which reads the old time
-  if (cfg_.watchNvr) checkNvr(now);
-  checkJamming(now);
+  alarm_.tick(now);
   dailyCheck(now);
   subs_.expire(now);
   servicePolls(now);
-  if (signal_.update(sensors_.anyActive(), now)) subs_.markAllPending();
+  if (signal_.update(alarm_.board().anyActive(), now)) subs_.markAllPending();
   for (int i = 0; i < SubTable::SIZE; i++) {  // so one failed push cannot leave the NVR counted as not listening
     CamSub& s = subs_.at(i);
     if (!s.used || !s.push || !s.pushFailed || now - s.retryAt < CAM_PUSH_RETRY_MS) continue;

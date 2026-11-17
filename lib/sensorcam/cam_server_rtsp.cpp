@@ -172,7 +172,7 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
   int id = 0;
   uint8_t direction = 0;
   bool delayed = false;
-  bool on = sensors_.shown(now, id, direction, delayed);
+  bool on = alarm_.board().shown(now, id, direction, delayed);
   if (uploading_) {  // an upload is using the picture buffer
     if (!frameKey_.empty()) liveSeq_++;
     frameKey_.clear();
@@ -180,19 +180,19 @@ const CamFrame& SensorCamServer::frameToShow(uint32_t now) {
     frame_ = &CAM_FRAMES[builtinFrame(on, delayed)];
     return *frame_;
   }
-  std::string key = on ? slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (sensors_.several(id) ? "s" : "") : "clear";
+  std::string key = on ? alarm_.slotName(id) + "/" + std::to_string(direction) + (delayed ? "d" : "") + (alarm_.board().several(id) ? "s" : "") : "clear";
   if (key == frameKey_) return *frame_;
   frameKey_ = key;
   frameFile_.clear();
   liveSeq_++;
 
   std::vector<std::string> candidates;
-  bool several = on && sensors_.several(id);
+  bool several = on && alarm_.board().several(id);
   if (several) {
     // Stands for several sensors' past events, so no one sensor's picture fits: the built-in one says to check the logs.
   } else if (on) {
     // A past event never borrows the live picture, which would make it look like it is happening now.
-    std::string base = slotName(id) + "/";
+    std::string base = alarm_.slotName(id) + "/";
     candidates = {base + camStateFile(direction, delayed), base + camStateFile(0, delayed)};
   } else {
     candidates = {"clear.h264"};
