@@ -14,7 +14,7 @@
 class CamOnvifEvents {
  public:
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and alarm outlive this.
-  CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, std::function<std::string()> localIp);
+  CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, CamChip& chip, std::function<std::string()> localIp);
   void begin();      // opens the discovery socket, and keeps a place for the NVR's subscription
   void networkUp();  // after each Wi-Fi (re)connect: the socket again, and a hello to anyone listening
   // Marks every subscription as owed the new state when an alert starts or ends, and starts the pushes owed. Pushes
@@ -38,6 +38,7 @@ class CamOnvifEvents {
 
   const CamConfig& cfg_;
   const CamAlarm& alarm_;
+  CamChip* chip_;
   std::function<std::string()> localIp_;
   std::string nvrIp_;
   SubTable subs_;

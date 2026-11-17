@@ -123,8 +123,9 @@ class CamChip {
   virtual void deviceRows(CamJson& j) {}                                 // ["label","value"] arrays for the Device Info page
   virtual bool tellsHealth() { return false; }                           // health() has figures, for Home Assistant's diagnostic sensors
   virtual void health(CamHealth& h) {}
-  virtual int localMinute() { return -1; }  // minutes after local midnight, or -1 when the clock is not set; for quiet hours
-  virtual void timeInfo(CamJson& j) {}      // the Time page's members
+  virtual time_t wallTime() { return time(nullptr); }  // seconds since 1970 UTC; before the clock is set, a small number
+  virtual int localMinute() { return -1; }             // minutes after local midnight, or -1 when the clock is not set; for quiet hours
+  virtual void timeInfo(CamJson& j) {}                 // the Time page's members
   virtual bool timeSave(const CamTime& t) { return false; }
 };
 

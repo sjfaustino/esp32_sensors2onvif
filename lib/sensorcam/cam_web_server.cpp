@@ -228,7 +228,7 @@ std::string CamWeb::handleOnvif(HttpConn& c, const std::string& headers, const s
   ctx.serial = cfg_.serial;
   ctx.onvifPort = cfg_.onvifPort;
   radio_->onvifNetwork(ctx);
-  ctx.now = time(nullptr);
+  ctx.now = chip_->wallTime();
   if (!onvifPassword_.empty()) {
     ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, onvifPassword_);
     // ONVIF allows these before logging in. A client needs the clock to build its login.
@@ -335,7 +335,7 @@ void CamWeb::servicePolls(uint32_t now) {
     try {
       SoapContext ctx;
       ctx.host = c.pollHost;
-      ctx.now = time(nullptr);
+      ctx.now = chip_->wallTime();
       reply(c, 200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
     } catch (const std::bad_alloc&) {
       memoryFailures_++;

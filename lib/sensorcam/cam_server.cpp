@@ -22,7 +22,7 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
       alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
       mqtt_(cfg_, alarm_, *chip_, *this, localIp),
-      events_(cfg_, alarm_, localIp),
+      events_(cfg_, alarm_, *chip_, localIp),
       video_(
           cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { events_.subs().heard(peer, now); }, millisFn),
       webhook_(cfg_, alarm_, *chip_, [this](uint32_t now) { return nvrListening(now); }),

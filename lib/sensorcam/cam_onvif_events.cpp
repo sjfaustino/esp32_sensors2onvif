@@ -5,8 +5,8 @@
 #include "cam_soap.h"
 #include "cam_server_internal.h"
 
-CamOnvifEvents::CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, std::function<std::string()> localIp)
-    : cfg_(cfg), alarm_(alarm), localIp_(localIp), nvrIp_(cfg.nvrIp), signal_(CAM_REPEAT_TRUE_MS) {}
+CamOnvifEvents::CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, CamChip& chip, std::function<std::string()> localIp)
+    : cfg_(cfg), alarm_(alarm), chip_(&chip), localIp_(localIp), nvrIp_(cfg.nvrIp), signal_(CAM_REPEAT_TRUE_MS) {}
 
 void CamOnvifEvents::begin() {
   openDiscovery();
@@ -106,7 +106,7 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
   // and is tried again on the next pass.
-  std::string body = soapNotify(alarm_.board().anyActive(), !sub.initialized, time(nullptr));
+  std::string body = soapNotify(alarm_.board().anyActive(), !sub.initialized, chip_->wallTime());
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
                     "\r\nContent-Type: application/soap+xml; charset=utf-8; "
                     "action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +

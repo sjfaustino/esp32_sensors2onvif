@@ -45,7 +45,7 @@ bool CamAlarm::setArmMode(CamArmMode mode, const std::string& from, uint32_t min
   CamArmMode was = armMode();
   if (mode != CAM_DISARMED) minutes = 0;
   if (mode == was && mode != CAM_DISARMED) return true;
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   int64_t until = !minutes ? 0 : t >= CAM_CLOCK_VALID_AFTER ? (int64_t)t + (int64_t)minutes * 60 : 1;
   if (mode == CAM_DISARMED && was == CAM_DISARMED && !minutes && !disarmedUntil_) return true;  // nothing changes
   if (!store_->armedSave(mode, until)) return false;
@@ -80,14 +80,14 @@ bool CamAlarm::testAlert(int id) {
 void CamAlarm::rearmWhenDue(uint32_t now) {
   if (armed() || !disarmedUntil_) return;
   bool due = disarmEndKnown_ ? (int32_t)(now - disarmEndsAt_) >= 0
-                             : camTimedDisarmOver(disarmedUntil_, time(nullptr), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
+                             : camTimedDisarmOver(disarmedUntil_, chip_->wallTime(), now - beganAt_, CAM_START_CLOCK_WAIT_MS);
   if (due) setArmMode(CAM_ARMED_AWAY, "the re-arm timer");  // away, the safer; if it cannot be saved, it is tried again on the next pass
 }
 
 long long CamAlarm::disarmSecondsLeft(uint32_t now) const {
   if (armed() || !disarmedUntil_) return -1;
   if (disarmEndKnown_) return (int32_t)(disarmEndsAt_ - now) > 0 ? (disarmEndsAt_ - now + 999) / 1000 : 0;
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   if (disarmedUntil_ > 1 && t >= CAM_CLOCK_VALID_AFTER) return disarmedUntil_ > t ? disarmedUntil_ - t : 0;
   return -1;
 }

@@ -111,7 +111,7 @@ void CamAlarm::hubEvent(CamEventKind kind, const std::string& detail, uint32_t o
 
 void CamAlarm::addEvent(const char* sensor, const char* text, const SensorReport& r, bool delayed, CamEventKind kind, uint32_t offS) {
   CamEvent e;
-  e.received = time(nullptr);
+  e.received = chip_->wallTime();
   e.age = r.age;
   snprintf(e.sensor, sizeof(e.sensor), "%s", sensor);
   camCopyText(e.text, sizeof(e.text), text);
@@ -191,7 +191,7 @@ void CamAlarm::loadWaiting() {
 void CamAlarm::writeAlive(uint32_t now) {
   aliveAt_ = now;
   aliveWritten_ = true;
-  uint64_t t = (uint64_t)(int64_t)time(nullptr);
+  uint64_t t = (uint64_t)(int64_t)chip_->wallTime();
   char out[8];  // seconds since 1970, little-endian
   for (int i = 0; i < 8; i++) out[i] = (char)(t >> (8 * i));
   if ((int64_t)t >= (int64_t)CAM_CLOCK_VALID_AFTER) storage_.writeFile(ALIVE_FILE, out, sizeof(out));
@@ -204,7 +204,7 @@ void CamAlarm::networkLost(uint32_t seconds) {
 
 // Logged once the network is up, and once the clock is set or has had long enough to be.
 void CamAlarm::noteHubStart(uint32_t now) {
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   bool clockOk = t >= CAM_CLOCK_VALID_AFTER;
   if (startNoted_ || !networkSeen_ || (!clockOk && now - beganAt_ < CAM_START_CLOCK_WAIT_MS)) return;
   startNoted_ = true;
@@ -512,7 +512,7 @@ CamForNode CamAlarm::forNode(int id) const {
   const Slot& s = slotRef(id);
   const Node& node = nodeRef(id);
   CamForNode e;
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   if (t >= CAM_CLOCK_VALID_AFTER) e.hubTime = (uint32_t)t;
   e.everyS = node.settings.everyS;
   // Repeats must come more often than the alert lasts, or the alert would lapse between them: below the shortest hold
@@ -541,7 +541,7 @@ bool CamAlarm::updateReady(int id) const {
 // A reading every few hours goes to battery.txt in the node's folder, and from those comes how long the battery will last.
 // Needs the clock. Anything that runs out of memory here only skips this reading.
 void CamAlarm::noteBattery(int id, uint8_t percent) {
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   Node& node = nodeRef(id);
   if (t < CAM_CLOCK_VALID_AFTER || (node.batteryAt && t >= node.batteryAt && t - node.batteryAt < CAM_BATTERY_POINT_EVERY_S)) return;
   try {

@@ -109,7 +109,7 @@ void CamMqttClient::packet(const uint8_t* p, size_t len, uint32_t now) {
     }
     io_.state = Io::READY;
     waiting_ = false;
-    connectedAt_ = time(nullptr);
+    connectedAt_ = chip_->wallTime();
     for (Shown& s : shown_) s.told = false;  // the broker may have lost what it kept, so everything is sent again
     result_ = "connected";
   } else if (type == CAM_MQTT_PUBLISH) {  // the alarm panel, or a sensor's test button
@@ -304,7 +304,7 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
   if (chip_->tellsHealth() && (!io_.healthTold || now - io_.healthAt >= CAM_MQTT_HEALTH_MS)) {
     CamHealth h;
     chip_->health(h);
-    time_t t = time(nullptr);
+    time_t t = chip_->wallTime();
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
     std::string json = jsonObject([&](CamJson& j) {
       j.num("free_kb", h.freeHeap / 1024).num("lowest_kb", h.lowestFreeHeap / 1024).num("largest_kb", h.largestBlock / 1024);

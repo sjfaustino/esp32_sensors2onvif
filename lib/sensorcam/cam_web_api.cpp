@@ -81,7 +81,7 @@ std::string CamWeb::treeJson() {
         .num("silent", node.silentS != 0, node.silentS);
     j.num("every", every != 0, every).num("autoSilent", every != 0, camAutoSilentS(every));
     j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
-    time_t t = time(nullptr);
+    time_t t = chip_->wallTime();
     uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && alarm_.nodeOf(any).walkUntil > (uint32_t)t ? alarm_.nodeOf(any).walkUntil - (uint32_t)t : 0;
     j.num("walkLeft", walk).array("sensors");
     std::vector<CamFsEntry> inputs;
@@ -650,7 +650,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   } else if (r.is("POST", "/api/walk-test")) {
     std::string path = queryParam(r.target, "path");
     uint8_t mac[6];
-    time_t t = time(nullptr);
+    time_t t = chip_->wallTime();
     bool stop = queryParam(r.form(), "stop") == "1";
     if (camClassifyPath(path) != CAM_PATH_NODE || !camParseMac(path, mac) || !alarm_.findNode(mac)) {
       c.out = jsonFail(404, "no such node");
@@ -752,7 +752,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "days must be 1 to 3650");
       return true;
     }
-    time_t now = time(nullptr);
+    time_t now = chip_->wallTime();
     if (days && now < CAM_CLOCK_VALID_AFTER) {
       c.out = jsonFail(503, "the hub's clock is not set yet, so it cannot tell which days those are; try again");
       return true;

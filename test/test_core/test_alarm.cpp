@@ -22,8 +22,21 @@ struct Outside : CamAlarmOutside {
   }
 };
 
+// A chip whose wall clock the test sets: a date in November 2026 to begin with.
+struct Chip : CamChip {
+  time_t wall = 1794000000;
+  time_t wallTime() override { return wall; }
+};
+
+// Keeps the arm mode as the board would, so a test can start the next alarm from it.
 struct Store : CamStore {
-  bool armedSave(CamArmMode, int64_t) override { return true; }
+  CamArmMode mode = CAM_ARMED_AWAY;
+  int64_t until = 0;
+  bool armedSave(CamArmMode m, int64_t u) override {
+    mode = m;
+    until = u;
+    return true;
+  }
 };
 
 const uint8_t DOOR[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
@@ -40,7 +53,7 @@ std::string emptyFolder(const char* name) {
 struct Rig {
   uint32_t now = 1000;
   CamConfig cfg;
-  CamChip chip;
+  Chip chip;
   CamRadio radio;
   Store store;
   Outside outside;
@@ -50,18 +63,21 @@ struct Rig {
   // start: the start-up settings, which the alarm reads as it is made.
   explicit Rig(const char* folder, const CamConfig& start = CamConfig())
       : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
-  // A rig on the folder another left, as after a restart; the clock starts again, as millis() does.
-  Rig(const Rig& before, int) : storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
+  // A rig on the folder another left, as after a restart, with the settings it starts with. The clock starts again, as
+  // millis() does; the wall clock is the same date until the test moves it.
+  Rig(const Rig& before, const CamConfig& start)
+      : cfg(start), storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
 
   void sensor(const char* path, const char* settings = nullptr) {
     storage.makeDirs(path);
     if (settings) storage.writeFile(std::string(path) + "/settings.txt", settings, strlen(settings));
   }
   void start() { alarm.begin(); }
-  int report(const uint8_t mac[6], uint8_t input, bool active, uint32_t ageS = 0) {
+  int report(const uint8_t mac[6], uint8_t input, bool active, uint32_t ageS = 0, uint8_t battery = CAM_BATTERY_UNKNOWN) {
     SensorReport r;
     r.active = active;
     r.age = ageS;
+    r.battery = battery;
     return alarm.webReport(mac, input, r);
   }
   void run(uint32_t ms) {  // the loop's passes, every 10 ms
@@ -263,7 +279,7 @@ static void an_alert_waiting_for_the_nvr_is_replayed_after_a_restart() {
   before.start();
   before.outside.listening = false;
   before.report(DOOR, 1, true);  // saved with its pending check before it was confirmed
-  Rig after(before, 0);
+  Rig after(before, CamConfig());
   after.start();
   after.run(100);
   TEST_ASSERT_TRUE(after.past());  // the NVR may never have got it, so it plays again
@@ -279,6 +295,79 @@ static void a_deleted_sensor_is_unknown_after_the_table_is_read_again() {
   TEST_ASSERT_EQUAL(0, r.id());
   TEST_ASSERT_FALSE(r.alarm.board().anyActive());  // its alert goes with it
   TEST_ASSERT_EQUAL(404, r.report(DOOR, 1, true));
+}
+
+static void a_timed_disarm_that_ends_while_the_hub_is_off_is_over_at_the_start() {
+  Rig before("cam_alarm_timed_restart");
+  before.sensor("AA-BB-CC-DD-EE-01/1");
+  before.start();
+  TEST_ASSERT_TRUE(before.alarm.setArmMode(CAM_DISARMED, "the test", 5));
+  TEST_ASSERT_EQUAL((int64_t)before.chip.wall + 300, before.store.until);  // kept as a time of day, to outlast a restart
+  CamConfig kept;
+  kept.armMode = before.store.mode;
+  kept.disarmedUntil = before.store.until;
+  Rig early(before, kept);  // back after 100 s: 200 s still to go
+  early.chip.wall = before.chip.wall + 100;
+  early.start();
+  early.run(100);
+  TEST_ASSERT_FALSE(early.alarm.armed());
+  TEST_ASSERT_EQUAL(200, early.alarm.disarmSecondsLeft(early.now));
+  Rig late(before, kept);  // back after 10 minutes: the disarm is over
+  late.chip.wall = before.chip.wall + 600;
+  late.start();
+  late.run(100);
+  TEST_ASSERT_EQUAL(CAM_ARMED_AWAY, late.alarm.armMode());
+}
+
+static void the_start_is_logged_with_how_long_the_hub_was_off() {
+  Rig before("cam_alarm_off_time");
+  before.start();
+  before.alarm.networkUp();
+  before.run(100);  // logs its own start, then the time it is still running
+  Rig after(before, CamConfig());
+  after.chip.wall = before.chip.wall + 300;
+  after.start();
+  after.alarm.networkUp();
+  after.run(100);
+  const CamEvent& e = after.alarm.log().recent(0);
+  TEST_ASSERT_EQUAL(CAM_EVENT_HUB_STARTED, e.kind);
+  TEST_ASSERT_EQUAL(300, e.offS);
+  TEST_ASSERT_TRUE(e.active);  // not asked for, so worth a look
+}
+
+static void the_start_waits_for_the_clock_before_it_is_logged() {
+  Rig r("cam_alarm_no_clock");
+  r.chip.wall = 1000;  // not set
+  r.start();
+  r.alarm.networkUp();
+  r.run(1000);
+  TEST_ASSERT_EQUAL(0, r.logged(CAM_EVENT_HUB_STARTED));
+  r.chip.wall = 1794000000;
+  r.run(100);
+  TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_HUB_STARTED));
+  TEST_ASSERT_EQUAL(CAM_AGE_UNKNOWN, r.alarm.log().recent(0).offS);  // no earlier run left a time
+}
+
+static void a_battery_that_will_run_out_within_a_week_is_reported_once() {
+  Rig r("cam_alarm_battery");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  r.start();
+  for (uint8_t percent : {40, 34, 28, 22, 21}) {  // 6% a day
+    r.report(DOOR, 1, false, 0, percent);
+    r.chip.wall += 86400;
+  }
+  TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_BATTERY_RUNNING_OUT));
+  TEST_ASSERT_EQUAL(1, r.outside.sent(CAM_EVENT_BATTERY_RUNNING_OUT));
+  TEST_ASSERT_TRUE(r.alarm.nodeOf(r.id()).daysLeft >= 0 && r.alarm.nodeOf(r.id()).daysLeft < 7);
+}
+
+static void battery_readings_need_the_clock() {
+  Rig r("cam_alarm_battery_no_clock");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  r.chip.wall = 1000;
+  r.start();
+  r.report(DOOR, 1, false, 0, 50);
+  TEST_ASSERT_FALSE(r.storage.exists("AA-BB-CC-DD-EE-01/battery.txt"));
 }
 
 void runAlarmTests() {
@@ -297,4 +386,9 @@ void runAlarmTests() {
   RUN_TEST(a_test_alert_takes_the_whole_path_even_disarmed);
   RUN_TEST(an_alert_waiting_for_the_nvr_is_replayed_after_a_restart);
   RUN_TEST(a_deleted_sensor_is_unknown_after_the_table_is_read_again);
+  RUN_TEST(a_timed_disarm_that_ends_while_the_hub_is_off_is_over_at_the_start);
+  RUN_TEST(the_start_is_logged_with_how_long_the_hub_was_off);
+  RUN_TEST(the_start_waits_for_the_clock_before_it_is_logged);
+  RUN_TEST(a_battery_that_will_run_out_within_a_week_is_reported_once);
+  RUN_TEST(battery_readings_need_the_clock);
 }

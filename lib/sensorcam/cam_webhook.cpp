@@ -20,7 +20,7 @@ void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
     std::string sensor = alarm_.slotName(id), name = alarm_.slotOf(id).name;
     std::string message = camEventMessage(kind, name.empty() ? sensor : name + " (" + sensor + ")", "", CAM_AGE_UNKNOWN, delayed);
     uint8_t battery = alarm_.healthOf(id).battery;
-    time_t now = time(nullptr);
+    time_t now = chip_->wallTime();
     bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
     queue(message, jsonObject([&](CamJson& j) {
             j.str("event", event).str("sensor", sensor).str("name", name).num("battery", battery != CAM_BATTERY_UNKNOWN, battery);
@@ -36,7 +36,7 @@ void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
 void CamWebhookSender::notifyHub(CamEventKind kind, const std::string& detail, const std::string& message) {
   const CamWebhook& w = settings_;
   if (w.url.empty() || !w.problems) return;
-  time_t now = time(nullptr);
+  time_t now = chip_->wallTime();
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
   try {
     queue(message, jsonObject([&](CamJson& j) {
@@ -57,7 +57,7 @@ void CamWebhookSender::tick(uint32_t now, bool mayConnect) {
 
 void CamWebhookSender::serve(fd_set& rd, fd_set& wr, uint32_t now) {
   if (!post_.idle() && post_.service(FD_ISSET(post_.fd(), &rd), FD_ISSET(post_.fd(), &wr), now))
-    hooks_.noteResult(post_.result(), time(nullptr));  // last, as the one step that needs memory: running out then loses only the note
+    hooks_.noteResult(post_.result(), chip_->wallTime());  // last, as the one step that needs memory: running out then loses only the note
 }
 
 void CamWebhookSender::start(uint32_t now) {
@@ -76,7 +76,7 @@ void CamWebhookSender::start(uint32_t now) {
   CamPost::Start started = post_.start(url, out, CAM_HOOK_WAIT_MS, CAM_HOOK_WAIT_MS, now);
   if (started == CamPost::NO_SOCKET) return;  // still queued, so it is tried again on the next pass
   hooks_.takeOldest();
-  if (started == CamPost::REFUSED) hooks_.noteResult("could not connect", time(nullptr));
+  if (started == CamPost::REFUSED) hooks_.noteResult("could not connect", chip_->wallTime());
 }
 
 std::string CamWebhookSender::pageJson() {
@@ -97,7 +97,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
   if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
   dailySent_ = true;
   dailySentAt_ = now;
-  time_t t = time(nullptr);
+  time_t t = chip_->wallTime();
   try {
     CamDailyCheck d;
     d.hub = cfg_.hostName;
