@@ -27,7 +27,7 @@ void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
             j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
           }));
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
     hooks_.dropOne();
   }
 }
@@ -44,7 +44,7 @@ void CamWebhookSender::notifyHub(CamEventKind kind, const std::string& detail, c
             j.str("time", clockOk, clockOk ? iso(now) : std::string()).str("hub", cfg_.hostName).str("message", message);
           }));
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
     hooks_.dropOne();
   }
 }
@@ -102,7 +102,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
     CamDailyCheck d;
     d.hub = cfg_.hostName;
     d.mode = camArmModeName(alarm_.armMode());
-    d.nvrListening = nvrListening_(now);
+    d.nvrListening = events_.nvrListening(now);
     for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
       if (!alarm_.nodeAt(n).used) continue;
       d.nodes++;
@@ -139,7 +139,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
             j.str("message", message);
           }));
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
     hooks_.dropOne();
   }
 }

@@ -100,7 +100,7 @@ void CamVideo::request(RtspConn& c, const std::string& text, uint32_t now) {
   std::string cseq = headerValue(text, "cseq");
   static const char SESSION[] = "53454E53";
   std::string head = "RTSP/1.0 200 OK\r\nCSeq: " + cseq + "\r\nServer: SensorCam\r\n";
-  heard_(c.peer, now);
+  events_.subs().heard(c.peer, now);
 
   if (!onvifPassword_.empty() && method != "OPTIONS" && !c.authed) {
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
@@ -173,7 +173,7 @@ void CamVideo::serviceConn(RtspConn& c, bool readable, bool writable, uint32_t n
         try {
           request(c, c.in.substr(0, end + 2), now);
         } catch (const std::bad_alloc&) {  // the viewer reconnects, as it does after any dropped connection
-          memoryFailures_++;
+          failures_.note();
           closeConn(c);
           return;
         }

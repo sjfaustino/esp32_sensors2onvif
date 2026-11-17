@@ -7,20 +7,14 @@
 #include <string>
 #include "cam_alarm.h"
 #include "cam_config.h"
-
-// What the client needs from the rest of the hub.
-class CamMqttOutside {
- public:
-  virtual ~CamMqttOutside() = default;
-  virtual bool nvrListening(uint32_t now) const = 0;
-  virtual uint32_t memoryFailures() const = 0;  // for the hub's health
-};
+#include "cam_onvif_events.h"
 
 class CamMqttClient {
  public:
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the others outlive the client.
-  CamMqttClient(const CamConfig& cfg, CamAlarm& alarm, CamChip& chip, CamMqttOutside& outside, std::function<std::string()> localIp)
-      : cfg_(cfg), alarm_(alarm), chip_(&chip), outside_(outside), localIp_(localIp), settings_(cfg.mqtt) {}
+  CamMqttClient(const CamConfig& cfg, CamAlarm& alarm, CamChip& chip, const CamOnvifEvents& events, CamMemoryFailures& failures,
+                std::function<std::string()> localIp)
+      : cfg_(cfg), alarm_(alarm), chip_(&chip), events_(events), failures_(failures), localIp_(localIp), settings_(cfg.mqtt) {}
   void begin() { eventsSent_ = alarm_.log().added(); }  // after the history is read: the run before sent those
   // Connects, gives up on a broker that stopped answering, and builds the next message. mayConnect: a socket is free for
   // a new connection. Running out of memory throws, and leaves the message to be built on a later pass.
@@ -83,7 +77,8 @@ class CamMqttClient {
   const CamConfig& cfg_;
   CamAlarm& alarm_;
   CamChip* chip_;
-  CamMqttOutside& outside_;
+  const CamOnvifEvents& events_;  // whether the NVR is listening
+  CamMemoryFailures& failures_;
   std::function<std::string()> localIp_;
   CamMqtt settings_;
   Io io_;

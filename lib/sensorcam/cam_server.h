@@ -17,6 +17,7 @@
 #include "cam_auth.h"
 #include "cam_config.h"
 #include "cam_mqtt_client.h"
+#include "cam_node_images.h"
 #include "cam_nodes.h"
 #include "cam_onvif_events.h"
 #include "cam_storage.h"
@@ -24,7 +25,7 @@
 #include "cam_web_server.h"
 #include "cam_webhook.h"
 
-class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
+class SensorCamServer : private CamAlarmOutside {
  public:
   SensorCamServer(const CamConfig& cfg, std::function<std::string()> localIp, std::function<uint32_t()> millisFn);
   bool begin();
@@ -42,28 +43,16 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return web_.updating(); }                    // a firmware upload is under way
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
-  // Times memory ran out and only that piece of work was dropped.
-  uint32_t memoryFailures() const override {
-    return memoryFailures_ + alarm_.memoryFailures() + video_.memoryFailures() + webhook_.memoryFailures() + web_.memoryFailuresHere();
-  }
-  bool armed() const { return alarm_.armed(); }
-  CamArmMode armMode() const { return alarm_.armMode(); }
-  // See CamAlarm::setArmMode and CamAlarm::testAlert.
-  bool setArmMode(CamArmMode mode, const std::string& from, uint32_t minutes = 0) { return alarm_.setArmMode(mode, from, minutes); }
-  bool testAlert(int id) { return alarm_.testAlert(id); }
-#ifdef CAM_TEST_HOOKS                                          // only in the PC builds, for the tests
-  void endAlerts() { alarm_.endAlerts(); }                     // ends every alert now, without waiting for its hold
-  void setNvrGoneMs(uint32_t ms) { alarm_.setNvrGoneMs(ms); }  // how soon the NVR counts as gone, instead of 3 minutes
-  void setMinuteMs(uint32_t ms) { alarm_.setMinuteMs(ms); }    // how long a minute of a timed disarm lasts
-  void setBusyAlerts(int n) { alarm_.setBusyAlerts(n); }       // how many alerts within an hour count as firing often
-  void setOverdueMs(uint32_t ms) { alarm_.setOverdueMs(ms); }  // how late a node's report is overdue, instead of from its report time; 0 for that
+  uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
+#ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests
+  CamAlarm& alarm() { return alarm_; }                                 // its test hooks, such as setMinuteMs, and its arm mode
 #endif
 
  private:
   void housekeeping(uint32_t now);  // alerts, saving, the NVR and video: the part of poll() before waiting
   void pollOnce(int maxWaitMs);     // waits for the network, then serves the connections
 
-  // What the alarm and the MQTT client ask of the rest of the hub.
+  // What the alarm asks of the parts made after it.
   bool nvrListening(uint32_t now) const override;
   bool downloadingHistory() const override;
   void notifyHook(int id, CamEventKind kind, bool delayed) override;
@@ -77,17 +66,19 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamStore* store_;
   std::function<std::string()> localIp_;
   std::function<uint32_t()> millis_;
-  uint32_t memoryFailures_ = 0;  // in the loop itself
+  CamMemoryFailures failures_;
   uint32_t lastGoodWait_ = 0;
   uint32_t waitErrors_ = 0;
   int lastWaitErrno_ = 0;
   CamStorage storage_;
   CamLoginGuard logins_;  // wrong passwords, on the web page, ONVIF and RTSP
-  CamNodes nodes_;        // before alarm_, which reads its firmware files
-  CamAlarm alarm_;        // after cfg_, the parts, storage_ and nodes_, which it uses
-  CamMqttClient mqtt_;
+  // Each part is made after those it uses. The alarm, made first, reaches the others through CamAlarmOutside.
+  CamNodeImages images_{storage_};  // the node firmware files, which the alarm and CamNodes both read
+  CamAlarm alarm_;
+  CamNodes nodes_;
   CamOnvifEvents events_;
+  CamMqttClient mqtt_;
   CamVideo video_;
   CamWebhookSender webhook_;
-  CamWeb web_;  // last, as it serves all the others
+  CamWeb web_;
 };

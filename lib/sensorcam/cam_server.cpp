@@ -19,15 +19,14 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       localIp_(localIp),
       millis_(millisFn),
       storage_(cfg.fsRoot),
-      nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
-      alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
-      mqtt_(cfg_, alarm_, *chip_, *this, localIp),
+      alarm_(cfg_, *chip_, *radio_, *store_, storage_, images_, *this, failures_, millisFn),
+      nodes_(cfg_, *radio_, storage_, alarm_, images_, millisFn),
       events_(cfg_, alarm_, *chip_, localIp),
-      video_(
-          cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { events_.subs().heard(peer, now); }, millisFn),
-      webhook_(cfg_, alarm_, *chip_, [this](uint32_t now) { return nvrListening(now); }),
-      web_(CamWebParts{cfg_, *chip_, *radio_, *store_, storage_, logins_, nodes_, alarm_, mqtt_, events_, video_, webhook_, localIp, millisFn,
-                       [this] { return memoryFailures(); }}) {}
+      mqtt_(cfg_, alarm_, *chip_, events_, failures_, localIp),
+      video_(cfg_, *chip_, storage_, alarm_, logins_, events_, failures_, millisFn),
+      webhook_(cfg_, alarm_, *chip_, events_, failures_),
+      web_(CamWebParts{cfg_, *chip_, *radio_, *store_, storage_, logins_, nodes_, alarm_, mqtt_, events_, video_, webhook_, failures_, localIp,
+                       millisFn}) {}
 
 bool SensorCamServer::begin() {
   netInit();
@@ -60,12 +59,12 @@ void SensorCamServer::poll(int maxWaitMs) {
   try {
     housekeeping(millis_());
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
   }
   try {
     pollOnce(maxWaitMs);
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
   }
 }
 
@@ -79,7 +78,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   try {                                                         // on its own, so running out of memory there still leaves the picture to be sent
     mqtt_.tick(now, web_.sharedSockets() < CamWeb::MAX_HTTP && !web_.updating());
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
   }
   video_.tick(now);
 }
@@ -126,7 +125,7 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
     else
       alarm_.espNowReport(mac, data, len, rssi);
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
   }
 }
 

@@ -92,8 +92,9 @@ runs the same loop in one process, which is what the end-to-end tests drive. The
   The webhook and the event pushes each send through a `CamPost`, one HTTP POST that does not block.
 
 What the board does for the hub reaches them through three interfaces in `cam_config.h`: `CamChip`, `CamRadio` and
-`CamStore`. What the alarm and the MQTT client need back from the rest of the hub goes through `CamAlarmOutside` and
-`CamMqttOutside`, which the server answers.
+`CamStore`. Each part is made after the parts it uses and is handed them directly. The alarm is made first, so what it
+needs from the others goes through `CamAlarmOutside`, which the server answers. Running out of memory is counted in one
+`CamMemoryFailures`, which every part adds to.
 
 ## Pairing
 

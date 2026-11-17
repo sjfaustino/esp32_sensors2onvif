@@ -97,6 +97,17 @@ struct CamHealth {
 enum CamArmMode : uint8_t { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
 const char* camArmModeName(CamArmMode mode);  // "disarmed", "away" or "home", as the API gives it
 
+// How often memory ran out and only that piece of work was dropped, never the hub. One count, which the server owns and
+// every part adds to, for the pages and Home Assistant.
+class CamMemoryFailures {
+ public:
+  void note() { count_++; }
+  uint32_t count() const { return count_; }
+
+ private:
+  uint32_t count_ = 0;
+};
+
 struct CamAddress {
   bool dhcp = true;
   std::string ip, mask, gateway, dns;  // already validated; dns may be empty, meaning the gateway

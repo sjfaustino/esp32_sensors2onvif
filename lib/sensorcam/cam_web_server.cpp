@@ -26,9 +26,9 @@ CamWeb::CamWeb(const CamWebParts& p)
       events_(p.events),
       video_(p.video),
       webhook_(p.webhook),
+      failures_(p.failures),
       localIp_(p.localIp),
       millis_(p.millis),
-      failures_(p.memoryFailures),
       onvifPassword_(p.cfg.onvifPassword),
       schedule_(p.cfg.schedule) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
@@ -338,7 +338,7 @@ void CamWeb::servicePolls(uint32_t now) {
       ctx.now = chip_->wallTime();
       reply(c, 200, "application/soap+xml; charset=utf-8", soapEnvelope(soapPullMessagesReply(ctx, changed, state == 1, initial)));
     } catch (const std::bad_alloc&) {
-      memoryFailures_++;
+      failures_.note();
       continue;
     }
     if (sub) sub->lastPull = state;
@@ -607,7 +607,7 @@ void CamWeb::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now
       try {
         handleHttp(c, now);
       } catch (const std::bad_alloc&) {
-        memoryFailures_++;
+        failures_.note();
         undoPull(c);
         shortOfMemory(c);
       }

@@ -16,8 +16,7 @@
 #include "cam_video.h"
 #include "cam_webhook.h"
 
-// The parts the web side serves, all owned by SensorCamServer. cfg holds the start-up settings, which never change;
-// memoryFailures is the hub's total, for the pages.
+// The parts the web side serves, all owned by SensorCamServer. cfg holds the start-up settings, which never change.
 struct CamWebParts {
   const CamConfig& cfg;
   CamChip& chip;
@@ -31,9 +30,9 @@ struct CamWebParts {
   CamOnvifEvents& events;
   CamVideo& video;
   CamWebhookSender& webhook;
+  CamMemoryFailures& failures;
   std::function<std::string()> localIp;
   std::function<uint32_t()> millis;
-  std::function<uint32_t()> memoryFailures;
 };
 
 class CamWeb {
@@ -54,7 +53,6 @@ class CamWeb {
   int openCount() const;  // web connections open
   uint32_t accepted() const { return accepted_; }
   uint32_t refused() const { return refused_; }
-  uint32_t memoryFailuresHere() const { return memoryFailures_; }
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
 
  private:
@@ -152,7 +150,7 @@ class CamWeb {
   bool roomFor(size_t bytes) const { return chip_->canAllocate(bytes); }
   bool hasHeadroom() const { return chip_->hasHeadroom(); }
   bool nvrListening(uint32_t now) const { return events_.nvrListening(now); }
-  uint32_t memoryFailures() const { return failures_(); }  // the hub's, for the pages
+  uint32_t memoryFailures() const { return failures_.count(); }  // the hub's, for the pages
 
   const CamConfig& cfg_;
   CamChip* chip_;
@@ -166,10 +164,9 @@ class CamWeb {
   CamOnvifEvents& events_;
   CamVideo& video_;
   CamWebhookSender& webhook_;
+  CamMemoryFailures& failures_;
   std::function<std::string()> localIp_;
   std::function<uint32_t()> millis_;
-  std::function<uint32_t()> failures_;
-  uint32_t memoryFailures_ = 0;  // here: times memory ran out and only that request was dropped
   int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1;
   HttpConn http_[MAX_HTTP];
   uint32_t accepted_ = 0;

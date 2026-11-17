@@ -9,21 +9,23 @@
 #include "cam_config.h"
 #include "cam_frames.h"
 #include "cam_net.h"
+#include "cam_onvif_events.h"
 #include "cam_rtp.h"
 #include "cam_storage.h"
 
 class CamVideo {
  public:
-  // heard: a client was heard from, which keeps the NVR's subscription alive. cfg holds the start-up settings, which
-  // never change; it and the others outlive the video.
-  CamVideo(const CamConfig& cfg, CamChip& chip, CamStorage& storage, const CamAlarm& alarm, CamLoginGuard& logins,
-           std::function<void(uint32_t peer, uint32_t now)> heard, std::function<uint32_t()> millisFn)
+  // cfg holds the start-up settings, which never change; it and the others outlive the video. A viewer heard from tells
+  // events, as it keeps the NVR's subscription alive.
+  CamVideo(const CamConfig& cfg, CamChip& chip, CamStorage& storage, const CamAlarm& alarm, CamLoginGuard& logins, CamOnvifEvents& events,
+           CamMemoryFailures& failures, std::function<uint32_t()> millisFn)
       : cfg_(cfg),
         chip_(&chip),
         storage_(storage),
         alarm_(alarm),
         logins_(logins),
-        heard_(heard),
+        events_(events),
+        failures_(failures),
         millis_(millisFn),
         onvifPassword_(cfg.onvifPassword) {}
   bool begin(int listenFd);  // takes the RTSP port's listening socket; false when there is none
@@ -59,7 +61,6 @@ class CamVideo {
     lent_ = false;
     frameKey_.clear();
   }
-  uint32_t memoryFailures() const { return memoryFailures_; }
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
 
  private:
@@ -94,10 +95,10 @@ class CamVideo {
   CamStorage& storage_;
   const CamAlarm& alarm_;
   CamLoginGuard& logins_;
-  std::function<void(uint32_t, uint32_t)> heard_;
+  CamOnvifEvents& events_;
+  CamMemoryFailures& failures_;
   std::function<uint32_t()> millis_;
   std::string onvifPassword_;  // RTSP needs the user admin and this, when set
-  uint32_t memoryFailures_ = 0;
   int listen_ = -1;
   RtspConn rtsp_[MAX_RTSP];
   uint32_t nextFrameAt_ = 0;

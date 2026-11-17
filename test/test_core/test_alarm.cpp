@@ -59,14 +59,15 @@ struct Rig {
   Outside outside;
   CamStorage storage;
   CamNodeImages images{storage};
+  CamMemoryFailures failures;
   CamAlarm alarm;
   // start: the start-up settings, which the alarm reads as it is made.
   explicit Rig(const char* folder, const CamConfig& start = CamConfig())
-      : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
+      : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, failures, [this] { return now; }) {}
   // A rig on the folder another left, as after a restart, with the settings it starts with. The clock starts again, as
   // millis() does; the wall clock is the same date until the test moves it.
   Rig(const Rig& before, const CamConfig& start)
-      : cfg(start), storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
+      : cfg(start), storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, failures, [this] { return now; }) {}
 
   void sensor(const char* path, const char* settings = nullptr) {
     storage.makeDirs(path);

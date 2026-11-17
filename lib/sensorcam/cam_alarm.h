@@ -93,7 +93,7 @@ class CamAlarm {
 
   // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the parts outlive the alarm.
   CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStore& store, CamStorage& storage, const CamNodeImages& images,
-           CamAlarmOutside& outside, std::function<uint32_t()> millisFn);
+           CamAlarmOutside& outside, CamMemoryFailures& failures, std::function<uint32_t()> millisFn);
   void begin();             // reads the sensor table, the history and the alerts that were waiting
   void tick(uint32_t now);  // alerts, health checks, saving and confirming: once a pass, before serving the network
   void networkUp() { networkSeen_ = true; }
@@ -153,7 +153,6 @@ class CamAlarm {
   CamEventLog& log() { return log_; }
   const CamEventLog& log() const { return log_; }
   int delayedCount() const { return delayed_.count(); }  // past events waiting their turn
-  uint32_t memoryFailures() const { return memoryFailures_; }
 
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();
@@ -209,7 +208,7 @@ class CamAlarm {
   const CamNodeImages& images_;
   CamAlarmOutside& outside_;
   std::function<uint32_t()> millis_;
-  uint32_t memoryFailures_ = 0;  // times memory ran out and only that piece of work was dropped
+  CamMemoryFailures& failures_;
 
   SensorBoard sensors_;
   CamEventLog log_;

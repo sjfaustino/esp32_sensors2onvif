@@ -16,7 +16,7 @@
 
 // The parts are the server's, with its defaults for any the board left out.
 CamAlarm::CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStore& store, CamStorage& storage, const CamNodeImages& images,
-                   CamAlarmOutside& outside, std::function<uint32_t()> millisFn)
+                   CamAlarmOutside& outside, CamMemoryFailures& failures, std::function<uint32_t()> millisFn)
     : cfg_(cfg),
       chip_(&chip),
       radio_(&radio),
@@ -25,6 +25,7 @@ CamAlarm::CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStor
       images_(images),
       outside_(outside),
       millis_(millisFn),
+      failures_(failures),
       sensors_(CAM_MAX_SENSORS, cfg.holdMs),
       log_(storage),
       slots_(CAM_MAX_SENSORS),
@@ -567,7 +568,7 @@ void CamAlarm::noteBattery(int id, uint8_t percent) {
       node.runningOut = false;
     }
   } catch (const std::bad_alloc&) {
-    memoryFailures_++;
+    failures_.note();
   }
 }
 

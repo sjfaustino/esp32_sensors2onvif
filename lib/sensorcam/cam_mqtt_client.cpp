@@ -260,7 +260,7 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
   bool alert = false;
   for (int id = 1; id <= alarm_.board().count(); id++)
     alert = alert || (alarm_.slotOf(id).used && alarm_.board().active(id) && !alarm_.board().pastEvent(id));
-  bool nvr = outside_.nvrListening(now);
+  bool nvr = events_.nvrListening(now);
   bool armed = alarm_.armed(), home = alarm_.armMode() == CAM_ARMED_HOME;
   int64_t until = alarm_.disarmedUntil();
   if (!io_.hubTold || alert != io_.hubAlert || nvr != io_.hubNvr || armed != io_.hubArmed || home != io_.hubHome || until != io_.hubUntil) {
@@ -308,7 +308,7 @@ bool CamMqttClient::nextMessage(uint32_t now, std::string& out) {
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER && (uint64_t)t > h.uptimeS;
     std::string json = jsonObject([&](CamJson& j) {
       j.num("free_kb", h.freeHeap / 1024).num("lowest_kb", h.lowestFreeHeap / 1024).num("largest_kb", h.largestBlock / 1024);
-      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", outside_.memoryFailures()).num("espnow_dropped", h.espNowDropped);
+      j.num("worst_largest_kb", h.worstLargestBlock / 1024).num("dropped", failures_.count()).num("espnow_dropped", h.espNowDropped);
       j.num("rssi", h.wifiRssi != 0, h.wifiRssi).num("uptime_s", (long long)h.uptimeS);
       j.str("started", clockOk, clockOk ? iso(t - (time_t)h.uptimeS) : std::string());
     });
