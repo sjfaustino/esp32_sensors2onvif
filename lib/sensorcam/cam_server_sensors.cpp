@@ -57,21 +57,11 @@ std::string SensorCamServer::handleSensor(const std::string& target, int& status
   return JSON_OK;
 }
 
+bool SensorCamServer::nvrListening(uint32_t now) const { return events_.nvrListening(now); }
+
 bool SensorCamServer::downloadingHistory() const {
   for (const HttpConn& c : http_)
     if (c.fd >= 0 && c.stream == &csvRead_) return true;
-  return false;
-}
-
-// The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
-// pulls events, it asked for events within the last minute. With no NVR address set, any subscriber counts.
-bool SensorCamServer::nvrListening(uint32_t now) const {
-  uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
-  for (int i = 0; i < SubTable::SIZE; i++) {
-    const CamSub& s = subs_.at(i);
-    if (!s.used || (nvr && s.peer != nvr)) continue;
-    if (s.push ? !s.pushFailed : now - s.pulledAt < CAM_PULL_ALIVE_MS) return true;  // other requests from it do not count
-  }
   return false;
 }
 

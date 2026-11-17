@@ -144,7 +144,11 @@ std::string SensorCamServer::statusJson(uint32_t now) {
     j.num("sensors", known).array("active");
     for (int id = 1; id <= alarm_.board().count(); id++)
       if (alarm_.board().active(id)) j.str(alarm_.slotName(id));
-    j.end().num("subscribers", subs_.count()).num("streams", video_.streamCount()).num("delayed_waiting", alarm_.delayedCount()).array("heard");
+    j.end()
+        .num("subscribers", events_.subs().count())
+        .num("streams", video_.streamCount())
+        .num("delayed_waiting", alarm_.delayedCount())
+        .array("heard");
     for (int id = 1; id <= alarm_.board().count(); id++) {
       const Health& h = alarm_.healthOf(id);
       if (!h.heard) continue;

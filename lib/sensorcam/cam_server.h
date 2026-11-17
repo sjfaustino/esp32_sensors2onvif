@@ -15,6 +15,7 @@
 #include "cam_json.h"
 #include "cam_mqtt_client.h"
 #include "cam_nodes.h"
+#include "cam_onvif_events.h"
 #include "cam_post.h"
 #include "cam_video.h"
 #include "cam_webhook.h"
@@ -98,7 +99,6 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   };
 
   int listenOn(uint16_t port);
-  void openDiscovery();
   void acceptHttp(int listenFd, uint32_t now);
   void serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now);
   void closeHttp(HttpConn& c);
@@ -149,13 +149,11 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   std::string statusJson(uint32_t now);
   std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
   std::string eventsTag() const;                  // changes whenever the Events page's list would, so an unchanged list is not built again
-  void startNotify(int i, uint32_t now);
   void notifyHook(int id, CamEventKind kind, bool delayed) override;
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) override;
   void sensorReset(int id) override;
   void sensorsRescanned(bool listChanged) override;
   bool apiSensors(const ApiRequest& r);
-  void serviceDiscovery();
 
   // ---- the web side of CamNodes: cam_server_nodes.cpp ----
   HttpConn* nodeImageOwner_ = nullptr;  // the upload of a node firmware file under way
@@ -173,12 +171,8 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamStore* store_;
   std::function<std::string()> localIp_;
   std::function<uint32_t()> millis_;
-  MotionSignal signal_;
-  SubTable subs_;
-  int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1, udp_ = -1;
+  int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1;
   HttpConn http_[MAX_HTTP];
-  CamPost notify_[SubTable::SIZE];  // the event pushes, one for each subscription
-  uint32_t messageNo_ = 1;
   uint32_t lastGoodWait_ = 0;
   uint32_t waitErrors_ = 0;
   int lastWaitErrno_ = 0;
@@ -188,6 +182,7 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   CamNodes nodes_;  // before alarm_, which reads its firmware files
   CamAlarm alarm_;  // after cfg_, the parts, storage_ and nodes_, which it uses
   CamMqttClient mqtt_;
+  CamOnvifEvents events_;
   CamVideo video_;
   CamWebhookSender webhook_;
   std::string unsupported_[6];                                            // the ONVIF requests the hub could not answer, shown on the ONVIF page

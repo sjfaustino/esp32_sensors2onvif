@@ -401,7 +401,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
       row("Picture storage", std::to_string(used / 1024) + " KB used of " + std::to_string(total / 1024) + " KB");
       row("Sensors", std::to_string(known));
       row("Video streams open", std::to_string(video_.streamCount()));
-      row("Event subscribers", std::to_string(subs_.count()));
+      row("Event subscribers", std::to_string(events_.subs().count()));
       if (alarm_.log().saveFailed()) row("Event history", "Could not be saved; storage may be full");
       j.end().num("crash", chip_->crashSize());
     }));
@@ -443,7 +443,7 @@ bool SensorCamServer::apiInfo(const ApiRequest& r) {
           .num("webPort", cfg_.webPort)
           .num("rtspPort", cfg_.rtspPort)
           .num("streams", video_.streamCount())
-          .num("subscribers", subs_.count());
+          .num("subscribers", events_.subs().count());
       j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", armed());
     }));
   } else {
@@ -538,7 +538,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
   if (r.is("GET", "/api/nvr")) {
     uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
     bool video = video_.playingTo(nvr), events = false;
-    for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && subs_.at(i).used && subs_.at(i).peer == nvr);
+    for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && events_.subs().at(i).used && events_.subs().at(i).peer == nvr);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.str("ip", cfg_.nvrIp).flag("video", video).flag("events", events).array("viewers");
       video_.viewers(j);
@@ -553,7 +553,7 @@ bool SensorCamServer::apiNetwork(const ApiRequest& r) {
       bool ok = store_->nvrSave(ip);
       if (ok) {
         cfg_.nvrIp = ip;
-        subs_.protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
+        events_.subs().protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
       }
       c.out = saved(ok, "could not save the NVR address");
     }

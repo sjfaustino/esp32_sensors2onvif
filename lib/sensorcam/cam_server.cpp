@@ -24,13 +24,13 @@ SensorCamServer::SensorCamServer(const CamConfig& cfg, std::function<std::string
       store_(cfg.store ? cfg.store : &noStore),
       localIp_(localIp),
       millis_(millisFn),
-      signal_(CAM_REPEAT_TRUE_MS),
       storage_(cfg.fsRoot),
       nodes_(cfg_, *radio_, storage_, alarm_, millisFn),
       alarm_(cfg_, *chip_, *radio_, *store_, storage_, nodes_.images(), *this, millisFn),
       mqtt_(cfg_, alarm_, *chip_, *this, localIp),
+      events_(cfg_, alarm_, localIp),
       video_(
-          cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { subs_.heard(peer, now); }, millisFn),
+          cfg_, *chip_, storage_, alarm_, logins_, [this](uint32_t peer, uint32_t now) { events_.subs().heard(peer, now); }, millisFn),
       webhook_(cfg_, alarm_, *chip_, [this](uint32_t now) { return nvrListening(now); }) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
@@ -53,30 +53,6 @@ int SensorCamServer::listenOn(uint16_t port) {
   return fd;
 }
 
-void SensorCamServer::openDiscovery() {
-  if (udp_ >= 0) netClose(udp_);
-  udp_ = (int)socket(AF_INET, SOCK_DGRAM, 0);
-  if (udp_ < 0) return;
-  int on = 1;
-  setsockopt(udp_, SOL_SOCKET, SO_REUSEADDR, (const char*)&on, sizeof(on));
-  sockaddr_in a{};
-  a.sin_family = AF_INET;
-  a.sin_port = htons(cfg_.discoveryPort);
-  a.sin_addr.s_addr = cfg_.loopbackOnly ? htonl(INADDR_LOOPBACK) : htonl(INADDR_ANY);
-  if (bind(udp_, (sockaddr*)&a, sizeof(a)) != 0) {
-    netClose(udp_);
-    udp_ = -1;
-    return;
-  }
-  netNonblock(udp_);
-  if (!cfg_.loopbackOnly) {
-    ip_mreq m{};
-    m.imr_multiaddr.s_addr = inet_addr(MULTICAST_GROUP);
-    m.imr_interface.s_addr = htonl(INADDR_ANY);
-    setsockopt(udp_, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&m, sizeof(m));
-  }
-}
-
 bool SensorCamServer::begin() {
   netInit();
   onvifListen_ = listenOn(cfg_.onvifPort);
@@ -84,19 +60,17 @@ bool SensorCamServer::begin() {
   if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort)
     captiveListen_ = listenOn(cfg_.captivePort);
   bool videoOk = video_.begin(listenOn(cfg_.rtspPort));
-  openDiscovery();
+  events_.begin();
   lastGoodWait_ = millis_();
   nodes_.begin();
   alarm_.begin();
   mqtt_.begin();
-  subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
   return onvifListen_ >= 0 && webListen_ >= 0 && videoOk;
 }
 
 std::string SensorCamServer::debugLine() {
-  int web = 0, video = video_.openCount(), push = 0;
+  int web = 0, video = video_.openCount(), push = events_.pushCount();
   for (const HttpConn& c : http_) web += c.fd >= 0;
-  for (const CamPost& n : notify_) push += !n.idle();
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " + std::to_string(accepted_) +
          ", refused " + std::to_string(refused_) + ", open web " + std::to_string(web) + " video " + std::to_string(video) + " push " +
          std::to_string(push) + ", short of memory " + std::to_string(memoryFailures());
@@ -104,14 +78,7 @@ std::string SensorCamServer::debugLine() {
 
 void SensorCamServer::networkUp() {
   alarm_.networkUp();
-  openDiscovery();
-  if (cfg_.loopbackOnly || udp_ < 0) return;
-  std::string hello = discoveryHello(localIp_(), cfg_.onvifPort, cfg_.serial, messageNo_++);
-  sockaddr_in to{};
-  to.sin_family = AF_INET;
-  to.sin_port = htons(MULTICAST_PORT);
-  to.sin_addr.s_addr = inet_addr(MULTICAST_GROUP);
-  sendto(udp_, hello.data(), (int)hello.size(), 0, (sockaddr*)&to, sizeof(to));
+  events_.networkUp();
 }
 
 // Read from storage a piece at a time as it is sent, because a picture-sized buffer per reply is more than RAM allows.
@@ -144,7 +111,7 @@ void SensorCamServer::closeHttp(HttpConn& c) {
 int SensorCamServer::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;
-  for (const CamPost& n : notify_) open += n.fd() >= 0;
+  open += events_.pushCount();
   return open + (webhook_.fd() >= 0) + (mqtt_.fd() >= 0);
 }
 
@@ -194,7 +161,7 @@ void SensorCamServer::reply(HttpConn& c, int status, const char* type, std::stri
 }
 
 void SensorCamServer::undoPull(HttpConn& c) {
-  CamSub* sub = c.undoSub ? subs_.find(c.undoSub) : nullptr;
+  CamSub* sub = c.undoSub ? events_.subs().find(c.undoSub) : nullptr;
   if (sub) sub->lastPull = c.undoState;
   c.undoSub = 0;
 }
@@ -296,11 +263,11 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
       status = 400;
       return soapFault("Subscribe needs an http consumer address with an IPv4 host");
     }
-    reply = soapSubscribeReply(ctx, subs_.addPush(consumer, c.peer, now).id);
+    reply = soapSubscribeReply(ctx, events_.subs().addPush(consumer, c.peer, now).id);
   } else if (action == "CreatePullPointSubscription") {
-    reply = soapPullPointReply(ctx, subs_.addPull(c.peer, now).id);
+    reply = soapPullPointReply(ctx, events_.subs().addPull(c.peer, now).id);
   } else if (action == "PullMessages") {
-    CamSub* sub = ownSub(subs_, path, c.peer);
+    CamSub* sub = ownSub(events_.subs(), path, c.peer);
     if (sub) sub->pulledAt = now;
     int state = alarm_.board().anyActive() ? 1 : 0;
     bool changed = sub && sub->lastPull != state;
@@ -325,12 +292,12 @@ std::string SensorCamServer::handleOnvif(HttpConn& c, const std::string& headers
   } else if (action == "Renew") {
     reply = soapRenewReply(ctx);
   } else if (action == "Unsubscribe") {
-    CamSub* sub = ownSub(subs_, path, c.peer);
+    CamSub* sub = ownSub(events_.subs(), path, c.peer);
     if (!sub) {
       status = 400;
       return soapFault("no such subscription from this address");
     }
-    subs_.remove(sub->id);
+    events_.subs().remove(sub->id);
     reply = soapUnsubscribeReply();
   } else {
     reply = soapDeviceReply(action, ctx);
@@ -368,7 +335,7 @@ void SensorCamServer::servicePolls(uint32_t now) {
   int state = alarm_.board().anyActive() ? 1 : 0;
   for (HttpConn& c : http_) {
     if (c.fd < 0 || !c.pollWaiting) continue;
-    CamSub* sub = subs_.find(c.pollSub);
+    CamSub* sub = events_.subs().find(c.pollSub);
     bool changed = sub && sub->lastPull != state;
     if (sub && !changed && (int32_t)(now - c.pollUntil) < 0) continue;
     bool initial = sub && sub->lastPull < 0;
@@ -559,7 +526,7 @@ bool SensorCamServer::handleHttp(HttpConn& c, uint32_t now) {
     if (c.in.size() < whole) return false;
   }
 
-  subs_.heard(c.peer, now);
+  events_.subs().heard(c.peer, now);
 
   int status = 200;
   if (isApi) {
@@ -696,51 +663,6 @@ void SensorCamServer::serviceHttp(HttpConn& c, bool readable, bool writable, uin
 
 // ---- ONVIF event push ----
 
-void SensorCamServer::startNotify(int i, uint32_t now) {
-  CamSub& sub = subs_.at(i);
-  HttpUrl url;
-  if (!parseHttpUrl(sub.consumer, url)) {
-    sub.pending = false;
-    return;
-  }
-  // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
-  // and is tried again on the next pass.
-  std::string body = soapNotify(alarm_.board().anyActive(), !sub.initialized, time(nullptr));
-  std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
-                    "\r\nContent-Type: application/soap+xml; charset=utf-8; "
-                    "action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
-                    std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
-  out.reserve(out.size() + body.size());
-  out += body;
-  std::string().swap(body);
-  CamPost::Start started = notify_[i].start(url, out, CAM_NOTIFY_SEND_MS, CAM_NOTIFY_CLOSE_MS, now);
-  if (started == CamPost::NO_SOCKET) return;  // still pending, so it is tried again on the next pass
-  sub.pending = false;
-  if (started == CamPost::REFUSED) {
-    sub.pushFailed = true;
-    return;
-  }
-  sub.initialized = true;
-}
-
-// ---- WS-Discovery ----
-
-void SensorCamServer::serviceDiscovery() {
-  char buf[2048];
-  sockaddr_in from{};
-  socklen_t len = sizeof(from);
-  int n = (int)recvfrom(udp_, buf, sizeof(buf) - 1, 0, (sockaddr*)&from, &len);
-  if (n <= 0) return;
-  std::string msg(buf, n);
-  if (soapAction(msg) != "Probe") return;
-  std::string types = xmlFirstText(msg, "Types");
-  if (!types.empty() && types.find("NetworkVideoTransmitter") == std::string::npos && types.find("Device") == std::string::npos) return;
-  std::string reply = discoveryProbeMatch(xmlFirstText(msg, "MessageID"), localIp_(), cfg_.onvifPort, cfg_.serial, messageNo_++);
-  sendto(udp_, reply.data(), (int)reply.size(), 0, (sockaddr*)&from, len);
-}
-
-// ---- main loop ----
-
 // Running out of memory drops only the piece of work that needed it, never the hub: a restart would miss alerts while it
 // lasted. Whatever was dropped is tried again on a later pass, or by the client that asked.
 // The two halves apart, so work that keeps running out of memory cannot stop the connections being served.
@@ -760,19 +682,9 @@ void SensorCamServer::poll(int maxWaitMs) {
 void SensorCamServer::housekeeping(uint32_t now) {
   alarm_.tick(now);
   webhook_.dailyCheck(now);
-  subs_.expire(now);
+  events_.subs().expire(now);
   servicePolls(now);
-  if (signal_.update(alarm_.board().anyActive(), now)) subs_.markAllPending();
-  for (int i = 0; i < SubTable::SIZE; i++) {  // so one failed push cannot leave the NVR counted as not listening
-    CamSub& s = subs_.at(i);
-    if (!s.used || !s.push || !s.pushFailed || now - s.retryAt < CAM_PUSH_RETRY_MS) continue;
-    s.pending = true;
-    s.retryAt = now;
-  }
-  for (int i = 0; i < SubTable::SIZE; i++) {
-    CamSub& s = subs_.at(i);
-    if (s.used && s.push && s.pending && notify_[i].idle() && sharedSockets() <= MAX_HTTP) startNotify(i, now);
-  }
+  events_.tick(now, sharedSockets() - events_.pushCount(), MAX_HTTP);
   webhook_.tick(now, sharedSockets() < MAX_HTTP);  // leaves one for an event push
   try {                                            // on its own, so running out of memory there still leaves the picture to be sent
     mqtt_.tick(now, sharedSockets() < MAX_HTTP && !updating());
@@ -800,14 +712,13 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   if (onvifListen_ >= 0 && room) add(onvifListen_, rd);
   if (webListen_ >= 0 && room) add(webListen_, rd);
   if (captiveListen_ >= 0 && room) add(captiveListen_, rd);
-  if (udp_ >= 0) add(udp_, rd);
   for (HttpConn& c : http_) {
     if (c.fd < 0) continue;
     add(c.fd, rd);
     if (c.answered && !c.discardLeft) add(c.fd, wr);
   }
   video_.watch(rd, wr, maxFd, !updating());
-  for (const CamPost& n : notify_) n.watch(rd, wr, maxFd);
+  events_.watch(rd, wr, maxFd);
   webhook_.watch(rd, wr, maxFd);
   if (mqtt_.wantsRead()) add(mqtt_.fd(), rd);
   if (mqtt_.wantsWrite()) add(mqtt_.fd(), wr);
@@ -826,15 +737,10 @@ void SensorCamServer::pollOnce(int maxWaitMs) {
   if (onvifListen_ >= 0 && FD_ISSET(onvifListen_, &rd)) acceptHttp(onvifListen_, now);
   if (webListen_ >= 0 && FD_ISSET(webListen_, &rd)) acceptHttp(webListen_, now);
   if (captiveListen_ >= 0 && FD_ISSET(captiveListen_, &rd)) acceptHttp(captiveListen_, now);
-  if (udp_ >= 0 && FD_ISSET(udp_, &rd)) serviceDiscovery();
   for (HttpConn& c : http_)
     if (c.fd >= 0) serviceHttp(c, FD_ISSET(c.fd, &rd), FD_ISSET(c.fd, &wr), now);
   video_.serve(rd, wr, now);
-  for (int i = 0; i < SubTable::SIZE; i++) {
-    CamPost& n = notify_[i];
-    // Ended before the whole message was sent, the NVR did not get it.
-    if (!n.idle() && n.service(FD_ISSET(n.fd(), &rd), FD_ISSET(n.fd(), &wr), now)) subs_.at(i).pushFailed = !n.delivered();
-  }
+  events_.serve(rd, wr, now);
   webhook_.serve(rd, wr, now);
   if (mqtt_.fd() >= 0) mqtt_.service(FD_ISSET(mqtt_.fd(), &rd), FD_ISSET(mqtt_.fd(), &wr), now);
 }
