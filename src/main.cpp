@@ -388,6 +388,7 @@ static void restartFor(RestartCause cause) {
 
 static const uint32_t PING_LOST_RESTART_MS = 90000;
 static volatile uint32_t pingReplies = 0, pingLost = 0, lastPingReply = 0;
+static volatile uint32_t pingRepliesEver = 0, pingLostEver = 0;  // never reset by a new connection, for the radio test
 static esp_ping_handle_t pingSession = nullptr;
 static uint32_t pingTarget = 0;
 
@@ -414,8 +415,12 @@ static void startGatewayPing() {
   callbacks.on_ping_success = [](esp_ping_handle_t, void*) {
     lastPingReply = millis();
     pingReplies = pingReplies + 1;
+    pingRepliesEver = pingRepliesEver + 1;
   };
-  callbacks.on_ping_timeout = [](esp_ping_handle_t, void*) { pingLost = pingLost + 1; };
+  callbacks.on_ping_timeout = [](esp_ping_handle_t, void*) {
+    pingLost = pingLost + 1;
+    pingLostEver = pingLostEver + 1;
+  };
   if (esp_ping_new_session(&config, &callbacks, &pingSession) == ESP_OK) esp_ping_start(pingSession);
 }
 
@@ -450,9 +455,10 @@ static bool wasConnected = false;
 // through a restart either. Meanwhile it watches the Wi-Fi drops, the router's answers to the ping every 20 s, and the
 // signal.
 static const uint32_t LR_TEST_MS = 120000;
+static const uint32_t LR_TEST_DELAY_MS = 1000;  // the change waits this long, so the reply that started it gets out first
 struct LrTest {
-  bool running = false, done = false;
-  uint32_t startedAt = 0, lastSample = 0;
+  bool running = false, done = false, applied = false;
+  uint32_t startedAt = 0, lastSample = 0;     // startedAt: when LR was allowed, or asked for until then
   uint8_t before = 0, during = 0, after = 0;  // the protocol bits: as found, as read back with LR, as put back
   esp_err_t setErr = ESP_OK, restoreErr = ESP_OK;
   uint32_t drops0 = 0, replies0 = 0, lost0 = 0, drops = 0, replies = 0, lost = 0;
@@ -466,8 +472,8 @@ static void lrEnd() {
   lr.restoreErr = esp_wifi_set_protocol(WIFI_IF_STA, lr.before);
   esp_wifi_get_protocol(WIFI_IF_STA, &lr.after);
   lr.drops = wifiDrops - lr.drops0;
-  lr.replies = pingReplies - lr.replies0;
-  lr.lost = pingLost - lr.lost0;
+  lr.replies = pingRepliesEver - lr.replies0;
+  lr.lost = pingLostEver - lr.lost0;
   lr.connectedAtEnd = WiFi.status() == WL_CONNECTED;
   lr.running = false;
   lr.done = true;
@@ -478,6 +484,16 @@ static void lrEnd() {
 static void runLrTest() {
   if (!lr.running) return;
   uint32_t now = millis();
+  if (!lr.applied) {
+    if (now - lr.startedAt < LR_TEST_DELAY_MS) return;
+    lr.applied = true;
+    lr.startedAt = lr.lastSample = now;
+    lr.setErr = esp_wifi_set_protocol(WIFI_IF_STA, lr.before | WIFI_PROTOCOL_LR);
+    esp_wifi_get_protocol(WIFI_IF_STA, &lr.during);
+    Serial.printf("Long Range test for %u s: modes 0x%02X -> 0x%02X (%s).\n", (unsigned)(LR_TEST_MS / 1000), lr.before, lr.during,
+                  esp_err_to_name(lr.setErr));
+    return;
+  }
   if (now - lr.lastSample >= 1000) {
     lr.lastSample = now;
     if (WiFi.status() == WL_CONNECTED) {
@@ -499,28 +515,24 @@ static bool radioTest(bool start, CamJson& j) {
     lr = LrTest();
     esp_wifi_get_protocol(WIFI_IF_STA, &lr.before);
     lr.drops0 = wifiDrops;
-    lr.replies0 = pingReplies;
-    lr.lost0 = pingLost;
+    lr.replies0 = pingRepliesEver;
+    lr.lost0 = pingLostEver;
     lr.rssiBefore = WiFi.RSSI();
     lr.rssiMin = 0;
-    lr.startedAt = lr.lastSample = millis();
-    lr.running = true;  // before the change, so the clock puts it back even if the change cuts the hub off
-    lr.setErr = esp_wifi_set_protocol(WIFI_IF_STA, lr.before | WIFI_PROTOCOL_LR);
-    esp_wifi_get_protocol(WIFI_IF_STA, &lr.during);
-    Serial.printf("Long Range test for %u s: modes 0x%02X -> 0x%02X (%s).\n", (unsigned)(LR_TEST_MS / 1000), lr.before, lr.during,
-                  esp_err_to_name(lr.setErr));
+    lr.startedAt = millis();
+    lr.running = true;  // runLrTest allows LR a second from now, after this reply, and puts it back by the clock
   }
-  j.str("state", lr.running ? "running" : lr.done ? "done" : "not run");
+  j.str("state", !lr.running ? (lr.done ? "done" : "not run") : lr.applied ? "running" : "starting");
   if (!lr.running && !lr.done) return true;
-  uint32_t elapsed = (lr.running ? millis() : lr.startedAt + LR_TEST_MS) - lr.startedAt;
+  uint32_t elapsed = !lr.applied ? 0 : (lr.running ? millis() : lr.startedAt + LR_TEST_MS) - lr.startedAt;
   j.num("seconds", elapsed / 1000).num("of", LR_TEST_MS / 1000);
   j.str("set", esp_err_to_name(lr.setErr)).num("modesBefore", lr.before).num("modesDuring", lr.during).flag("lrTaken", lr.during & WIFI_PROTOCOL_LR);
   j.num("rssiBefore", lr.rssiBefore).num("samplesOn", lr.samples).num("samplesOff", lr.offSamples);
   j.num("rssiMin", lr.samples != 0, lr.rssiMin)
       .num("rssiMax", lr.samples != 0, lr.rssiMax)
       .num("rssiAverage", lr.samples != 0, lr.samples ? lr.rssiSum / lr.samples : 0);
-  uint32_t drops = lr.running ? wifiDrops - lr.drops0 : lr.drops, replies = lr.running ? pingReplies - lr.replies0 : lr.replies,
-           lost = lr.running ? pingLost - lr.lost0 : lr.lost;
+  uint32_t drops = lr.running ? wifiDrops - lr.drops0 : lr.drops, replies = lr.running ? pingRepliesEver - lr.replies0 : lr.replies,
+           lost = lr.running ? pingLostEver - lr.lost0 : lr.lost;
   j.num("wifiDrops", drops).num("routerReplies", replies).num("routerLost", lost);
   if (lr.done) j.str("restore", esp_err_to_name(lr.restoreErr)).num("modesAfter", lr.after).flag("connectedAtEnd", lr.connectedAtEnd);
   j.flag("connectedNow", WiFi.status() == WL_CONNECTED);

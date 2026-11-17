@@ -397,7 +397,8 @@ of it with the confirmation of its next alert, so the first blink comes with the
 
 **Long Range radio test.** ESP-NOW has an Espressif "Long Range" mode that reaches further at a lower speed. Before the
 hub could use it for distant nodes, its own Wi-Fi must keep working with LR allowed beside the usual modes. `POST
-/api/radio-test` allows it for 2 minutes, then puts the modes back as they were, by the hub's own clock, so a test that
+/api/radio-test` allows it for 2 minutes, from a second after it answers, as the change briefly drops the Wi-Fi, then
+puts the modes back as they were, by the hub's own clock, so a test that
 cut the hub off its network undoes itself and the hub reconnects; a restart also undoes it. `GET /api/radio-test` says
 how it is going or went: whether the chip took the mode, the Wi-Fi signal before and during, Wi-Fi drops, and the
 router's answers to the hub's ping every 20 s. No drops, the router answering throughout and a steady signal mean the
