@@ -28,7 +28,9 @@ CamWeb::CamWeb(const CamWebParts& p)
       webhook_(p.webhook),
       localIp_(p.localIp),
       millis_(p.millis),
-      failures_(p.memoryFailures) {
+      failures_(p.memoryFailures),
+      onvifPassword_(p.cfg.onvifPassword),
+      schedule_(p.cfg.schedule) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
 }
@@ -227,15 +229,15 @@ std::string CamWeb::handleOnvif(HttpConn& c, const std::string& headers, const s
   ctx.onvifPort = cfg_.onvifPort;
   radio_->onvifNetwork(ctx);
   ctx.now = time(nullptr);
-  if (!cfg_.onvifPassword.empty()) {
-    ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword);
+  if (!onvifPassword_.empty()) {
+    ctx.snapshotToken = camSnapshotToken(cfg_.snapshotSecret, onvifPassword_);
     // ONVIF allows these before logging in. A client needs the clock to build its login.
     static const char* const OPEN[] = {"GetSystemDateAndTime", "GetCapabilities",      "GetServices", "GetServiceCapabilities",
                                        "GetHostname",          "GetEndpointReference", "GetWsdlUrl"};
     bool open = false;
     for (const char* name : OPEN) open = open || action == name;
     bool presented = !open && !xmlFirstText(body, "Password").empty(), allowed = logins_.allowed(c.peer, now);
-    bool ok = open || (presented && allowed && camWsseValid(body, HUB_USER, cfg_.onvifPassword));
+    bool ok = open || (presented && allowed && camWsseValid(body, HUB_USER, onvifPassword_));
     if (presented && allowed) logins_.note(c.peer, ok, now);
     if (!ok) {
       status = 400;
@@ -526,7 +528,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
       video_.giveBack();
     }
   } else if (isSnapshot) {
-    if (!cfg_.onvifPassword.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, cfg_.onvifPassword)))
+    if (!onvifPassword_.empty() && !camSameText(queryParam(target, "token"), camSnapshotToken(cfg_.snapshotSecret, onvifPassword_)))
       c.out = httpResponse(403, "text/plain", "not authorized\n");
     else
       serveSnapshot(c);

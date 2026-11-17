@@ -18,9 +18,9 @@ class CamMqttOutside {
 
 class CamMqttClient {
  public:
-  // cfg is the server's, which it changes as settings are saved; it and the others outlive the client.
+  // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the others outlive the client.
   CamMqttClient(const CamConfig& cfg, CamAlarm& alarm, CamChip& chip, CamMqttOutside& outside, std::function<std::string()> localIp)
-      : cfg_(cfg), alarm_(alarm), chip_(&chip), outside_(outside), localIp_(localIp) {}
+      : cfg_(cfg), alarm_(alarm), chip_(&chip), outside_(outside), localIp_(localIp), settings_(cfg.mqtt) {}
   void begin() { eventsSent_ = alarm_.log().added(); }  // after the history is read: the run before sent those
   // Connects, gives up on a broker that stopped answering, and builds the next message. mayConnect: a socket is free for
   // a new connection. Running out of memory throws, and leaves the message to be built on a later pass.
@@ -29,7 +29,8 @@ class CamMqttClient {
   bool wantsRead() const { return io_.fd >= 0 && io_.state != Io::CONNECTING; }
   bool wantsWrite() const { return io_.fd >= 0 && (io_.state == Io::CONNECTING || io_.outPos < io_.out.size()); }
   void service(bool readable, bool writable, uint32_t now);
-  void restart(uint32_t now);  // the settings changed: they apply at once
+  const CamMqtt& settings() const { return settings_; }
+  void setSettings(const CamMqtt& m, uint32_t now);  // applied at once, with a new connection
   void sensorReset(int id) { shown_[id - 1] = Shown(); }
   void sensorsChanged() { io_.discovery = 0; }  // Home Assistant is told of the sensors again
   std::string state() const;                    // as the pages show it
@@ -84,6 +85,7 @@ class CamMqttClient {
   CamChip* chip_;
   CamMqttOutside& outside_;
   std::function<std::string()> localIp_;
+  CamMqtt settings_;
   Io io_;
   Shown shown_[CAM_MAX_SENSORS];
   Told told_[CAM_MAX_SENSORS];

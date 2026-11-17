@@ -165,6 +165,9 @@ class CamStore {
   virtual bool nvrSave(const std::string& ip) { return false; }
 };
 
+// The hub's settings at the start, which do not change while it runs. A setting the pages change later is held by the
+// part it concerns from then on: the health alarm and the re-arm time by CamAlarm, the NVR address by CamOnvifEvents, the
+// webhook by CamWebhookSender, MQTT by CamMqttClient, the restart schedule by CamWeb.
 struct CamConfig {
   CamChip* chip = nullptr;  // the board's parts, which outlive the server; any may be left out
   CamRadio* radio = nullptr;

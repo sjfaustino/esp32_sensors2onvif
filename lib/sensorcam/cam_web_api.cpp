@@ -438,7 +438,7 @@ bool CamWeb::apiInfo(const ApiRequest& r) {
       j.array("unsupported");
       for (const std::string& seen : unsupported_)
         if (!seen.empty()) j.str(seen);
-      j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !cfg_.onvifPassword.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
+      j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !onvifPassword_.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
       j.num("onvifPort", cfg_.onvifPort)
           .num("webPort", cfg_.webPort)
           .num("rtspPort", cfg_.rtspPort)
@@ -478,7 +478,7 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
       c.out = saved(chip_->timeSave(t), "could not save the time settings");
     }
   } else if (r.is("GET", "/api/schedule")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", cfg_.schedule.on).num("day", cfg_.schedule.day).num("minute", cfg_.schedule.minute); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", schedule_.on).num("day", schedule_.day).num("minute", schedule_.minute); }));
   } else if (r.is("POST", "/api/schedule")) {
     std::string form = r.form();
     long long day = 0, minute = 0;
@@ -491,7 +491,7 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
       s.day = (int)day;
       s.minute = (int)minute;
       bool ok = store_->scheduleSave(s);
-      if (ok) cfg_.schedule = s;
+      if (ok) schedule_ = s;
       c.out = saved(ok, "could not save the schedule");
     }
   } else if (r.is("GET", "/api/radio-test") || r.is("POST", "/api/radio-test")) {
@@ -516,10 +516,10 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
     else
       c.out = saved(chip_->maintenance("newkeys"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", cfg_.healthAlarm); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", alarm_.healthAlarm()); }));
   } else if (r.is("POST", "/api/alerts")) {
     bool on = queryParam(r.form(), "alarm") == "1", ok = store_->healthSave(on);
-    if (ok) cfg_.healthAlarm = on;
+    if (ok) alarm_.setHealthAlarm(on);
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("GET", "/api/backup")) {
     c.out = httpResponse(200, "text/plain", store_->backupText());
@@ -536,11 +536,11 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
 bool CamWeb::apiNetwork(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("GET", "/api/nvr")) {
-    uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
+    uint32_t nvr = events_.nvrIp().empty() ? 0 : inet_addr(events_.nvrIp().c_str());
     bool video = video_.playingTo(nvr), events = false;
     for (int i = 0; i < SubTable::SIZE; i++) events = events || (nvr && events_.subs().at(i).used && events_.subs().at(i).peer == nvr);
     c.out = jsonOk(jsonObject([&](CamJson& j) {
-      j.str("ip", cfg_.nvrIp).flag("video", video).flag("events", events).array("viewers");
+      j.str("ip", events_.nvrIp()).flag("video", video).flag("events", events).array("viewers");
       video_.viewers(j);
       j.end();
     }));
@@ -551,10 +551,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
       c.out = jsonFail(400, "check the IP address");
     } else {
       bool ok = store_->nvrSave(ip);
-      if (ok) {
-        cfg_.nvrIp = ip;
-        events_.subs().protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
-      }
+      if (ok) events_.setNvr(ip);
       c.out = saved(ok, "could not save the NVR address");
     }
   } else if (r.is("GET", "/api/network")) {
@@ -660,7 +657,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     } else if (t < CAM_CLOCK_VALID_AFTER) {
       c.out = jsonFail(409, "the hub's clock is not set yet, and the node needs it to know when the walk test ends");
     } else {
-      alarm_.nodeByMac(mac)->walkUntil = stop ? 0 : (uint32_t)t + CAM_WALK_TEST_S;
+      alarm_.setWalkTest(mac, stop ? 0 : (uint32_t)t + CAM_WALK_TEST_S);
       c.out = jsonOk(JSON_OK);
     }
   } else if (r.is("GET", "/api/webhook")) {
@@ -679,11 +676,11 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none");
     } else {
       bool ok = store_->webhookSave(w);
-      if (ok) cfg_.webhook = w;
+      if (ok) webhook_.setSettings(w);
       c.out = saved(ok, "could not save the notification settings");
     }
   } else if (r.is("POST", "/api/webhook/test")) {
-    if (cfg_.webhook.url.empty()) {
+    if (webhook_.settings().url.empty()) {
       c.out = jsonFail(400, "save an address first");
     } else {
       std::string message = "Test from " + cfg_.hostName;
@@ -695,11 +692,11 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     bool timed = !alarm_.armed() && alarm_.disarmedUntil();
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       j.flag("armed", alarm_.armed()).str("mode", camArmModeName(alarm_.armMode()));
-      j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", cfg_.rearmMinutes);
+      j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", alarm_.rearmMinutes());
     }));
   } else if (r.is("POST", "/api/arm")) {
     std::string form = r.form(), on = queryParam(form, "armed"), mode = queryParam(form, "mode"), forText = queryParam(form, "for");
-    long long minutes = cfg_.rearmMinutes;
+    long long minutes = alarm_.rearmMinutes();
     if (mode.empty()) mode = on == "1" ? "away" : on == "0" ? "disarmed" : "";  // armed=1 and 0, as earlier firmware took
     if (mode != "away" && mode != "home" && mode != "disarmed") {
       c.out = jsonFail(400, "mode must be away, home or disarmed");
@@ -719,7 +716,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
       bool ok = store_->rearmSave((uint32_t)minutes);
-      if (ok) cfg_.rearmMinutes = (uint32_t)minutes;
+      if (ok) alarm_.setRearmMinutes((uint32_t)minutes);
       c.out = saved(ok, "could not save the setting");
     }
   } else if (r.is("GET", "/api/mqtt")) {
@@ -741,13 +738,10 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "the user name and password may have up to 64 characters");
     } else {
       m.port = (uint16_t)n;
-      if (m.password.empty() && !m.user.empty()) m.password = cfg_.mqtt.password;  // left blank, the saved one is kept
+      if (m.password.empty() && !m.user.empty()) m.password = mqtt_.settings().password;  // left blank, the saved one is kept
       if (m.user.empty()) m.password.clear();
       bool ok = store_->mqttSave(m);
-      if (ok) {
-        cfg_.mqtt = m;
-        mqtt_.restart(millis_());  // the new settings apply at once
-      }
+      if (ok) mqtt_.setSettings(m, millis_());  // the new settings apply at once
       c.out = saved(ok, "could not save the MQTT settings");
     }
   } else if (r.is("GET", "/api/events.csv")) {  // read from storage 1 KB at a time, because it is far larger than any free block

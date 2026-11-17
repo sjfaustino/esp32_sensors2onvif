@@ -32,8 +32,11 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   void networkUp();          // call after each Wi-Fi (re)connect
   // Milliseconds since the socket wait last worked. A large value means the server has stopped serving.
   uint32_t stalledMs(uint32_t now) const { return now - lastGoodWait_; }
-  std::string debugLine();                                                                 // counters for the serial heartbeat
-  void setOnvifPassword(const std::string& password) { cfg_.onvifPassword = password; }    // for the PC tests
+  std::string debugLine();                              // counters for the serial heartbeat
+  void setOnvifPassword(const std::string& password) {  // for the PC tests
+    web_.setOnvifPassword(password);
+    video_.setOnvifPassword(password);
+  }
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow() { alarm_.saveNow(); }                                                     // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
@@ -68,8 +71,8 @@ class SensorCamServer : private CamAlarmOutside, private CamMqttOutside {
   void sensorReset(int id) override;
   void sensorsRescanned(bool listChanged) override;
 
-  CamConfig cfg_;  // the API changes it as settings are saved, and the parts read it
-  CamChip* chip_;  // the board's parts, or ones with every default for a part left out
+  const CamConfig cfg_;  // the start-up settings; see CamConfig for who holds what changes later
+  CamChip* chip_;        // the board's parts, or ones with every default for a part left out
   CamRadio* radio_;
   CamStore* store_;
   std::function<std::string()> localIp_;

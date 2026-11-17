@@ -6,11 +6,16 @@
 #include "cam_server_internal.h"
 
 CamOnvifEvents::CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, std::function<std::string()> localIp)
-    : cfg_(cfg), alarm_(alarm), localIp_(localIp), signal_(CAM_REPEAT_TRUE_MS) {}
+    : cfg_(cfg), alarm_(alarm), localIp_(localIp), nvrIp_(cfg.nvrIp), signal_(CAM_REPEAT_TRUE_MS) {}
 
 void CamOnvifEvents::begin() {
   openDiscovery();
-  subs_.protect(cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str()));
+  setNvr(nvrIp_);
+}
+
+void CamOnvifEvents::setNvr(const std::string& ip) {
+  nvrIp_ = ip;
+  subs_.protect(ip.empty() ? 0 : inet_addr(ip.c_str()));
 }
 
 void CamOnvifEvents::networkUp() {
@@ -59,7 +64,7 @@ int CamOnvifEvents::pushCount() const {
 }
 
 bool CamOnvifEvents::nvrListening(uint32_t now) const {
-  uint32_t nvr = cfg_.nvrIp.empty() ? 0 : inet_addr(cfg_.nvrIp.c_str());
+  uint32_t nvr = nvrIp_.empty() ? 0 : inet_addr(nvrIp_.c_str());
   for (int i = 0; i < SubTable::SIZE; i++) {
     const CamSub& s = subs_.at(i);
     if (!s.used || (nvr && s.peer != nvr)) continue;

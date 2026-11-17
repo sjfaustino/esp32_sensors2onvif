@@ -13,7 +13,7 @@
 
 class CamOnvifEvents {
  public:
-  // cfg is the server's, which it changes as settings are saved; it and alarm outlive this.
+  // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and alarm outlive this.
   CamOnvifEvents(const CamConfig& cfg, const CamAlarm& alarm, std::function<std::string()> localIp);
   void begin();      // opens the discovery socket, and keeps a place for the NVR's subscription
   void networkUp();  // after each Wi-Fi (re)connect: the socket again, and a hello to anyone listening
@@ -26,6 +26,8 @@ class CamOnvifEvents {
   // The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
   // pulls events, it asked for events within the last minute. With no NVR address set, any subscriber counts.
   bool nvrListening(uint32_t now) const;
+  const std::string& nvrIp() const { return nvrIp_; }  // empty when not set
+  void setNvr(const std::string& ip);                  // its subscriptions are then the last pushed out for room
   SubTable& subs() { return subs_; }
   const SubTable& subs() const { return subs_; }
 
@@ -37,6 +39,7 @@ class CamOnvifEvents {
   const CamConfig& cfg_;
   const CamAlarm& alarm_;
   std::function<std::string()> localIp_;
+  std::string nvrIp_;
   SubTable subs_;
   MotionSignal signal_;
   CamPost notify_[SubTable::SIZE];  // the event pushes, one for each subscription

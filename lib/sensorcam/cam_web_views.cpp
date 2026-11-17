@@ -105,8 +105,13 @@ std::string CamWeb::overviewJson(uint32_t now) {
     for (int id = 1; id <= alarm_.board().count(); id++)
       if (alarm_.slotOf(id).used && alarm_.board().active(id))
         j.object().str("sensor", alarm_.slotName(id)).str("name", alarm_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
-    j.end().object("nvr").flag("set", !cfg_.nvrIp.empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount()).end();
-    j.str("mqtt", mqtt_.state()).object("webhook").flag("set", !cfg_.webhook.url.empty()).str("last", webhook_.result()).end().array("problems");
+    j.end().object("nvr").flag("set", !events_.nvrIp().empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount()).end();
+    j.str("mqtt", mqtt_.state())
+        .object("webhook")
+        .flag("set", !webhook_.settings().url.empty())
+        .str("last", webhook_.result())
+        .end()
+        .array("problems");
     for (int id = 1; id <= alarm_.board().count(); id++) {
       const Health& h = alarm_.healthOf(id);
       if (!alarm_.slotOf(id).used) continue;
@@ -132,7 +137,8 @@ std::string CamWeb::overviewJson(uint32_t now) {
     bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(cfg_.webPassword), cfg_.setupPasswordHash);
     bool testKnown = clockOk && lastTest >= CAM_CLOCK_VALID_AFTER && lastTest <= t;
     j.object("ready").flag("password", !cfg_.webPassword.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
-    j.flag("notify", !cfg_.webhook.url.empty() || !cfg_.mqtt.host.empty()).flag("daily", !cfg_.webhook.url.empty() && cfg_.webhook.dailyMinute >= 0);
+    j.flag("notify", !webhook_.settings().url.empty() || !mqtt_.settings().host.empty())
+        .flag("daily", !webhook_.settings().url.empty() && webhook_.settings().dailyMinute >= 0);
     j.num("testAgo_s", testKnown, (long long)(t - lastTest)).end();
   });
 }

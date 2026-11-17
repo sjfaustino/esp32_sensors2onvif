@@ -102,12 +102,12 @@ void CamVideo::request(RtspConn& c, const std::string& text, uint32_t now) {
   std::string head = "RTSP/1.0 200 OK\r\nCSeq: " + cseq + "\r\nServer: SensorCam\r\n";
   heard_(c.peer, now);
 
-  if (!cfg_.onvifPassword.empty() && method != "OPTIONS" && !c.authed) {
+  if (!onvifPassword_.empty() && method != "OPTIONS" && !c.authed) {
     if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
     std::string auth = headerValue(text, "authorization");
     bool allowed = logins_.allowed(c.peer, now);
-    bool ok = allowed &&
-              (camDigestValid(auth, method, HUB_USER, cfg_.onvifPassword, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, cfg_.onvifPassword));
+    bool ok =
+        allowed && (camDigestValid(auth, method, HUB_USER, onvifPassword_, RTSP_REALM, c.nonce) || camBasicValid(auth, HUB_USER, onvifPassword_));
     if (!auth.empty() && allowed) logins_.note(c.peer, ok, now);
     if (ok) {
       c.authed = true;

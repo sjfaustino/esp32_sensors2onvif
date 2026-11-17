@@ -11,9 +11,9 @@
 
 class CamWebhookSender {
  public:
-  // cfg is the server's, which it changes as settings are saved; it and the others outlive the sender.
+  // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the others outlive the sender.
   CamWebhookSender(const CamConfig& cfg, const CamAlarm& alarm, CamChip& chip, std::function<bool(uint32_t now)> nvrListening)
-      : cfg_(cfg), alarm_(alarm), chip_(&chip), nvrListening_(nvrListening) {}
+      : cfg_(cfg), alarm_(alarm), chip_(&chip), nvrListening_(nvrListening), settings_(cfg.webhook) {}
   // A sensor's event, and the hub's own; each queued if the settings say it is wanted. Running out of memory drops the
   // message, counted, and the alert goes on.
   void notify(int id, CamEventKind kind, bool delayed);
@@ -26,6 +26,8 @@ class CamWebhookSender {
   int fd() const { return post_.fd(); }
   const std::string& result() const { return hooks_.result(); }  // how the last message went; empty before the first
   std::string pageJson();
+  const CamWebhook& settings() const { return settings_; }
+  void setSettings(const CamWebhook& w) { settings_ = w; }  // a message already waiting goes to the new address
   uint32_t memoryFailures() const { return memoryFailures_; }
 
  private:
@@ -35,6 +37,7 @@ class CamWebhookSender {
   const CamAlarm& alarm_;
   CamChip* chip_;
   std::function<bool(uint32_t)> nvrListening_;
+  CamWebhook settings_;
   uint32_t memoryFailures_ = 0;
   CamPost post_;
   CamHookQueue hooks_;

@@ -62,20 +62,20 @@ static std::string payload(const std::string& json) { return json.substr(0, json
 std::string CamMqttClient::topicBase() const { return "sensors2onvif/" + cfg_.serial; }
 
 void CamMqttClient::start(uint32_t now) {
-  uint32_t host = inet_addr(cfg_.mqtt.host.c_str());
+  uint32_t host = inet_addr(settings_.host.c_str());
   if (host == INADDR_NONE) {
     stop("the broker address is not an IP address", now);
     return;
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind.
   std::string hello =
-      camMqttConnect("sensors2onvif-" + cfg_.serial, cfg_.mqtt.user, cfg_.mqtt.password, topicBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
+      camMqttConnect("sensors2onvif-" + cfg_.serial, settings_.user, settings_.password, topicBase() + "/status", "offline", CAM_MQTT_KEEPALIVE_S);
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return;  // tried again on the next pass
   netNonblock(fd);
   sockaddr_in to{};
   to.sin_family = AF_INET;
-  to.sin_port = htons(cfg_.mqtt.port);
+  to.sin_port = htons(settings_.port);
   to.sin_addr.s_addr = host;
   io_ = Io();
   io_.fd = fd;
@@ -134,7 +134,7 @@ void CamMqttClient::packet(const uint8_t* p, size_t len, uint32_t now) {
     // ON and OFF are what the Armed switch of earlier firmware sent.
     if (command == "ARM_AWAY" || command == "ON") alarm_.setArmMode(CAM_ARMED_AWAY, "Home Assistant");
     if (command == "ARM_HOME") alarm_.setArmMode(CAM_ARMED_HOME, "Home Assistant");
-    if (command == "DISARM" || command == "OFF") alarm_.setArmMode(CAM_DISARMED, "Home Assistant", cfg_.rearmMinutes);
+    if (command == "DISARM" || command == "OFF") alarm_.setArmMode(CAM_DISARMED, "Home Assistant", alarm_.rearmMinutes());
     io_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {
     uint16_t id = (uint16_t)(p[2] << 8 | p[3]);
@@ -214,7 +214,7 @@ void CamMqttClient::service(bool readable, bool writable, uint32_t now) {
 }
 
 void CamMqttClient::tick(uint32_t now, bool mayConnect) {
-  if (cfg_.mqtt.host.empty()) {
+  if (settings_.host.empty()) {
     if (io_.fd >= 0) netClose(io_.fd);
     io_ = Io();
     waiting_ = false;
@@ -506,18 +506,19 @@ bool CamMqttClient::discoveryStep(int step, std::string& out) {
   return true;
 }
 
-void CamMqttClient::restart(uint32_t now) {
+void CamMqttClient::setSettings(const CamMqtt& m, uint32_t now) {
+  settings_ = m;
   stop("connecting", now);
   waiting_ = false;
 }
 
 std::string CamMqttClient::state() const {
-  if (cfg_.mqtt.host.empty()) return "not set up";
+  if (settings_.host.empty()) return "not set up";
   return io_.state == Io::READY ? "connected" : io_.state != Io::OFF ? "connecting" : result_;
 }
 
 std::string CamMqttClient::pageJson() {
-  const CamMqtt& m = cfg_.mqtt;
+  const CamMqtt& m = settings_;
   bool ready = io_.state == Io::READY, clockOk = connectedAt_ >= CAM_CLOCK_VALID_AFTER;
   uint32_t waiting = alarm_.log().added() - eventsSent_;
   return jsonObject([&](CamJson& j) {

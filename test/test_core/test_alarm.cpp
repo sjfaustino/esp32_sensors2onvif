@@ -47,7 +47,9 @@ struct Rig {
   CamStorage storage;
   CamNodeImages images{storage};
   CamAlarm alarm;
-  explicit Rig(const char* folder) : storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
+  // start: the start-up settings, which the alarm reads as it is made.
+  explicit Rig(const char* folder, const CamConfig& start = CamConfig())
+      : cfg(start), storage(emptyFolder(folder)), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
   // A rig on the folder another left, as after a restart; the clock starts again, as millis() does.
   Rig(const Rig& before, int) : storage(before.storage), alarm(cfg, chip, radio, store, storage, images, outside, [this] { return now; }) {}
 
@@ -201,8 +203,9 @@ static void a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards() {
 }
 
 static void a_sensor_never_heard_is_reported_silent_once() {
-  Rig r("cam_alarm_silent");
-  r.cfg.silentMs = 1000;
+  CamConfig quick;
+  quick.silentMs = 1000;
+  Rig r("cam_alarm_silent", quick);
   r.sensor("AA-BB-CC-DD-EE-01/1");
   r.start();
   r.run(900);
@@ -219,9 +222,10 @@ static void a_sensor_never_heard_is_reported_silent_once() {
 }
 
 static void a_silent_sensor_can_raise_the_alarm_when_asked_to() {
-  Rig r("cam_alarm_silent_alarm");
-  r.cfg.silentMs = 1000;
-  r.cfg.healthAlarm = true;
+  CamConfig quick;
+  quick.silentMs = 1000;
+  Rig r("cam_alarm_silent_alarm", quick);
+  r.alarm.setHealthAlarm(true);  // as the page turns it on
   r.sensor("AA-BB-CC-DD-EE-01/1");
   r.start();
   r.run(1100);

@@ -14,11 +14,18 @@
 
 class CamVideo {
  public:
-  // heard: a client was heard from, which keeps the NVR's subscription alive. cfg is the server's; it and the others
-  // outlive the video.
+  // heard: a client was heard from, which keeps the NVR's subscription alive. cfg holds the start-up settings, which
+  // never change; it and the others outlive the video.
   CamVideo(const CamConfig& cfg, CamChip& chip, CamStorage& storage, const CamAlarm& alarm, CamLoginGuard& logins,
            std::function<void(uint32_t peer, uint32_t now)> heard, std::function<uint32_t()> millisFn)
-      : cfg_(cfg), chip_(&chip), storage_(storage), alarm_(alarm), logins_(logins), heard_(heard), millis_(millisFn) {}
+      : cfg_(cfg),
+        chip_(&chip),
+        storage_(storage),
+        alarm_(alarm),
+        logins_(logins),
+        heard_(heard),
+        millis_(millisFn),
+        onvifPassword_(cfg.onvifPassword) {}
   bool begin(int listenFd);  // takes the RTSP port's listening socket; false when there is none
 
   // ---- in the server's loop ----
@@ -53,6 +60,7 @@ class CamVideo {
     frameKey_.clear();
   }
   uint32_t memoryFailures() const { return memoryFailures_; }
+  void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
 
  private:
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
@@ -88,6 +96,7 @@ class CamVideo {
   CamLoginGuard& logins_;
   std::function<void(uint32_t, uint32_t)> heard_;
   std::function<uint32_t()> millis_;
+  std::string onvifPassword_;  // RTSP needs the user admin and this, when set
   uint32_t memoryFailures_ = 0;
   int listen_ = -1;
   RtspConn rtsp_[MAX_RTSP];

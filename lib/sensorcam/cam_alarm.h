@@ -91,7 +91,7 @@ class CamAlarm {
   };
   static const int MAX_UNKNOWN = 8;
 
-  // cfg is the server's, which it changes as settings are saved; it and the parts outlive the alarm.
+  // cfg holds the start-up settings, which never change; what the pages change later is the part's own. It and the parts outlive the alarm.
   CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStore& store, CamStorage& storage, const CamNodeImages& images,
            CamAlarmOutside& outside, std::function<uint32_t()> millisFn);
   void begin();             // reads the sensor table, the history and the alerts that were waiting
@@ -120,13 +120,9 @@ class CamAlarm {
   // ---- the sensor table. A sensor's id runs from 1, as 0 means none. ----
   int findSlot(const uint8_t mac[6], uint8_t input) const;
   int findNode(const uint8_t mac[6]) const;  // any sensor of that node, or 0
-  Node* nodeByMac(const uint8_t mac[6]);     // nullptr for a node without a folder
-  // These are the only places that turn an id into a table position.
-  Slot& slotOf(int id) { return slots_[id - 1]; }
+  // To read: only the alarm changes them, through the calls below.
   const Slot& slotOf(int id) const { return slots_[id - 1]; }
-  Health& healthOf(int id) { return health_[id - 1]; }
   const Health& healthOf(int id) const { return health_[id - 1]; }
-  Node& nodeOf(int id) { return nodes_[slotOf(id).node - 1]; }
   const Node& nodeOf(int id) const { return nodes_[slotOf(id).node - 1]; }
   const Node& nodeAt(int number) const { return nodes_[number - 1]; }  // by its number, from 1, as Slot::node gives it
   int sensorCount() const;                                             // the sensors in the table
@@ -142,6 +138,16 @@ class CamAlarm {
   using UnknownList = UnknownSender[MAX_UNKNOWN];
   const UnknownList& unknown() const { return unknown_; }
   void refuseSignature(int id);  // a message from this sensor's node had the wrong signature
+  // A walk test on the node, until that time in seconds since 1970, or 0 to stop it. False for a node without a folder.
+  bool setWalkTest(const uint8_t mac[6], uint32_t until);
+  void updateAsked(int id, uint32_t size);      // sensor id's node asked for a part of a firmware image this size
+  void updateReached(int id, uint32_t offset);  // and has got this far
+
+  // ---- settings the pages change while the hub runs ----
+  bool healthAlarm() const { return healthAlarm_; }  // a silent node or low battery also raises an NVR alarm
+  void setHealthAlarm(bool on) { healthAlarm_ = on; }
+  uint32_t rearmMinutes() const { return rearmMinutes_; }  // how long a disarm from Home Assistant lasts; 0 until armed again
+  void setRearmMinutes(uint32_t minutes) { rearmMinutes_ = minutes; }
 
   const SensorBoard& board() const { return sensors_; }  // which alerts are on, for the NVR and the picture
   CamEventLog& log() { return log_; }
@@ -158,6 +164,14 @@ class CamAlarm {
 #endif
 
  private:
+  // These are the only places that turn an id into a table position.
+  Slot& slotRef(int id) { return slots_[id - 1]; }
+  const Slot& slotRef(int id) const { return slots_[id - 1]; }
+  Health& healthRef(int id) { return health_[id - 1]; }
+  const Health& healthRef(int id) const { return health_[id - 1]; }
+  Node& nodeRef(int id) { return nodes_[slotRef(id).node - 1]; }
+  const Node& nodeRef(int id) const { return nodes_[slotRef(id).node - 1]; }
+  Node* nodeByMac(const uint8_t mac[6]);  // nullptr for a node without a folder
   bool applyReport(int id, const SensorReport& report, uint32_t now, bool present = true);
   void logEvent(int id, const SensorReport& report, bool delayed, CamEventKind kind = CAM_EVENT_REPORT);
   void addEvent(const char* sensor, const char* text, const SensorReport& report, bool delayed, CamEventKind kind, uint32_t offS = CAM_AGE_UNKNOWN);
@@ -233,6 +247,8 @@ class CamAlarm {
   // are logged but not sent to the NVR. Kept across restarts.
   CamArmMode armMode_;
   int64_t disarmedUntil_;
+  bool healthAlarm_;
+  uint32_t rearmMinutes_;
   // When perimeter sensors stopped counting (the hub was disarmed), and interior ones (it left armed away).
   uint32_t perimeterOffAt_ = 0, interiorOffAt_ = 0;
   // A timed disarm: when it ends on the millisecond clock, known when it began in this run.

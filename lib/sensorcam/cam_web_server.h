@@ -16,10 +16,10 @@
 #include "cam_video.h"
 #include "cam_webhook.h"
 
-// The parts the web side serves, all owned by SensorCamServer. cfg is the server's, which the API changes as settings are
-// saved; memoryFailures is the hub's total, for the pages.
+// The parts the web side serves, all owned by SensorCamServer. cfg holds the start-up settings, which never change;
+// memoryFailures is the hub's total, for the pages.
 struct CamWebParts {
-  CamConfig& cfg;
+  const CamConfig& cfg;
   CamChip& chip;
   CamRadio& radio;
   CamStore& store;
@@ -55,6 +55,7 @@ class CamWeb {
   uint32_t accepted() const { return accepted_; }
   uint32_t refused() const { return refused_; }
   uint32_t memoryFailuresHere() const { return memoryFailures_; }
+  void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
 
  private:
   using Health = CamAlarm::Health;
@@ -153,7 +154,7 @@ class CamWeb {
   bool nvrListening(uint32_t now) const { return events_.nvrListening(now); }
   uint32_t memoryFailures() const { return failures_(); }  // the hub's, for the pages
 
-  CamConfig& cfg_;
+  const CamConfig& cfg_;
   CamChip* chip_;
   CamRadio* radio_;
   CamStore* store_;
@@ -173,6 +174,8 @@ class CamWeb {
   HttpConn http_[MAX_HTTP];
   uint32_t accepted_ = 0;
   uint32_t refused_ = 0;
+  std::string onvifPassword_;   // ONVIF needs the user admin and this, when set
+  CamSchedule schedule_;        // the restart schedule, as the page shows it
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
   HttpConn* firmwareOwner_ = nullptr;
   HttpConn* nodeImageOwner_ = nullptr;                      // the upload of a node firmware file under way

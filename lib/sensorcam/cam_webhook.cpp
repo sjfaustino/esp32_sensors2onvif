@@ -10,7 +10,7 @@
 // Alerts are sent when alerts are chosen, node problems when problems are. An alert the NVR missed is sent if either is,
 // because it means a recording is missing. A message there is no memory for is counted as dropped, and the alert goes on.
 void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
-  const CamWebhook& w = cfg_.webhook;
+  const CamWebhook& w = settings_;
   bool wanted = kind == CAM_EVENT_REPORT                                          ? w.alerts
                 : kind == CAM_EVENT_NOT_DELIVERED || kind == CAM_EVENT_TEST_ALERT ? w.alerts || w.problems
                                                                                   : w.problems;
@@ -34,7 +34,7 @@ void CamWebhookSender::notify(int id, CamEventKind kind, bool delayed) {
 
 // The hub's own events, sent with node problems, in the same shape as the event history.
 void CamWebhookSender::notifyHub(CamEventKind kind, const std::string& detail, const std::string& message) {
-  const CamWebhook& w = cfg_.webhook;
+  const CamWebhook& w = settings_;
   if (w.url.empty() || !w.problems) return;
   time_t now = time(nullptr);
   bool clockOk = now >= CAM_CLOCK_VALID_AFTER;
@@ -49,7 +49,7 @@ void CamWebhookSender::notifyHub(CamEventKind kind, const std::string& detail, c
   }
 }
 
-void CamWebhookSender::queue(const std::string& message, const std::string& json) { hooks_.add(cfg_.webhook.text ? message : json); }
+void CamWebhookSender::queue(const std::string& message, const std::string& json) { hooks_.add(settings_.text ? message : json); }
 
 void CamWebhookSender::tick(uint32_t now, bool mayConnect) {
   if (post_.idle() && hooks_.count() && mayConnect) start(now);
@@ -62,14 +62,14 @@ void CamWebhookSender::serve(fd_set& rd, fd_set& wr, uint32_t now) {
 
 void CamWebhookSender::start(uint32_t now) {
   HttpUrl url;
-  if (!parseHttpUrl(cfg_.webhook.url, url)) {  // the address was removed while messages waited
+  if (!parseHttpUrl(settings_.url, url)) {  // the address was removed while messages waited
     hooks_.clear();
     return;
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind; the message waits.
   const std::string& body = hooks_.oldest();
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
-                    "\r\nContent-Type: " + (cfg_.webhook.text ? "text/plain; charset=utf-8" : JSON_TYPE) +
+                    "\r\nContent-Type: " + (settings_.text ? "text/plain; charset=utf-8" : JSON_TYPE) +
                     "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
   out.reserve(out.size() + body.size());
   out += body;
@@ -80,7 +80,7 @@ void CamWebhookSender::start(uint32_t now) {
 }
 
 std::string CamWebhookSender::pageJson() {
-  const CamWebhook& w = cfg_.webhook;
+  const CamWebhook& w = settings_;
   bool clockOk = hooks_.resultAt() >= CAM_CLOCK_VALID_AFTER;
   return jsonObject([&](CamJson& j) {
     j.str("url", w.url).flag("text", w.text).flag("alerts", w.alerts).flag("problems", w.problems).num("daily", w.dailyMinute);
@@ -92,7 +92,7 @@ std::string CamWebhookSender::pageJson() {
 // At the minute set under Notifications, local time: what the hub knows of its nodes, its alerts and the NVR, in one
 // message. Needs the clock, so a hub whose clock is not set sends none, which is itself worth noticing.
 void CamWebhookSender::dailyCheck(uint32_t now) {
-  const CamWebhook& w = cfg_.webhook;
+  const CamWebhook& w = settings_;
   if (w.url.empty() || w.dailyMinute < 0 || chip_->localMinute() != w.dailyMinute) return;
   if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
   dailySent_ = true;

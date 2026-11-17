@@ -126,7 +126,7 @@ void CamNodes::reject(const uint8_t mac[6]) {
 void CamNodes::firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
   int id = alarm_.findNode(mac);
   if (!id || !radio_->hasEspNow()) return;
-  CamAlarm::Node& node = alarm_.nodeOf(id);
+  const CamAlarm::Node& node = alarm_.nodeOf(id);
   const std::string& key = alarm_.keyFor(&node);
   CamFirmwareAsk ask;
   CamPacketCheck check = camCheckFirmwareAsk(mac, data, len, key, ask);
@@ -135,19 +135,17 @@ void CamNodes::firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
   const CamNodeImage* f = images_.forChip(node.info.chip);
   if (!f) return;
   const CamNodeImage& image = *f;
-  node.updating = true;
-  node.updateAt = millis_();
-  node.updateSize = image.size;
+  alarm_.updateAsked(id, image.size);
   uint8_t out[CAM_FIRMWARE_PART_LEN_MAX];
   if (ask.offset == CAM_FIRMWARE_DESCRIBE || ask.image != image.number) {  // a node asking for another image learns of this one
     int n = camFirmwarePart(mac, image.number, image.size, CAM_FIRMWARE_DESCRIBE, (const uint8_t*)image.version.data(), (int)image.version.size(),
                             key, out);
     radio_->espNowSend(mac, out, n);
-    node.updateOffset = 0;
+    alarm_.updateReached(id, 0);
     return;
   }
   if (ask.offset >= image.size) return;
-  node.updateOffset = ask.offset;
+  alarm_.updateReached(id, ask.offset);
   uint8_t window[CAM_FIRMWARE_WINDOW * CAM_FIRMWARE_PART_MAX];
   uint32_t length = image.size - ask.offset < sizeof(window) ? image.size - ask.offset : (uint32_t)sizeof(window);
   if (!images_.read(image.chip, ask.offset, window, length)) return;
