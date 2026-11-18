@@ -21,6 +21,7 @@ const uint32_t CAM_RESEND_WINDOW_MS = 60000;          // chosen: the same ESP-NO
 const uint32_t CAM_JAM_WINDOW_MS = 30UL * 60 * 1000;  // chosen: nodes overdue within this of each other went quiet together
 const uint32_t CAM_BUSY_WINDOW_MS = 3600UL * 1000;    // chosen: a sensor's alerts are counted over an hour
 const int CAM_BUSY_ALERTS = 20;                       // chosen: this many in that hour is reported as firing often
+const uint32_t CAM_PICTURE_TURN_MS = 2000;            // chosen: with several alerts on, each sensor's picture shows this long in turn
 // The alert hold, 10 s, is SENSOR_HOLD_MS in include/config.h; silence, 3 hours, is CamConfig::silentMs. Both chosen.
 
 // ---- connections ----
@@ -41,6 +42,7 @@ const uint32_t CAM_MQTT_HEALTH_MS = 60000;  // chosen: how often the hub's own h
 // ---- pairing nodes ----
 const uint32_t CAM_PAIR_WINDOW_MS = 120000;            // chosen: how long new nodes may say hello after the button is pressed
 const uint32_t CAM_PAIR_FORGET_MS = 10UL * 60 * 1000;  // chosen: a node waiting for approval that stops saying hello is dropped
+const uint32_t CAM_UPDATE_IDLE_MS = 120000;            // chosen: a node that has not asked for a firmware part this long is no longer updating
 
 // ---- the hub itself ----
 const uint32_t CAM_ALIVE_EVERY_MS = 10UL * 60 * 1000;  // chosen: how often the time is saved, so a restart can say how long it was off
@@ -51,6 +53,15 @@ const int CAM_LOGIN_FREE_TRIES = 10;                      // chosen
 const uint32_t CAM_LOGIN_FIRST_LOCK_MS = 60000;           // chosen: doubled for each wrong one after that
 const uint32_t CAM_LOGIN_LONGEST_LOCK_MS = 15UL * 60000;  // chosen
 const uint32_t CAM_LOGIN_FORGET_MS = 24UL * 3600 * 1000;  // chosen: how long wrong ones are remembered
+
+// ---- the hub's network, in src/main.cpp ----
+const uint32_t CAM_WIFI_TRY_MS = 30000;         // chosen: how long each saved network gets before moving on to the next
+const uint32_t CAM_ROUTER_PING_MS = 20000;      // chosen: how often the router is pinged, to tell a dead network from a quiet one
+const uint32_t CAM_ROUTER_PING_WAIT_MS = 3000;  // chosen: how long each ping waits for its reply
+const uint32_t CAM_RESTART_REPLY_MS = 1500;     // chosen: a restart asked for on the page waits this long, for the reply to reach the browser
+
+// ---- the webhook ----
+const uint32_t CAM_DAILY_ONCE_MS = 2UL * 60 * 1000;  // chosen: the daily check is sent once, though its minute is seen for a whole minute
 
 // ---- when the hub restarts itself, or undoes a firmware update: cam_restart_rules.h ----
 const uint32_t CAM_WIFI_LOST_RESTART_MS = 5UL * 60 * 1000;         // chosen: off Wi-Fi this long, the hub starts clean

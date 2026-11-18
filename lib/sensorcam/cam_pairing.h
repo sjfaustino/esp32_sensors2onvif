@@ -1,5 +1,5 @@
 // Pairing sensor nodes over ESP-NOW, with public keys, so a node gets a key of its own without any secret crossing the
-// air. The messages are described in the README, under "Pairing a node".
+// air. The messages are described in docs/protocol.md, under "Pairing a node".
 //
 //   hello  (node to hub, 34 bytes):  4, the number of inputs (1-16), the node's X25519 public key (32)
 //   answer (hub to node, 43 bytes):  5, the state (0 waiting for approval, 1 paired), the hub's Wi-Fi channel, the hub's

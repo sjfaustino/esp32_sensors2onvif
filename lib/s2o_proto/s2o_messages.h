@@ -1,6 +1,6 @@
 // Shared by the hub and the sensor nodes (esp32_sensor_node), so both speak the same messages from one source.
-// The ESP-NOW messages between them, as the hub's README describes them under "Sensor input over ESP-NOW" and
-// "Pairing a node". No heap and no Arduino, so the same code runs on both boards and in the PC tests.
+// The ESP-NOW messages between them, as the hub's docs/protocol.md describes them. No heap and no Arduino, so the same code runs on both boards and
+// in the PC tests.
 //
 // Every signed message ends in S2O_SIG_LEN bytes: the first 8 of HMAC-SHA1, keyed with the signing key (a paired node's
 // own 20-byte key, or the hub's ESP-NOW key as text), over the node's 6-byte MAC address and then the message before it.

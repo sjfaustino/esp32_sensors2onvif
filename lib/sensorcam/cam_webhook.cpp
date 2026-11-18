@@ -1,5 +1,6 @@
 // CamWebhookSender: messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
 #include "cam_webhook.h"
+#include "cam_timing.h"
 #include <string.h>
 #include <time.h>
 #include <new>
@@ -94,7 +95,7 @@ std::string CamWebhookSender::pageJson() {
 void CamWebhookSender::dailyCheck(uint32_t now) {
   const CamWebhook& w = settings_;
   if (w.url.empty() || w.dailyMinute < 0 || chip_->localMinute() != w.dailyMinute) return;
-  if (dailySent_ && now - dailySentAt_ < 2 * 60000) return;  // once in the minute it is due
+  if (dailySent_ && now - dailySentAt_ < CAM_DAILY_ONCE_MS) return;  // once in the minute it is due
   dailySent_ = true;
   dailySentAt_ = now;
   time_t t = chip_->wallTime();

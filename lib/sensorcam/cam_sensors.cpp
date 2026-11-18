@@ -4,8 +4,8 @@
 #include <string.h>
 #include "cam_auth.h"
 #include "s2o_messages.h"
+#include "cam_timing.h"
 
-static const uint32_t CYCLE_MS = 2000;
 static uint16_t readU16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 
 // The messages are in the library shared with the nodes; these keep the hub's names and its std::string keys.
@@ -415,7 +415,7 @@ bool SensorBoard::shown(uint32_t now, int& id, uint8_t& direction, bool& delayed
   int on = 0;
   for (const Entry& s : sensors_) on += s.on;
   if (!on) return false;
-  int skip = (int)((now / CYCLE_MS) % (uint32_t)on);  // which of the active sensors has its turn
+  int skip = (int)((now / CAM_PICTURE_TURN_MS) % (uint32_t)on);  // which of the active sensors has its turn
   for (int i = 0; i < count(); i++) {
     if (!sensors_[i].on || skip-- > 0) continue;
     id = i + 1;

@@ -51,7 +51,6 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
 inline std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }
 inline std::string jsonOk(const std::string& body) { return httpResponse(200, JSON_TYPE, body); }
 inline std::string jsonFail(int status, const std::string& message) { return httpResponse(status, JSON_TYPE, camJsonError(message)); }
-const uint32_t CAM_UPDATE_IDLE_MS = 120000;  // a node that has not asked for a firmware part for this long is no longer updating
 const uint32_t CAM_WALK_TEST_S = 600;
 inline std::string saved(bool ok, const char* failure) { return ok ? jsonOk(JSON_OK) : jsonFail(507, failure); }
 

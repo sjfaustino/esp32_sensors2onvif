@@ -16,6 +16,7 @@
 #include <ping/ping_sock.h>
 #include "cam_restart_rules.h"
 #include "cam_server.h"
+#include "cam_timing.h"
 #include "config.h"
 #include "device_info.h"
 #include "hub_settings.h"
@@ -25,7 +26,6 @@ static std::string localIp() { return WiFi.localIP().toString().c_str(); }
 static uint32_t nowMs() { return millis(); }
 
 // ---- Wi-Fi and the setup network. The saved networks are in settings, from hub_settings.h ----
-static const uint32_t WIFI_TRY_MS = 30000;  // how long each saved network gets before moving on
 static int wifiTrying = 0;
 static uint32_t wifiTryAt = 0;
 static DNSServer dnsServer;
@@ -421,8 +421,8 @@ static void startGatewayPing() {
   config.target_addr.type = IPADDR_TYPE_V4;
   config.target_addr.u_addr.ip4.addr = gateway;
   config.count = ESP_PING_COUNT_INFINITE;
-  config.interval_ms = 20000;
-  config.timeout_ms = 3000;
+  config.interval_ms = CAM_ROUTER_PING_MS;
+  config.timeout_ms = CAM_ROUTER_PING_WAIT_MS;
   esp_ping_callbacks_t callbacks = {};
   callbacks.on_ping_success = [](esp_ping_handle_t, void*) {
     lastPingReply = millis();
@@ -720,7 +720,7 @@ static bool keepOnNetwork(bool connected, bool justLost) {
   bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
   if (guest && !hadGuest) WiFi.disconnect(false);
   hadGuest = guest;
-  if (!guest && haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
+  if (!guest && haveNetwork && millis() - wifiTryAt > CAM_WIFI_TRY_MS) {
     if (wifiTrying == 0 && settings.wifiSsid[1].length() > 0) {
       tryNetwork(1);
     } else {  // neither network worked: open the setup network and keep trying behind it
@@ -733,7 +733,7 @@ static bool keepOnNetwork(bool connected, bool justLost) {
 
 // A restart asked for on the page.
 static void restartWhenAsked() {
-  if (restartPending && millis() - restartRequestedAt > 1500) {
+  if (restartPending && millis() - restartRequestedAt > CAM_RESTART_REPLY_MS) {
     confirmFirmware();  // someone used this firmware's pages to ask for this restart, so it must not count as a failure
     restartFor(restartRequested);
   }
