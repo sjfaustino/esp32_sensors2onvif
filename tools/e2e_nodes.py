@@ -126,7 +126,7 @@ def pairing_tests():
 
 
 def open_sealed(data, key, mac, from_hub):
-    """The README's sealed message, opened: the message inside, or None for a wrong signature."""
+    """A sealed message, as docs/protocol.md describes it, opened: the message inside, or None for a wrong signature."""
     if data[0] != 7 or hmac.new(key, bytes.fromhex(mac) + data[:-8], hashlib.sha1).digest()[:8] != data[-8:]:
         return None
     seal_key = hmac.new(key, b'sensors2onvif seal', hashlib.sha1).digest()

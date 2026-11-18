@@ -144,7 +144,7 @@ static void confirmation_is_signed_for_that_sensor() {
   TEST_ASSERT_FALSE(c.substr(CAM_CONFIRMATION_BODY) == camPacketSignature(other, (const uint8_t*)c.data(), CAM_CONFIRMATION_BODY, "key"));
 }
 
-// The expected bytes were worked out in Python from the README's description.
+// The expected bytes were worked out in Python from the description in docs/protocol.md.
 static void sealed_messages_hide_what_they_say() {
   const uint8_t mac[6] = {2, 0, 0, 0, 0, 0x55};
   const std::string key(20, '\x22');

@@ -1,6 +1,6 @@
 # How it works
 
-The README says what the hub does and what to set. This page is for whoever changes the code: how the hub keeps its
+The README says what the hub does and what to set, and `protocol.md` what goes over the air. This page is for whoever changes the code: how the hub keeps its
 promises, and where.
 
 ## Saving before confirming
