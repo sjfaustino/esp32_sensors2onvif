@@ -581,13 +581,17 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
     bool hostsGiven = r.has("hosts");
     std::string hosts = r.field("hosts");
     bool nameOk = validHubName(name);
-    bool passwordOn = protect.empty() ? !cfg_.webPassword.empty() : protect == "on";
+    // The hub always has a password, which guards the pages, ONVIF and the video: it can be changed, never turned off.
+    // A new one has 8 characters or more. A hub that has none, from secrets.h or an older firmware, gets one here first.
+    bool keeps = password.empty() && !cfg_.webPassword.empty();
     if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
       c.out = jsonFail(400, "ports must be 1 to 65535 and all different");
     } else if (!nameOk) {
       c.out = jsonFail(400, "the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen");
-    } else if (password.size() > 63 || (passwordOn && password.empty() && cfg_.webPassword.empty())) {
-      c.out = jsonFail(400, "enter a password of up to 63 characters");
+    } else if (!protect.empty() && protect != "on") {
+      c.out = jsonFail(400, "the hub always needs a password; enter a new one to change it");
+    } else if (!keeps && (password.size() < 8 || password.size() > 63)) {
+      c.out = jsonFail(400, "the password must be 8 to 63 characters");
     } else if (hostsGiven && !camHostListValid(hosts)) {
       c.out = jsonFail(400, "other names: up to 4, separated by commas, of letters, digits, dots and hyphens");
     } else {
@@ -596,7 +600,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
       s.webPort = (uint16_t)web;
       s.rtspPort = (uint16_t)rtsp;
       s.name = name;
-      s.passwordOn = passwordOn;
+      s.passwordOn = true;
       s.password = password;
       s.hostsGiven = hostsGiven;
       s.hosts = hosts;

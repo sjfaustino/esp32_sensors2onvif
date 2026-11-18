@@ -16,7 +16,8 @@
 </nav>
 <main>
 <a id="status" class="status" href="#overview" hidden></a>
-<p id="openWarn" hidden class="warn">No hub password is set, so anyone on this network can change the hub and watch its video. Set one under Network Manager &gt; HTTP.</p>
+<div id="openWarn" hidden class="warn"><p style="margin:0 0 6px"><b>Choose a password for the hub.</b> Without one, anyone on this network can disarm it, change it and watch its video. It is also the NVR's login for this camera, so enter it on the NVR's channel too. The hub restarts to use it.</p>
+<p class="portForm" style="margin:0"><label>Password <input id="needPw" type="password" maxlength="63" autocomplete="new-password"></label> <label>Again <input id="needPw2" type="password" maxlength="63" autocomplete="new-password"></label> <button id="saveNeedPw">Save</button></p><div class="portMsg" id="needPwMsg"></div></div>
 <p id="armWarn" hidden class="warn">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page.</p>
 <p id="nvrWarn" hidden class="warn">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
 <div class="view" id="view-overview" hidden><h1>Overview</h1>
@@ -61,8 +62,7 @@
 <div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
 <div class="portForm"><label>Other names <input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box"></label></div>
 <p class="note">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
-<div class="portForm"><label><input id="protect" type="checkbox"> Password protection (user admin)</label></div>
-<div class="portForm" id="pwRow" hidden><label>Password <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
+<div class="portForm" id="pwRow"><label>Password (user admin) <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
 <div class="portForm"><button id="saveWeb">Save</button></div>
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>

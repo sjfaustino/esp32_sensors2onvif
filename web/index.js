@@ -56,9 +56,7 @@
         ]);
       $("hubName").value = i.name.replace(/\.local$/, "");
       $("hubHosts").value = i.hosts || "";
-      $("protect").checked = i.password;
-      $("pwRow").hidden = !i.password;
-      $("webPw").placeholder = i.password ? "Leave empty to keep it" : "";
+      $("webPw").placeholder = i.password ? "Leave empty to keep it" : "8 to 63 characters";
       if (view == "onvif")
         fill("onvifInfo", [
           ["Login", i.onvifLogin ? "Required: user admin and the hub password" : "None"],
@@ -1491,9 +1489,6 @@
     if (await send(m, "/api/settings", field + "=" + encodeURIComponent(v), "Saved. The hub is restarting."))
       setTimeout(() => location.reload(), 10000);
   }
-  $("protect").onchange = (e) => {
-    $("pwRow").hidden = !e.target.checked;
-  };
   $("saveRtsp").onclick = () =>
     savePort(
       "rtsp",
@@ -1511,8 +1506,7 @@
   $("saveWeb").onclick = async () => {
     const m = $("webMsg"),
       port = $("webPort").value,
-      name = $("hubName").value,
-      on = $("protect").checked;
+      name = $("hubName").value;
     if (!confirm("The hub will restart to apply these settings. Continue?")) return;
     if (
       !(await send(
@@ -1522,8 +1516,6 @@
           encodeURIComponent(port) +
           "&name=" +
           encodeURIComponent(name) +
-          "&protect=" +
-          (on ? "on" : "off") +
           "&password=" +
           encodeURIComponent($("webPw").value) +
           "&hosts=" +
@@ -1593,11 +1585,31 @@
   );
   addEventListener("hashchange", () => show(location.hash.slice(1)));
   show(location.hash.slice(1));
+  // A hub without a password asks for one on every page until it has one.
+  $("saveNeedPw").onclick = async () => {
+    const m = $("needPwMsg"),
+      pw = $("needPw").value;
+    if (pw != $("needPw2").value) {
+      m.className = "portMsg err";
+      m.textContent = "The two passwords differ.";
+      return;
+    }
+    if (
+      await send(
+        m,
+        "/api/settings",
+        "password=" + encodeURIComponent(pw),
+        "Saved. The hub is restarting; log in with user admin and the new password.",
+      )
+    )
+      setTimeout(() => location.reload(), 10000);
+  };
   setInterval(loadStatus, 10000);
   fetch("/api/info")
     .then((r) => r.json())
     .then((i) => {
       $("openWarn").hidden = i.password;
+      if (!i.password) $("needPw").focus();
       if (i.name) document.title = i.name.replace(/\.local$/, "") + ": alarm hub";
       $("armWarn").hidden = i.armed !== false;
     })

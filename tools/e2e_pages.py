@@ -1,5 +1,6 @@
 """The web pages in a real browser, against the PC build (pio run -e host): the controls that decide whether an intruder
-is recorded. Arming and disarming on the Overview page, and the test alert on the Sensors page and a sensor's own page,
+is recorded. Arming and disarming on the Overview page, the test alert on the Sensors page and a sensor's own page, and a hub
+without a password asking for one,
 each checked on the page and on the hub, and a pretend NVR that must get the test alerts. The API itself is tested by
 e2e_test.py; this checks that the pages use it rightly, and never show the hub armed when it is not.
 
@@ -159,11 +160,43 @@ def test_alerts(page, dialogs, nvr):
     end_alert(nvr)
 
 
+def test_a_hub_without_a_password_asks_for_one(browser, storage):
+    # A hub can start with no password, from secrets.h or an older firmware that let it be turned off. Every page then
+    # asks for one, and the page will not take two that differ or one that is too short.
+    common.HUB.kill()
+    common.HUB.wait()
+    start_hub(storage)
+    check('a hub without a password starts', common.HUB.stdout.readline().strip() == 'ready')
+    page = browser.new_page()
+    dialogs = Dialogs(page)
+    page.goto(URL + '#overview')
+    page.wait_for_selector('#needPw', state='visible')
+    check('every page asks for a password', page.is_visible('#openWarn'))
+    page.fill('#needPw', 'a-good-password')
+    page.fill('#needPw2', 'another-password')
+    page.click('#saveNeedPw')
+    check('two passwords that differ are refused on the page', wait_text(page, 'needPwMsg', 'differ'), page.text_content('#needPwMsg'))
+    page.fill('#needPw', 'short')
+    page.fill('#needPw2', 'short')
+    page.click('#saveNeedPw')
+    check('a short one is refused, with the reason', wait_text(page, 'needPwMsg', '8 to 63 characters'), page.text_content('#needPwMsg'))
+    page.goto(URL + '#http')
+    check('and the HTTP page has no way to turn the password off', page.query_selector('#protect') is None)
+    page.goto(URL + '#overview')
+    page.wait_for_selector('#needPw', state='visible')
+    page.fill('#needPw', 'a-good-password')
+    page.fill('#needPw2', 'a-good-password')
+    page.click('#saveNeedPw')
+    check('a good one is saved', wait_text(page, 'needPwMsg', 'Saved'), page.text_content('#needPwMsg'))
+    check('no dialogs on the way', not dialogs.seen, dialogs.seen)
+    page.close()
+
+
 def main():
     if DEVICE:
         sys.exit('the page test changes the arm mode, so it runs against the PC build only')
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as storage:
-        proc = start_hub(storage, PASSWORD)
+        start_hub(storage, PASSWORD)
         try:
             check('server starts', common.HUB.stdout.readline().strip() == 'ready')
             check('a sensor to test with', api('POST', f'/api/mkdir?path={SENSOR}')[0] == 200)
@@ -184,10 +217,14 @@ def main():
                     except Exception as e:  # a control that never appeared: a failure, and the rest still run
                         check('the page could be used', False, str(e).splitlines()[0])
                 check('no script errors on the pages', not errors, errors)
+                try:
+                    test_a_hub_without_a_password_asks_for_one(browser, storage)
+                except Exception as e:
+                    check('the password page could be used', False, str(e).splitlines()[0])
                 browser.close()
         finally:
-            proc.kill()
-            proc.wait()
+            common.HUB.kill()
+            common.HUB.wait()
     print(f'\n{len(failures)} failure(s)' if failures else '\nall passed')
     sys.exit(1 if failures else 0)
 

@@ -188,11 +188,12 @@ def file_manager_tests(files, hub_files_free):
                     'mode=static&ip=1.2.3&mask=255.255.255.0&gateway=1.2.3.1'):
             check(f'address is refused: {bad[12:50]}', api('POST', '/api/network', bad)[0] == 400)
         check('settings need the web password',api('POST', '/api/settings', 'web=8080', auth=False)[0] == 401)
-        for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2', 'protect=on&password=', 'protect=on&password=new%20pass', 'protect=off'):
+        for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2', 'protect=on&password=', 'protect=on&password=new%20pass', 'password=8%20chars!'):
             check(f'setting is accepted: {good}', api('POST', '/api/settings', good)[0] == 200)
         too_long = 'x' * 64
         for bad in ('web=0', 'web=70000', 'web=abc', 'onvif=80x', f'onvif={RTSP}', f'web={ONVIF}', f'onvif={WEB}', 'rtsp=0', 'rtsp=abc', f'rtsp={WEB}', f'rtsp={ONVIF}',
-                    'name=-hub', 'name=hub-', 'name=a_b', 'name=a%20b', f'name={too_long}', f'protect=on&password={too_long}'):
+                    'name=-hub', 'name=hub-', 'name=a_b', 'name=a%20b', f'name={too_long}', f'protect=on&password={too_long}',
+                    'protect=off', 'protect=off&password=new%20pass', 'password=7chars!'):
             check(f'setting is refused: {bad[:30]}', api('POST', '/api/settings', bad)[0] == 400)
 
     check('node folder can be added', api('POST', f'/api/mkdir?path={A}')[0] == 200)
