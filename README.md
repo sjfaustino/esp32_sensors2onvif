@@ -4,6 +4,37 @@ A stand-alone ESP32 hub that receives alerts from ESP sensor nodes and presents 
 camera. Add it to an NVR on any free channel. Each alert becomes a searchable motion record, and the picture
 names the sensor that fired. The firmware knows nothing about NVR channels.
 
+[![Checks](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/checks.yml)
+[![Release](https://img.shields.io/github/v/release/sjfaustino/esp32_sensors2onvif?include_prereleases)](https://github.com/sjfaustino/esp32_sensors2onvif/releases)
+
+```mermaid
+flowchart LR
+    node["Sensor nodes<br>radar, infrared, tamper"] -- "ESP-NOW, signed" --> hub["Hub<br>ESP32"]
+    http["Other sensors"] -- HTTP --> hub
+    hub -- "ONVIF camera:<br>motion events and a picture" --> nvr["NVR<br>records each alert"]
+    hub -. MQTT .-> ha["Home Assistant"]
+    hub -. webhook .-> phone["Notifications"]
+```
+
+## What you need
+
+- **A hub:** an ESP32 board with 16 MB of flash, powered by USB, ideally from the same UPS as the NVR. One with 4 MB, or an
+  ESP32-S3, works too.
+- **An NVR** that takes ONVIF cameras, with a free channel.
+- **Sensors:** [sensor nodes](https://github.com/sjfaustino/esp32_sensor_node) on ESP32-C3, ESP32-C6 or classic ESP32
+  boards, with a radar or infrared sensor, on a battery or mains power; or any device that can make an HTTP request.
+- **A PC** with [PlatformIO](https://platformio.org) to flash the hub the first time. Later firmware goes on from the hub's
+  own page, from the [releases](https://github.com/sjfaustino/esp32_sensors2onvif/releases).
+
+## Quick start
+
+1. Flash the hub, as **Setup** below says, and join it to your Wi-Fi from its setup network.
+2. Open its page, `http://esp-alarmhub.local`, and choose a password if it asks for one.
+3. Add the hub to the NVR as an ONVIF camera, by its address, with user `admin` and that password
+   (see "Adding it to the NVR").
+4. Pair a node on **Nodes and pairing**, or add an HTTP sensor there.
+5. Work through **Ready to protect?** on the Overview, then press **Test everything** and check that the NVR recorded it.
+
 ## Setup
 
 1. Copy `include/secrets.example.h` to `include/secrets.h`. Set `SETUP_AP_PASSWORD` (at least 8 characters) to enable
@@ -563,3 +594,9 @@ clang-format 19 as the CI does.
 
 [docs/how-it-works.md](docs/how-it-works.md) explains how the hub keeps these promises, for whoever changes the
 code, including how to change the web pages.
+
+## Licence
+
+Copyright (c) 2026 Sergio Faustino. All rights reserved: the code is published to be read and evaluated, and using it
+needs written permission, as [LICENSE](LICENSE) says. Bug reports and ideas are welcome as issues; see
+[CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) for reporting a vulnerability.

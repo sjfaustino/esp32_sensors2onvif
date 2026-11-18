@@ -1,0 +1,61 @@
+# Publishes a release when a version is tagged on main, such as v0.2.0: the firmware for every board, named after the
+# version, and that version's part of CHANGELOG.md as the notes. Each firmware.bin is the file the hub's own page takes
+# under System Manager > Maintenance; each .elf reads a crash report from that build.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tools/version.py names the firmware after the tag with git describe
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Firmware for every board
+        run: pio run -e esp32_16mb -e esp32dev -e esp32s3
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$GITHUB_REF_NAME"
+          grep -q "^## \[${v#v}\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for ${v#v}"; exit 1; }
+          mkdir out
+          for board in esp32_16mb esp32dev esp32s3; do
+            cp ".pio/build/$board/firmware.bin" "out/sensors2onvif-$v-$board.bin"
+            cp ".pio/build/$board/firmware.elf" "out/sensors2onvif-$v-$board.elf"
+          done
+          awk -v head="## [${v#v}]" 'index($0, head) == 1 {on = 1; next} /^## / || /^\[[^]]*\]: / {on = 0} on' CHANGELOG.md > notes.md
+          cat >> notes.md <<'EOF'
+
+          ### Updating a hub
+
+          Download the `.bin` for your board: `esp32_16mb` for an ESP32 with 16 MB of flash, `esp32dev` for one with 4 MB,
+          `esp32s3` for an ESP32-S3. On the hub's page, open System Manager > Maintenance, choose the file under Firmware
+          update and press Update firmware. The hub keeps the new firmware only once it has proved itself, and otherwise
+          goes back to the one before. Its settings, sensors and history are kept.
+
+          A new hub is set up from source the first time, as the README's Setup section says.
+          EOF
+          gh release create "$v" out/* --title "$v" --notes-file notes.md --verify-tag

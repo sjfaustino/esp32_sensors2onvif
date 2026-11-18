@@ -1,0 +1,56 @@
+name: Something does not work
+description: The hub, a node or a page did something wrong, or failed to do something.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. A security problem goes privately instead: see SECURITY.md.
+        Leave out passwords, keys and the sensor token, here and in any log you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what the hub or page did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: From Device Info on the hub's page, such as v0.1.0.
+    validations:
+      required: true
+  - type: dropdown
+    id: board
+    attributes:
+      label: Hub board
+      options:
+        - ESP32 with 16 MB of flash (esp32_16mb)
+        - ESP32 with 4 MB of flash (esp32dev)
+        - ESP32-S3 (esp32s3)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: nvr
+    attributes:
+      label: NVR
+      description: Its make and model, and its firmware version if you know it.
+  - type: input
+    id: nodes
+    attributes:
+      label: Nodes or sensors involved
+      description: The node's board and sensor, such as "ESP32-C3 SuperMini, HC-SR501", or "HTTP sensor".
+  - type: textarea
+    id: events
+    attributes:
+      label: Events and serial log
+      description: The lines from the Events page around the time, and the serial console's output if you have it.
+      render: text

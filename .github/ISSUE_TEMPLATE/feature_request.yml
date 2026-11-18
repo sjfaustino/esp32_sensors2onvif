@@ -1,0 +1,20 @@
+name: An idea
+description: Something the hub could do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you would like to do
+      description: The situation, and what gets in the way today. Describe the need rather than a solution, if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How the hub could help
+  - type: textarea
+    id: else
+    attributes:
+      label: Anything else
+      description: How you work around it now, or how other systems do it.
