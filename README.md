@@ -548,10 +548,13 @@ No hardware or NVR needed. Everything runs on loopback.
 pio test -e native
 pio run -e host
 python tools/e2e_test.py
+python tools/e2e_pages.py    # needs: pip install playwright==1.52.0, then python -m playwright install chromium
 ```
 
-`tools/e2e_test.py` can also test a flashed board. Its header explains how. Its parts are the `tools/e2e_*.py` files
-beside it, and the unit tests are a file per subject in `test/test_core`. The unit tests include a fuzz test that feeds
+`tools/e2e_test.py` can also test a flashed board. Its header explains how. Its parts are the other `tools/e2e_*.py`
+files beside it, but for `tools/e2e_pages.py`, which opens the pages in a real browser and checks that arming,
+disarming and the test alerts work from them, and that a refused change never leaves the page showing what was asked
+for instead of what the hub is. It runs against the PC build only, as it changes the arm mode. and the unit tests are a file per subject in `test/test_core`. The unit tests include a fuzz test that feeds
 every parser of what arrives from outside thousands of changed inputs. The C++ follows `.clang-format`; check it with
 clang-format 19 as the CI does.
 

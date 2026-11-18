@@ -48,6 +48,13 @@ jobs:
           pio run -e host
           python tools/e2e_test.py
 
+      # In a real browser: arming, disarming and the test alerts, on the pages, the hub and a pretend NVR.
+      - name: The web pages in a browser
+        run: |
+          pip install playwright==1.52.0
+          python -m playwright install chromium
+          python tools/e2e_pages.py
+
       - name: Firmware for every board
         run: pio run -e esp32_16mb -e esp32dev -e esp32s3
 
