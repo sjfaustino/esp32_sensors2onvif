@@ -315,10 +315,11 @@ that have none. A picture without a thumbnail shows the built-in All Clear, Aler
 ## Security
 
 One hub password, with the user name `admin`, protects the web page, ONVIF and RTSP. It comes from `WEB_PASSWORD`, or from
-`SETUP_AP_PASSWORD` when that is empty, and can be changed or turned off under **Network Manager > HTTP**. An NVR needs the same
-user and password on its channel. ONVIF clients may ask for the clock and capabilities before logging in, as ONVIF requires.
-With no password, from `secrets.h` or after turning it off, anyone on the network can change the hub and watch its video;
-the web page then says so at the top.
+`SETUP_AP_PASSWORD` when that is empty, and can be changed, but not turned off, under **Network Manager > HTTP**; a new
+one has 8 to 63 characters. An NVR needs the same user and password on its channel. ONVIF clients may ask for the clock
+and capabilities before logging in, as ONVIF requires. A hub that has no password, because both are empty in
+`secrets.h` or an older firmware turned it off, asks for one at the top of every page until it has one; meanwhile anyone
+on the network could change it and watch its video. Alerts reach the NVR all the same.
 
 HTTP sensor reports need `&token=<value>`. The hub makes a token the first time it starts and shows it on the HTTP page.
 ESP-NOW reports are signed with a separate key instead; see "Sensor input over ESP-NOW".
@@ -513,7 +514,7 @@ button; then it waits for the device's first report and says when it arrives.
 
 Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.
 The ports can be changed on the web page, under **Network Manager > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's
-`.local` name and turns the web password on or off. These are saved on the board, replace the values in `config.h` and
+`.local` name and changes the web password. These are saved on the board, replace the values in `config.h` and
 `secrets.h`, and take effect after the hub restarts by itself. After changing the ONVIF port, set the same port on the NVR
 channel. The serial heartbeat always shows all three ports. A forgotten web password can only be cleared by erasing the board's
 settings over USB, which also erases its Wi-Fi networks.
