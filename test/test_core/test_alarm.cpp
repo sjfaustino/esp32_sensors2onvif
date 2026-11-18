@@ -220,6 +220,27 @@ static void a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards() {
   TEST_ASSERT_TRUE(r.past(1));
 }
 
+// Busy while an alert is on, live or a past event playing, so a scheduled restart holds off until it has ended. A past
+// event still waiting does not count: waiting.bin keeps it through a restart.
+static void the_alarm_is_busy_while_an_alert_is_on() {
+  Rig r("cam_alarm_busy");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  r.start();
+  TEST_ASSERT_FALSE(r.alarm.busy());
+  r.report(DOOR, 1, true);
+  TEST_ASSERT_TRUE(r.alarm.busy());
+  r.report(DOOR, 1, false);
+  r.run(11000);  // past its hold
+  TEST_ASSERT_FALSE(r.alarm.busy());
+  r.report(DOOR, 1, true, 120);  // a past event
+  r.run(100);
+  TEST_ASSERT_TRUE(r.past());
+  TEST_ASSERT_TRUE(r.alarm.busy());
+  r.run(60000);
+  TEST_ASSERT_FALSE(r.past());
+  TEST_ASSERT_FALSE(r.alarm.busy());
+}
+
 static void a_sensor_never_heard_is_reported_silent_once() {
   CamConfig quick;
   quick.silentMs = 1000;
@@ -439,6 +460,7 @@ void runAlarmTests() {
   RUN_TEST(an_alert_the_nvr_missed_is_logged_and_replayed_once_it_listens);
   RUN_TEST(a_late_report_plays_as_a_past_event_of_its_own);
   RUN_TEST(a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards);
+  RUN_TEST(the_alarm_is_busy_while_an_alert_is_on);
   RUN_TEST(a_sensor_never_heard_is_reported_silent_once);
   RUN_TEST(a_silent_sensor_can_raise_the_alarm_when_asked_to);
   RUN_TEST(a_sensor_firing_too_often_is_reported_once);

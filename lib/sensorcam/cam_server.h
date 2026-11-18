@@ -43,6 +43,7 @@ class SensorCamServer : private CamAlarmOutside {
   void saveNow() { alarm_.saveNow(); }                                                     // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
   bool updating() const { return web_.updating(); }                    // a firmware upload is under way
+  bool alarmBusy() const { return alarm_.busy(); }                     // see CamAlarm::busy
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
 #ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests

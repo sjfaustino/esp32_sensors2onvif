@@ -51,3 +51,15 @@ const int CAM_LOGIN_FREE_TRIES = 10;                      // chosen
 const uint32_t CAM_LOGIN_FIRST_LOCK_MS = 60000;           // chosen: doubled for each wrong one after that
 const uint32_t CAM_LOGIN_LONGEST_LOCK_MS = 15UL * 60000;  // chosen
 const uint32_t CAM_LOGIN_FORGET_MS = 24UL * 3600 * 1000;  // chosen: how long wrong ones are remembered
+
+// ---- when the hub restarts itself, or undoes a firmware update: cam_restart_rules.h ----
+const uint32_t CAM_WIFI_LOST_RESTART_MS = 5UL * 60 * 1000;         // chosen: off Wi-Fi this long, the hub starts clean
+const uint32_t CAM_LOW_HEAP_BYTES = 8 * 1024;                      // chosen: free memory below this stops the network stack
+const uint32_t CAM_LOW_HEAP_RESTART_MS = 30000;                    // chosen: and lasting this long restarts the hub
+const uint32_t CAM_STALLED_RESTART_MS = 30000;                     // chosen: the server serving nothing this long restarts the hub
+const uint32_t CAM_ROUTER_SILENT_RESTART_MS = 90000;               // chosen: the router answering no ping this long, once it has
+const uint32_t CAM_STATIC_CHECK_MS = 120000;                       // chosen: after joining with a fixed address, when it is checked
+const uint32_t CAM_SCHEDULE_AFTER_START_MS = 180000;               // chosen: no scheduled restart this soon after a start
+const uint32_t CAM_SCHEDULE_WAIT_MS = 30UL * 60 * 1000;            // chosen: a scheduled restart waits this long for alerts to end
+const uint32_t CAM_FIRMWARE_PROOF_MS = 60000;                      // chosen: on the network this long proves a new firmware
+const uint32_t CAM_FIRMWARE_PROOF_DEADLINE_MS = 10UL * 60 * 1000;  // chosen: a new firmware not proved by then is undone

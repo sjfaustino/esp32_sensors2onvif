@@ -90,6 +90,10 @@ runs the same loop in one process, which is what the end-to-end tests drive. The
 - `CamVideo` (`cam_video.h`): the RTSP connections and the picture they send.
 - `CamWeb` (`cam_web_server.h`): HTTP, which carries the ONVIF requests, the pages and their API, sensor reports and
   uploads.
+- `CamRestartRules` (`cam_restart_rules.h`): when the hub restarts itself (off Wi-Fi, short of memory, stalled, a
+  silent router, a wrong fixed address, the schedule) and whether a new firmware is kept. `src/main.cpp` tells it what
+  the board sees once a pass and carries out what it decides, so the rules are unit tested apart from the board. The
+  scheduled restart waits while an alert is on, for up to 30 minutes.
 - `CamMqttClient` (`cam_mqtt_client.h`) and `CamWebhookSender` (`cam_webhook.h`): Home Assistant, and the webhook.
   The webhook and the event pushes each send through a `CamPost`, one HTTP POST that does not block.
 

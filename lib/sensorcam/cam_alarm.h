@@ -80,6 +80,9 @@ class CamAlarm {
   CamEventLog& log() { return log_; }
   const CamEventLog& log() const { return log_; }
   int delayedCount() const { return delayed_.count(); }  // past events waiting their turn
+  // An alert is on, live or a past event playing: a planned restart now would cut its NVR record short. Past events
+  // still waiting do not count, as waiting.bin keeps them through a restart.
+  bool busy() const { return sensors_.anyActive(); }
 
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();

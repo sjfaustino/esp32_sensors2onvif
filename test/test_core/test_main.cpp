@@ -11,6 +11,7 @@ void runOnvifTests();
 void runStorageTests();
 void runTextTests();
 void runAlarmTests();
+void runRestartTests();
 
 int main() {
   UNITY_BEGIN();
@@ -21,5 +22,6 @@ int main() {
   runStorageTests();
   runTextTests();
   runAlarmTests();
+  runRestartTests();
   return UNITY_END();
 }

@@ -40,7 +40,7 @@ void CamWeb::finishNodeImage(HttpConn& c, bool ok) {
 bool CamWeb::apiNodeImages(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (!r.is("POST", "/api/node-firmware/delete")) return false;
-  std::string chip = queryParam(r.form(), "chip");
+  std::string chip = r.field("chip");
   uint16_t n = 0;
   if (!camNumber(chip, n) || !nodes_.images().forChip(n))
     c.out = jsonFail(404, "there is no firmware for that chip");
@@ -64,7 +64,7 @@ bool CamWeb::apiPairing(const ApiRequest& r) {
     c.out = jsonOk(JSON_OK);
   } else if (r.is("POST", "/api/pairing/approve") || r.is("POST", "/api/pairing/reject")) {
     uint8_t mac[6];
-    if (!camParseMac(queryParam(r.form(), "mac"), mac)) {
+    if (!camParseMac(r.field("mac"), mac)) {
       c.out = jsonFail(400, "give the node's MAC address, as AA-BB-CC-DD-EE-FF");
       return true;
     }

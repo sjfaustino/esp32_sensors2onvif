@@ -129,6 +129,13 @@ static std::string percentDecode(const std::string& s) {
   return out;
 }
 
+std::string CamWeb::ApiRequest::field(const char* name) const { return percentDecode(queryParam(form(), name)); }
+
+bool CamWeb::ApiRequest::has(const char* name) const {
+  std::string f = form(), key = std::string(name) + "=";
+  return f.compare(1, key.size(), key) == 0 || f.find("&" + key) != std::string::npos;
+}
+
 static bool parseIpv4(const std::string& s, uint32_t& out) {
   out = 0;
   size_t i = 0;
@@ -259,12 +266,11 @@ void CamWeb::apiSetup(const ApiRequest& r) {
   } else if (r.is("GET", "/api/wifi/scan")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { radio_->wifiNetworks(j); }));
   } else if (r.is("POST", "/api/wifi")) {
-    std::string form = r.form();
-    std::string ssid = percentDecode(queryParam(form, "ssid")), password = percentDecode(queryParam(form, "password"));
+    std::string ssid = r.field("ssid"), password = r.field("password");
     if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63)))
       c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
     else
-      c.out = saved(radio_->wifiSave(ssid, password, queryParam(form, "role") == "backup"), "could not save the Wi-Fi settings");
+      c.out = saved(radio_->wifiSave(ssid, password, r.field("role") == "backup"), "could not save the Wi-Fi settings");
   } else {
     c.out = jsonFail(404, "not found");
   }
@@ -457,13 +463,12 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
   if (r.is("GET", "/api/time")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { chip_->timeInfo(j); }));
   } else if (r.is("POST", "/api/time")) {
-    std::string form = r.form(), epochText = queryParam(form, "epoch");
+    std::string epochText = r.field("epoch");
     CamTime t;
-    t.ntp = queryParam(form, "mode") != "manual";
-    t.server = queryParam(form, "server");
+    t.ntp = r.field("mode") != "manual";
+    t.server = r.field("server");
     long long offset = 0, dst = 0, epoch = 0;
-    bool ok =
-        wholeNumber(queryParam(form, "offset"), offset) && validOffset(offset) && wholeNumber(queryParam(form, "dst"), dst) && dst >= 0 && dst <= 2;
+    bool ok = wholeNumber(r.field("offset"), offset) && validOffset(offset) && wholeNumber(r.field("dst"), dst) && dst >= 0 && dst <= 2;
     if (t.ntp)
       ok = ok && validNtpServer(t.server);
     else
@@ -480,14 +485,12 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
   } else if (r.is("GET", "/api/schedule")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", schedule_.on).num("day", schedule_.day).num("minute", schedule_.minute); }));
   } else if (r.is("POST", "/api/schedule")) {
-    std::string form = r.form();
     long long day = 0, minute = 0;
-    if (!wholeNumber(queryParam(form, "day"), day) || day < -1 || day > 6 || !wholeNumber(queryParam(form, "minute"), minute) || minute < 0 ||
-        minute > 1439) {
+    if (!wholeNumber(r.field("day"), day) || day < -1 || day > 6 || !wholeNumber(r.field("minute"), minute) || minute < 0 || minute > 1439) {
       c.out = jsonFail(400, "check the day and the time");
     } else {
       CamSchedule s;
-      s.on = queryParam(form, "on") == "1";
+      s.on = r.field("on") == "1";
       s.day = (int)day;
       s.minute = (int)minute;
       bool ok = store_->scheduleSave(s);
@@ -505,20 +508,20 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
   } else if (r.is("POST", "/api/reboot")) {
     c.out = saved(chip_->maintenance("reboot"), "could not do that");
   } else if (r.is("POST", "/api/reset")) {
-    if (queryParam(r.form(), "confirm") != "yes")
+    if (r.field("confirm") != "yes")
       c.out = jsonFail(400, "not confirmed");  // erases Wi-Fi and every setting, so a stray request must not do it
     else
       c.out = saved(chip_->maintenance("reset"), "could not do that");
   } else if (r.is("POST", "/api/newkeys")) {
     // Every node and HTTP sensor stops being heard until set up again, so a stray request must not do it.
-    if (queryParam(r.form(), "confirm") != "yes")
+    if (r.field("confirm") != "yes")
       c.out = jsonFail(400, "not confirmed");
     else
       c.out = saved(chip_->maintenance("newkeys"), "could not do that");
   } else if (r.is("GET", "/api/alerts")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("alarm", alarm_.healthAlarm()); }));
   } else if (r.is("POST", "/api/alerts")) {
-    bool on = queryParam(r.form(), "alarm") == "1", ok = store_->healthSave(on);
+    bool on = r.field("alarm") == "1", ok = store_->healthSave(on);
     if (ok) alarm_.setHealthAlarm(on);
     c.out = saved(ok, "could not save the setting");
   } else if (r.is("GET", "/api/backup")) {
@@ -545,7 +548,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
       j.end();
     }));
   } else if (r.is("POST", "/api/nvr")) {
-    std::string ip = queryParam(r.form(), "ip");
+    std::string ip = r.field("ip");
     uint32_t parsed;
     if (!ip.empty() && !parseIpv4(ip, parsed)) {
       c.out = jsonFail(400, "check the IP address");
@@ -557,28 +560,26 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
   } else if (r.is("GET", "/api/network")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { radio_->addressInfo(j); }));
   } else if (r.is("POST", "/api/network")) {
-    std::string form = r.form();
     CamAddress a;
-    a.dhcp = queryParam(form, "mode") != "static";
-    a.ip = queryParam(form, "ip");
-    a.mask = queryParam(form, "mask");
-    a.gateway = queryParam(form, "gateway");
-    a.dns = queryParam(form, "dns");
+    a.dhcp = r.field("mode") != "static";
+    a.ip = r.field("ip");
+    a.mask = r.field("mask");
+    a.gateway = r.field("gateway");
+    a.dns = r.field("dns");
     if (!a.dhcp && !validAddress(a))
       c.out = jsonFail(400, "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address");
     else
       c.out = saved(radio_->addressSave(a), "could not save the address");
   } else if (r.is("POST", "/api/settings")) {
-    std::string form = r.form();
     auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
-      std::string text = queryParam(form, name);
+      std::string text = r.field(name);
       long long value = current;
       return text.empty() || wholeNumber(text, value) ? value : -1LL;
     };
     long long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
-    std::string name = queryParam(form, "name"), protect = queryParam(form, "protect"), password = percentDecode(queryParam(form, "password"));
-    bool hostsGiven = form.find("&hosts=") != std::string::npos || form.compare(0, 7, "?hosts=") == 0;
-    std::string hosts = percentDecode(queryParam(form, "hosts"));
+    std::string name = r.field("name"), protect = r.field("protect"), password = r.field("password");
+    bool hostsGiven = r.has("hosts");
+    std::string hosts = r.field("hosts");
     bool nameOk = validHubName(name);
     bool passwordOn = protect.empty() ? !cfg_.webPassword.empty() : protect == "on";
     if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
@@ -611,8 +612,8 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
 bool CamWeb::apiSensors(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("POST", "/api/sensor-settings")) {
-    std::string path = queryParam(r.target, "path"), form = r.form();
-    std::string hold = queryParam(form, "hold"), from = queryParam(form, "from"), to = queryParam(form, "to"), zone = queryParam(form, "zone");
+    std::string path = queryParam(r.target, "path");
+    std::string hold = r.field("hold"), from = r.field("from"), to = r.field("to"), zone = r.field("zone");
     bool sensor = table_.slotForPath(path) != 0;
     CamSensorSettings s;
     std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n") +
@@ -629,9 +630,9 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = saved(ok, "could not save the settings; storage may be full");
     }
   } else if (r.is("POST", "/api/node-settings")) {
-    std::string path = queryParam(r.target, "path"), form = r.form(), text;
+    std::string path = queryParam(r.target, "path"), text;
     for (const char* key : {"late", "silent", "every", "repeat"}) {
-      std::string value = queryParam(form, key);
+      std::string value = r.field(key);
       if (!value.empty()) text += std::string(key) + "=" + value + "\n";
     }
     CamNodeSettings s;
@@ -651,7 +652,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     std::string path = queryParam(r.target, "path");
     uint8_t mac[6];
     time_t t = chip_->wallTime();
-    bool stop = queryParam(r.form(), "stop") == "1";
+    bool stop = r.field("stop") == "1";
     if (camClassifyPath(path) != CAM_PATH_NODE || !camParseMac(path, mac) || !table_.findNode(mac)) {
       c.out = jsonFail(404, "no such node");
     } else if (t < CAM_CLOCK_VALID_AFTER) {
@@ -663,13 +664,12 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   } else if (r.is("GET", "/api/webhook")) {
     reply(c, 200, JSON_TYPE, webhook_.pageJson());
   } else if (r.is("POST", "/api/webhook")) {
-    std::string form = r.form();
     CamWebhook w;
-    w.url = percentDecode(queryParam(form, "url"));
-    w.text = queryParam(form, "text") == "1";
-    w.alerts = queryParam(form, "alerts") == "1";
-    w.problems = queryParam(form, "problems") == "1";
-    std::string daily = queryParam(form, "daily");
+    w.url = r.field("url");
+    w.text = r.field("text") == "1";
+    w.alerts = r.field("alerts") == "1";
+    w.problems = r.field("problems") == "1";
+    std::string daily = r.field("daily");
     if (!validHookUrl(w.url)) {
       c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
     } else if (!daily.empty() && daily != "-1" && !camNumberIn(daily, 0, 1439, w.dailyMinute)) {
@@ -695,7 +695,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       j.flag("timed", timed).num("left_s", left >= 0, left).num("rearm", alarm_.rearmMinutes());
     }));
   } else if (r.is("POST", "/api/arm")) {
-    std::string form = r.form(), on = queryParam(form, "armed"), mode = queryParam(form, "mode"), forText = queryParam(form, "for");
+    std::string on = r.field("armed"), mode = r.field("mode"), forText = r.field("for");
     long long minutes = alarm_.rearmMinutes();
     if (mode.empty()) mode = on == "1" ? "away" : on == "0" ? "disarmed" : "";  // armed=1 and 0, as earlier firmware took
     if (mode != "away" && mode != "home" && mode != "disarmed") {
@@ -712,7 +712,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     reply(c, 200, JSON_TYPE, overviewJson(millis_()));
   } else if (r.is("POST", "/api/arm/rearm")) {
     long long minutes = -1;
-    if (!wholeNumber(queryParam(r.form(), "minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {
+    if (!wholeNumber(r.field("minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
       bool ok = store_->rearmSave((uint32_t)minutes);
@@ -722,11 +722,11 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   } else if (r.is("GET", "/api/mqtt")) {
     reply(c, 200, JSON_TYPE, mqtt_.pageJson());
   } else if (r.is("POST", "/api/mqtt")) {
-    std::string form = r.form(), port = queryParam(form, "port");
+    std::string port = r.field("port");
     CamMqtt m;
-    m.host = percentDecode(queryParam(form, "host"));
-    m.user = percentDecode(queryParam(form, "user"));
-    m.password = percentDecode(queryParam(form, "password"));
+    m.host = r.field("host");
+    m.user = r.field("user");
+    m.password = r.field("password");
     long long n = 1883;
     uint32_t ip;
     bool portOk = (port.empty() || wholeNumber(port, n)) && n >= 1 && n <= 65535;

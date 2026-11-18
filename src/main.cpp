@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <freertos/queue.h>
 #include <ping/ping_sock.h>
+#include "cam_restart_rules.h"
 #include "cam_server.h"
 #include "config.h"
 #include "device_info.h"
@@ -30,9 +31,6 @@ static uint32_t wifiTryAt = 0;
 static DNSServer dnsServer;
 static bool setupOpen = false;
 static bool usingStatic = false;
-static uint32_t connectedAt = 0;
-static bool staticChecked = false;
-static const uint32_t STATIC_CHECK_MS = 120000;
 
 // Why the hub restarted itself, kept across the restart so Device Info and the heartbeat can say which rule caused it.
 enum RestartCause : uint32_t {
@@ -239,8 +237,6 @@ static bool startWasPlanned();
 // The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
 extern "C" bool verifyRollbackLater() { return true; }
 
-static const uint32_t FIRMWARE_PROOF_MS = 60000;
-static const uint32_t FIRMWARE_PROOF_DEADLINE_MS = 10UL * 60UL * 1000UL;
 static bool firmwareUnproven = false;
 static bool espNowStarted = false;
 // Set as an update starts and kept through the restart into it: whether the NVR was listening then, so the new firmware
@@ -392,14 +388,6 @@ static CamConfig makeConfig() {
 }
 
 // A start time for timers where 0 means "not running". It must never be later than millis(), or the elapsed time wraps to a huge value.
-static uint32_t timerStart() {
-  uint32_t t = millis();
-  return t == 0 ? 1 : t;
-}
-
-static const uint32_t WIFI_RESTART_MS = 5UL * 60UL * 1000UL;
-static const uint32_t LOW_HEAP_BYTES = 8 * 1024;
-static const uint32_t LOW_HEAP_RESTART_MS = 30000;
 static volatile uint32_t wifiDrops = 0;
 static volatile uint8_t wifiDropReason = 0;
 
@@ -411,7 +399,6 @@ static void restartFor(RestartCause cause) {
   ESP.restart();
 }
 
-static const uint32_t PING_LOST_RESTART_MS = 90000;
 static volatile uint32_t pingReplies = 0, pingLost = 0, lastPingReply = 0;
 static volatile uint32_t pingRepliesEver = 0, pingLostEver = 0;  // never reset by a new connection, for the radio test
 static esp_ping_handle_t pingSession = nullptr;
@@ -469,6 +456,8 @@ static bool routerAnswersArp() {
   q.address.addr = (uint32_t)WiFi.gatewayIP();
   return esp_netif_tcpip_exec(findInArpTable, &q) != ESP_OK || q.found;  // unable to ask is not evidence of a bad address
 }
+
+static CamRestartRules rules(routerAnswersArp);
 
 static bool wasConnected = false;
 
@@ -700,17 +689,14 @@ void setup() {
 // ---- the main loop: each step below keeps one promise, and loop() runs them in this order ----
 
 static bool everConnected = false;
-static uint32_t lostAt = 0;  // when the network went, while it is gone
 static bool hadGuest = false;
 
 // Back on Wi-Fi. A drop and return without a restart is logged, because someone may be keeping the hub off its network.
 static void onConnected() {
-  if (everConnected && lostAt) server->networkLost((millis() - lostAt) / 1000 + 1);
+  if (everConnected && rules.lostAt()) server->networkLost((millis() - rules.lostAt()) / 1000 + 1);
   everConnected = true;
   server->networkUp();
-  connectedAt = timerStart();
   startGatewayPing();
-  staticChecked = false;
   static bool nameAnnounced = false;
   if (!nameAnnounced && MDNS.begin(settings.hubName.c_str())) {
     MDNS.addService("http", "tcp", settings.webPort);
@@ -718,16 +704,15 @@ static void onConnected() {
   }
 }
 
-// An unattended hub must not stay off the network: keep asking, then start clean.
-static void keepOnNetwork(bool connected, bool justLost) {
+// Off the network: keep asking, on the main network then the backup, with the setup network open behind them. True while
+// someone is on the setup network. The restart after a while off it is CamRestartRules'.
+static bool keepOnNetwork(bool connected, bool justLost) {
   if (connected) {
-    lostAt = 0;
     hadGuest = false;
     if (wifiTrying == 1) promoteBackup();
     if (setupOpen) closeSetup();
-    return;
+    return false;
   }
-  if (lostAt == 0) lostAt = timerStart();
   bool haveNetwork = settings.wifiSsid[0].length() > 0;
   if (!haveNetwork) openSetup();
   if (justLost && haveNetwork) tryNetwork(0);
@@ -735,9 +720,7 @@ static void keepOnNetwork(bool connected, bool justLost) {
   bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
   if (guest && !hadGuest) WiFi.disconnect(false);
   hadGuest = guest;
-  if (guest) {
-    lostAt = timerStart();  // someone is using the setup page; a restart would throw them off
-  } else if (haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
+  if (!guest && haveNetwork && millis() - wifiTryAt > WIFI_TRY_MS) {
     if (wifiTrying == 0 && settings.wifiSsid[1].length() > 0) {
       tryNetwork(1);
     } else {  // neither network worked: open the setup network and keep trying behind it
@@ -745,32 +728,7 @@ static void keepOnNetwork(bool connected, bool justLost) {
       tryNetwork(0);
     }
   }
-  if (haveNetwork && millis() - lostAt > WIFI_RESTART_MS) restartFor(RESTART_WIFI_LOST);
-}
-
-// A new firmware is kept once it has done the hub's work: on the network for a minute, ESP-NOW running, and the NVR
-// listening again if it was when the update began. Any restart before that, including the Wi-Fi one, undoes the update,
-// and so does not managing it within 10 minutes.
-static void proveFirmware(bool connected) {
-  if (!firmwareUnproven) return;
-  if (settings.wifiSsid[0].isEmpty()) {  // still being set up: nothing to prove it on
-    if (millis() > FIRMWARE_PROOF_MS) confirmFirmware();
-    return;
-  }
-  bool needNvr = updateProof.mark == UPDATE_PROOF_MARK && updateProof.needNvr;
-  bool proven = connected && millis() - connectedAt > FIRMWARE_PROOF_MS && espNowStarted && (!needNvr || server->nvrListeningNow());
-  if (proven) {
-    confirmFirmware();
-    updateProof.mark = 0;
-    Serial.println("The new firmware has proved itself and is kept.");
-  } else if (millis() > FIRMWARE_PROOF_DEADLINE_MS) {
-    Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n", !espNowStarted ? "started ESP-NOW"
-                                                                                                       : !connected   ? "stayed on the network"
-                                                                                                                    : "got the NVR listening again");
-    if (server) server->saveNow();
-    updateProof.mark = 0;
-    esp_ota_mark_app_invalid_rollback_and_reboot();
-  }
+  return guest;
 }
 
 // A restart asked for on the page.
@@ -781,47 +739,65 @@ static void restartWhenAsked() {
   }
 }
 
-// Out of RAM the network stack stops working while this loop carries on, so the loop watchdog cannot see it.
-static void restartWhenStuck() {
-  static uint32_t lowSince = 0;
-  sampleMemory();  // for Device Info: how cut up the memory has been
-  if (ESP.getFreeHeap() >= LOW_HEAP_BYTES) {
-    lowSince = 0;
-  } else {
-    if (lowSince == 0) lowSince = timerStart();
-    if (millis() - lowSince > LOW_HEAP_RESTART_MS) restartFor(RESTART_LOW_MEMORY);
-  }
-  if (server->stalledMs(millis()) > 30000) restartFor(RESTART_STALLED);  // the loop runs but the server has stopped serving
-}
-
-// The uptime check stops the hub from restarting again within the same minute.
-static void restartWhenScheduled() {
-  static uint32_t scheduleCheckedAt = 0;
-  if (!settings.schedule.on || millis() <= 180000 || millis() - scheduleCheckedAt <= 20000) return;
-  scheduleCheckedAt = millis();
+// The minute the page set for the scheduled restart.
+static bool scheduledMinute() {
+  if (!settings.schedule.on || !clockSet()) return false;
   time_t now = time(nullptr);
   struct tm local;
   localtime_r(&now, &local);
-  if (clockSet() && (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) &&
-      local.tm_hour * 60 + local.tm_min == settings.schedule.minute)
-    restartFor(RESTART_SCHEDULED);
+  return (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == settings.schedule.minute;
 }
 
-// Connected, but cut off: a wrong fixed address, or a router that stopped answering.
-static void restartWhenCutOff(bool connected) {
-  // A wrong fixed address leaves Wi-Fi connected but the hub unreachable, with no other way back to it.
-  if (connected && usingStatic && !staticChecked && millis() - connectedAt > STATIC_CHECK_MS) {
-    staticChecked = true;
-    if (pingReplies == 0 && pingLost > 0 && !routerAnswersArp()) {
-      forgetStatic();
-      restartFor(RESTART_BAD_FIXED_ADDRESS);
-    }
+// What the restart rules look at, this pass.
+static CamRestartRules::Pass rulesPass(bool connected, bool guest) {
+  CamRestartRules::Pass p;
+  p.lastPingReply = lastPingReply;  // before the time: the ping task may change it, and a reply later than now would wrap
+  p.now = millis();
+  p.haveNetwork = settings.wifiSsid[0].length() > 0;
+  p.connected = connected;
+  p.guest = guest;
+  p.usingStatic = usingStatic;
+  p.freeHeap = ESP.getFreeHeap();
+  p.stalledMs = server->stalledMs(p.now);
+  p.pingReplies = pingReplies;
+  p.pingLost = pingLost;
+  p.uploading = server->updating();
+  p.scheduledMinute = scheduledMinute();
+  p.alarmBusy = server->alarmBusy();
+  return p;
+}
+
+// Keeps a new firmware once it has proved itself, or goes back to the previous one; see CamRestartRules::firmware.
+static void proveFirmware(const CamRestartRules::Pass& p) {
+  if (!firmwareUnproven) return;
+  bool needNvr = updateProof.mark == UPDATE_PROOF_MARK && updateProof.needNvr;
+  CamFirmwareVerdict verdict = rules.firmware(p, espNowStarted, needNvr, server->nvrListeningNow());
+  if (verdict == CAM_FIRMWARE_KEEP) {
+    confirmFirmware();
+    updateProof.mark = 0;
+    Serial.println("The new firmware has proved itself and is kept.");
+  } else if (verdict == CAM_FIRMWARE_UNDO) {
+    Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n", !espNowStarted ? "started ESP-NOW"
+                                                                                                       : !p.connected
+                                                                                                           ? "stayed on the network"
+                                                                                                           : "got the NVR listening again");
+    server->saveNow();
+    updateProof.mark = 0;
+    esp_ota_mark_app_invalid_rollback_and_reboot();
   }
-  // Only after the router has answered at least once, so a router that ignores ping cannot cause restarts.
-  // The reply time is read first because the ping task can update it at any moment, and a time later than millis() would wrap.
-  uint32_t lastReply = lastPingReply;
-  // Not during a firmware upload, whose data still arriving shows the network works; a stalled one is closed anyway.
-  if (connected && pingReplies > 0 && millis() - lastReply > PING_LOST_RESTART_MS && !server->updating()) restartFor(RESTART_ROUTER_SILENT);
+}
+
+// Carries out what a restart rule decided.
+static void restartForRule(CamRestartRule rule) {
+  switch (rule) {
+    case CAM_RULE_NONE: return;
+    case CAM_RULE_WIFI_LOST: return restartFor(RESTART_WIFI_LOST);
+    case CAM_RULE_LOW_MEMORY: return restartFor(RESTART_LOW_MEMORY);
+    case CAM_RULE_STALLED: return restartFor(RESTART_STALLED);
+    case CAM_RULE_SCHEDULED: return restartFor(RESTART_SCHEDULED);
+    case CAM_RULE_BAD_FIXED_ADDRESS: forgetStatic(); return restartFor(RESTART_BAD_FIXED_ADDRESS);
+    case CAM_RULE_ROUTER_SILENT: return restartFor(RESTART_ROUTER_SILENT);
+  }
 }
 
 static void printHeartbeat() {
@@ -841,14 +817,15 @@ void loop() {
   bool justLost = !connected && wasConnected;
   if (connected && !wasConnected) onConnected();  // before keepOnNetwork, which forgets when the network went
   wasConnected = connected;
-  keepOnNetwork(connected, justLost);
+  bool guest = keepOnNetwork(connected, justLost);
   if (setupOpen) dnsServer.processNextRequest();
   if (!settings.timeNtp && esp_sntp_enabled() && clockSet()) applyTime();  // the one-off NTP reading after a power cut has arrived
   restartWhenAsked();
-  proveFirmware(connected);
-  restartWhenStuck();
-  restartWhenScheduled();
-  restartWhenCutOff(connected);
+  sampleMemory();  // for Device Info: how cut up the memory has been
+  CamRestartRules::Pass pass = rulesPass(connected, guest);
+  CamRestartRule rule = rules.check(pass);
+  proveFirmware(pass);  // first, so an update that failed says why before any other restart undoes it
+  restartForRule(rule);
   printHeartbeat();
   runLrTest();
 

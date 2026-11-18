@@ -100,6 +100,9 @@ class CamWeb {
     const char* body;
     size_t bodyLen;
     bool is(const char* m, const char* r) const { return method == m && route == r; }
+    // A posted form's field, decoded, as every page sends its values through encodeURIComponent; "" when absent.
+    std::string field(const char* name) const;
+    bool has(const char* name) const;                                      // the form carries this field, even empty
     std::string form() const { return "?" + std::string(body, bodyLen); }  // so queryParam can read a posted form
   };
 

@@ -336,6 +336,8 @@ Keep the hub out of reach.
 
 **Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
 restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
+A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
+30 minutes, that restart is skipped until the next time.
 A new firmware is kept only once it has done the hub's work: stayed on the network for a minute, started ESP-NOW, and,
 if the NVR was listening when the update began, got it listening again. If it crashes, stalls or loses the network
 first, the power fails meanwhile, or it has not managed within 10 minutes, the hub goes back to the previous firmware
