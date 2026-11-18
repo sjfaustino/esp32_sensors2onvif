@@ -220,6 +220,47 @@ static void a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards() {
   TEST_ASSERT_TRUE(r.past(1));
 }
 
+// HTTP carries neither a paired node's key nor the hub's number, so a report over it raises the alert but does not count
+// as the node being there: otherwise anyone with the shared token could keep a stolen node from going silent.
+static void an_http_report_does_not_keep_a_paired_node_alive() {
+  Rig r("cam_alarm_http_paired");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  std::string pairing = "public=" + std::string(2 * CAM_X25519_LEN, '1') + "\nkey=" + std::string(2 * CAM_NODE_KEY_LEN, '2') + "\n";
+  r.storage.writeFile("AA-BB-CC-DD-EE-01/pairing.txt", pairing.data(), pairing.size());
+  r.start();
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).paired);
+  TEST_ASSERT_EQUAL(200, r.report(DOOR, 1, true, 0, 80));
+  TEST_ASSERT_TRUE(r.on());  // the alert counts
+  TEST_ASSERT_FALSE(r.table.healthOf(r.id()).heard);
+  TEST_ASSERT_EQUAL(CAM_BATTERY_UNKNOWN, r.table.healthOf(r.id()).battery);
+
+  Rig plain("cam_alarm_http_plain");  // a node on the shared key is taken at its word, over HTTP as over ESP-NOW
+  plain.sensor("AA-BB-CC-DD-EE-01/1");
+  plain.start();
+  plain.report(DOOR, 1, true, 0, 80);
+  TEST_ASSERT_TRUE(plain.table.healthOf(plain.id()).heard);
+  TEST_ASSERT_EQUAL(80, plain.table.healthOf(plain.id()).battery);
+}
+
+// A sender without a folder is listed for the page only when its report is correctly signed, so made-up senders cannot
+// fill the list and push a real new node off it.
+static void only_a_correctly_signed_stranger_is_listed() {
+  CamConfig start;
+  start.espNowKey = "shared-key";
+  Rig r("cam_alarm_strangers", start);
+  r.start();
+  uint8_t p[S2O_REPORT_HEAD + 8] = {CAM_REPORT, 1, 1, 90, 4, 3, 2, 1};
+  std::string sig = camPacketSignature(STRANGER, p, S2O_REPORT_HEAD, "another-key");
+  memcpy(p + S2O_REPORT_HEAD, sig.data(), 8);
+  r.alarm.espNowReport(STRANGER, p, sizeof(p), -60);
+  TEST_ASSERT_FALSE(r.table.unknown()[0].used);
+  sig = camPacketSignature(STRANGER, p, S2O_REPORT_HEAD, "shared-key");
+  memcpy(p + S2O_REPORT_HEAD, sig.data(), 8);
+  r.alarm.espNowReport(STRANGER, p, sizeof(p), -60);
+  TEST_ASSERT_TRUE(r.table.unknown()[0].used);
+  TEST_ASSERT_EQUAL(-60, r.table.unknown()[0].rssi);
+}
+
 // Busy while an alert is on, live or a past event playing, so a scheduled restart holds off until it has ended. A past
 // event still waiting does not count: waiting.bin keeps it through a restart.
 static void the_alarm_is_busy_while_an_alert_is_on() {
@@ -461,6 +502,8 @@ void runAlarmTests() {
   RUN_TEST(a_late_report_plays_as_a_past_event_of_its_own);
   RUN_TEST(a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards);
   RUN_TEST(the_alarm_is_busy_while_an_alert_is_on);
+  RUN_TEST(an_http_report_does_not_keep_a_paired_node_alive);
+  RUN_TEST(only_a_correctly_signed_stranger_is_listed);
   RUN_TEST(a_sensor_never_heard_is_reported_silent_once);
   RUN_TEST(a_silent_sensor_can_raise_the_alarm_when_asked_to);
   RUN_TEST(a_sensor_firing_too_often_is_reported_once);

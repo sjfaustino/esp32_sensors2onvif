@@ -382,8 +382,9 @@ PATH. Use `--chip esp32s3` for an S3 board.
 **Sensors Manager > Nodes and pairing** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
 sensor node with its state, last contact, battery, signal strength, last report number and refused messages. A signal marked
 "weak" has averaged below -80 dBm over the last few messages; it is cleared above -75 dBm. Only nodes added under
-**Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Valid reports from anything
-else are ignored, and the eight most recent such senders appear under **Unknown senders** until the hub restarts or they are added.
+**Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Reports from anything
+else are ignored, and the eight most recent senders whose reports were signed with the ESP-NOW key appear under **Unknown
+senders** until the hub restarts or they are added; a sender with the wrong key is not listed.
 A node that sends node info also shows its sensor's kind, its firmware and chip, how often and why it last restarted, how
 long its last alert took to be confirmed, how long its battery will last, and whether its last report was sealed.
 
@@ -678,7 +679,9 @@ settings over USB, which also erases its Wi-Fi networks.
 
 Sensor reports need `&token=<value>`, using the token shown on the HTTP page. `/status` and `/events` need the hub login.
 Unknown sensors get a 404. The 200 reply is the confirmation and comes only once the report is saved; if it could
-not be saved the reply is 507, and the sensor should send it again.
+not be saved the reply is 507, and the sensor should send it again. A report for a paired node's sensor raises its
+alert, but does not count as the node being heard and its battery reading is ignored: HTTP carries neither the node's
+key nor the hub's number, so otherwise anyone with the token could keep a stolen node from being reported silent.
 When several sensors are active, the picture alternates between them every 2 s.
 
 ## Adding it to the NVR

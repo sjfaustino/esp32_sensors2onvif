@@ -83,8 +83,11 @@ void CamAlarm::tick(uint32_t now) {
 
 int CamAlarm::webReport(const uint8_t mac[6], uint8_t input, const SensorReport& r) {
   int id = table_.findSlot(mac, input);
-  if (!applyReport(id, r, millis_())) return 404;
-  if (r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
+  // A paired node proves it is there with its own key and the hub's number, and HTTP carries neither: its alert counts,
+  // but not as the node being there, or anyone with the shared token could keep a stolen node looking alive.
+  bool present = id && !table_.nodeOf(id).paired;
+  if (!applyReport(id, r, millis_(), present)) return 404;
+  if (present && r.battery != CAM_BATTERY_UNKNOWN) noteBattery(id, r.battery);
   return persist() ? 200 : 507;
 }
 
@@ -380,8 +383,8 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
   const std::string& key = table_.keyFor(node);
   CamPacketCheck check = camCheckPacket(mac, data, len, key, r);
   if (check == CAM_PACKET_INVALID) return;
-  if (id == 0) {
-    table_.noteUnknown(mac, r.input, rssi, millis_());
+  if (id == 0) {  // listed only when correctly signed, so made-up senders cannot push a real new node off the page
+    if (check == CAM_PACKET_SIGNED) table_.noteUnknown(mac, r.input, rssi, millis_());
     return;
   }
   Health& h = table_.healthOf(id);
