@@ -11,6 +11,11 @@ forking it on GitHub.
 To ask for permission, including for a commercial licence, open an issue in this repository saying what you would like
 to do.
 
+The firmware also contains software by others, under their own licences, listed in THIRD_PARTY_NOTICES.md with their
+texts in the licenses folder. Nothing in this licence limits the rights those licences give. Because the Arduino core
+for the ESP32 is under the GNU Lesser General Public License 2.1, anyone who receives the firmware may modify it for
+their own use, reverse engineer it to debug such modifications, and link it with a modified version of that library.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
 HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING

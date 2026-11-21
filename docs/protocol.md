@@ -3,8 +3,8 @@
 Every message between the hub and its nodes, byte by byte, for whoever builds a node or another sensor. They are written
 once, in `lib/s2o_proto`, which the hub and the node firmware ([esp32_sensor_node](https://github.com/sjfaustino/esp32_sensor_node))
 both build from; the two projects' tests check that code against the values worked out from this page alone. What the
-hub then does with an alert, such as how long it lasts and when it counts as a past event, is in the README, under
-"Sensor input over ESP-NOW".
+hub then does with an alert, such as how long it lasts and when it counts as a past event, is in the
+[user guide](user-guide.md#sensor-input-over-esp-now).
 
 ## Reports and confirmations
 
@@ -57,7 +57,7 @@ A node's clock can run some percent fast or slow while it sleeps. A node that ke
 against the hub's time over successive confirmations and scale the ages it sends by it, so a past event's time is right.
 
 A sensor should check the signature, so that nothing else in radio range can stop it resending. The confirmation means
-the hub has the alert, not that the NVR got it or recorded it; the hub reports delivery separately (see Events and alerts in the README).
+the hub has the alert, not that the NVR got it or recorded it; the hub reports delivery separately (see [Events and alerts](user-guide.md#events-and-alerts) in the user guide).
 
 Devices that cache alerts should send them oldest first and keep resending each until it is confirmed.
 They should also report their current state regularly, a little more often than their node's **Report this node silent

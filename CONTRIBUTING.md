@@ -33,7 +33,8 @@ pio run -e esp32_16mb         # the firmware for the board you have; CI builds t
 - **The style is checked.** C++ with clang-format 19.1.7, using `.clang-format`. The page scripts and styles with
   `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`, and `node --check` on each
   script. CI refuses either otherwise.
-- **The documents follow the code.** The README for what a user sees, `docs/how-it-works.md` for how it works, and
+- **The documents follow the code.** `docs/user-guide.md` for what a user sees, with its pictures
+  taken again by `python tools/screenshots.py` when a page changes, `docs/how-it-works.md` for how it works, and
   `docs/protocol.md` for the messages. Every time the hub waits for is in `lib/sensorcam/cam_timing.h`.
 - **Commit messages say what changed for the hub**, in a sentence, such as "A scheduled restart waits for alerts to
   end", with the reason in the body.
@@ -42,5 +43,7 @@ pio run -e esp32_16mb         # the firmware for the board you have; CI builds t
 ## Releases
 
 A release is a tag such as `v0.2.0` on `main`. Pushing the tag builds the firmware for every board and publishes it,
-with that version's part of [CHANGELOG.md](CHANGELOG.md). Until 1.0.0, a new minor version may change settings or the
+with that version's part of [CHANGELOG.md](CHANGELOG.md) and the third-party notices.
+A new release of the Arduino core or ESP-IDF, or a new library, needs its entry in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and its licence text in `licenses/`. Until 1.0.0, a new minor version may change settings or the
 messages; from 1.0.0, versions follow [semantic versioning](https://semver.org).

@@ -55,6 +55,16 @@ jobs:
           python -m playwright install chromium
           python tools/e2e_pages.py
 
+      # The user guide's pictures can still be taken; they are kept here to compare with the ones in docs/images.
+      - name: Pictures of the pages
+        run: python tools/screenshots.py
+
+      - name: Keep the pictures
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-pictures
+          path: docs/images/*.png
+
       - name: Firmware for every board
         run: pio run -e esp32_16mb -e esp32dev -e esp32s3
 

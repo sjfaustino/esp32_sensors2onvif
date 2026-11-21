@@ -23,7 +23,8 @@ Maintenance**.
 
 ## Known limits
 
-These are part of the design and documented in the README, so they need no report:
+These are part of the design and documented in the [user guide](docs/user-guide.md#security), so they need no
+report:
 
 - HTTP, ONVIF, RTSP and MQTT on the local network are not encrypted, as is usual between local devices. Anyone who can
   watch the network can read the hub password.

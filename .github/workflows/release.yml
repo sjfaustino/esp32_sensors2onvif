@@ -1,6 +1,6 @@
 # Publishes a release when a version is tagged on main, such as v0.2.0: the firmware for every board, named after the
 # version, and that version's part of CHANGELOG.md as the notes. Each firmware.bin is the file the hub's own page takes
-# under System Manager > Maintenance; each .elf reads a crash report from that build.
+# under System Manager > Maintenance; each -full.bin sets up a blank board; each .elf reads a crash report from that build.
 name: Release
 
 on:
@@ -45,17 +45,27 @@ jobs:
           for board in esp32_16mb esp32dev esp32s3; do
             cp ".pio/build/$board/firmware.bin" "out/sensors2onvif-$v-$board.bin"
             cp ".pio/build/$board/firmware.elf" "out/sensors2onvif-$v-$board.elf"
+            cp ".pio/build/$board/firmware.factory.bin" "out/sensors2onvif-$v-$board-full.bin"
           done
+          python -m zipfile -c "out/sensors2onvif-$v-notices.zip" THIRD_PARTY_NOTICES.md LICENSE licenses/
           awk -v head="## [${v#v}]" 'index($0, head) == 1 {on = 1; next} /^## / || /^\[[^]]*\]: / {on = 0} on' CHANGELOG.md > notes.md
           cat >> notes.md <<'EOF'
 
           ### Updating a hub
 
-          Download the `.bin` for your board: `esp32_16mb` for an ESP32 with 16 MB of flash, `esp32dev` for one with 4 MB,
+          Download the `.bin` for your board, the one without `-full`: `esp32_16mb` for an ESP32 with 16 MB of flash, `esp32dev` for one with 4 MB,
           `esp32s3` for an ESP32-S3. On the hub's page, open System Manager > Maintenance, choose the file under Firmware
           update and press Update firmware. The hub keeps the new firmware only once it has proved itself, and otherwise
           goes back to the one before. Its settings, sensors and history are kept.
 
-          A new hub is set up from source the first time, as the README's Setup section says.
+          ### A new hub
+
+          Write the `-full.bin` for your board to the whole of a blank board at address 0, with
+          [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge, or with
+          `esptool.py write_flash 0x0 <file>`. The hub then opens a Wi-Fi network called `esp-alarmhub-setup`: join it,
+          choose the hub password and your Wi-Fi network on the page that opens, and the hub joins that network. The
+          README's Setup section goes on from there.
+
+          The firmware contains software by others under their own licences, listed in the `notices` file.
           EOF
           gh release create "$v" out/* --title "$v" --notes-file notes.md --verify-tag

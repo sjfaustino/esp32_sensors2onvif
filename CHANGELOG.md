@@ -5,6 +5,19 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### The hub
+
+- A hub can be set up from a release, with no PC: each release has a `-full.bin` for every board to write to a blank
+  one. A new hub opens its setup network, and its setup page asks for the hub password along with the Wi-Fi network.
+  The setup network then uses the hub password, unless the firmware was built with one of its own.
+- A folder listing that could not look at one of its entries, as when memory runs out, no longer counts as complete.
+  The sensor table rebuilt from it forgot those sensors, and refused their alerts as from unknown senders.
+
+### The project
+
+- A user guide, `docs/user-guide.md`, with pictures of the pages, takes the details out of the README.
+- Third-party notices, with the licence texts, in the repository and with every release.
+
 ## [0.1.0] - 2026-11-18
 
 The first numbered release.
