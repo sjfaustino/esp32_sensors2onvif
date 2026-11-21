@@ -521,7 +521,7 @@ bool CamWeb::apiInfo(const ApiRequest& r) {
           .num("rtspPort", cfg_.rtspPort)
           .num("streams", video_.streamCount())
           .num("subscribers", events_.subs().count());
-      j.str("serial", cfg_.serial).flag("password", !webPassword_.empty()).str("hosts", cfg_.extraHosts).flag("armed", alarm_.armed());
+      j.str("serial", cfg_.serial).flag("password", !webPassword_.empty()).str("hosts", extraHosts_).flag("armed", alarm_.armed());
     }));
   } else {
     return false;
@@ -675,7 +675,14 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
       s.password = password;
       s.hostsGiven = hostsGiven;
       s.hosts = hosts;
-      c.out = saved(store_->settingsSave(s), "could not save the settings");
+      s.restart = onvif != cfg_.onvifPort || web != cfg_.webPort || rtsp != cfg_.rtspPort || (!name.empty() && name + ".local" != cfg_.hostName);
+      if (!store_->settingsSave(s)) {
+        c.out = jsonFail(507, "could not save the settings");
+      } else {
+        if (!s.restart && !password.empty()) setPassword(password);  // otherwise the start that follows reads them
+        if (!s.restart && hostsGiven) extraHosts_ = hosts;
+        c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("restart", s.restart); }));
+      }
     }
   } else {
     return false;

@@ -264,13 +264,18 @@ def test_a_hub_without_a_password_asks_for_one(browser, storage):
     page.fill('#needPw2', 'a-good-password')
     page.click('#saveNeedPw')
     check('a good one is saved', wait_text(page, 'needPwMsg', 'Saved'), page.text_content('#needPwMsg'))
+    check('and guards the hub at once, without a restart', api('GET', '/api/tree', auth=False)[0] == 401)
     check('no dialogs on the way', not dialogs.seen, dialogs.seen)
     page.close()
 
 
-def test_a_blank_hub_is_set_up(browser):
+def test_a_blank_hub_is_set_up(browser, storage):
     # A hub flashed from a release has no Wi-Fi and no password, and its setup network is open. Its setup page asks for
     # the hub password with the network, so the hub is never left without one, and the API refuses to go on without it.
+    common.HUB.kill()  # the test before gave this hub a password, which now applies at once
+    common.HUB.wait()
+    start_hub(storage)
+    check('a blank hub starts', common.HUB.stdout.readline().strip() == 'ready')
     control('setup-on')
     try:
         page = browser.new_page()
@@ -339,7 +344,7 @@ def main():
                 except Exception as e:
                     check('the password page could be used', False, str(e).splitlines()[0])
                 try:
-                    test_a_blank_hub_is_set_up(browser)
+                    test_a_blank_hub_is_set_up(browser, storage)
                 except Exception as e:
                     check('the setup page could be used', False, str(e).splitlines()[0])
                 browser.close()

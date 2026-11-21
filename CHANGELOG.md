@@ -19,6 +19,7 @@ before that, a new minor version may change settings or the messages.
   someone joining it.
 - A blank hub's first password guards it as soon as it is chosen, not only after the restart that follows.
 - The weekly summary reads the history a little at a time, so the hub stays responsive meanwhile.
+- A new hub password, or other names for the hub, apply at once. Only a new port or hub name restarts the hub.
 
 ## [0.2.0] - 2026-11-21
 

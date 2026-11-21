@@ -189,8 +189,31 @@ def file_manager_tests(files, hub_files_free):
                     'mode=static&ip=1.2.3&mask=255.255.255.0&gateway=1.2.3.1'):
             check(f'address is refused: {bad[12:50]}', api('POST', '/api/network', bad)[0] == 400)
         check('settings need the web password',api('POST', '/api/settings', 'web=8080', auth=False)[0] == 401)
-        for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2', 'protect=on&password=', 'protect=on&password=new%20pass', 'password=8%20chars!'):
-            check(f'setting is accepted: {good}', api('POST', '/api/settings', good)[0] == 200)
+        def with_login(password, method, path, body=None, host=None):
+            c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+            headers = {'Authorization': 'Basic ' + base64.b64encode(f'admin:{password}'.encode()).decode()}
+            if host:
+                headers['Host'] = host
+            c.request(method, path, body, headers)
+            r = c.getresponse()
+            data = r.read()
+            c.close()
+            return r.status, data
+
+        # A port or the name restarts the hub, as every service listens on or announces them; the PC build only says so.
+        for good in ('onvif=9000', 'rtsp=9554', 'name=my-hub-2'):
+            code, body = api('POST', '/api/settings', good)
+            check(f'setting is accepted, and restarts the hub: {good}', code == 200 and json.loads(body).get('restart') is True, (code, body))
+        code, body = api('POST', '/api/settings', 'protect=on&password=')
+        check('saving with the password left blank keeps it, with no restart', code == 200 and json.loads(body).get('restart') is False, (code, body))
+        if not DEVICE:  # a board's password is the tester's own
+            code, body = api('POST', '/api/settings', 'password=8%20chars!')
+            check('a new password is accepted without a restart', code == 200 and json.loads(body).get('restart') is False, (code, body))
+            check('and the old one no longer opens the pages', api('GET', '/api/tree')[0] == 401)
+            check('the new one does, at once', with_login('8 chars!', 'GET', '/api/tree')[0] == 200)
+            code = with_login('8 chars!', 'POST', '/api/settings', 'password=' + urllib.parse.quote(PASSWORD))[0]
+            check('and the test password can be put back', code == 200 and api('GET', '/api/tree')[0] == 200, code)
+            control('auth-off')  # it guards ONVIF too, as on a board; the PC build's other tests run ONVIF without a login
         too_long = 'x' * 64
         for bad in ('web=0', 'web=70000', 'web=abc', 'onvif=80x', f'onvif={RTSP}', f'web={ONVIF}', f'onvif={WEB}', 'rtsp=0', 'rtsp=abc', f'rtsp={WEB}', f'rtsp={ONVIF}',
                     'name=-hub', 'name=hub-', 'name=a_b', 'name=a%20b', f'name={too_long}', f'protect=on&password={too_long}',

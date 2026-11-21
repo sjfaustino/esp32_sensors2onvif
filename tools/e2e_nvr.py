@@ -264,7 +264,19 @@ def test_esp_now_page():
         check('time off the network is logged', lost['kind'] == 9 and lost['sensor'] == 'hub' and lost['off_s'] == 125 and lost['event'] == 'network lost', lost)
 
         # Other names the hub answers to.
-        check('other names for the hub can be saved', api('POST', '/api/settings', 'hosts=' + urllib.parse.quote('esp-alarmhub.fritz.box, hub.example.lan'))[0] == 200)
+        c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+        c.request('GET', '/status', headers={'Host': 'hub.example.lan', 'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()})
+        before = c.getresponse()
+        before.read()
+        c.close()
+        code, body = api('POST', '/api/settings', 'hosts=' + urllib.parse.quote('esp-alarmhub.fritz.box, hub.example.lan'))
+        check('other names for the hub can be saved, without a restart', code == 200 and json.loads(body).get('restart') is False, (code, body))
+        c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+        c.request('GET', '/status', headers={'Host': 'hub.example.lan', 'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()})
+        after = c.getresponse()
+        after.read()
+        c.close()
+        check('and the hub answers to them at once', before.status == 421 and after.status == 200, (before.status, after.status))
         check('a bad other name is refused', api('POST', '/api/settings', 'hosts=' + urllib.parse.quote('bad name!'))[0] == 400)
         check('more than four other names are refused', api('POST', '/api/settings', 'hosts=a,b,c,d,e')[0] == 400)
 

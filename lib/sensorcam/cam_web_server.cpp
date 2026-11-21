@@ -31,6 +31,7 @@ CamWeb::CamWeb(const CamWebParts& p)
       localIp_(p.localIp),
       millis_(p.millis),
       webPassword_(p.cfg.webPassword),
+      extraHosts_(p.cfg.extraHosts),
       onvifPassword_(p.cfg.onvifPassword),
       schedule_(p.cfg.schedule) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
@@ -353,9 +354,7 @@ void CamWeb::servicePolls(uint32_t now) {
 // ---- file manager ----
 
 // See camKnownHost.
-bool CamWeb::knownHost(const std::string& header) const {
-  return camKnownHost(header, localIp_(), cfg_.hostName, cfg_.setupAddress, cfg_.extraHosts);
-}
+bool CamWeb::knownHost(const std::string& header) const { return camKnownHost(header, localIp_(), cfg_.hostName, cfg_.setupAddress, extraHosts_); }
 
 void CamWeb::setPassword(const std::string& password) {
   webPassword_ = password;

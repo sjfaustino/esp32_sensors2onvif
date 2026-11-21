@@ -54,6 +54,9 @@ struct CamSettings {
   std::string password;     // empty keeps the current password while protection stays on
   bool hostsGiven = false;  // otherwise the other names are kept
   std::string hosts;        // other names the web port answers to, comma-separated
+  // A port or the name changed, which every service listens on or announces, so the hub restarts. A new password or
+  // other names apply at once.
+  bool restart = false;
 };
 
 struct CamTime {

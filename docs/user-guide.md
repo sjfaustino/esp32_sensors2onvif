@@ -586,8 +586,10 @@ button; then it waits for the device's first report and says when it arrives.
 
 Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.
 The ports can be changed on the web page, under **Network Manager > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's
-`.local` name and changes the web password. These are saved on the board, replace the values in `config.h` and
-`secrets.h`, and take effect after the hub restarts by itself. After changing the ONVIF port, set the same port on the NVR
+`.local` name, the web password and the other names the hub answers to. These are saved on the board and replace
+the values in `config.h` and `secrets.h`. A new port or name takes effect after the hub restarts by itself, as every
+service listens on or announces them; a new password or other names apply at once, with no restart, and the page asks
+you to log in again with a new password. After changing the ONVIF port, set the same port on the NVR
 channel. The serial heartbeat always shows all three ports. A forgotten web password can only be cleared by erasing the board's
 settings over USB, which also erases its Wi-Fi networks.
 

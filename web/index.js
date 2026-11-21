@@ -27,8 +27,8 @@
         m.textContent = j.error;
         return false;
       }
-      if (done) m.textContent = done;
-      return true;
+      if (done) m.textContent = typeof done == "function" ? done(j) : done;
+      return j || true;
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = failed || "The hub did not answer. Try again.";
@@ -1621,8 +1621,10 @@
     const v = $(input).value,
       m = $(msg);
     if (!confirm(warning)) return;
-    if (await send(m, "/api/settings", field + "=" + encodeURIComponent(v), "Saved. The hub is restarting."))
-      setTimeout(() => location.reload(), 10000);
+    const j = await send(m, "/api/settings", field + "=" + encodeURIComponent(v), (j) =>
+      j.restart ? "Saved. The hub is restarting." : "Saved.",
+    );
+    if (j && j.restart) setTimeout(() => location.reload(), 10000);
   }
   $("saveRtsp").onclick = () =>
     savePort(
@@ -1642,23 +1644,21 @@
     const m = $("webMsg"),
       port = $("webPort").value,
       name = $("hubName").value;
-    if (!confirm("The hub will restart to apply these settings. Continue?")) return;
-    if (
-      !(await send(
-        m,
-        "/api/settings",
-        "web=" +
-          encodeURIComponent(port) +
-          "&name=" +
-          encodeURIComponent(name) +
-          "&password=" +
-          encodeURIComponent($("webPw").value) +
-          "&hosts=" +
-          encodeURIComponent($("hubHosts").value),
-        "Saved. The hub is restarting.",
-      ))
-    )
-      return;
+    if (!confirm("A new port or name restarts the hub; a new password or other names apply at once. Continue?")) return;
+    const j = await send(
+      m,
+      "/api/settings",
+      "web=" +
+        encodeURIComponent(port) +
+        "&name=" +
+        encodeURIComponent(name) +
+        "&password=" +
+        encodeURIComponent($("webPw").value) +
+        "&hosts=" +
+        encodeURIComponent($("hubHosts").value),
+      (j) => (j.restart ? "Saved. The hub is restarting." : "Saved. A new password applies now: log in again with it."),
+    );
+    if (!j || !j.restart) return;
     const host = location.hostname.endsWith(".local") ? name + ".local" : location.hostname;
     setTimeout(() => {
       location.href = location.protocol + "//" + host + ":" + port + "/" + location.hash;
@@ -1734,10 +1734,10 @@
         m,
         "/api/settings",
         "password=" + encodeURIComponent(pw),
-        "Saved. The hub is restarting; log in with user admin and the new password.",
+        "Saved. Log in with user admin and the new password.",
       )
     )
-      setTimeout(() => location.reload(), 10000);
+      setTimeout(() => location.reload(), 1500);
   };
   setInterval(loadStatus, 10000);
   fetch("/api/info")

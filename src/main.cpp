@@ -76,11 +76,18 @@ static void requestRestart(RestartCause cause) {
   restartPending = true;
 }
 
-// Changes from the web page. hub_settings.cpp stores them; the restart a change needs is decided here.
+// Changes from the web page. hub_settings.cpp stores them; the restart a change needs is decided here. A new password
+// or other names, which the page server applies at once, go into the settings in memory too, for the setup network.
 static bool saveSettings(const CamSettings& s) {
   bool ok = storeSettings(s);
-  if (ok) requestRestart(RESTART_NEW_SETTINGS);
-  return ok;
+  if (!ok) return false;
+  if (s.restart) {
+    requestRestart(RESTART_NEW_SETTINGS);
+  } else {
+    if (!s.password.empty()) settings.webPassword = s.password.c_str();
+    if (s.hostsGiven) settings.extraHosts = s.hosts.c_str();
+  }
+  return true;
 }
 
 static bool saveWifi(const std::string& ssid, const std::string& password, bool backup) {

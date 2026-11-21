@@ -181,6 +181,7 @@ class CamWeb {
   uint32_t accepted_ = 0;
   uint32_t refused_ = 0;
   std::string webPassword_;     // the pages need the user admin and this, when set
+  std::string extraHosts_;      // other names the pages answer to; changed on the HTTP page without a restart
   std::string onvifPassword_;   // ONVIF needs the user admin and this, when set
   CamSchedule schedule_;        // the restart schedule, as the page shows it
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
