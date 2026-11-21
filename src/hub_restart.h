@@ -2,26 +2,9 @@
 // caused it; and whether a new firmware is kept, once it has proved itself.
 #pragma once
 #include <stdint.h>
+#include "cam_board_rules.h"  // RestartCause, and what is kept through a restart
 #include "cam_restart_rules.h"
 #include "cam_server.h"
-
-enum RestartCause : uint32_t {
-  RESTART_UNKNOWN,
-  RESTART_WIFI_LOST,
-  RESTART_LOW_MEMORY,
-  RESTART_STALLED,
-  RESTART_ROUTER_SILENT,
-  RESTART_NEW_WIFI,
-  RESTART_NEW_SETTINGS,
-  RESTART_BAD_FIXED_ADDRESS,
-  RESTART_SCHEDULED,
-  RESTART_SETTINGS_RESET,
-  RESTART_BUTTON,
-  RESTART_FIRMWARE,
-  RESTART_RESTORED,
-  RESTART_NEW_KEYS,
-  RESTART_CAUSES
-};
 
 void restartBegin(SensorCamServer** server);  // first in setup(): reads why the last start happened; server is saved before a restart
 void requestRestart(RestartCause cause);      // after the reply has reached the browser; see restartWhenAsked

@@ -4,23 +4,20 @@
 #include <DNSServer.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include "cam_board_rules.h"
 #include "cam_timing.h"
 #include "config.h"
 #include "hub_restart.h"
 #include "hub_settings.h"
 
-static int trying = 0;  // the network being tried: 0 the main one, 1 the backup
-static uint32_t tryAt = 0;
+static CamWifiPlan plan;  // which network to try, and when the setup network opens: cam_board_rules.h
 static DNSServer dnsServer;
 static bool setupOpen = false;
 static bool usingStatic = false;
-static bool hadGuest = false;
 static volatile uint32_t drops = 0;
 static volatile uint8_t dropReason = 0;
 
 static void tryNetwork(int i) {
-  trying = i;
-  tryAt = millis();
   WiFi.disconnect(false);
   IPAddress ip, mask, gateway, dns;
   usingStatic = settings.staticFor.length() && settings.staticFor == settings.wifiSsid[i] && ip.fromString(settings.staticIp) &&
@@ -44,32 +41,26 @@ void wifiBegin() {
         dropReason = info.wifi_sta_disconnected.reason;
       },
       ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
-  if (settings.wifiSsid[0].length()) tryNetwork(0);
+  if (settings.wifiSsid[0].length()) {
+    tryNetwork(0);
+    plan.triedFromStart(millis());
+  }
 }
 
 // The backup worked, so it becomes the main network and the old main becomes the backup.
 static void promoteBackup() {
   std::swap(settings.wifiSsid[0], settings.wifiSsid[1]);
   std::swap(settings.wifiPassword[0], settings.wifiPassword[1]);
-  trying = 0;
   bool ok = storeWifi();
   Serial.printf("Joined the backup network; it is now the main network%s.\n", ok ? "" : " until the next restart (could not save)");
-}
-
-// The setup network's password: one from secrets.h, else the hub password. A blank hub has neither, so its setup network
-// is open and its setup page asks for a hub password first. A password too short for WPA2, from an old firmware, keeps
-// the setup network off rather than open.
-static bool setupPassword(String& out) {
-  out = strlen(SETUP_AP_PASSWORD) >= 8 ? String(SETUP_AP_PASSWORD) : settings.webPassword;
-  return out.isEmpty() || out.length() >= 8;
 }
 
 // WPA3 only, with protected management frames as WPA3 requires. Under WPA2, anyone who records a device joining could try
 // passwords offline, as fast as their computer allows, and this password is usually the hub password. WPA3 lets them
 // try only by asking the hub, one guess at a time. Should WPA3 not start, WPA2 is better than no setup network, as it
 // is the way back onto the network.
-static void startSetupNetwork(const String& password) {
-  if (password.isEmpty()) {
+static void startSetupNetwork(const std::string& password) {
+  if (password.empty()) {
     WiFi.softAP(SETUP_AP_NAME);
     return;
   }
@@ -87,9 +78,10 @@ static void startSetupNetwork(const String& password) {
   }
 }
 
+// The setup network's password, from camSetupKey: open on a blank hub, whose setup page asks for a password first.
 static void openSetup() {
-  String password;
-  if (setupOpen || !setupPassword(password)) return;
+  std::string password;
+  if (setupOpen || camSetupKey(SETUP_AP_PASSWORD, settings.webPassword.c_str(), password) == CAM_SETUP_OFF) return;
   WiFi.disconnect(false);
   WiFi.mode(WIFI_AP_STA);
   startSetupNetwork(password);
@@ -107,28 +99,22 @@ static void closeSetup() {
 }
 
 bool keepOnNetwork(bool connected, bool justLost) {
-  if (connected) {
-    hadGuest = false;
-    if (trying == 1) promoteBackup();
-    if (setupOpen) closeSetup();
-    return false;
-  }
-  bool haveNetwork = settings.wifiSsid[0].length() > 0;
-  if (!haveNetwork) openSetup();
-  if (justLost && haveNetwork) tryNetwork(0);
-  // Connection attempts move the radio, which would drop whoever is on the setup network and block its scan.
-  bool guest = setupOpen && WiFi.softAPgetStationNum() > 0;
-  if (guest && !hadGuest) WiFi.disconnect(false);
-  hadGuest = guest;
-  if (!guest && haveNetwork && millis() - tryAt > CAM_WIFI_TRY_MS) {
-    if (trying == 0 && settings.wifiSsid[1].length() > 0) {
-      tryNetwork(1);
-    } else {  // neither network worked: open the setup network and keep trying behind it
-      openSetup();
-      tryNetwork(0);
-    }
-  }
-  return guest;
+  CamWifiPlan::Pass p;
+  p.now = millis();
+  p.connected = connected;
+  p.justLost = justLost;
+  p.haveMain = settings.wifiSsid[0].length() > 0;
+  p.haveBackup = settings.wifiSsid[1].length() > 0;
+  p.setupOpen = setupOpen;
+  p.setupStations = setupOpen ? WiFi.softAPgetStationNum() : 0;
+  int act = plan.step(p);
+  if (act & CamWifiPlan::PROMOTE_BACKUP) promoteBackup();
+  if (act & CamWifiPlan::CLOSE_SETUP) closeSetup();
+  if (act & CamWifiPlan::OPEN_SETUP) openSetup();
+  if (act & CamWifiPlan::TRY_MAIN) tryNetwork(0);
+  if (act & CamWifiPlan::TRY_BACKUP) tryNetwork(1);
+  if (act & CamWifiPlan::STOP_TRYING) WiFi.disconnect(false);  // tries move the radio, which would drop whoever is on the setup network
+  return plan.guest();
 }
 
 void serveSetupNetwork() {

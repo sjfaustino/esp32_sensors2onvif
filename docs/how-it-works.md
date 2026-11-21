@@ -104,7 +104,9 @@ What the board does for the hub reaches them through three interfaces in `cam_co
 of its own is a file beside it that owns that state: `hub_wifi` (the networks and the setup network), `hub_router`
 (whether the router answers), `hub_espnow` (messages to and from the nodes), `hub_time` (the clock), `hub_restart`
 (why and when the hub restarts, and keeping a new firmware), `hub_radio_test` and `hub_settings` (what is kept in
-flash). Each part is made after the parts it uses and is handed them directly. The alarm is made first, so what it
+flash). What those parts decide is in the library, in `cam_board_rules.h`, so the unit tests reach it: which network to
+try and when the setup network opens, its password, what is kept through a restart and why the hub last started, and
+the time zone. The board files only carry it out on the radio and the chip. Each part is made after the parts it uses and is handed them directly. The alarm is made first, so what it
 needs from the others goes through `CamAlarmOutside`, which the server answers. Running out of memory is counted in one
 `CamMemoryFailures`, which every part adds to.
 

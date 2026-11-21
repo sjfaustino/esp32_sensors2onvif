@@ -3,35 +3,14 @@
 #include "hub_time.h"
 #include <esp_sntp.h>
 #include <sys/time.h>
+#include "cam_board_rules.h"
 #include "hub_settings.h"
-
-static String tzName(int minutes) {
-  char b[12];
-  snprintf(b, sizeof(b), "<%c%02d%02d>", minutes < 0 ? '-' : '+', abs(minutes) / 60, abs(minutes) % 60);
-  return b;
-}
-
-// POSIX timezone text. Its sign is the opposite of the usual one: UTC+1 is written as -1.
-static String posixTz() {
-  char offset[10];
-  snprintf(offset, sizeof(offset), "%c%d:%02d", settings.tzOffset < 0 ? '+' : '-', abs(settings.tzOffset) / 60, abs(settings.tzOffset) % 60);
-  String tz = tzName(settings.tzOffset) + offset;
-  char rule[32];
-  if (settings.tzDst == 1) {  // Europe changes at 01:00 UTC everywhere
-    int hour = settings.tzOffset / 60;
-    snprintf(rule, sizeof(rule), ",M3.5.0/%d,M10.5.0/%d", 1 + hour, 2 + hour);
-    tz += tzName(settings.tzOffset + 60) + rule;
-  } else if (settings.tzDst == 2) {
-    tz += tzName(settings.tzOffset + 60) + ",M3.2.0/2,M11.1.0/2";
-  }
-  return tz;
-}
 
 bool clockSet() { return time(nullptr) > CAM_CLOCK_VALID_AFTER; }
 
 // A manual time does not survive a power cut, so until it is set again NTP is asked, and stopped by keepTime once it answers.
 void applyTime() {
-  String tz = posixTz();
+  String tz = camPosixTz(settings.tzOffset, settings.tzDst).c_str();
   if (settings.timeNtp || !clockSet()) {
     configTzTime(tz.c_str(), settings.ntpServer.c_str());
   } else {
@@ -62,11 +41,7 @@ int localWeekday() {
   return localNow(local) ? local.tm_wday : -1;
 }
 
-bool scheduledMinute() {
-  struct tm local;
-  if (!settings.schedule.on || !clockSet() || !localNow(local)) return false;
-  return (settings.schedule.day < 0 || settings.schedule.day == local.tm_wday) && local.tm_hour * 60 + local.tm_min == settings.schedule.minute;
-}
+bool scheduledMinute() { return camScheduledMinute(settings.schedule, localWeekday(), localMinute()); }
 
 void timeInfo(CamJson& j) {
   time_t now = time(nullptr);

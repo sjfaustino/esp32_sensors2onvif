@@ -12,6 +12,7 @@ void runStorageTests();
 void runTextTests();
 void runAlarmTests();
 void runRestartTests();
+void runBoardTests();
 
 int main() {
   UNITY_BEGIN();
@@ -23,5 +24,6 @@ int main() {
   runTextTests();
   runAlarmTests();
   runRestartTests();
+  runBoardTests();
   return UNITY_END();
 }
