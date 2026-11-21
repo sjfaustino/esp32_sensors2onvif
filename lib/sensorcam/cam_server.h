@@ -42,13 +42,15 @@ class SensorCamServer : private CamAlarmOutside {
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow() { alarm_.saveNow(); }                                                     // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
-  bool updating() const { return web_.updating(); }
-  std::string routes() { return web_.routesText(); }                // for the PC tests                    // a firmware upload is under way
-  bool alarmBusy() const { return alarm_.busy(); }                  // see CamAlarm::busy
-  bool nvrListeningNow() const { return nvrListening(millis_()); }  // see CamOnvifEvents::nvrListening
-  uint32_t memoryFailures() const { return failures_.count(); }     // times memory ran out and only that piece of work was dropped
-#ifdef CAM_TEST_HOOKS                                               // only in the PC builds, for the tests
-  CamAlarm& alarm() { return alarm_; }                              // its test hooks, such as setMinuteMs, and its arm mode
+  bool updating() const { return web_.updating(); }                    // a firmware upload is under way
+  std::string routes() { return web_.routesText(); }                   // for the PC tests
+  void setDrainMs(uint32_t ms) { web_.setDrainMs(ms); }                // for the PC tests
+  uint32_t nvrLetIn() const { return web_.nvrLetIn(); }                // times the NVR took the place of another connection
+  bool alarmBusy() const { return alarm_.busy(); }                     // see CamAlarm::busy
+  bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
+  uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
+#ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests
+  CamAlarm& alarm() { return alarm_; }                                 // its test hooks, such as setMinuteMs, and its arm mode
 #endif
 
  private:

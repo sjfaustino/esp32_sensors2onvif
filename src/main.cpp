@@ -152,6 +152,7 @@ class HubStore : public CamStore {
   bool rearmSave(uint32_t minutes) override { return storeRearm(minutes); }
   bool mqttSave(const CamMqtt& m) override { return storeMqtt(m); }
   bool nvrSave(const std::string& ip) override { return storeNvr(ip); }
+  bool sealReserve(uint32_t next) override { return storeSealNext(next); }
 };
 
 static HubChip hubChip;
@@ -180,7 +181,7 @@ static CamConfig makeConfig() {
   c.startReason = lastRestartText();
   c.startPlanned = startWasPlanned();
   c.snapshotSecret = settings.snapshotKey.c_str();
-  c.sealStart = esp_random();
+  c.sealStart = takeSealStart(CAM_SEAL_BLOCK);
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
   c.setupPasswordHash = strlen(SETUP_AP_PASSWORD) ? camSha1(SETUP_AP_PASSWORD) : std::string();

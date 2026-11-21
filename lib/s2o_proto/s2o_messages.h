@@ -136,6 +136,9 @@ bool s2oNodeKey(const uint8_t ownPrivate[S2O_X25519_LEN], const uint8_t otherPub
                 const uint8_t nodePublic[S2O_X25519_LEN], uint8_t key[S2O_NODE_KEY_LEN]);
 // What a person compares with the node's label: the first 6 bytes of the public key's SHA-1, as "4F2A-91C7-03BD".
 void s2oFingerprint(const uint8_t publicKey[S2O_X25519_LEN], char out[15]);
+// The same with 8 bytes, as "4F2A-91C7-03BD-5E77": the short one is its start, so an older label still matches. 48 bits
+// can be matched by a key made for it in some days of computing; 64 cannot.
+void s2oFingerprintLong(const uint8_t publicKey[S2O_X25519_LEN], char out[20]);
 
 // ---- sealed messages ----
 

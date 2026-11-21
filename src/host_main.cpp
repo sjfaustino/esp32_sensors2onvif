@@ -96,6 +96,10 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     hub.alarm().setMinuteMs(1000);
   } else if (command == "network-lost") {  // as the board reports rejoining Wi-Fi after two minutes off it
     hub.networkLost(125);
+  } else if (command == "drain-fast" || command == "drain-normal") {  // so the test need not trickle a body for a minute
+    hub.setDrainMs(command == "drain-fast" ? 3000 : CAM_HTTP_DRAIN_MS);
+  } else if (command == "nvr-let-in") {  // how often the NVR took the place of another connection
+    reply = std::to_string(hub.nvrLetIn());
   } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes
     hub.alarm().setNvrGoneMs(command == "nvr-gone-fast" ? 3000 : 3 * 60 * 1000);
   } else if (command == "auth-on" || command == "auth-off") {
@@ -263,6 +267,7 @@ class TestStore : public CamStore {
   bool rearmSave(uint32_t) override { return true; }
   bool mqttSave(const CamMqtt&) override { return true; }
   bool nvrSave(const std::string&) override { return true; }
+  bool sealReserve(uint32_t) override { return true; }
 };
 
 int main(int argc, char** argv) {

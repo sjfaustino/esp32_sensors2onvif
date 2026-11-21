@@ -3,6 +3,56 @@ from e2e_common import *  # noqa: F401,F403  (the helpers every part shares)
 import e2e_common as common
 
 
+def test_connections_cannot_be_held():
+    """Anyone on the network could hold the hub's few connections, and with them keep the NVR out until its subscription
+    lapsed and alerts stopped reaching it. A refused body trickled in is cut off, and the NVR always gets in."""
+    # A refused upload whose body comes a byte a second: read and dropped only so long, here 3 s.
+    control('drain-fast')
+    s = socket.create_connection((HOST, WEB), timeout=10)
+    s.sendall(f'PUT /api/firmware HTTP/1.1\r\nHost: {HOST}:{WEB}\r\nContent-Length: 1000000\r\n\r\n'.encode())
+    closed_after = None
+    started = time.time()
+    try:
+        s.settimeout(1)
+        while time.time() - started < 9:
+            try:
+                s.sendall(b'x')
+            except OSError:
+                closed_after = time.time() - started
+                break
+            try:
+                if s.recv(4096) == b'':
+                    closed_after = time.time() - started
+                    break
+            except socket.timeout:
+                pass
+            except OSError:
+                closed_after = time.time() - started
+                break
+    finally:
+        s.close()
+        control('drain-normal')
+    check('a refused body trickled in is cut off', closed_after is not None and closed_after < 7, closed_after)
+
+    # Every connection busy, from one address, and the NVR at another: it is let in, in place of the oldest.
+    api('POST', '/api/nvr', 'ip=127.0.0.2')
+    let_in = int(control('nvr-let-in'))
+    held = []
+    try:
+        for _ in range(6):
+            held.append(socket.create_connection((HOST, WEB), timeout=5))
+        time.sleep(0.5)  # the hub takes them all
+        try:
+            code = soap('GetSystemDateAndTime', '/onvif/device_service', source='127.0.0.2')[0]
+        except (OSError, http.client.HTTPException) as e:
+            code = str(e)
+        check('the NVR gets in while every connection is busy', code == 200 and int(control('nvr-let-in')) == let_in + 1, code)
+    finally:
+        for h in held:
+            h.close()
+        api('POST', '/api/nvr', 'ip=')
+
+
 def floor_plan_tests():
     """The floor plan's two files at the top of storage: a JPEG, and where each sensor is."""
     if DEVICE:  # never on a real hub, which may have its own plan
@@ -130,6 +180,8 @@ def file_manager_tests(files, hub_files_free):
                   [l for l in listed if l[2] == 'setup'])
             check('an unknown route needs the login before it is called unknown', api('GET', '/api/nothing-here', auth=False)[0] == 401
                   and api('GET', '/api/nothing-here')[0] == 404)
+        if not DEVICE:
+            test_connections_cannot_be_held()
         code, page = api('GET', '/setup', auth=False)
         check('setup page needs the web password on the home network', code == 401, code)
         code, page = api('GET', '/setup')

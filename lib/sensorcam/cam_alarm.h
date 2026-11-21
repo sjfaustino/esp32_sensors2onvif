@@ -29,6 +29,8 @@ class CamAlarmOutside {
   virtual void sensorsRescanned(bool listChanged) = 0;  // the table was rebuilt; listChanged: a sensor added, deleted or renamed
 };
 
+const uint32_t CAM_SEAL_BLOCK = 1u << 20;  // numbers for sealed messages reserved at a time: a flash write per million
+
 class CamAlarm {
  public:
   using Health = CamSensorTable::Health;
@@ -121,6 +123,12 @@ class CamAlarm {
   CamForNode forNode(int id) const;  // what goes to a node with each confirmation
   void noteBattery(int id, uint8_t percent);
   uint32_t freshNumber();
+#ifdef CAM_TEST_HOOKS
+ public:
+  uint32_t testNextSeal() { return nextSeal(); }  // for the unit tests
+
+ private:
+#endif
 
   const CamConfig& cfg_;
   CamChip* chip_;
@@ -141,7 +149,9 @@ class CamAlarm {
   static const int MAX_CONFIRMATIONS = 32;
   uint8_t confirmations_[MAX_CONFIRMATIONS][7 + CAM_SEALED_EXTRA + CAM_CONFIRMATION_LEN];  // MAC, length, message
   int confirmCount_ = 0;
-  uint32_t sealNumber_ = 0;  // for the hub's sealed messages; set at random at the start
+  uint32_t sealNumber_ = 0;    // for the hub's sealed messages; see CamStore::sealReserve
+  uint32_t sealReserved_ = 0;  // the first not reserved yet
+  uint32_t nextSeal();
 
   std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   bool waitingDirty_ = false;                     // the alerts waiting for an NVR record changed since they were saved

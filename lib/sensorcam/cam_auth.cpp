@@ -153,7 +153,7 @@ bool camDigestValid(const std::string& auth, const std::string& method, const st
                     const std::string& realm, const std::string& nonce) {
   if (auth.compare(0, 7, "Digest ") != 0 || camAuthParam(auth, "username") != user || camAuthParam(auth, "nonce") != nonce) return false;
   std::string ha1 = camMd5Hex(user + ":" + realm + ":" + password), ha2 = camMd5Hex(method + ":" + camAuthParam(auth, "uri"));
-  return camAuthParam(auth, "response") == camMd5Hex(ha1 + ":" + nonce + ":" + ha2);
+  return camSameText(camAuthParam(auth, "response"), camMd5Hex(ha1 + ":" + nonce + ":" + ha2));  // in the same time, right or wrong
 }
 
 bool camBasicValid(const std::string& auth, const std::string& user, const std::string& password) {

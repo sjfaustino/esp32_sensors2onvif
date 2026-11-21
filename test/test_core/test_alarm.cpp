@@ -37,6 +37,11 @@ struct Store : CamStore {
     until = u;
     return true;
   }
+  std::vector<uint32_t> reserved;
+  bool sealReserve(uint32_t next) override {
+    reserved.push_back(next);
+    return true;
+  }
 };
 
 const uint8_t DOOR[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
@@ -509,7 +514,25 @@ static void the_table_refuses_a_sensor_beyond_the_limit() {
   TEST_ASSERT_TRUE(table.sensorFits("plan.json"));                     // not a sensor's at all
 }
 
+// Each number seals one message for good, so they go on from where the last start left off: the start reserved a block
+// from there, and the next block is reserved in flash before its first number is used, never after.
+static void sealed_message_numbers_never_repeat_and_are_reserved_ahead() {
+  CamConfig cfg;
+  cfg.sealStart = 0xFFFF0000u;  // near the top, so the numbers also wrap round on the way
+  Rig r("cam_alarm_seal", cfg);
+  uint32_t expect = cfg.sealStart;
+  for (uint32_t i = 0; i < CAM_SEAL_BLOCK; i++) {  // the block this start reserved: nothing more to reserve
+    uint32_t n = r.alarm.testNextSeal();
+    if (n != expect++) TEST_FAIL_MESSAGE("a number out of turn");
+  }
+  TEST_ASSERT_EQUAL(0, (int)r.store.reserved.size());
+  TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + CAM_SEAL_BLOCK, r.alarm.testNextSeal());  // the next block's first
+  TEST_ASSERT_EQUAL(1, (int)r.store.reserved.size());                                // reserved before it was used
+  TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + 2 * CAM_SEAL_BLOCK, r.store.reserved[0]);
+}
+
 void runAlarmTests() {
+  RUN_TEST(sealed_message_numbers_never_repeat_and_are_reserved_ahead);
   RUN_TEST(an_alert_from_a_known_sensor_is_raised_logged_and_sent);
   RUN_TEST(an_alert_lasts_its_hold_even_when_the_sensor_clears_at_once);
   RUN_TEST(disarmed_an_alert_is_logged_but_not_raised);

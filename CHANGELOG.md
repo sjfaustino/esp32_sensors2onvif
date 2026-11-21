@@ -20,6 +20,15 @@ before that, a new minor version may change settings or the messages.
 - A blank hub's first password guards it as soon as it is chosen, not only after the restart that follows.
 - The weekly summary reads the history a little at a time, so the hub stays responsive meanwhile.
 - A new hub password, or other names for the hub, apply at once. Only a new port or hub name restarts the hub.
+- Someone on the network can no longer keep the NVR out by holding the hub's few connections: a refused request's body
+  is read for at most a minute, and the NVR always gets a connection, in place of the oldest that is not its own.
+  Kept out for 10 minutes, its subscription lapsed and alerts stopped reaching it.
+- Sealed messages are numbered on from where the last start left off, reserved in flash, so no number seals two
+  messages after a power cut; on the hub and on the nodes.
+- The hub shows fingerprints 16 characters long; a node's 12-character label is their start, and still matches.
+- ONVIF logins that come again with the same nonce are counted on the ONVIF data the page reads, to learn whether the
+  NVR ever repeats one before such replays are refused.
+- The video's login is checked in the same time, right or wrong.
 
 ## [0.2.0] - 2026-11-21
 

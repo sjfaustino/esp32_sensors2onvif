@@ -26,6 +26,9 @@ const uint32_t CAM_PICTURE_TURN_MS = 2000;            // chosen: with several al
 
 // ---- connections ----
 const uint32_t CAM_HTTP_STALL_MS = 10000;  // chosen: a web connection that moves nothing for this long is closed
+// chosen: a refused request's body is read and dropped for at most this long from the refusal, so the reply carries the
+// reason, while a client trickling the body cannot keep the connection, one of the few the NVR also needs
+const uint32_t CAM_HTTP_DRAIN_MS = 60000;
 const uint32_t CAM_RTSP_IDLE_MS = 120000;  // chosen: a video connection not yet playing
 const uint32_t CAM_RTSP_STALL_MS = 30000;  // chosen: a playing video connection that takes nothing
 const uint32_t CAM_HOOK_WAIT_MS = 5000;    // chosen: for the webhook to connect, and again for its reply

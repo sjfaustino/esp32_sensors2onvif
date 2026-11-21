@@ -121,7 +121,21 @@ static void only_the_hubs_own_names_are_served() {
   TEST_ASSERT_FALSE(camHostListValid("x/y"));
 }
 
+// The long fingerprint starts with the short one, so a node's older label still matches the hub's page.
+static void the_long_fingerprint_starts_with_the_short_one() {
+  uint8_t key[S2O_X25519_LEN];
+  for (int i = 0; i < S2O_X25519_LEN; i++) key[i] = (uint8_t)(i * 7 + 3);
+  char shortOne[15], longOne[20];
+  s2oFingerprint(key, shortOne);
+  s2oFingerprintLong(key, longOne);
+  TEST_ASSERT_EQUAL(14, (int)strlen(shortOne));
+  TEST_ASSERT_EQUAL(19, (int)strlen(longOne));
+  TEST_ASSERT_EQUAL_STRING_LEN(shortOne, longOne, 14);
+  TEST_ASSERT_EQUAL('-', longOne[14]);
+}
+
 void runCryptoTests() {
+  RUN_TEST(the_long_fingerprint_starts_with_the_short_one);
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);

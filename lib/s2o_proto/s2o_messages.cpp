@@ -225,6 +225,14 @@ void s2oFingerprint(const uint8_t publicKey[S2O_X25519_LEN], char out[15]) {
   snprintf(out, 15, "%02X%02X-%02X%02X-%02X%02X", h[0], h[1], h[2], h[3], h[4], h[5]);
 }
 
+void s2oFingerprintLong(const uint8_t publicKey[S2O_X25519_LEN], char out[20]) {
+  S2oSha1 s;
+  s.add(publicKey, S2O_X25519_LEN);
+  uint8_t h[20];
+  s.finish(h);
+  snprintf(out, 20, "%02X%02X-%02X%02X-%02X%02X-%02X%02X", h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
+}
+
 // ---- sealed messages ----
 
 static const char SEAL_LABEL[] = "sensors2onvif seal";

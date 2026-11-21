@@ -14,6 +14,21 @@ def test_onvif_rtsp_login():
     check('ONVIF accepts a plain login', soap_login('GetProfiles', 'onvif-secret', digest=False)[0] == 200)
     check('ONVIF refuses a wrong password', soap_login('GetProfiles', 'wrong')[0] == 400)
     check('ONVIF refuses a wrong user', soap_login('GetProfiles', 'onvif-secret', user='bob')[0] == 400)
+    # A login sent again as it was, nonce and all, is counted: for now still let in, until the NVR's are known not to repeat.
+    before = get_json('/api/info')['onvifRepeats']
+    body = (f'<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">{wsse_header("onvif-secret")}'
+            '<s:Body><GetProfiles xmlns="x"/></s:Body></s:Envelope>')
+    codes = []
+    for _ in range(2):
+        c = http.client.HTTPConnection(HOST, ONVIF, timeout=5)
+        c.request('POST', '/onvif/media', body, {'Content-Type': 'application/soap+xml'})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        codes.append(r.status)
+    after = get_json('/api/info')['onvifRepeats']
+    check('a login sent again with the same nonce is counted, and still let in for now', codes == [200, 200] and after == before + 1, (codes, before, after))
+    check('fresh logins are not counted', soap_login('GetProfiles', 'onvif-secret')[0] == 200 and get_json('/api/info')['onvifRepeats'] == after)
     sock, code, challenge = rtsp_describe()
     sock.close()
     check('RTSP asks for a login', code == 401 and any('Digest' in l for l in challenge), (code, challenge))

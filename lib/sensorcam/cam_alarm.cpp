@@ -30,6 +30,7 @@ CamAlarm::CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStor
       sensors_(CAM_MAX_SENSORS, cfg.holdMs),
       log_(storage),
       sealNumber_(cfg.sealStart),
+      sealReserved_(cfg.sealStart + CAM_SEAL_BLOCK),
       armMode_(cfg.armMode),
       disarmedUntil_(cfg.disarmedUntil),
       healthAlarm_(cfg.healthAlarm),
@@ -423,7 +424,7 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
     if (sealed) {
       uint8_t body[CAM_CONFIRMATION_BODY];
       camConfirmationBody(r, extra, body);
-      slot[6] = (uint8_t)camSeal(mac, sealNumber_++, body, sizeof(body), key, true, slot + 7);
+      slot[6] = (uint8_t)camSeal(mac, nextSeal(), body, sizeof(body), key, true, slot + 7);
     } else {
       slot[6] = CAM_CONFIRMATION_LEN;
       camConfirmationInto(mac, r, extra, key, slot + 7);
@@ -456,7 +457,7 @@ void CamAlarm::refuseSignature(int id) {
 
 // Random numbers without a source of them on every build: the hub's seal numbers, which start at random, mixed.
 uint32_t CamAlarm::freshNumber() {
-  uint32_t x = sealNumber_++ * 2654435761u ^ millis_() ^ 0x9E3779B9u;
+  uint32_t x = nextSeal() * 2654435761u ^ millis_() ^ 0x9E3779B9u;
   x ^= x >> 16;
   x *= 0x85EBCA6Bu;
   x ^= x >> 13;
@@ -651,4 +652,14 @@ void CamAlarm::rescan() {
     if (c.fresh[i]) outside_.sensorReset(i + 1);
   }
   outside_.sensorsRescanned(c.listChanged);  // a sensor or a name changed, so Home Assistant is told again
+}
+
+// The next number for a sealed message. Reaching the end of the block reserved, the next block is reserved first; should
+// that fail to save, sealing goes on, as a confirmation the node waits for matters more than the secrecy of one.
+uint32_t CamAlarm::nextSeal() {
+  if (sealNumber_ == sealReserved_) {
+    sealReserved_ += CAM_SEAL_BLOCK;
+    store_->sealReserve(sealReserved_);
+  }
+  return sealNumber_++;
 }

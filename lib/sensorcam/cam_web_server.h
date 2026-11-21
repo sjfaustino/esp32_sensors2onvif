@@ -54,7 +54,9 @@ class CamWeb {
   int openCount() const;  // web connections open
   uint32_t accepted() const { return accepted_; }
   uint32_t refused() const { return refused_; }
+  uint32_t nvrLetIn() const { return nvrLetIn_; }  // times the NVR took the place of another connection, all being busy
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
+  void setDrainMs(uint32_t ms) { drainMs_ = ms; }                                    // for the PC tests
   // A blank hub's first password, from its setup page: it guards the pages, ONVIF and the video at once, rather than
   // after the restart that follows, which a failed Wi-Fi save would not bring.
   void setPassword(const std::string& password);
@@ -79,6 +81,7 @@ class CamWeb {
     bool toFrameBuffer = false;  // the body of this picture upload is going into the picture buffer (CamVideo::lend)
     size_t bodyWanted = 0;
     size_t discardLeft = 0;    // body still to read and drop, so a refusal arrives as a reply rather than a reset
+    uint32_t drainFrom = 0;    // when the refusal came that discardLeft is read for; see CAM_HTTP_DRAIN_MS
     bool pollWaiting = false;  // a PullMessages held until something changes or pollUntil
     uint32_t pollUntil = 0;
     uint32_t pollSub = 0;
@@ -226,6 +229,15 @@ class CamWeb {
   HttpConn http_[MAX_HTTP];
   uint32_t accepted_ = 0;
   uint32_t refused_ = 0;
+  uint32_t nvrLetIn_ = 0;
+  // The one-time codes (nonce and time) of the last ONVIF logins, hashed, and how often one came again. A login whose
+  // code came before is a replay, or a client that does not make a new one each time; counted only, until the NVR's
+  // own logins are known never to repeat, as refusing them would keep it out.
+  uint64_t onvifCodes_[64] = {};
+  int onvifCodeNext_ = 0;
+  uint32_t onvifRepeats_ = 0;
+  void noteOnvifCode(const std::string& body);
+  uint32_t drainMs_ = CAM_HTTP_DRAIN_MS;
   std::string webPassword_;     // the pages need the user admin and this, when set
   std::string extraHosts_;      // other names the pages answer to; changed on the HTTP page without a restart
   std::string onvifPassword_;   // ONVIF needs the user admin and this, when set

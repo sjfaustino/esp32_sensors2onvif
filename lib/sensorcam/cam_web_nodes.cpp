@@ -23,6 +23,7 @@ void CamWeb::finishNodeImage(HttpConn& c, bool ok) {
   c.firmwareActive = false;
   c.nodeImage = false;
   c.discardLeft = c.firmwareLeft;
+  c.drainFrom = millis_();
   c.firmwareLeft = 0;
   c.answered = true;
   CamNodeImage image;

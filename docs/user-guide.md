@@ -563,7 +563,9 @@ looking alive.
 
 A node can pair with the hub instead: it finds the hub by itself and gets a key of its own, which no one listening to
 the radio can learn, and nothing secret is typed in or printed. The hub then accepts only that key from it, so a stolen
-node gives away its own key only. Each node has the fingerprint of its public key on a label, as `4F2A-91C7-03BD`.
+node gives away its own key only. Each node has the fingerprint of its public key on a label, as `4F2A-91C7-03BD-5E77`. A node from before
+shows and was labelled with only the first 12 characters, as `4F2A-91C7-03BD`; they are the start of the hub's longer
+one, so check every character it has.
 
 1. On the Nodes and pairing page, press **Allow new nodes to pair for 2 minutes**, or **Add a sensor** and choose a
    sensor node, which does the same.

@@ -17,7 +17,7 @@ def pairing_tests():
 
     def fingerprint(public):
         h = hashlib.sha1(public).hexdigest().upper()
-        return f'{h[0:4]}-{h[4:8]}-{h[8:12]}'
+        return f'{h[0:4]}-{h[4:8]}-{h[8:12]}-{h[12:16]}'
 
     mac, folder = '020000000055', '02-00-00-00-00-55'
     node = X25519PrivateKey.generate()

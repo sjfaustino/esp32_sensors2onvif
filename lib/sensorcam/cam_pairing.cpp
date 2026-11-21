@@ -19,8 +19,8 @@ bool camNodeKey(const uint8_t hubPrivate[CAM_X25519_LEN], const uint8_t hubPubli
 }
 
 std::string camKeyFingerprint(const uint8_t publicKey[CAM_X25519_LEN]) {
-  char out[15];
-  s2oFingerprint(publicKey, out);
+  char out[20];
+  s2oFingerprintLong(publicKey, out);
   return out;
 }
 

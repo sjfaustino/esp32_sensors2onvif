@@ -133,6 +133,21 @@ bool storeSettings(const CamSettings& s) {
   });
 }
 
+// Not in CAM_SETTINGS, so never in a backup: restoring one would take the numbers back to ones used before.
+uint32_t takeSealStart(uint32_t block) {
+  uint32_t start = esp_random();  // a hub from before this: as random as it always was. A settings reset keeps it.
+  withPrefs("seal", [&](Preferences& p) {
+    if (p.isKey("next")) start = p.getUInt("next", start);
+    p.putUInt("next", start + block);  // before any is used, so a power cut cannot hand them out again
+    return true;
+  });
+  return start;
+}
+
+bool storeSealNext(uint32_t next) {
+  return withPrefs("seal", [&](Preferences& p) { return p.putUInt("next", next) == 4; });
+}
+
 bool storePassword(const std::string& password) {
   if (!withPrefs("net", [&](Preferences& p) { return putText(p, "webpw", password.c_str()); })) return false;
   settings.webPassword = password.c_str();  // the setup network takes it the next time it opens

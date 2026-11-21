@@ -51,7 +51,10 @@ void CamWeb::watch(fd_set& rd, fd_set& wr, int& maxFd) {
   // than accepted and closed, so a sensor's report waits a moment instead of being lost. Each is taken once room frees.
   // During a firmware update nothing new is taken: the update needs the memory, and the hub restarts after it anyway.
   bool room = sharedSockets() < MAX_HTTP && hasHeadroom() && !updating();
-  if (onvifListen_ >= 0 && room) netWatch(onvifListen_, rd, maxFd);
+  // But the NVR is always let in, on its ONVIF port: kept out, its subscription would lapse and alerts stop reaching it.
+  // So while full, a new ONVIF connection is taken, and acceptHttp keeps it only if it is the NVR's.
+  bool forNvr = !room && !events_.nvrIp().empty() && hasHeadroom() && !updating();
+  if (onvifListen_ >= 0 && (room || forNvr)) netWatch(onvifListen_, rd, maxFd);
   if (webListen_ >= 0 && room) netWatch(webListen_, rd, maxFd);
   if (captiveListen_ >= 0 && room) netWatch(captiveListen_, rd, maxFd);
   for (HttpConn& c : http_) {
@@ -110,8 +113,9 @@ int CamWeb::sharedSockets() const {
 }
 
 void CamWeb::acceptHttp(int listenFd, uint32_t now) {
-  // Short of RAM or sockets: left waiting in the queue, to be taken once existing traffic has drained.
-  if (!hasHeadroom() || sharedSockets() >= MAX_HTTP || updating()) {
+  // Short of RAM or sockets: left waiting in the queue, to be taken once existing traffic has drained; but for the NVR.
+  bool full = sharedSockets() >= MAX_HTTP;
+  if (!hasHeadroom() || updating() || (full && (listenFd != onvifListen_ || events_.nvrIp().empty()))) {
     refused_++;  // counts the passes it had to wait, for the heartbeat
     return;
   }
@@ -122,6 +126,19 @@ void CamWeb::acceptHttp(int listenFd, uint32_t now) {
   if (listenFd == captiveListen_ && !radio_->setupActive()) {
     netClose(fd);
     return;
+  }
+  if (full) {  // the ONVIF port while every connection is busy: the NVR takes the place of the oldest that is not its own
+    uint32_t nvr = inet_addr(events_.nvrIp().c_str());
+    HttpConn* oldest = nullptr;
+    for (HttpConn& c : http_)
+      if (c.fd >= 0 && c.peer != nvr && !c.firmwareActive && (!oldest || now - c.openedAt > now - oldest->openedAt)) oldest = &c;
+    if (a.sin_addr.s_addr != nvr || !oldest) {
+      netClose(fd);
+      refused_++;
+      return;
+    }
+    closeHttp(*oldest);
+    nvrLetIn_++;
   }
   accepted_++;
   for (HttpConn& c : http_) {
@@ -242,6 +259,7 @@ std::string CamWeb::handleOnvif(HttpConn& c, const std::string& headers, const s
     bool presented = !open && !xmlFirstText(body, "Password").empty(), allowed = logins_.allowed(c.peer, now);
     bool ok = open || (presented && allowed && camWsseValid(body, HUB_USER, onvifPassword_));
     if (presented && allowed) logins_.note(c.peer, ok, now);
+    if (ok && presented) noteOnvifCode(body);
     if (!ok) {
       status = 400;
       return soapNotAuthorized();
@@ -362,6 +380,19 @@ void CamWeb::setPassword(const std::string& password) {
   video_.setOnvifPassword(password);
 }
 
+void CamWeb::noteOnvifCode(const std::string& body) {
+  std::string code = xmlFirstText(body, "Nonce") + "|" + xmlFirstText(body, "Created");
+  uint64_t h = 1469598103934665603ull;  // FNV-1a, 64 bits
+  for (char ch : code) h = (h ^ (uint8_t)ch) * 1099511628211ull;
+  for (uint64_t seen : onvifCodes_)
+    if (seen == h) {
+      onvifRepeats_++;
+      return;
+    }
+  onvifCodes_[onvifCodeNext_] = h;
+  onvifCodeNext_ = (onvifCodeNext_ + 1) % 64;
+}
+
 // Checks the login and keeps count of wrong ones.
 bool CamWeb::authorized(const HttpConn& c, const std::string& headers) {
   if (webPassword_.empty()) return true;
@@ -383,6 +414,7 @@ void CamWeb::finishFirmware(HttpConn& c, bool ok) {
   firmwareOwner_ = nullptr;
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
+  c.drainFrom = millis_();
   c.firmwareLeft = 0;
   c.out = done ? jsonOk(JSON_OK) : jsonFail(400, "that is not valid firmware for this hub, so nothing was changed");
   c.answered = true;
@@ -427,6 +459,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     c.answered = true;
     size_t got = c.in.size() - (headEnd + 4);
     c.discardLeft = contentLength > got && contentLength <= drainLimit ? contentLength - got : 0;
+    c.drainFrom = now;
     return true;
   };
   // The same for a missing login, on the requests that are acted on before their body has arrived.
@@ -435,6 +468,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     c.answered = true;
     size_t got = c.in.size() - (headEnd + 4);
     c.discardLeft = contentLength > got && contentLength <= drainLimit ? contentLength - got : 0;
+    c.drainFrom = now;
     return true;
   };
   if (!lengthOk) return refuse(400, "the Content-Length is not a number");
@@ -656,7 +690,10 @@ void CamWeb::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now
       return;
     }
   }
-  if (!c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS) closeHttp(c);
+  if (!c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS)
+    closeHttp(c);
+  else if (c.discardLeft && now - c.drainFrom > drainMs_)
+    closeHttp(c);  // still trickling the body of a refused request
 }
 
 // ---- what the rest of the hub asks of the web side ----

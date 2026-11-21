@@ -32,6 +32,10 @@ report:
 - Someone who records a node's message can play it back later. That makes a false alert, never a false all-clear; a
   paired node also cannot be kept looking alive that way.
 - Anyone who can publish to the MQTT broker can arm and disarm the hub through Home Assistant: give the broker a login.
+- Firmware is not signed. Anyone with the hub password can put any firmware on the hub, and through it on every node.
+  Keep the password to yourself; a stolen one should be changed at once.
+- A node without a screen cannot check the hub it pairs with, and takes the first that approves it: pair nodes where
+  no other hub may be in range, as the user guide says.
 - A radio jammer can keep nodes from reaching the hub. The hub then reports them silent, and several going quiet
   together as one event, but cannot stop the jamming.
 

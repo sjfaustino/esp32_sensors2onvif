@@ -630,7 +630,11 @@ void CamWeb::getInfo(const ApiRequest& r) {
         .num("rtspPort", cfg_.rtspPort)
         .num("streams", video_.streamCount())
         .num("subscribers", events_.subs().count());
-    j.str("serial", cfg_.serial).flag("password", !webPassword_.empty()).str("hosts", extraHosts_).flag("armed", alarm_.armed());
+    j.str("serial", cfg_.serial)
+        .flag("password", !webPassword_.empty())
+        .str("hosts", extraHosts_)
+        .num("onvifRepeats", onvifRepeats_)
+        .flag("armed", alarm_.armed());
   }));
 }
 

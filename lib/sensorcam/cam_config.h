@@ -191,6 +191,10 @@ class CamStore {
   virtual bool rearmSave(uint32_t minutes) { return false; }
   virtual bool mqttSave(const CamMqtt& m) { return false; }
   virtual bool nvrSave(const std::string& ip) { return false; }
+  // The first number the next start may give a sealed message, kept in flash and never in a backup. Each number seals
+  // one message for good: used twice with a node's key, the two could be compared. So the hub reserves numbers a block
+  // at a time, ahead of using them, and a start, even after a power cut, begins after the last block reserved.
+  virtual bool sealReserve(uint32_t next) { return false; }
 };
 
 // The hub's settings at the start, which do not change while it runs. A setting the pages change later is held by the
@@ -234,7 +238,7 @@ struct CamConfig {
   std::string startReason;     // why the hub last started, for the "hub started" event
   bool startPlanned = false;   // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
-  uint32_t sealStart = 0;      // random at each start: the first number of the hub's sealed messages
+  uint32_t sealStart = 0;      // the first number of the hub's sealed messages: where the last start's left off, see sealReserve
   std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
   bool watchNvr = true;        // log and send alerts the NVR was not listening for
 };
