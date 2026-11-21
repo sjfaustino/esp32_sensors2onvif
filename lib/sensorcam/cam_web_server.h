@@ -131,7 +131,7 @@ class CamWeb {
   void finishFirmware(HttpConn& c, bool ok);
   void serveSnapshot(HttpConn& c);
 
-  // ---- the API: cam_web_api.cpp ----
+  // ---- the API: the routes in cam_web_api.cpp, the handlers in cam_web_api_*.cpp by area ----
   void handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen);
   struct Route;
   static const Route* routes(size_t& count);  // the table, in cam_web_api.cpp

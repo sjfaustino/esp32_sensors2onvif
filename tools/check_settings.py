@@ -1,11 +1,11 @@
-"""Checks that every setting in the table, CAM_SETTINGS in lib/sensorcam/cam_web_api.cpp, is both loaded and saved in
+"""Checks that every setting in the table, CAM_SETTINGS in lib/sensorcam/cam_settings.cpp, is both loaded and saved in
 src/hub_settings.cpp, so one added to the table cannot be forgotten in either. Run by CI; exits 1 with what is missing.
 """
 
 import os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-table = open(os.path.join(ROOT, 'lib', 'sensorcam', 'cam_web_api.cpp'), encoding='utf-8').read()
+table = open(os.path.join(ROOT, 'lib', 'sensorcam', 'cam_settings.cpp'), encoding='utf-8').read()
 code = open(os.path.join(ROOT, 'src', 'hub_settings.cpp'), encoding='utf-8').read()
 
 start = table.index('const CamSetting CAM_SETTINGS[] = {')

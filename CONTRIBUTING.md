@@ -42,7 +42,7 @@ pio run -e esp32_16mb         # the firmware for the board you have; CI builds t
   `:root` blocks, with its dark value beside it, and the rules use only those names. `tools/check_colours.py`, run by
   CI, refuses a colour written anywhere else.
 - **A new setting starts in the table.** Every setting kept in flash is one line of `CAM_SETTINGS` in
-  `lib/sensorcam/cam_web_api.cpp`: its key, its kind and what a good value is. The page's checks and the backup's come
+  `lib/sensorcam/cam_settings.cpp`: its key, its kind and what a good value is. The page's checks and the backup's come
   from it, and `tools/check_settings.py`, run by CI, fails until `src/hub_settings.cpp` loads and saves it.
 - **Secrets stay out of git.** Passwords go only in `include/secrets.h`, which is not kept in git.
 

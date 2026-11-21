@@ -278,7 +278,7 @@ bool forgetKeys() {
 
 // ---- backup and restore ----
 
-using BackupKey = CamSetting;  // the list, CAM_SETTINGS, is in cam_web_api.cpp beside the check of each value
+using BackupKey = CamSetting;  // the list, CAM_SETTINGS, is in cam_settings.cpp beside the check of each value
 
 std::string backupText() {
   std::string out = "sensorcam-backup 1\n";
