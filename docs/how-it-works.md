@@ -160,9 +160,13 @@ Every time the hub waits for is in `lib/sensorcam/cam_timing.h`, each marked as 
 ## Changing the web pages
 
 The pages are ordinary files in `web/`: `index.html` is the main page and `setup.html` the Wi-Fi setup page. The main
-page's scripts are `sensors.js` (the Sensors page, and the helpers the others use), `pictures.js` (making pictures),
-`sha256.js` (checking the downloaded encoder), `encoder-worker.js` (the encoder's worker, carried in the page as text) and
-`index.js` (the menu and every other page). Opening `web/index.html` in a browser shows the layout, though nothing loads
+page's scripts are `sensors.js` (the Sensors page, and the `$`, `el` and `call` the others use), `pictures.js` (making
+pictures), `sha256.js` (checking the downloaded encoder), `encoder-worker.js` (the encoder's worker, carried in the page as
+text), `plan.js`, `sensor.js` and `assist.js` (the floor plan, a sensor's own page and adding a sensor), `index.js` (the
+menu, which page shows, the status line and the helpers the rest share as `window.hub`), and a script for each area of
+the menu: `overview.js`, `events.js` (with the walk test), `nodes.js`, `notify.js`, `network.js` and `system.js`. Each
+adds what its pages show through `window.viewHooks`, which `index.js` calls with the page that opens, and refreshes a page
+with `hub.repeat`, whose one timer stops when another page opens. Opening `web/index.html` in a browser shows the layout, though nothing loads
 without a hub. Every build runs `tools/embed_web.py`, which puts each stylesheet and script a page links inside it, gzips
 it and builds it into the firmware. `node --check` finds script mistakes before a build. The scripts and styles are laid
 out by Prettier, and the checks on GitHub refuse them otherwise; after an edit, run

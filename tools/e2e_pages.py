@@ -223,6 +223,26 @@ def test_a_sensor_camera(page):
     api('POST', f'/api/sensor-settings?path={SENSOR}', '')
 
 
+def test_every_page_opens(browser):
+    # Each page in the menu, opened in turn, with no script error and something shown: each has its own script, and a
+    # page none of the other tests opens would otherwise fail unseen.
+    page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}).new_page()
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.goto(URL + '#overview')
+    views = page.eval_on_selector_all('.item', 'items => items.map(i => i.dataset.view)')
+    empty = []
+    for view in views:
+        page.goto(URL + '#' + view)
+        page.wait_for_timeout(700)  # each loads what it shows from the hub
+        shown = page.eval_on_selector(f'#view-{view}', 'v => !v.hidden && v.innerText.trim().length')
+        if not shown:
+            empty.append(view)
+    check(f'all {len(views)} pages open, each showing something', len(views) >= 18 and not empty, (views, empty))
+    check('with no script error on any', not errors, errors)
+    page.close()
+
+
 def test_the_wifi_page_frames_the_setup_page(page):
     # The hub's own frame still works under the rule that no other site may frame its pages.
     page.goto(URL + '#wifi')
@@ -344,7 +364,7 @@ def main():
                 dialogs = Dialogs(page)
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
                              lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
-                             lambda: test_a_sensor_camera(page), lambda: test_the_wifi_page_frames_the_setup_page(page),
+                             lambda: test_a_sensor_camera(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
                              lambda: test_dark_and_narrow(browser)):
                     try:
                         test()
