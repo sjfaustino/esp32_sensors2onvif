@@ -573,6 +573,12 @@ node gives away its own key only. Each node has the fingerprint of its public ke
    each sensor is, such as "Back door", which alerts and notifications then use.
 4. Check that the node starts reporting: one that paired with something else stays "Not heard yet" on the hub.
 
+The hub checks the node, by its fingerprint, but a node without a screen cannot check the hub: while pairing, it takes
+the first hub that approves it. Someone with a hub of their own in radio range during those minutes could pair the node
+to theirs, and its alerts would go there. So pair a node only when no other hub may be in range, such as before
+mounting it, and make sure it reports to yours afterwards, as step 4 says. A node with a screen shows the hub's
+fingerprint once paired: compare it with the one on the Nodes and pairing page.
+
 The hub's key pair is made once and kept by a settings reset and in backups; the page shows its fingerprint. The node's
 key is in `pairing.txt` in its folder, which a full backup includes, and deleting the node's folder unpairs it. Nodes set
 up with the shared ESP-NOW key keep working as before. How pairing works on the air is in
