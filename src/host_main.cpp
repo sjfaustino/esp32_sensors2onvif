@@ -198,7 +198,8 @@ class TestChip : public CamChip {
     h.wifiRssi = -58;
     h.uptimeS = 3600;
   }
-  int localMinute() override { return (int)(time(nullptr) / 60 % 1440); }  // UTC, which the test also uses
+  int localMinute() override { return (int)(time(nullptr) / 60 % 1440); }         // UTC, which the test also uses
+  int localWeekday() override { return (int)((time(nullptr) / 86400 + 4) % 7); }  // 1 January 1970 was a Thursday
   void timeInfo(CamJson& j) override {
     j.flag("ntp", true).str("server", "pool.ntp.org").num("offset", 0).num("dst", 0).flag("synced", true).str("local", "2026-01-01 00:00:00");
   }

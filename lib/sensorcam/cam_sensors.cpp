@@ -251,6 +251,8 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
                minuteOfDay(value.substr(dash + 1), s.quietTo) && s.quietFrom != s.quietTo) {
     } else if (key == "zone" && (value == "interior" || value == "perimeter")) {
       s.interior = value == "interior";
+    } else if (key == "camera" && camValidCamera(value)) {
+      s.camera = value;
     } else {
       return false;
     }
@@ -264,7 +266,15 @@ std::string camSensorSettingsText(const CamSensorSettings& s) {
   if (s.holdS) out += "hold=" + std::to_string(s.holdS) + "\n";
   if (s.quietFrom >= 0) out += "quiet=" + std::to_string(s.quietFrom) + "-" + std::to_string(s.quietTo) + "\n";
   if (s.interior) out += "zone=interior\n";
+  if (!s.camera.empty()) out += "camera=" + s.camera + "\n";
   return out;
+}
+
+bool camValidCamera(const std::string& s) {
+  if (s.empty() || s.size() > CAM_MAX_CAMERA) return false;
+  for (char ch : s)
+    if ((unsigned char)ch < 0x20 || ch == 0x7f) return false;
+  return true;
 }
 
 bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {

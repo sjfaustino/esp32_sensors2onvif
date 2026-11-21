@@ -89,8 +89,11 @@ struct CamSensorSettings {
   int quietFrom = -1;  // -1 for no quiet hours
   int quietTo = -1;
   bool interior = false;  // otherwise perimeter, which is watched in every armed mode
+  std::string camera;     // the NVR camera to look at for this sensor's alerts, as "camera=" text; empty for none
 };
 const uint32_t CAM_MAX_HOLD_S = 3600;
+const size_t CAM_MAX_CAMERA = 32;                                              // bytes of the camera's name
+bool camValidCamera(const std::string& s);                                     // 1 to 32 bytes, with no control characters
 bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  // false for anything the page would refuse
 std::string camSensorSettingsText(const CamSensorSettings& s);
 bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, an unknown clock, is never quiet

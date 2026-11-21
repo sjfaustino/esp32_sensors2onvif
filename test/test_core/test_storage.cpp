@@ -303,6 +303,33 @@ static void the_history_can_be_one_sensors_last_days() {
   TEST_ASSERT_EQUAL((int)(total + 1), (int)std::count(whole.begin(), whole.end(), '\n'));
 }
 
+// The weekly summary reads the history back from a time on, newest first: the events waiting to be saved, then both
+// logs, skipping one from before the clock was set, and says whether it reached that time.
+static void the_history_is_read_back_newest_first_to_a_time() {
+  std::string folder = tempFolder("cam_event_log_since");
+  CamStorage storage(folder);
+  CamEventLog log(storage);
+  log.load();
+  size_t perFile = CamEventLog::FILE_MAX / CAM_EVENT_RECORD, total = perFile + 300;
+  for (size_t i = 0; i < total; i++) {
+    CamEvent e = sampleEvent((int)i);
+    if (i == total - 50) e.received = 1000;  // after a restart without the time
+    log.add(e);
+    if (i < total - 3) TEST_ASSERT_TRUE(log.save(false));  // the newest three still waiting
+  }
+  std::vector<time_t> seen;
+  time_t since = 1800000000 + (time_t)perFile - 100;  // reaches into the older log
+  TEST_ASSERT_TRUE(log.eachSince(since, 100000, [&](const CamEvent& e) { seen.push_back(e.received); }));
+  TEST_ASSERT_EQUAL((int)(total - (perFile - 100) - 1), (int)seen.size());  // all since then, but the one without a time
+  TEST_ASSERT_EQUAL((int)(1800000000 + total - 1), (int)seen.front());      // the newest, still waiting, first
+  for (size_t i = 1; i < seen.size(); i++) TEST_ASSERT_TRUE(seen[i] < seen[i - 1]);
+  TEST_ASSERT_EQUAL((int)since, (int)seen.back());
+  seen.clear();
+  TEST_ASSERT_FALSE(log.eachSince(since, 10, [&](const CamEvent& e) { seen.push_back(e.received); }));  // stopped at most
+  TEST_ASSERT_EQUAL(10, (int)seen.size());
+  TEST_ASSERT_FALSE(log.eachSince(0, 100000, [](const CamEvent&) {}));  // the history ends before then
+}
+
 // A 4 MB board's storage holds some 190 KB: the history is kept small enough to fit, and storage that refuses a save
 // gives up the older log for room, as the report waiting on that save cannot be confirmed without it.
 static void a_small_storage_keeps_a_smaller_history_that_always_saves() {
@@ -379,6 +406,7 @@ void runStorageTests() {
   RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);
   RUN_TEST(a_small_storage_keeps_a_smaller_history_that_always_saves);
   RUN_TEST(the_history_can_be_one_sensors_last_days);
+  RUN_TEST(the_history_is_read_back_newest_first_to_a_time);
   RUN_TEST(the_older_firmwares_history_is_kept);
   RUN_TEST(a_node_image_is_told_from_other_files);
   RUN_TEST(classifies_storage_paths);

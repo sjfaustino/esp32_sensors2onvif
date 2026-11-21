@@ -312,6 +312,13 @@ class HubChip : public CamChip {
     localtime_r(&now, &local);
     return local.tm_hour * 60 + local.tm_min;
   }
+  int localWeekday() override {
+    time_t now = time(nullptr);
+    if (now < CAM_CLOCK_VALID_AFTER) return -1;
+    struct tm local;
+    localtime_r(&now, &local);
+    return local.tm_wday;
+  }
   void timeInfo(CamJson& j) override { ::timeInfo(j); }
   bool timeSave(const CamTime& t) override { return saveTime(t); }
 };

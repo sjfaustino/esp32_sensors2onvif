@@ -69,7 +69,20 @@ static void sensor_settings_round_trip_and_refuse_bad_values() {
   TEST_ASSERT_EQUAL(0, s.holdS);
   TEST_ASSERT_EQUAL(-1, s.quietFrom);
   TEST_ASSERT_EQUAL_STRING("", camSensorSettingsText(s).c_str());
-  const char* bad[] = {"hold=0\n", "hold=3601\n", "hold=-5\n", "hold=1x\n", "quiet=60-60\n", "quiet=1440-10\n", "quiet=10\n", "colour=red\n"};
+  TEST_ASSERT_TRUE(camParseSensorSettings("camera=Camera 3, gate = east\n", s));  // the first = divides
+  TEST_ASSERT_EQUAL_STRING("Camera 3, gate = east", s.camera.c_str());
+  TEST_ASSERT_EQUAL_STRING("camera=Camera 3, gate = east\n", camSensorSettingsText(s).c_str());
+  const char* bad[] = {"hold=0\n",
+                       "hold=3601\n",
+                       "hold=-5\n",
+                       "hold=1x\n",
+                       "quiet=60-60\n",
+                       "quiet=1440-10\n",
+                       "quiet=10\n",
+                       "colour=red\n",
+                       "camera=\n",
+                       "camera=a\tb\n",
+                       "camera=123456789012345678901234567890123\n"};
   for (const char* text : bad) TEST_ASSERT_FALSE_MESSAGE(camParseSensorSettings(text, s), text);
 }
 

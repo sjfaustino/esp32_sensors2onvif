@@ -87,6 +87,33 @@ static void the_daily_check_says_what_matters() {
   TEST_ASSERT_TRUE(camDailyMessage(d).find("at least 4 alerts in the last day, all delivered to the NVR") != std::string::npos);
 }
 
+static void the_weekly_summary_says_what_matters() {
+  CamWeeklySummary w;
+  w.hub = "esp-alarmhub";
+  w.mode = "away";
+  w.nvrListening = true;
+  TEST_ASSERT_EQUAL_STRING(
+      "esp-alarmhub weekly summary: 0 alerts in the last 7 days; 0 problems reported; no problems now; the NVR is listening; armed away; no test "
+      "alert this week",
+      camWeeklyMessage(w).c_str());
+  w.alerts = 12;
+  w.busiest = "Gate";
+  w.busiestAlerts = 7;
+  w.held = 2;
+  w.problems = 1;
+  w.batteries = {"Shed: about 12 days"};
+  w.nowProblems = {"Shed: low battery"};
+  w.testAgoS = 2 * 86400;
+  TEST_ASSERT_EQUAL_STRING(
+      "esp-alarmhub weekly summary: 12 alerts in the last 7 days, all delivered to the NVR; most from Gate (7); 2 more only logged, while "
+      "disarmed, armed home or in quiet hours; 1 problem reported; batteries running low: Shed: about 12 days; problems now: Shed: low battery; "
+      "the NVR is listening; armed away; last test alert 2 days 0 h ago",
+      camWeeklyMessage(w).c_str());
+  w.notDelivered = 3;
+  w.allCounted = false;
+  TEST_ASSERT_TRUE(camWeeklyMessage(w).find("at least 12 alerts in the last 7 days, 3 not delivered to the NVR") != std::string::npos);
+}
+
 static void long_names_are_cut_between_characters() {
   char out[6];
   camCopyText(out, sizeof(out), "abc");
@@ -144,5 +171,6 @@ void runTextTests() {
   RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(long_names_are_cut_between_characters);
   RUN_TEST(the_daily_check_says_what_matters);
+  RUN_TEST(the_weekly_summary_says_what_matters);
   RUN_TEST(every_event_kind_has_its_own_name);
 }

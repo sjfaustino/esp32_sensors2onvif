@@ -20,9 +20,14 @@ class CamWebhookSender {
   // message, counted, and the alert goes on.
   void notify(int id, CamEventKind kind, bool delayed);
   void notifyHub(CamEventKind kind, const std::string& detail, const std::string& message);
-  void queue(const std::string& message, const std::string& json);  // as text or JSON, as the settings say
-  void dailyCheck(uint32_t now);                                    // queued at the minute the settings give
-  void tick(uint32_t now, bool mayConnect);                         // starts the next message; mayConnect: a socket is free
+  // A message in the settings' format. title is what it is about, such as "alert" or "daily check", and priority runs
+  // from 1, for news, to 5, for an alert: ntfy and Gotify show them on the phone.
+  void queue(const std::string& title, int priority, const std::string& message, const std::string& json);
+  void dailyCheck(uint32_t now);  // queued at the minute the settings give
+  // At the day and minute the settings give, or now when forced: the past week in one message. False when the clock is
+  // not set, or there was no memory for it.
+  bool weeklySummary(uint32_t now, bool force);
+  void tick(uint32_t now, bool mayConnect);  // starts the next message; mayConnect: a socket is free
   void watch(fd_set& rd, fd_set& wr, int& maxFd) const { post_.watch(rd, wr, maxFd); }
   void serve(fd_set& rd, fd_set& wr, uint32_t now);
   int fd() const { return post_.fd(); }
@@ -45,4 +50,6 @@ class CamWebhookSender {
   CamHookQueue hooks_;
   bool dailySent_ = false;  // and when, so the minute it is due sends one
   uint32_t dailySentAt_ = 0;
+  bool weeklySent_ = false;
+  uint32_t weeklySentAt_ = 0;
 };

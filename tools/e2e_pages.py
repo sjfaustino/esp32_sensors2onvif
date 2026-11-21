@@ -160,6 +160,82 @@ def test_alerts(page, dialogs, nvr):
     end_alert(nvr)
 
 
+def test_the_first_steps(page):
+    # The hub here has no notifications set up, so the Overview shows the next step, with what to do and a way there.
+    page.evaluate('localStorage.clear()')
+    page.goto(URL + '#overview')
+    page.wait_for_selector('#wizard', state='visible')
+    check('the Overview shows the next first step', 'Getting started' in page.text_content('#wizTitle') and page.text_content('#wizHelp'),
+          page.text_content('#wizard'))
+    step = page.text_content('#wizStep')
+    page.click('#wizGo')
+    page.wait_for_timeout(300)
+    check('its button leads to the page for it', page.evaluate('location.hash') not in ('', '#overview') or 'Test' in step, (step, page.url))
+    page.goto(URL + '#overview')
+    page.wait_for_selector('#wizard', state='visible')
+    page.click('#wizLater')
+    check('it can be hidden for now', not page.is_visible('#wizard'))
+    page.reload()
+    page.wait_for_selector('#ovReadyBox', state='visible')
+    check('and stays hidden, with the list at the foot of the page', not page.is_visible('#wizard'))
+    page.click('#wizBack')
+    page.wait_for_selector('#wizard', state='visible')
+    check('and comes back when asked', page.is_visible('#wizard'))
+
+
+def test_notifications_page(page):
+    page.goto(URL + '#notify')
+    page.wait_for_selector('#hookFormat', state='visible')
+    page.select_option('#hookFormat', 'ntfy')
+    check('ntfy asks for a topic and an access token', 'topic' in page.text_content('#hookHelp') and page.is_visible('#hookToken'),
+          page.text_content('#hookHelp'))
+    page.select_option('#hookFormat', 'json')
+    check('JSON needs no token', not page.is_visible('#hookToken'))
+    page.select_option('#hookFormat', 'gotify')
+    page.fill('#hookUrl', f'http://127.0.0.1:9/message')
+    page.fill('#hookToken', '')
+    page.click('#saveHook')
+    check('Gotify without its token is refused, with the reason', wait_text(page, 'hookMsg', 'token'), page.text_content('#hookMsg'))
+    page.select_option('#hookFormat', 'ntfy')
+    page.fill('#hookUrl', 'http://127.0.0.1:9/alarm')
+    page.fill('#hookToken', 'tk_page1')
+    page.select_option('#hookWeekDay', '0')
+    page.fill('#hookWeekTime', '18:30')
+    page.click('#saveHook')
+    check('ntfy with a token and a weekly summary is saved', wait_text(page, 'hookMsg', 'Saved'), page.text_content('#hookMsg'))
+    saved = get_json('/api/webhook')
+    check('as the page said', saved['format'] == 'ntfy' and saved['token'] is True and saved['weekday'] == 0 and saved['weekminute'] == 18 * 60 + 30,
+          saved)
+    page_wait(page, lambda: 'leave blank' in (page.get_attribute('#hookToken', 'placeholder') or ''))
+    check('the page says a token is saved without showing it', page.input_value('#hookToken') == ''
+          and 'leave blank' in page.get_attribute('#hookToken', 'placeholder'))
+    api('POST', '/api/webhook', 'url=&alerts=1&problems=1&forget=1')
+
+
+def test_a_sensor_camera(page):
+    page.goto(URL + '#sensors')
+    open_alert_settings(page)
+    box = page.locator('input[placeholder^="such as Camera"]').first
+    box.fill('Camera 2')
+    page.locator('button:has-text("Save alert settings")').first.click()
+    entry = poll(lambda: get_json('/api/tree'), lambda t: any(n.get('camera') == 'Camera 2' for s in t['nodes'] for n in s['sensors']))
+    check('a camera saved on the Sensors page is kept', any(n.get('camera') == 'Camera 2' for s in entry['nodes'] for n in s['sensors']))
+    api('POST', f'/api/sensor-settings?path={SENSOR}', '')
+
+
+def test_dark_and_narrow(browser):
+    page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, color_scheme='dark',
+                               viewport={'width': 390, 'height': 800}).new_page()
+    page.goto(URL + '#espnow')
+    page.wait_for_selector('#view-espnow table', state='visible')
+    page.wait_for_timeout(500)
+    background = page.evaluate('getComputedStyle(document.body).backgroundColor')
+    check('a device set to dark gets the dark pages', background == 'rgb(22, 25, 29)', background)
+    wide = page.evaluate('document.documentElement.scrollWidth')
+    check('on a phone the page is no wider than the screen, its tables scrolling inside it', wide <= 390, wide)
+    page.close()
+
+
 def test_a_hub_without_a_password_asks_for_one(browser, storage):
     # A hub can start with no password, from secrets.h or an older firmware that let it be turned off. Every page then
     # asks for one, and the page will not take two that differ or one that is too short.
@@ -243,7 +319,8 @@ def main():
                 page.on('pageerror', lambda e: errors.append(str(e)))
                 dialogs = Dialogs(page)
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
-                             lambda: test_alerts(page, dialogs, nvr)):
+                             lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
+                             lambda: test_a_sensor_camera(page), lambda: test_dark_and_narrow(browser)):
                     try:
                         test()
                     except Exception as e:  # a control that never appeared: a failure, and the rest still run

@@ -126,8 +126,10 @@ The Events page can show one sensor's events, or only alerts, problems or the hu
 
 **Alert settings** under each sensor on the Sensors page set how long its alert lasts, instead of the hub's 10 seconds, and
 quiet hours in local time. During quiet hours that sensor's alerts are logged as "alert in quiet hours" but are not sent to the
-NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. The settings are kept in
-`settings.txt` in the sensor's folder.
+NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. **Camera to look at**
+names the NVR camera that covers the sensor, such as "Camera 3, garden": its alert notifications end with "look at Camera
+3, garden", the JSON has it as `camera`, and the Events page shows it beside each alert, so you know which recording to
+watch. The settings are kept in `settings.txt` in the sensor's folder.
 
 The whole hub can be disarmed, on the Overview page or from Home Assistant. Disarmed, every alert is logged as "alert while
 disarmed" but is not sent to the NVR or to Notifications, and every page says so at the top. A late report of something
@@ -152,10 +154,16 @@ that is silent, on a low battery, on a weak signal or having messages refused. T
 
 A line at the top of every page sums it up: green when all is well, yellow when something needs attention (disarmed, a
 sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
-It links to the Overview. Until everything is done, the Overview also shows **Ready to protect?**, a checklist with a
-link to put each item right: a hub password of your own rather than one built into the firmware, the
-clock set, the NVR's address set and the NVR listening, a sensor heard, a test alert in the last month, notifications
-or Home Assistant, and a daily check. It goes once all are ticked, and comes back if one slips.
+It links to the Overview. Until everything is done, the Overview starts with **Getting started**: the next step left,
+what to do and why, and a button that goes there. The steps are a hub password of your own rather than one built into
+the firmware, the clock set, the NVR's address set and the NVR listening, a sensor heard, a test alert in the last
+month, notifications or Home Assistant, and a daily check. **Hide for now** puts them away; they stay listed under
+**Ready to protect?** at the foot of the Overview, with a link to put each right and one to show them a step at a time
+again. Both go once all are ticked, and come back if one slips.
+
+The pages follow the device's light or dark setting, and on a phone wide tables scroll sideways.
+
+<img src="images/phone-dark.png" alt="The Overview on a phone set to dark, with the next first step" width="300">
 
 **Alarm > Walk test** is for walking the property with a phone. **Start on every node** turns on every node's walk
 test for 10 minutes; each sensor that sees you is ticked, with its signal and how long the hub took to hear it, while
@@ -193,10 +201,24 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 
 ![The Notifications page](images/notify.png)
 
-**Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a web address on your network, such as
-a Home Assistant webhook, Node-RED or a self-hosted ntfy server. The hub posts JSON like
-`{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert"}`,
-or just the message as plain text. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
+**Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a server on your network.
+**Send to** chooses how:
+
+- **ntfy**: a self-hosted [ntfy](https://ntfy.sh) server passes each message to the ntfy app on your phone. The address
+  ends with the topic, as `http://192.168.1.10/alarm`; subscribe to that topic in the app. Each message has a title,
+  such as `esp-alarmhub.local: alert: Gate`, and a priority: alerts and alerts the NVR missed are urgent, node and hub
+  problems high, a test alert middling, and arming, the daily check and the weekly summary low. Give an access token if
+  the topic needs one.
+- **Gotify**: a [Gotify](https://gotify.net) server and its phone app. The address ends with `/message`, and the token
+  is an application's, from Gotify's Apps page. Alerts arrive with priority 10.
+- **Home Assistant, Node-RED or other (JSON)**: the hub posts JSON like
+  `{"event":"alert","sensor":"AA-BB-CC-DD-EE-01/1","name":"Gate","battery":80,"camera":"Camera 3","time":"2026-11-11T18:00:12Z","hub":"esp-alarmhub.local","message":"Gate (AA-BB-CC-DD-EE-01/1): alert; look at Camera 3"}`.
+  In Home Assistant, use a webhook trigger, at `http://<Home Assistant>:8123/api/webhook/<id>`.
+- **Other (plain text)**: just the message.
+
+A saved token is never shown again; leave the field blank to keep it, or tick **Forget the saved token**. Services on the
+internet, such as Telegram, Pushover or ntfy.sh itself, need https, which the hub does not have: reach them through
+a server on your network, such as Home Assistant or a self-hosted ntfy that forwards to ntfy.sh. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
 `node restarted by a fault`, `battery running out`, `possible jamming`, `firing often`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
 `NVR listening again`, `hub started`, `network lost`, `armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
@@ -207,6 +229,13 @@ did not reach the NVR (`alerts`, `notDelivered`; `allCounted` is false when more
 whether the NVR is listening, how the hub is armed, and how long since the last test alert (`testAgo_s`). It shows the
 system works; if it stops arriving, the hub is off, cut off from the network, or its clock is not set. Leave the time
 empty for none.
+**Weekly summary** sends one message a week on that day and local time, as event `weekly summary`: the week's alerts and
+how many did not reach the NVR (`alerts`, `notDelivered`), the sensor that fired most (`busiest`, `busiestAlerts`),
+the alerts only logged while disarmed, armed home or in quiet hours (`held`), test alerts and problems reported
+(`tests`, `problems`), the batteries forecast to run out within a month (`batteries`), the problems now
+(`problemsNow`), whether the NVR is listening, how the hub is armed, and the last test alert. It is counted from the
+history on storage, up to 2000 events; `allCounted` is false when the history did not reach back a week.
+**Send the weekly summary now** sends one at once, to see what it says.
 The address must be `http://` with an IP address, because the hub has no name lookup or TLS for this. Messages go one at a
 time; up to 8 wait, and the page shows how the last one went.
 
@@ -471,7 +500,7 @@ AA-BB-CC-DD-EE-01/battery.txt      its battery readings, for the forecast
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
-AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time and quiet hours, set on the Sensors page
+AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time, quiet hours, zone and camera, set on the Sensors page
 ```
 
 The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with a `-delayed` version such as

@@ -102,6 +102,32 @@ std::string camDailyMessage(const CamDailyCheck& d) {
   return m;
 }
 
+std::string camWeeklyMessage(const CamWeeklySummary& w) {
+  std::string m = w.hub + " weekly summary: " + std::string(w.allCounted ? "" : "at least ") + std::to_string(w.alerts) +
+                  (w.alerts == 1 ? " alert" : " alerts") + " in the last 7 days";
+  if (w.notDelivered)
+    m += ", " + std::to_string(w.notDelivered) + " not delivered to the NVR";
+  else if (w.alerts)
+    m += ", all delivered to the NVR";
+  if (w.busiestAlerts) m += "; most from " + w.busiest + " (" + std::to_string(w.busiestAlerts) + ")";
+  if (w.held) m += "; " + std::to_string(w.held) + " more only logged, while disarmed, armed home or in quiet hours";
+  m += "; " + std::to_string(w.problems) + (w.problems == 1 ? " problem" : " problems") + " reported";
+  if (!w.batteries.empty()) {
+    m += "; batteries running low: ";
+    for (size_t i = 0; i < w.batteries.size(); i++) m += (i ? ", " : "") + w.batteries[i];
+  }
+  if (w.nowProblems.empty()) {
+    m += "; no problems now";
+  } else {
+    m += "; problems now: ";
+    for (size_t i = 0; i < w.nowProblems.size(); i++) m += (i ? ", " : "") + w.nowProblems[i];
+  }
+  m += w.nvrListening ? "; the NVR is listening" : "; the NVR is NOT listening";
+  m += w.mode == "disarmed" ? "; disarmed" : "; armed " + w.mode;
+  m += w.testAgoS >= 0 ? "; last test alert " + camDurationText((uint32_t)w.testAgoS) + " ago" : "; no test alert this week";
+  return m;
+}
+
 std::string camDurationText(uint32_t seconds) {
   uint32_t m = (seconds + 59) / 60;
   if (m < 60) return std::to_string(m) + " min";
@@ -300,6 +326,36 @@ bool CamEventLog::save(bool downloading) {
     pending_.reserve(PENDING_KEPT);
   }
   return true;
+}
+
+bool CamEventLog::eachSince(time_t since, size_t most, const std::function<void(const CamEvent&)>& each) const {
+  size_t seen = 0;
+  CamEvent e;
+  // 1 when an event older than since was found, -1 when most was reached, 0 to go on.
+  auto take = [&](const uint8_t* record) {
+    if (!camEventDecode(record, e) || e.received < CAM_CLOCK_VALID_AFTER) return 0;
+    if (e.received < since) return 1;
+    each(e);
+    return ++seen >= most ? -1 : 0;
+  };
+  for (size_t end = pending_.size() - pending_.size() % CAM_EVENT_RECORD; end >= CAM_EVENT_RECORD; end -= CAM_EVENT_RECORD) {
+    int r = take((const uint8_t*)pending_.data() + end - CAM_EVENT_RECORD);
+    if (r) return r > 0;
+  }
+  uint8_t chunk[8 * CAM_EVENT_RECORD];
+  for (int old = 0; old < 2; old++) {
+    size_t records = (old ? oldBytes_ : curBytes_) / CAM_EVENT_RECORD;
+    while (records) {
+      size_t n = records < 8 ? records : 8;
+      records -= n;
+      if (!storage_.readAt(old ? LOG_OLD : LOG, records * CAM_EVENT_RECORD, (char*)chunk, n * CAM_EVENT_RECORD)) return false;
+      for (size_t i = n; i-- > 0;) {
+        int r = take(chunk + i * CAM_EVENT_RECORD);
+        if (r) return r > 0;
+      }
+    }
+  }
+  return false;
 }
 
 void CamEventLog::csvBegin(const std::string& sensor, time_t since) {

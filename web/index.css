@@ -1,3 +1,7 @@
+/* A hidden element stays hidden, whatever display its class gives it. */
+[hidden] {
+  display: none !important;
+}
 body {
   font:
     15px/1.4 system-ui,
@@ -410,4 +414,180 @@ dialog.guide {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+}
+
+/* The first steps, one at a time, at the top of the Overview. */
+.wizard {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #b9cdf0;
+  border-radius: 8px;
+  background: #f1f5fd;
+}
+.wizard h2 {
+  font-family: inherit;
+  margin: 0 0 6px;
+}
+.wizBar {
+  height: 6px;
+  background: #dbe3f3;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.wizBar div {
+  height: 100%;
+  background: #3b6fd4;
+}
+.wizStep {
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+button.primary {
+  background: #3b6fd4;
+  border-color: #3b6fd4;
+  color: #fff;
+}
+
+/* On a phone: forms wrap, and wide tables scroll sideways instead of squeezing their columns. */
+@media (max-width: 640px) {
+  main {
+    padding: 12px;
+  }
+  .netRow {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+  .netRow input,
+  .netRow select {
+    width: 100%;
+    max-width: 22em;
+  }
+  table:not(.week):not(.info) {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .info td:first-child {
+    width: auto;
+  }
+  button,
+  .btn {
+    font-size: 14px;
+    padding: 6px 11px;
+    margin-bottom: 4px;
+  }
+}
+
+/* Dark, when the device is set to it: the same pages with the light and dark swapped. */
+:root {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  body,
+  .card,
+  button,
+  .btn,
+  .netRow input,
+  .netRow select,
+  input[type="text"],
+  input[type="number"],
+  textarea,
+  dialog {
+    background: #16191d;
+    color: #e3e6ea;
+  }
+  .card,
+  button,
+  .btn,
+  dialog,
+  .netRow input,
+  .netRow select,
+  input[type="text"],
+  input[type="number"],
+  .planImg {
+    border-color: #3c434b;
+  }
+  td,
+  .sensor {
+    border-color: #2a2f35;
+  }
+  #menu {
+    background: #1f2328;
+  }
+  .first:hover,
+  .item:hover {
+    background: #2c3138;
+  }
+  .item.active {
+    background: #16191d;
+    color: #8ab4f8;
+  }
+  .first::after,
+  .item::before {
+    color: #9aa1a9;
+  }
+  .missing,
+  .info td:first-child,
+  .netRow span,
+  tr.explanation td,
+  .netRow input:disabled {
+    color: #9aa1a9;
+  }
+  .netRow input:disabled {
+    background: #22262b;
+  }
+  a {
+    color: #8ab4f8;
+  }
+  a:visited {
+    color: #c58af9;
+  }
+  .bar,
+  .wizBar {
+    background: #2c3138;
+  }
+  button.del,
+  #msg.err,
+  .portMsg.err,
+  .warn {
+    color: #f28b82;
+    border-color: #6b2f2a;
+  }
+  .status.ok {
+    background: #173a22;
+    color: #a8dab5;
+  }
+  .status.attention {
+    background: #3d3114;
+    color: #f2d48a;
+  }
+  .status.bad {
+    background: #45201d;
+    color: #f6aea9;
+  }
+  .wizard {
+    background: #18243a;
+    border-color: #2f4a78;
+  }
+  button.primary {
+    background: #3b6fd4;
+    color: #fff;
+  }
+  .spot {
+    box-shadow: 0 0 0 2px #16191d;
+  }
+  .spot.waiting {
+    background: #16191d;
+    color: #e3e6ea;
+  }
+  table.week td {
+    border-color: #2a2f35;
+  }
+  svg.chart .grid {
+    stroke: #3c434b;
+  }
+  svg.chart text {
+    fill: #9aa1a9;
+  }
 }

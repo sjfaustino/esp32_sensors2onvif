@@ -32,6 +32,7 @@ def fill_the_hub():
     for n, label in NAMES.items():
         api('POST', f'/api/mkdir?path={name(n)}')
         api('PUT', f'/api/file?path={name(n)}/name.txt', label.encode())
+    api('POST', f'/api/sensor-settings?path={name(1)}', 'camera=Camera%201%2C%20porch')
     api('POST', '/api/nvr', f'ip={LOCAL}')  # the pretend NVR, so the hub can check what it recorded
     control('radio-known')
     for n in (2, 1, 4, 6):
@@ -81,6 +82,15 @@ def main():
             page = context.new_page()
             for view, ready in PAGES:
                 take(page, view, ready, view.split(':')[0])
+            # The Overview on a phone set to dark.
+            dark = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, color_scheme='dark',
+                                       viewport={'width': 390, 'height': 760}, device_scale_factor=2).new_page()
+            dark.goto(URL + '#overview')
+            dark.wait_for_selector('#wizard', state='visible')
+            dark.evaluate("document.getElementById('menu').scrollIntoView(false); scrollTo(0, document.getElementById('status').offsetTop - 8)")
+            dark.wait_for_timeout(800)
+            dark.screenshot(path=os.path.join(OUT, 'phone-dark.png'))
+            print('took phone-dark')
         finally:
             browser.close()
             if common.HUB:

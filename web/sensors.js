@@ -188,10 +188,13 @@ function settingsPanel(base, n) {
     el("option", { value: "interior", textContent: "interior: not watched while the hub is armed home" }),
   );
   zone.value = n.interior ? "interior" : "perimeter";
+  const camera = el("input", { maxLength: 32, value: n.camera || "", placeholder: "such as Camera 3, garden" });
   return el(
     "details",
     null,
-    el("summary", { textContent: "Alert settings" + (n.hold || n.quiet || n.interior ? " (changed)" : "") }),
+    el("summary", {
+      textContent: "Alert settings" + (n.hold || n.quiet || n.interior || n.camera ? " (changed)" : ""),
+    }),
     el("p", null, "An alert lasts ", hold, " seconds. Empty uses the hub's default."),
     el(
       "p",
@@ -208,6 +211,13 @@ function settingsPanel(base, n) {
       "Zone: ",
       zone,
       ". Mark the sensors inside the house as interior, so the hub can be armed home at night.",
+    ),
+    el(
+      "p",
+      null,
+      "Camera to look at: ",
+      camera,
+      ". The NVR camera that covers this sensor, named in its notifications and on the Events page, so you know which recording to watch.",
     ),
     el(
       "p",
@@ -242,7 +252,9 @@ function settingsPanel(base, n) {
                 "&to=" +
                 minutes(to.value) +
                 "&zone=" +
-                zone.value,
+                zone.value +
+                "&camera=" +
+                encodeURIComponent(camera.value.trim()),
             ),
           "Saved the alert settings",
         ),

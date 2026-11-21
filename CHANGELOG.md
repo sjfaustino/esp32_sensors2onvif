@@ -5,6 +5,17 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### The hub
+
+- Notifications go to ntfy or Gotify as those servers take them, with a title and a priority for the phone (alerts
+  urgent, problems high, news low), and an access token. The Notifications page explains what each needs.
+- A weekly summary, on the day and time chosen: the week's alerts and whether they reached the NVR, the sensor that
+  fired most, the problems, the batteries running low and the last test alert. It can also be sent at once.
+- Each sensor can name the NVR camera that covers it. Its alert notifications and the Events page say which camera to
+  look at.
+- **Getting started** on the Overview takes a new hub through its setup a step at a time, saying what to do and why.
+- The pages follow the device's dark setting, and fit a phone: forms wrap and wide tables scroll.
+
 ## [0.2.0] - 2026-11-21
 
 ### The hub

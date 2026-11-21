@@ -46,3 +46,21 @@ p {
   font-size: 14px;
   margin: 16px 0 0;
 }
+:root {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #e3e6ea;
+    background: #16191d;
+  }
+  input,
+  select,
+  button {
+    background: #22262b;
+    border-color: #3c434b;
+  }
+  #msg.err {
+    color: #f28b82;
+  }
+}

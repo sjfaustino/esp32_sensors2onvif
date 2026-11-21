@@ -83,7 +83,12 @@ void loadSettings() {
       p.putString("snapkey", s.snapshotKey);
     }
     s.webhook.url = p.getString("hook", "").c_str();
-    s.webhook.text = p.getBool("hooktx", false);
+    // A format saved by firmware from before ntfy and Gotify is plain text or JSON.
+    s.webhook.format = p.isKey("hookfm") ? p.getInt("hookfm", CAM_HOOK_JSON) : p.getBool("hooktx", false) ? CAM_HOOK_TEXT : CAM_HOOK_JSON;
+    if (s.webhook.format < CAM_HOOK_JSON || s.webhook.format > CAM_HOOK_GOTIFY) s.webhook.format = CAM_HOOK_JSON;
+    s.webhook.token = p.getString("hooktk", "").c_str();
+    s.webhook.weeklyDay = p.getInt("hookwd", -1);
+    s.webhook.weeklyMinute = p.getInt("hookwm", 9 * 60);
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
     s.webhook.dailyMinute = p.getInt("hookdy", -1);
@@ -213,8 +218,9 @@ bool storeHealthAlarm(bool on) {
 
 bool storeWebhook(const CamWebhook& w) {
   return withPrefs("net", [&w](Preferences& p) {
-    return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.text) == 1 && p.putBool("hookal", w.alerts) == 1 &&
-           p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4;
+    return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.format == CAM_HOOK_TEXT) == 1 && p.putInt("hookfm", w.format) == 4 &&
+           putText(p, "hooktk", w.token.c_str()) && p.putInt("hookwd", w.weeklyDay) == 4 && p.putInt("hookwm", w.weeklyMinute) == 4 &&
+           p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4;
   });
 }
 

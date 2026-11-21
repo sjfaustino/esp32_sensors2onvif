@@ -26,7 +26,8 @@ inline const CamBackupKey CAM_BACKUP_KEYS[] = {
     {"net", "rben", 'b'},   {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
     {"net", "hook", 's'},   {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hookdy", 'i'},
     {"net", "hosts", 's'},  {"net", "pairkey", 's'},   {"net", "rearm", 'u'},  {"net", "mqhost", 's'},     {"net", "mqport", 'u'},
-    {"net", "mquser", 's'}, {"net", "mqpw", 's'},
+    {"net", "mquser", 's'}, {"net", "mqpw", 's'},      {"net", "hookfm", 'i'}, {"net", "hooktk", 's'},     {"net", "hookwd", 'i'},
+    {"net", "hookwm", 'i'},
 };
 
 const uint32_t CAM_MAX_DISARM_MINUTES = 7 * 1440;
@@ -66,13 +67,20 @@ struct CamSchedule {
   int minute = 0;  // minutes after midnight, local time
 };
 
-// Messages to a web address of the user's choosing, such as Home Assistant, Node-RED or ntfy.
+// How each message is sent: JSON for Home Assistant and Node-RED, plain text, or as an ntfy or Gotify server takes it,
+// with a title and a priority for the phone.
+enum CamHookFormat : int { CAM_HOOK_JSON = 0, CAM_HOOK_TEXT = 1, CAM_HOOK_NTFY = 2, CAM_HOOK_GOTIFY = 3 };
+
+// Messages to a web address of the user's choosing, such as Home Assistant, Node-RED, ntfy or Gotify.
 struct CamWebhook {
-  std::string url;       // http:// with an IPv4 address; empty sends nothing
-  bool text = false;     // plain text instead of JSON
-  bool alerts = true;    // sensor alerts
-  bool problems = true;  // silent nodes, low batteries and weak signals
-  int dailyMinute = -1;  // the daily check, in minutes after local midnight; -1 sends none
+  std::string url;             // http:// with an IPv4 address; empty sends nothing
+  int format = CAM_HOOK_JSON;  // a CamHookFormat
+  std::string token;           // ntfy's access token, or Gotify's application token; empty for none
+  bool alerts = true;          // sensor alerts
+  bool problems = true;        // silent nodes, low batteries and weak signals
+  int dailyMinute = -1;        // the daily check, in minutes after local midnight; -1 sends none
+  int weeklyDay = -1;          // the weekly summary's day, 0 for Sunday to 6; -1 sends none
+  int weeklyMinute = 9 * 60;   // and its time, in minutes after local midnight
 };
 
 // An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.
@@ -136,6 +144,7 @@ class CamChip {
   virtual void health(CamHealth& h) {}
   virtual time_t wallTime() { return time(nullptr); }  // seconds since 1970 UTC; before the clock is set, a small number
   virtual int localMinute() { return -1; }             // minutes after local midnight, or -1 when the clock is not set; for quiet hours
+  virtual int localWeekday() { return -1; }            // 0 for Sunday to 6, or -1 when the clock is not set
   virtual void timeInfo(CamJson& j) {}                 // the Time page's members
   virtual bool timeSave(const CamTime& t) { return false; }
 };

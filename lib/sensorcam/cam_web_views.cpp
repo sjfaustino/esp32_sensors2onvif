@@ -26,13 +26,14 @@ void camCopyText(char* out, size_t size, const char* text) {
 }
 
 // One event of the Events page's list.
-static void eventJson(std::string& out, const CamEvent& e) {
+static void eventJson(std::string& out, const CamEvent& e, const std::string& camera) {
   CamJson j(out);
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER;
   bool ageKnown = e.age != CAM_AGE_UNKNOWN;
   bool hub = strcmp(e.sensor, "hub") == 0;
   j.object().str("sensor", e.sensor).str("name", hub ? "" : e.text).str("event", camEventName(e.kind, e.active, e.delayed));
   if (hub) j.str("detail", e.text);
+  if (!camera.empty()) j.str("camera", camera);  // the sensor's camera as it is set now
   j.num("kind", e.kind).flag("active", e.active).flag("delayed", e.delayed);
   j.str("received", clockOk, clockOk ? iso(e.received) : std::string());
   j.str("happened", clockOk && ageKnown, clockOk && ageKnown ? iso(e.received - (time_t)e.age) : std::string());
@@ -47,6 +48,12 @@ static void eventJson(std::string& out, const CamEvent& e) {
   j.end().end();
 }
 
+const std::string& CamWeb::cameraOf(const CamEvent& e) const {
+  static const std::string none;
+  int id = strcmp(e.sensor, "hub") == 0 ? 0 : table_.slotForPath(e.sensor);
+  return id ? table_.slotOf(id).settings.camera : none;
+}
+
 // Measured an event at a time first, then built at its exact size, so it needs one block no larger than itself.
 std::string CamWeb::eventsJson(bool* whole) {
   int count = alarm_.log().count() < CamEventLog::RECENT ? alarm_.log().count() : CamEventLog::RECENT;
@@ -54,7 +61,7 @@ std::string CamWeb::eventsJson(bool* whole) {
   std::string one;
   for (int n = 0; n < count; n++) {
     one.clear();
-    eventJson(one, alarm_.log().recent(n));
+    eventJson(one, alarm_.log().recent(n), cameraOf(alarm_.log().recent(n)));
     sizes[n] = one.size();
   }
   auto total = [&](int shown) {  // the brackets, the line break and the commas too
@@ -70,7 +77,7 @@ std::string CamWeb::eventsJson(bool* whole) {
   out += '[';
   for (int n = 0; n < shown; n++) {
     if (n) out += ',';
-    eventJson(out, alarm_.log().recent(n));
+    eventJson(out, alarm_.log().recent(n), cameraOf(alarm_.log().recent(n)));
   }
   out += "]\n";
   return out;
@@ -83,6 +90,9 @@ std::string CamWeb::eventsTag() const {
     camEventEncode(alarm_.log().recent(0), r);
     for (uint8_t b : r) h = (h ^ b) * 16777619u;
   }
+  for (int id = 1; id <= CAM_MAX_SENSORS; id++)  // the list shows each sensor's camera as it is set now
+    if (table_.slotOf(id).used)
+      for (char ch : table_.slotOf(id).settings.camera) h = (h ^ (uint8_t)ch) * 16777619u;
   char tag[32];
   snprintf(tag, sizeof(tag), "\"%u-%08x\"", (unsigned)alarm_.log().added(), (unsigned)h);
   return tag;

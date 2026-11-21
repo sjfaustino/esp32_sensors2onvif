@@ -71,6 +71,7 @@ void SensorCamServer::poll(int maxWaitMs) {
 void SensorCamServer::housekeeping(uint32_t now) {
   alarm_.tick(now);
   webhook_.dailyCheck(now);
+  webhook_.weeklySummary(now, false);
   events_.subs().expire(now);
   web_.servicePolls(now);
   events_.tick(now, web_.sharedSockets() - events_.pushCount(), CamWeb::MAX_HTTP);

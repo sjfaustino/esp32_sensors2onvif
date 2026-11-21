@@ -92,10 +92,10 @@ std::string CamWeb::treeJson() {
       uint8_t input = 0;
       int slot = camNumber(n.name, input) ? table_.findSlot(mac, input) : 0;
       if (!slot) continue;                        // beyond the sensor limit, so it does nothing
-      if (!makeRoom(1280)) return std::string();  // the longest possible entry: all ten pictures, and a 64-byte name that is all escapes
+      if (!makeRoom(1500)) return std::string();  // the longest possible entry: all ten pictures, and a name and a camera all escapes
       const CamSensorSettings& set = table_.slotOf(slot).settings;
       j.object().num("input", input).str("name", table_.slotOf(slot).name).num("hold", set.holdS != 0, set.holdS);
-      j.flag("interior", set.interior);
+      j.flag("interior", set.interior).str("camera", set.camera);
       if (set.quietFrom >= 0)
         j.array("quiet").num(set.quietFrom).num(set.quietTo).end();
       else
@@ -217,6 +217,10 @@ static int backupCheck(const std::string& key, const std::string& value) {
   if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
     return value == "0" || value == "1";
   if (key == "net.hookdy") return number && n >= -1 && n <= 1439;  // the daily check's minute; -1 for none
+  if (key == "net.hookfm") return number && n >= CAM_HOOK_JSON && n <= CAM_HOOK_GOTIFY;
+  if (key == "net.hooktk") return value.empty() || validToken(value);
+  if (key == "net.hookwd") return number && n >= -1 && n <= 6;  // the weekly summary's day; -1 for none
+  if (key == "net.hookwm") return number && n >= 0 && n <= 1439;
   if (key == "net.enkey") return value.size() >= 16 && validToken(value);
   if (key == "net.pairkey") {
     uint8_t k[CAM_X25519_LEN];
@@ -627,14 +631,16 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   HttpConn& c = r.c;
   if (r.is("POST", "/api/sensor-settings")) {
     std::string path = queryParam(r.target, "path");
-    std::string hold = r.field("hold"), from = r.field("from"), to = r.field("to"), zone = r.field("zone");
+    std::string hold = r.field("hold"), from = r.field("from"), to = r.field("to"), zone = r.field("zone"), camera = r.field("camera");
     bool sensor = table_.slotForPath(path) != 0;
     CamSensorSettings s;
     std::string text = (hold.empty() ? "" : "hold=" + hold + "\n") + (from.empty() && to.empty() ? "" : "quiet=" + from + "-" + to + "\n") +
                        (zone.empty() ? "" : "zone=" + zone + "\n");
     if (!sensor) {
       c.out = jsonFail(404, "no such sensor");
-    } else if (!camParseSensorSettings(text, s)) {
+    } else if (!camera.empty() && !camValidCamera(camera)) {  // checked here, as a line break in it would start a line of its own
+      c.out = jsonFail(400, "the camera's name must be up to 32 characters, on one line");
+    } else if (!camParseSensorSettings(text + (camera.empty() ? "" : "camera=" + camera + "\n"), s)) {
       c.out = jsonFail(
           400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter");
     } else {
@@ -680,14 +686,34 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
   } else if (r.is("POST", "/api/webhook")) {
     CamWebhook w;
     w.url = r.field("url");
-    w.text = r.field("text") == "1";
+    std::string format = r.field("format");  // or text=1 from an older page
+    w.format = format == "text" || (format.empty() && r.field("text") == "1") ? CAM_HOOK_TEXT
+               : format == "ntfy"                                             ? CAM_HOOK_NTFY
+               : format == "gotify"                                           ? CAM_HOOK_GOTIFY
+                                                                              : CAM_HOOK_JSON;
+    w.token = r.field("token");  // left blank keeps the saved one, as the page never shows it
+    if (w.token.empty() && r.field("forget") != "1") w.token = webhook_.settings().token;
     w.alerts = r.field("alerts") == "1";
     w.problems = r.field("problems") == "1";
-    std::string daily = r.field("daily");
-    if (!validHookUrl(w.url)) {
+    std::string daily = r.field("daily"), weekDay = r.field("weekday"), weekMinute = r.field("weekminute");
+    HttpUrl u;
+    bool urlOk = validHookUrl(w.url) && (w.url.empty() || parseHttpUrl(w.url, u));
+    if (!format.empty() && format != "json" && format != "text" && format != "ntfy" && format != "gotify") {
+      c.out = jsonFail(400, "the format must be json, text, ntfy or gotify");
+    } else if (!urlOk) {
       c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
+    } else if (w.format == CAM_HOOK_NTFY && !w.url.empty() && (u.path.size() < 2 || u.path.find('?') != std::string::npos)) {
+      c.out = jsonFail(400, "for ntfy, end the address with the topic, as in http://192.168.1.10/alarm");
+    } else if (!w.token.empty() && !validToken(w.token)) {
+      c.out = jsonFail(400, "the token must be up to 64 letters, digits, dots, hyphens and underscores");
+    } else if (w.format == CAM_HOOK_GOTIFY && !w.url.empty() && w.token.empty()) {
+      c.out = jsonFail(400, "Gotify needs the application's token");
     } else if (!daily.empty() && daily != "-1" && !camNumberIn(daily, 0, 1439, w.dailyMinute)) {
       c.out = jsonFail(400, "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none");
+    } else if (!weekDay.empty() && weekDay != "-1" && !camNumberIn(weekDay, 0, 6, w.weeklyDay)) {
+      c.out = jsonFail(400, "the weekly summary's day must be 0 for Sunday to 6, or -1 for none");
+    } else if (!weekMinute.empty() && !camNumberIn(weekMinute, 0, 1439, w.weeklyMinute)) {
+      c.out = jsonFail(400, "the weekly summary's time must be 0 to 1439 minutes after midnight");
     } else {
       bool ok = store_->webhookSave(w);
       if (ok) webhook_.setSettings(w);
@@ -698,9 +724,14 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
       c.out = jsonFail(400, "save an address first");
     } else {
       std::string message = "Test from " + cfg_.hostName;
-      webhook_.queue(message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
+      webhook_.queue("test", 3, message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
       c.out = jsonOk(JSON_OK);
     }
+  } else if (r.is("POST", "/api/webhook/weekly")) {  // the weekly summary now, to see what it says
+    if (webhook_.settings().url.empty())
+      c.out = jsonFail(400, "save an address first");
+    else
+      c.out = saved(webhook_.weeklySummary(millis_(), true), "the hub's clock is not set, or it is short of memory");
   } else if (r.is("GET", "/api/arm")) {
     long long left = alarm_.disarmSecondsLeft(millis_());
     bool timed = !alarm_.armed() && alarm_.disarmedUntil();

@@ -21,6 +21,7 @@
 <p id="armWarn" hidden class="warn">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page.</p>
 <p id="nvrWarn" hidden class="warn">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
 <div class="view" id="view-overview" hidden><h1>Overview</h1>
+<div id="wizard" class="wizard" hidden><h2 id="wizTitle"></h2><div class="wizBar"><div id="wizDone"></div></div><p id="wizStep" class="wizStep"></p><p id="wizHelp" class="note"></p><p class="portForm"><button id="wizGo" class="primary"></button> <button id="wizLater">Hide for now</button></p></div>
 <p class="portForm" style="margin:0 0 4px">Alarm: <b id="armState">…</b></p>
 <p class="portForm" style="margin:0 0 4px"><button id="armAway">Arm away</button> <button id="armHome">Arm home</button> <button id="disarmBtn">Disarm</button> <select id="armFor"></select></p>
 <p class="portForm" style="margin:0 0 10px;font-size:14px">A disarm from Home Assistant lasts <select id="rearmDefault"></select></p>
@@ -29,7 +30,7 @@
 <table class="info" id="ovInfo"></table>
 <h2 class="sub">Alerts now</h2><div class="portMsg" id="ovActive"></div>
 <h2 class="sub">Sensor problems</h2><div class="portMsg" id="ovProblems"></div>
-<div id="ovReadyBox" hidden><h2 class="sub">Ready to protect?</h2><p class="note">What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips.</p><ul class="ready" id="ovReady"></ul></div></div>
+<div id="ovReadyBox" hidden><h2 class="sub">Ready to protect?</h2><p class="note">What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips. <a href="#overview" id="wizBack">Show the steps one at a time</a></p><ul class="ready" id="ovReady"></ul></div></div>
 <div class="view" id="view-walk" hidden><h1>Walk test</h1>
 <p class="note">Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.</p>
 <div class="portForm"><button id="walkStart">Start on every node</button> <button id="walkStop">Stop</button></div>
@@ -87,14 +88,20 @@
 <div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><p class="portForm">Show <select id="evSensor"><option value="">every sensor and the hub</option></select> <select id="evKind"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select></p>
 <table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
 <div class="view" id="view-notify" hidden><h1>Notifications</h1>
-<p class="note">The hub can send each alert to a web address on your network, such as a Home Assistant webhook, Node-RED or a self-hosted ntfy server. Use http:// and an IP address; https and names are not supported.</p>
-<label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" placeholder="http://192.168.1.10:8123/api/webhook/hub"></label>
-<label class="netRow"><span>Format</span><select id="hookText"><option value="0">JSON</option><option value="1">Plain text</option></select></label>
+<p class="note">The hub can send each alert to a server on your network: an ntfy or Gotify server, which passes it on to your phone, a Home Assistant webhook, or Node-RED. Use http:// and an IP address; https and names are not supported, so services on the internet need a server on your network in between.</p>
+<label class="netRow"><span>Send to</span><select id="hookFormat"><option value="ntfy">ntfy</option><option value="gotify">Gotify</option><option value="json">Home Assistant, Node-RED or other (JSON)</option><option value="text">Other (plain text)</option></select></label>
+<p class="note" id="hookHelp"></p>
+<label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200"></label>
+<label class="netRow" id="hookTokenRow"><span>Token</span><input id="hookToken" maxlength="64" autocapitalize="none" autocomplete="off"></label>
+<label class="portForm block" id="hookForgetRow" hidden><input id="hookForget" type="checkbox"> Forget the saved token</label>
 <label class="portForm block"><input id="hookAlerts" type="checkbox"> Alerts</label>
 <label class="portForm block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
 <label class="netRow"><span>Daily check at</span><input id="hookDaily" type="time"></label>
 <p class="note">Once a day, at this local time, one message: how many nodes were heard, any problems, the day's alerts and whether they reached the NVR, and when you last sent a test alert. If it stops arriving, the hub is off or cannot reach this address. Leave it empty for none; it needs the hub's clock.</p>
-<div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button></div>
+<label class="netRow"><span>Weekly summary</span><select id="hookWeekDay"><option value="-1">None</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
+<label class="netRow"><span>at</span><input id="hookWeekTime" type="time" value="09:00"></label>
+<p class="note">Once a week: the week's alerts and whether they reached the NVR, the sensor that fired most, the problems reported, batteries forecast to run out within a month, and the last test alert.</p>
+<div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button> <button id="weeklyHook">Send the weekly summary now</button></div>
 <div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
 <div class="view" id="view-ha" hidden><h1>Home Assistant</h1>
 <p class="note">The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network.</p>
@@ -140,7 +147,7 @@
 <label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
 <div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
 <div class="portMsg" id="tmMsg"></div>
-<p style="margin:0;font-size:14px;color:#5a636d">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
+<p class="note" style="margin:0">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
 <div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>

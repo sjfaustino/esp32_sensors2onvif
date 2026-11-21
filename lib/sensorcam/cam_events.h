@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <functional>
 #include <string>
 #include <vector>
 #include "cam_sensors.h"
@@ -57,6 +58,23 @@ struct CamDailyCheck {
   long long testAgoS = -1;  // since the last test alert; -1 when none is among the events kept in memory
 };
 std::string camDailyMessage(const CamDailyCheck& d);
+
+// The weekly summary: the past seven days from the history, and how things stand now.
+struct CamWeeklySummary {
+  std::string hub;
+  std::string mode;                  // "away", "home" or "disarmed"
+  int alerts = 0, notDelivered = 0;  // alerts sent to the NVR in the week, and those it was not listening for
+  int held = 0;                      // alerts only logged: while disarmed, armed home or in quiet hours
+  int tests = 0, problems = 0;       // test alerts, and node and hub problems
+  bool allCounted = true;            // false when the history kept does not reach back a whole week
+  std::string busiest;               // the sensor with the most alerts, by name; empty when there were none
+  int busiestAlerts = 0;
+  std::vector<std::string> batteries;    // as "Gate: about 12 days", for those forecast to run out within a month
+  std::vector<std::string> nowProblems;  // as the daily check's
+  bool nvrListening = false;
+  long long testAgoS = -1;  // since the last test alert; -1 when there was none in the week
+};
+std::string camWeeklyMessage(const CamWeeklySummary& w);
 
 // A length of time as people say it: "7 min", "2 h 13 min", "3 days 4 h". Rounded up to the minute.
 std::string camDurationText(uint32_t seconds);
@@ -114,6 +132,11 @@ class CamEventLog {
   // only its events; with since, only those received from then on, found by halving, and without the history of older
   // firmware. One download at a time, as there is one place it has got to.
   void csvBegin(const std::string& sensor = std::string(), time_t since = 0);
+  // Hands each event received since then to each, newest first: those waiting to be saved, then the logs on storage, a
+  // few records at a time. Stops after most of them. True when it reached an older event, so every one since then was
+  // handed out; false when the history kept ends first, most was reached or storage could not be read. Events from
+  // before the clock was set are skipped, as their time is not known.
+  bool eachSince(time_t since, size_t most, const std::function<void(const CamEvent&)>& each) const;
   size_t csvRead(size_t offset, char* out, size_t len);
 
  private:

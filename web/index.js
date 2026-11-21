@@ -563,6 +563,7 @@
       showStatus(o);
       const items = readyItems(o);
       $("ovReadyBox").hidden = items.every((i) => i.ok);
+      showWizard(items);
       $("ovReady").replaceChildren(
         ...items.map((i) =>
           el(
@@ -575,7 +576,8 @@
       );
     } catch (e) {}
   }
-  // What must be right before the hub can be trusted, each with the page that puts it right.
+  // What must be right before the hub can be trusted, each with the page that puts it right and, for the steps shown
+  // one at a time, what to do there.
   function readyItems(o) {
     const r = o.ready,
       test = r.testAgo_s;
@@ -584,23 +586,104 @@
         ok: r.password,
         text: "A hub password of your own, not one built into the firmware",
         view: "http",
+        go: "Choose a password",
+        help: "The hub password guards this page, the NVR's login and the hub's setup network. Choose one of 8 to 63 characters that only you know; the NVR needs it too, so note it down.",
       },
-      { ok: r.clock, text: "The hub's clock is set", view: "time" },
-      { ok: o.nvr.set, text: "The NVR's address is set", view: "nvr" },
-      { ok: o.nvr.listening, text: "The NVR is listening", view: "nvr" },
-      { ok: r.heard, text: "At least one sensor has reported", view: "espnow" },
+      {
+        ok: r.clock,
+        text: "The hub's clock is set",
+        view: "time",
+        go: "Set the clock",
+        help: "The hub needs the time to stamp each alert, keep quiet hours and send the daily check. With internet access it sets itself; otherwise give it a time server on your network, such as the router.",
+      },
+      {
+        ok: o.nvr.set,
+        text: "The NVR's address is set",
+        view: "nvr",
+        go: "Enter the NVR's address",
+        help: "With the NVR's address, the hub can check that the NVR listens and that each alert was recorded, and play again any it missed.",
+      },
+      {
+        ok: o.nvr.listening,
+        text: "The NVR is listening",
+        view: "nvr",
+        go: "Open the NVR page",
+        help: "On the NVR, add the hub as an ONVIF camera on a free channel: its address, port 8899, user admin and the hub password. Then turn on motion detection with recording for that channel. This step ticks itself once the NVR asks the hub for events.",
+      },
+      {
+        ok: r.heard,
+        text: "At least one sensor has reported",
+        view: "espnow",
+        go: "Pair a node",
+        help: "Allow pairing, then start a sensor node in pairing mode and approve it once its fingerprint matches the one on its label. A device that calls a web address can be added there too.",
+      },
       {
         ok: test != null && test < 30 * 86400,
         text:
           test == null
             ? "A test alert sent, and its recording found on the NVR"
             : "A test alert in the last month (the last was " + heardAgo(test) + ")",
-        view: "sensors",
+        view: "overview",
+        go: "Test everything",
+        help: "Sends a test alert along the whole path and checks each step: the sensor, the hub, the NVR and your notifications. Then find its recording on the NVR, so you know an alert is kept. Do it once a month.",
+        run: () => $("testAll").click(),
       },
-      { ok: r.notify, text: "Notifications or Home Assistant set up, so problems reach you", view: "notify" },
-      { ok: r.daily, text: "A daily check, so you notice when the hub goes quiet", view: "notify" },
+      {
+        ok: r.notify,
+        text: "Notifications or Home Assistant set up, so problems reach you",
+        view: "notify",
+        go: "Set up notifications",
+        help: "So an alert, a silent node or a flat battery reaches your phone: an ntfy or Gotify server on your network, Home Assistant, or Node-RED.",
+      },
+      {
+        ok: r.daily,
+        text: "A daily check, so you notice when the hub goes quiet",
+        view: "notify",
+        go: "Choose a time",
+        help: "Once a day the hub sends one short message. If it stops arriving, the hub is off or cut off, and you know to look.",
+      },
     ];
   }
+  // Until every step is done, the first one left, shown at the top of the Overview with what to do. Hidden for now, the
+  // list stays at the foot of the page.
+  function laterKey() {
+    try {
+      return localStorage.getItem("wizardLater") == "1";
+    } catch (e) {
+      return false;
+    }
+  }
+  function showWizard(items) {
+    const left = items.filter((i) => !i.ok),
+      next = left[0];
+    $("wizard").hidden = !next || laterKey();
+    $("wizBack").hidden = !$("wizard").hidden;
+    if (!next) return;
+    const done = items.length - left.length;
+    $("wizTitle").textContent = done
+      ? "Getting started: step " + (done + 1) + " of " + items.length
+      : "Getting started";
+    $("wizDone").style.width = Math.round((100 * done) / items.length) + "%";
+    $("wizStep").textContent = next.text;
+    $("wizHelp").textContent = next.help;
+    $("wizGo").textContent = next.go;
+    $("wizGo").onclick = () => (next.run ? next.run() : (location.hash = next.view));
+  }
+  $("wizLater").onclick = () => {
+    try {
+      localStorage.setItem("wizardLater", "1");
+    } catch (e) {}
+    $("wizard").hidden = true;
+    $("wizBack").hidden = false;
+  };
+  $("wizBack").onclick = (e) => {
+    e.preventDefault();
+    try {
+      localStorage.removeItem("wizardLater");
+    } catch (er) {}
+    loadOverview();
+    scrollTo(0, 0);
+  };
   // One line at the top of every page: protecting, something needs attention, or not protecting, and why.
   function showStatus(o) {
     const bad = [],
@@ -702,19 +785,52 @@
     const m = /^(\d\d):(\d\d)/.exec(v);
     return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
   };
+  const hhmm = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  // What each kind of server wants as its address and token.
+  const HOOK_HELP = {
+    ntfy: [
+      "http://192.168.1.10/alarm",
+      "The address of your ntfy server, ending with the topic to send to. Subscribe to that topic in the ntfy app on your phone. Alerts arrive as urgent, problems as high priority, and the daily check and weekly summary quietly.",
+      "Access token, if the topic needs one",
+    ],
+    gotify: [
+      "http://192.168.1.10/message",
+      "The address of your Gotify server, ending with /message, and an application's token from its Apps page. Alerts arrive with the highest priority.",
+      "Application token",
+    ],
+    json: [
+      "http://192.168.1.10:8123/api/webhook/hub",
+      "Each message is posted as JSON, with the event, the sensor, its name and camera, the battery and the time. In Home Assistant, use a webhook trigger in an automation.",
+      "",
+    ],
+    text: ["http://192.168.1.10:1880/hub", "Each message is posted as one line of plain text.", ""],
+  };
+  let hookTokenSaved = false;
+  function showHookFormat() {
+    const [example, help, token] = HOOK_HELP[$("hookFormat").value];
+    $("hookUrl").placeholder = example;
+    $("hookHelp").textContent = help;
+    $("hookTokenRow").hidden = !token;
+    $("hookToken").placeholder = hookTokenSaved ? "saved; leave blank to keep it" : token;
+    $("hookForgetRow").hidden = !token || !hookTokenSaved;
+  }
+  $("hookFormat").onchange = showHookFormat;
   async function loadHook(all) {
     try {
       const h = await call("GET", "/api/webhook");
+      hookTokenSaved = h.token;
       if (all) {
         $("hookUrl").value = h.url;
-        $("hookText").value = h.text ? "1" : "0";
+        $("hookFormat").value = h.url ? h.format : "ntfy";
+        $("hookToken").value = "";
+        $("hookForget").checked = false;
         $("hookAlerts").checked = h.alerts;
         $("hookProblems").checked = h.problems;
-        $("hookDaily").value =
-          h.daily >= 0
-            ? String(Math.floor(h.daily / 60)).padStart(2, "0") + ":" + String(h.daily % 60).padStart(2, "0")
-            : "";
+        $("hookDaily").value = h.daily >= 0 ? hhmm(h.daily) : "";
+        $("hookWeekDay").value = String(h.weekday);
+        $("hookWeekTime").value = hhmm(h.weekminute);
       }
+      showHookFormat();
       fill("hookInfo", [
         [
           "Last message",
@@ -732,8 +848,16 @@
         "/api/webhook",
         "url=" +
           encodeURIComponent($("hookUrl").value.trim()) +
-          "&text=" +
-          $("hookText").value +
+          "&format=" +
+          $("hookFormat").value +
+          "&token=" +
+          encodeURIComponent($("hookToken").value.trim()) +
+          "&forget=" +
+          ($("hookForget").checked ? 1 : 0) +
+          "&weekday=" +
+          $("hookWeekDay").value +
+          "&weekminute=" +
+          Math.max(0, dailyMinute($("hookWeekTime").value)) +
           "&alerts=" +
           ($("hookAlerts").checked ? 1 : 0) +
           "&problems=" +
@@ -743,10 +867,21 @@
         "Saved.",
       )
     )
-      loadHook(false);
+      loadHook(true);
   };
   $("testHook").onclick = async () => {
     if (await send($("hookMsg"), "/api/webhook/test", "x=1", "Test sent. The result shows below within a few seconds."))
+      setTimeout(() => loadHook(false), 3000);
+  };
+  $("weeklyHook").onclick = async () => {
+    if (
+      await send(
+        $("hookMsg"),
+        "/api/webhook/weekly",
+        "x=1",
+        "Summary sent. The result shows below within a few seconds.",
+      )
+    )
       setTimeout(() => loadHook(false), 3000);
   };
   // A full backup is a tar file made and read here, so the hub never holds more than one picture at a time.
@@ -1308,7 +1443,7 @@
           const when = e.happened || e.received,
             what = e.event.charAt(0).toUpperCase() + e.event.slice(1); // the hub names every event
           const off = e.off_s != null ? "off for up to " + duration(e.off_s) : "";
-          const details = [e.detail || "", off]
+          const details = [e.detail || "", off, e.camera && e.active ? "look at " + e.camera : ""]
             .concat(
               e.targets.map((t) =>
                 [t.distance_cm == null ? "" : (t.distance_cm / 100).toFixed(2) + " m", DIRECTIONS[t.direction] || ""]

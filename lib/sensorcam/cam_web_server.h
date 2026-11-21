@@ -141,8 +141,9 @@ class CamWeb {
   // ---- what the Overview, Events and status pages read: cam_web_views.cpp ----
   std::string overviewJson(uint32_t now);
   std::string statusJson(uint32_t now);
-  std::string eventsJson(bool* whole = nullptr);  // whole: false when the list was trimmed for lack of memory
-  std::string eventsTag() const;                  // changes whenever the Events page's list would, so an unchanged list is not built again
+  std::string eventsJson(bool* whole = nullptr);         // whole: false when the list was trimmed for lack of memory
+  const std::string& cameraOf(const CamEvent& e) const;  // the camera set for the event's sensor; empty for none
+  std::string eventsTag() const;                         // changes whenever the Events page's list would, so an unchanged list is not built again
 
   // ---- pairing and node firmware files: cam_web_nodes.cpp ----
   void finishNodeImage(HttpConn& c, bool ok);

@@ -147,10 +147,11 @@ def test_full_event_history(path):
 
 def test_webhook(path):
     # Webhook.
-    received = []
+    received, heads = [], []  # each message's type and body, and beside it its path and headers
 
     class Hook(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
+            heads.append((self.path, dict(self.headers)))
             received.append((self.headers.get('Content-Type'), self.rfile.read(int(self.headers['Content-Length']))))
             self.send_response(200)
             self.send_header('Content-Length', '0')
@@ -189,6 +190,7 @@ def test_webhook(path):
     time.sleep(0.5)  # time for a message to be wrongly sent
     check('node problems are not sent when turned off', len(received) == 3, received[3:])
     control('radio-known')
+    test_webhook_formats(path, received, heads, hooks, catcher.server_port)
     if not DEVICE:  # these need the PC build's test commands
         test_trouble_reports(received, hook_url)
     check('the webhook settings need the web password', api('GET', '/api/webhook', auth=False)[0] == 401)
@@ -201,6 +203,101 @@ def test_webhook(path):
     control('memory-normal')
     check('a reply larger than the memory left fails alone, and the hub keeps running', code == 507 and api('GET', '/api/events')[0] == 200, code)
     return code, received
+
+
+def test_webhook_formats(path, received, heads, hooks, port):
+    """The camera to look at, ntfy and Gotify, and the weekly summary."""
+    base = f'http://127.0.0.1:{port}'
+    hook_url = urllib.parse.quote(base + '/hub', safe='')
+
+    def newest_json():
+        return json.loads(received[-1][1])
+
+    # The camera that covers a sensor, named wherever its alerts are.
+    camera = urllib.parse.quote('Camera 3, gate', safe='')
+    check('a camera on two lines is refused', api('POST', f'/api/sensor-settings?path={path}', 'camera=Camera%0A3')[0] == 400)
+    check('a camera name over 32 characters is refused', api('POST', f'/api/sensor-settings?path={path}', 'camera=' + 'x' * 33)[0] == 400)
+    check('a sensor can name the camera that covers it', api('POST', f'/api/sensor-settings?path={path}', f'camera={camera}')[0] == 200)
+    entry = [n for s in get_json('/api/tree')['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]
+    check('the Sensors page data shows the camera', entry['camera'] == 'Camera 3, gate', entry)
+    check("it is kept in the sensor's settings file", api('GET', f'/api/file?path={path}/settings.txt') == (200, b'camera=Camera 3, gate\n'))
+    api('POST', '/api/webhook', f'url={hook_url}&format=json&alerts=1&problems=0')
+    count = len(received)
+    get(f'/sensor?{sid(1)}')
+    alert = json.loads(received[count][1]) if hooks(count + 1) else {}
+    check('an alert names its camera to the webhook', alert.get('camera') == 'Camera 3, gate' and alert.get('message', '').endswith('; look at Camera 3, gate'),
+          alert)
+    newest = [e for e in json.loads(get('/events')[1]) if e['sensor'] == path][0]
+    check('and on the Events page', newest.get('camera') == 'Camera 3, gate', newest)
+    clear(1)
+    api('POST', f'/api/sensor-settings?path={path}', '')
+    check('a sensor without a camera has none in its events', 'camera' not in json.loads(get('/events')[1])[0])
+
+    # ntfy: plain text to the topic, with a title, a priority and a tag in the headers, and its access token.
+    check('ntfy needs a topic in the address', api('POST', '/api/webhook', 'format=ntfy&alerts=1&url=' + urllib.parse.quote(base + '/', safe=''))[0] == 400)
+    check('an unknown format is refused', api('POST', '/api/webhook', f'format=telegram&url={hook_url}')[0] == 400)
+    check('a token with a space is refused', api('POST', '/api/webhook', f'format=ntfy&url={hook_url}&token=a%20b')[0] == 400)
+    check('ntfy is saved with a token', api('POST', '/api/webhook', f'format=ntfy&url={hook_url}&token=tk_secret1&alerts=1&problems=1')[0] == 200)
+    saved = get_json('/api/webhook')
+    check('the page is told a token is saved, never the token', saved['format'] == 'ntfy' and saved['token'] is True and 'tk_secret1' not in json.dumps(saved), saved)
+    count = len(received)
+    get(f'/sensor?{sid(1)}')
+    if hooks(count + 1):
+        where, h = heads[count]
+        body = received[count][1].decode()
+        check('an alert goes to the ntfy topic as text', where == '/hub' and received[count][0].startswith('text/plain') and body.endswith(': alert'), (where, body))
+        check('with a title, an urgent priority and a tag', h.get('Title', '').endswith(': alert: Front "gate"') and h.get('Priority') == '5'
+              and h.get('Tags') == 'rotating_light', h)
+        check('and the access token', h.get('Authorization') == 'Bearer tk_secret1', h)
+    else:
+        check('an alert reaches ntfy', False)
+    clear(1)
+    check('saving again with the token left blank keeps it', api('POST', '/api/webhook', f'format=ntfy&url={hook_url}&alerts=1')[0] == 200
+          and get_json('/api/webhook')['token'] is True)
+    check('the token can be forgotten', api('POST', '/api/webhook', f'format=ntfy&url={hook_url}&alerts=1&forget=1')[0] == 200
+          and get_json('/api/webhook')['token'] is False)
+    count = len(received)
+    api('POST', '/api/webhook/test', 'x=1')
+    if hooks(count + 1):
+        h = heads[count][1]
+        check('a test goes with a middling priority and no token once forgotten', h.get('Priority') == '3' and 'Authorization' not in h, h)
+
+    # Gotify: JSON with a title, the message and a priority, and the application's token in a header.
+    check('Gotify needs a token', api('POST', '/api/webhook', 'format=gotify&alerts=1&url=' + urllib.parse.quote(base + '/message', safe=''))[0] == 400)
+    gotify = urllib.parse.quote(base + '/message', safe='')
+    check('Gotify is saved', api('POST', '/api/webhook', f'format=gotify&url={gotify}&token=AppToken.1&alerts=1&problems=1')[0] == 200)
+    count = len(received)
+    get(f'/sensor?{sid(1)}')
+    if hooks(count + 1):
+        where, h = heads[count]
+        message = json.loads(received[count][1])
+        check('an alert goes to Gotify as its message', where == '/message' and set(message) == {'title', 'message', 'priority'}
+              and message['priority'] == 10 and message['title'].endswith(': alert: Front "gate"'), message)
+        check("with the application's token", h.get('X-Gotify-Key') == 'AppToken.1', h)
+    else:
+        check('an alert reaches Gotify', False)
+    clear(1)
+
+    # The weekly summary: its day and time, and one sent now.
+    check('a weekly day past Saturday is refused', api('POST', '/api/webhook', f'url={hook_url}&alerts=1&weekday=7')[0] == 400)
+    check('the weekly summary is saved', api('POST', '/api/webhook', f'url={hook_url}&format=json&alerts=1&problems=1&weekday=1&weekminute=1200')[0] == 200)
+    saved = get_json('/api/webhook')
+    check('and reads back', saved['weekday'] == 1 and saved['weekminute'] == 1200 and saved['format'] == 'json', saved)
+    count = len(received)
+    check('one can be sent now', api('POST', '/api/webhook/weekly', 'x=1')[0] == 200)
+    weekly = json.loads(received[count][1]) if hooks(count + 1) else {}
+    check('the weekly summary counts the week', weekly.get('event') == 'weekly summary' and weekly.get('alerts', 0) >= 3
+          and weekly.get('busiest') and ' weekly summary: ' in weekly.get('message', ''), weekly)
+    if time.gmtime().tm_sec > 54:
+        time.sleep(7)  # not at the end of a minute, which would be over before the hub looks
+    now = time.gmtime()
+    day = (now.tm_wday + 1) % 7  # Python counts from Monday, the hub from Sunday
+    count = len(received)
+    api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1&weekday={day}&weekminute={now.tm_hour * 60 + now.tm_min}')
+    check('the weekly summary arrives at its time', hooks(count + 1) and json.loads(received[count][1]).get('event') == 'weekly summary', received[count:])
+    time.sleep(1)  # time for a second one to be wrongly sent
+    check('and only once', len(received) == count + 1, received[count + 1:])
+    api('POST', '/api/webhook', f'url={hook_url}&alerts=1&problems=1')
 
 
 def test_trouble_reports(received, hook_url):
