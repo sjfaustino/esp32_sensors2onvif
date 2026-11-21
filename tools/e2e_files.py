@@ -205,6 +205,22 @@ def file_manager_tests(files, hub_files_free):
                   and api('GET', '/api/nothing-here')[0] == 404)
         if not DEVICE:
             test_connections_cannot_be_held()
+        # Never framed by another site, which could lead someone to click Disarm unseen; the Wi-Fi page's own frame stays.
+        for path in ('/', '/setup'):
+            c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+            c.request('GET', path, headers={'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {})
+            r = c.getresponse()
+            r.read()
+            c.close()
+            check(f'{path} may be framed only by the hub itself', r.getheader('X-Frame-Options') == 'SAMEORIGIN'
+                  and r.getheader('Content-Security-Policy') == "frame-ancestors 'self'" and r.getheader('X-Content-Type-Options') == 'nosniff',
+                  (r.getheader('X-Frame-Options'), r.getheader('Content-Security-Policy')))
+        c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+        c.request('GET', '/api/backup', headers={'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        check('the settings backup, with its passwords, is never cached', r.status == 200 and r.getheader('Cache-Control') == 'no-store', r.getheader('Cache-Control'))
         code, page = api('GET', '/setup', auth=False)
         check('setup page needs the web password on the home network', code == 401, code)
         code, page = api('GET', '/setup')

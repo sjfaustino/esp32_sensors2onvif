@@ -22,8 +22,10 @@ static const char HUB_USER[] = "admin";
 static const char JSON_TYPE[] = "application/json";
 static const char HTML_TYPE[] = "text/html; charset=utf-8";
 static const char JSON_OK[] = "{\"ok\":true}\n";
-// The web pages are stored gzipped. no-cache: a browser must not show an old page after the firmware changes.
-static const char PAGE_HEADERS[] = "Content-Encoding: gzip\r\nCache-Control: no-cache\r\n";
+// The web pages are stored gzipped. no-cache: a browser must not show an old page after the firmware changes. Shown in
+// a frame only by the hub's own pages, as the Wi-Fi page shows the setup page: framed by another site, the login the
+// browser keeps for the hub would go with it, and that site could lead someone to click Disarm unseen.
+static const char PAGE_HEADERS[] = "Content-Encoding: gzip\r\nCache-Control: no-cache\r\nContent-Security-Policy: frame-ancestors 'self'\r\n";
 static const char UNAUTHORIZED[] =
     "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SensorCam\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 static const size_t HISTORY_ROOM = 64 * 1024;  // beyond the event logs: the waiting alerts, settings files and room to rewrite them
@@ -44,8 +46,10 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
                      : status == 422 ? "Unprocessable Entity"
                      : status == 507 ? "Insufficient Storage"
                                      : "Not Found";
-  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type + "\r\n" + extraHeaders +
-         "Content-Length: " + std::to_string(length) + "\r\nConnection: close\r\n\r\n";
+  // Every reply: never framed by another site (see PAGE_HEADERS), and taken only as the type it says.
+  return "HTTP/1.1 " + std::to_string(status) + " " + text + "\r\nContent-Type: " + type +
+         "\r\nX-Frame-Options: SAMEORIGIN\r\nX-Content-Type-Options: nosniff\r\n" + extraHeaders + "Content-Length: " + std::to_string(length) +
+         "\r\nConnection: close\r\n\r\n";
 }
 
 inline std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }

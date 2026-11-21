@@ -223,6 +223,17 @@ def test_a_sensor_camera(page):
     api('POST', f'/api/sensor-settings?path={SENSOR}', '')
 
 
+def test_the_wifi_page_frames_the_setup_page(page):
+    # The hub's own frame still works under the rule that no other site may frame its pages.
+    page.goto(URL + '#wifi')
+    try:
+        page.frame_locator('#netFrame').locator('h1').wait_for(timeout=5000)
+        title = page.frame_locator('#netFrame').locator('h1').text_content()
+    except Exception as e:
+        title = str(e).splitlines()[0]
+    check('the Wi-Fi page shows the setup page in its frame', title == 'Hub Wi-Fi setup', title)
+
+
 def test_dark_and_narrow(browser):
     page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, color_scheme='dark',
                                viewport={'width': 390, 'height': 800}).new_page()
@@ -333,7 +344,8 @@ def main():
                 dialogs = Dialogs(page)
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
                              lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
-                             lambda: test_a_sensor_camera(page), lambda: test_dark_and_narrow(browser)):
+                             lambda: test_a_sensor_camera(page), lambda: test_the_wifi_page_frames_the_setup_page(page),
+                             lambda: test_dark_and_narrow(browser)):
                     try:
                         test()
                     except Exception as e:  # a control that never appeared: a failure, and the rest still run

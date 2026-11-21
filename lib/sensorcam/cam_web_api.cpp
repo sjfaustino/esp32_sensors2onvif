@@ -734,7 +734,7 @@ void CamWeb::postAlerts(const ApiRequest& r) {
 
 void CamWeb::getBackup(const ApiRequest& r) {
   HttpConn& c = r.c;
-  c.out = httpResponse(200, "text/plain", store_->backupText());
+  reply(c, 200, "text/plain", store_->backupText(), "Cache-Control: no-store\r\n");  // its passwords are not kept in a cache
 }
 
 void CamWeb::postRestore(const ApiRequest& r) {
