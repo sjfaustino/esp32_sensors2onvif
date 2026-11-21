@@ -120,12 +120,35 @@ static bool setupPassword(String& out) {
   return out.isEmpty() || out.length() >= 8;
 }
 
+// WPA3 only, with protected management frames as WPA3 requires. Under WPA2, anyone who records a device joining could try
+// passwords offline, as fast as their computer allows, and this password is usually the hub password. WPA3 lets them
+// try only by asking the hub, one guess at a time. Should WPA3 not start, WPA2 is better than no setup network, as it
+// is the way back onto the network.
+static void startSetupNetwork(const String& password) {
+  if (password.isEmpty()) {
+    WiFi.softAP(SETUP_AP_NAME);
+    return;
+  }
+  wifi_config_t conf;
+  bool wpa3 = WiFi.softAP(SETUP_AP_NAME, password.c_str(), 1, 0, 4, false, WIFI_AUTH_WPA3_PSK) && esp_wifi_get_config(WIFI_IF_AP, &conf) == ESP_OK;
+  if (wpa3) {
+    conf.ap.pmf_cfg.capable = true;
+    conf.ap.pmf_cfg.required = true;
+    conf.ap.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    wpa3 = esp_wifi_set_config(WIFI_IF_AP, &conf) == ESP_OK;
+  }
+  if (!wpa3) {
+    Serial.println("The setup network could not start with WPA3; it uses WPA2 instead.");
+    WiFi.softAP(SETUP_AP_NAME, password.c_str());
+  }
+}
+
 static void openSetup() {
   String password;
   if (setupOpen || !setupPassword(password)) return;
   WiFi.disconnect(false);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(SETUP_AP_NAME, password.isEmpty() ? nullptr : password.c_str());
+  startSetupNetwork(password);
   dnsServer.start(53, "*", WiFi.softAPIP());
   setupOpen = true;
   Serial.printf("Setup network %s is open at %s\n", SETUP_AP_NAME, WiFi.softAPIP().toString().c_str());

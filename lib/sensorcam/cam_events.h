@@ -105,6 +105,17 @@ std::string camEventCsvLine(const CamEvent& e);                          // with
 // it with room for some pictures. Whole records, and never below 64 of them.
 size_t camLogFileMax(size_t total, size_t keep);
 
+// A read of the history from a time back, newest first, done a few records at a time, so the hub's loop is never held
+// for long. See CamEventLog::scanStep.
+struct CamHistoryScan {
+  time_t since = 0;
+  size_t most = 0, seen = 0;
+  int part = 0;            // 0 the events waiting to be saved, 1 the current log, 2 the older one, 3 over
+  size_t left = 0;         // records of that part still to read, counting back from where it ended when it began
+  uint32_t rotations = 0;  // the log's rotations when that part began: one moves the current log to the older one
+  bool complete = false;   // it reached an event older than since, so every one since then was handed out
+};
+
 class CamEventLog {
  public:
   static const int RECENT = 64;               // the newest, kept in memory for the Events page
@@ -137,6 +148,11 @@ class CamEventLog {
   // handed out; false when the history kept ends first, most was reached or storage could not be read. Events from
   // before the clock was set are skipped, as their time is not known.
   bool eachSince(time_t since, size_t most, const std::function<void(const CamEvent&)>& each) const;
+  // The same in steps: scanBegin, then scanStep on each pass, each reading up to records more, until it is over. A new
+  // log begun meanwhile moves the current one to the older one under the scan; it follows, and when the older log it was
+  // reading is gone it stops there, not complete.
+  void scanBegin(CamHistoryScan& s, time_t since, size_t most) const;
+  bool scanStep(CamHistoryScan& s, size_t records, const std::function<void(const CamEvent&)>& each) const;
   size_t csvRead(size_t offset, char* out, size_t len);
 
  private:
@@ -149,6 +165,7 @@ class CamEventLog {
   uint32_t added_ = 0;
   std::string pending_;  // encoded records not yet on storage
   bool saveFailed_ = false;
+  uint32_t rotations_ = 0;              // how often the current log became the older one, for a scan under way
   size_t oldBytes_ = 0, curBytes_ = 0;  // whole records in each log; a cut-off record after them is written over
   // The download in progress: a snapshot of the sizes, and where it has got to.
   size_t legacyOld_ = 0, legacyCur_ = 0, oldRecords_ = 0, allRecords_ = 0;

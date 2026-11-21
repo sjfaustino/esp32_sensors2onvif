@@ -144,9 +144,9 @@ std::string CamWeb::overviewJson(uint32_t now) {
         lastTest = alarm_.log().recent(n).received;
     bool clockOk = t >= CAM_CLOCK_VALID_AFTER, heard = false;
     for (int id = 1; id <= alarm_.board().count(); id++) heard = heard || (table_.slotOf(id).used && table_.healthOf(id).heard);
-    bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(cfg_.webPassword), cfg_.setupPasswordHash);
+    bool setupPassword = !cfg_.setupPasswordHash.empty() && camSameText(camSha1(webPassword_), cfg_.setupPasswordHash);
     bool testKnown = clockOk && lastTest >= CAM_CLOCK_VALID_AFTER && lastTest <= t;
-    j.object("ready").flag("password", !cfg_.webPassword.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
+    j.object("ready").flag("password", !webPassword_.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
     j.flag("notify", !webhook_.settings().url.empty() || !mqtt_.settings().host.empty())
         .flag("daily", !webhook_.settings().url.empty() && webhook_.settings().dailyMinute >= 0);
     j.num("testAgo_s", testKnown, (long long)(t - lastTest)).end();

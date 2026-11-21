@@ -330,6 +330,37 @@ static void the_history_is_read_back_newest_first_to_a_time() {
   TEST_ASSERT_FALSE(log.eachSince(0, 100000, [](const CamEvent&) {}));  // the history ends before then
 }
 
+// Read in steps, a new log begun in the middle moves the log being read to the older one: the scan follows it, hands
+// out each event once, newest first, and ends there, not complete, as the older log it would have read next is gone.
+static void a_history_read_in_steps_follows_a_new_log() {
+  std::string folder = tempFolder("cam_event_log_steps");
+  CamStorage storage(folder);
+  CamEventLog log(storage);
+  log.load();
+  size_t perFile = CamEventLog::FILE_MAX / CAM_EVENT_RECORD;
+  for (size_t i = 0; i < perFile + 50; i++) {
+    log.add(sampleEvent((int)i));
+    TEST_ASSERT_TRUE(log.save(false));
+  }
+  CamHistoryScan s;
+  log.scanBegin(s, 1800000000, 100000);
+  std::vector<time_t> seen;
+  auto each = [&](const CamEvent& e) { seen.push_back(e.received); };
+  TEST_ASSERT_FALSE(log.scanStep(s, 8, each));  // the waiting events, none, and the current log's size
+  TEST_ASSERT_FALSE(log.scanStep(s, 8, each));
+  TEST_ASSERT_EQUAL(8, (int)seen.size());
+  for (size_t i = perFile + 50; i < 2 * perFile + 10; i++) {  // enough for a new log
+    log.add(sampleEvent((int)i));
+    TEST_ASSERT_TRUE(log.save(false));
+  }
+  while (!log.scanStep(s, 8, each)) {
+  }
+  TEST_ASSERT_FALSE(s.complete);
+  TEST_ASSERT_EQUAL(50, (int)seen.size());  // the 50 that were the current log, each once
+  for (size_t i = 1; i < seen.size(); i++) TEST_ASSERT_TRUE(seen[i] == seen[i - 1] - 1);
+  TEST_ASSERT_EQUAL((int)(1800000000 + perFile + 49), (int)seen.front());
+}
+
 // A 4 MB board's storage holds some 190 KB: the history is kept small enough to fit, and storage that refuses a save
 // gives up the older log for room, as the report waiting on that save cannot be confirmed without it.
 static void a_small_storage_keeps_a_smaller_history_that_always_saves() {
@@ -407,6 +438,7 @@ void runStorageTests() {
   RUN_TEST(a_small_storage_keeps_a_smaller_history_that_always_saves);
   RUN_TEST(the_history_can_be_one_sensors_last_days);
   RUN_TEST(the_history_is_read_back_newest_first_to_a_time);
+  RUN_TEST(a_history_read_in_steps_follows_a_new_log);
   RUN_TEST(the_older_firmwares_history_is_kept);
   RUN_TEST(a_node_image_is_told_from_other_files);
   RUN_TEST(classifies_storage_paths);

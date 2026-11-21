@@ -210,8 +210,15 @@ def test_webhook_formats(path, received, heads, hooks, port):
     base = f'http://127.0.0.1:{port}'
     hook_url = urllib.parse.quote(base + '/hub', safe='')
 
-    def newest_json():
-        return json.loads(received[-1][1])
+    # A plain-text message that starts as JSON does is still sent as text: the format goes with each message.
+    api('PUT', f'/api/file?path={path}/name.txt', b'{Gate}')
+    api('POST', '/api/webhook', f'url={hook_url}&format=text&alerts=1&problems=0')
+    count = len(received)
+    get(f'/sensor?{sid(1)}')
+    check('plain text from a sensor named like JSON is still sent as text', hooks(count + 1) and received[count][0].startswith('text/plain')
+          and received[count][1].decode().startswith('{Gate}'), received[count:])
+    clear(1)
+    api('PUT', f'/api/file?path={path}/name.txt', 'Front "gate"'.encode())
 
     # The camera that covers a sensor, named wherever its alerts are.
     camera = urllib.parse.quote('Camera 3, gate', safe='')

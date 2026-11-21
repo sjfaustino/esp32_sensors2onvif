@@ -15,6 +15,10 @@ before that, a new minor version may change settings or the messages.
   look at.
 - **Getting started** on the Overview takes a new hub through its setup a step at a time, saying what to do and why.
 - The pages follow the device's dark setting, and fit a phone: forms wrap and wide tables scroll.
+- The setup network uses WPA3, so its password, usually the hub password, cannot be guessed offline from a recording of
+  someone joining it.
+- A blank hub's first password guards it as soon as it is chosen, not only after the restart that follows.
+- The weekly summary reads the history a little at a time, so the hub stays responsive meanwhile.
 
 ## [0.2.0] - 2026-11-21
 

@@ -56,6 +56,8 @@ The hub keeps a main and a backup network. It tries the main network for 30 seco
 the backup joins, it becomes the main network and the old main becomes the backup.
 
 If neither works, or none is saved, the hub opens its own network, `esp-alarmhub-setup`, protected by the hub password.
+It uses WPA3, which phones from 2019 on and Windows 10 and macOS from that time on can join; an older device cannot.
+With WPA3, someone who records you joining cannot try passwords on their own computer, as they could with WPA2.
 A blank hub has no password yet, so its setup network is open until one is chosen.
 Join it from a phone or laptop and the setup page opens by itself, or browse to `http://192.168.4.1`. Choose a network, and
 whether it is the main or the backup. A new main network moves the previous main to the backup. Saved settings replace any

@@ -55,6 +55,9 @@ class CamWeb {
   uint32_t accepted() const { return accepted_; }
   uint32_t refused() const { return refused_; }
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
+  // A blank hub's first password, from its setup page: it guards the pages, ONVIF and the video at once, rather than
+  // after the restart that follows, which a failed Wi-Fi save would not bring.
+  void setPassword(const std::string& password);
 
  private:
   using Health = CamSensorTable::Health;
@@ -177,6 +180,7 @@ class CamWeb {
   HttpConn http_[MAX_HTTP];
   uint32_t accepted_ = 0;
   uint32_t refused_ = 0;
+  std::string webPassword_;     // the pages need the user admin and this, when set
   std::string onvifPassword_;   // ONVIF needs the user admin and this, when set
   CamSchedule schedule_;        // the restart schedule, as the page shows it
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page

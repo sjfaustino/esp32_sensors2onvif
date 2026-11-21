@@ -30,6 +30,7 @@ CamWeb::CamWeb(const CamWebParts& p)
       failures_(p.failures),
       localIp_(p.localIp),
       millis_(p.millis),
+      webPassword_(p.cfg.webPassword),
       onvifPassword_(p.cfg.onvifPassword),
       schedule_(p.cfg.schedule) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
@@ -356,13 +357,19 @@ bool CamWeb::knownHost(const std::string& header) const {
   return camKnownHost(header, localIp_(), cfg_.hostName, cfg_.setupAddress, cfg_.extraHosts);
 }
 
+void CamWeb::setPassword(const std::string& password) {
+  webPassword_ = password;
+  onvifPassword_ = password;
+  video_.setOnvifPassword(password);
+}
+
 // Checks the login and keeps count of wrong ones.
 bool CamWeb::authorized(const HttpConn& c, const std::string& headers) {
-  if (cfg_.webPassword.empty()) return true;
+  if (webPassword_.empty()) return true;
   std::string auth = headerValue(headers, "authorization");
   uint32_t now = millis_();
   if (auth.empty() || !logins_.allowed(c.peer, now)) return false;
-  bool ok = camBasicValid(auth, HUB_USER, cfg_.webPassword);
+  bool ok = camBasicValid(auth, HUB_USER, webPassword_);
   logins_.note(c.peer, ok, now);
   return ok;
 }

@@ -294,6 +294,14 @@ def test_a_blank_hub_is_set_up(browser):
         page.click('#save')
         check('the network and the hub password are saved together', wait_text(page, 'msg', 'with the hub password as its password'),
               page.text_content('#msg'))
+        code = api('GET', '/api/tree', auth=False)[0]
+        check('the new password guards the hub at once, before any restart', code == 401, code)
+        c = http.client.HTTPConnection(HOST, WEB, timeout=5)
+        c.request('GET', '/api/tree', headers={'Authorization': 'Basic ' + base64.b64encode(b'admin:first-password').decode()})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        check('and opens it', r.status == 200, r.status)
         check('no dialogs on the way', not dialogs.seen, dialogs.seen)
         page.close()
     finally:

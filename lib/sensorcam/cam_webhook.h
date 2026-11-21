@@ -3,6 +3,8 @@
 #pragma once
 #include <stdint.h>
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 #include "cam_alarm.h"
 #include "cam_config.h"
@@ -24,9 +26,11 @@ class CamWebhookSender {
   // from 1, for news, to 5, for an alert: ntfy and Gotify show them on the phone.
   void queue(const std::string& title, int priority, const std::string& message, const std::string& json);
   void dailyCheck(uint32_t now);  // queued at the minute the settings give
-  // At the day and minute the settings give, or now when forced: the past week in one message. False when the clock is
-  // not set, or there was no memory for it.
+  // At the day and minute the settings give, or now when forced: begins the past week's summary, which weeklyStep
+  // reads from the history a little on each pass and then sends. False when the clock is not set, or there was no
+  // memory for it.
   bool weeklySummary(uint32_t now, bool force);
+  void weeklyStep(uint32_t now);
   void tick(uint32_t now, bool mayConnect);  // starts the next message; mayConnect: a socket is free
   void watch(fd_set& rd, fd_set& wr, int& maxFd) const { post_.watch(rd, wr, maxFd); }
   void serve(fd_set& rd, fd_set& wr, uint32_t now);
@@ -52,4 +56,13 @@ class CamWebhookSender {
   uint32_t dailySentAt_ = 0;
   bool weeklySent_ = false;
   uint32_t weeklySentAt_ = 0;
+  struct WeeklyWork {  // a summary under way
+    CamWeeklySummary s;
+    CamHistoryScan scan;
+    std::map<std::string, int> perSensor;
+    std::map<std::string, std::string> names;
+    time_t t = 0;
+  };
+  std::unique_ptr<WeeklyWork> weekly_;
+  void weeklyFinish(WeeklyWork& w, uint32_t now);
 };

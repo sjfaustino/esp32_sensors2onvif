@@ -270,21 +270,23 @@ void CamWeb::apiSetup(const ApiRequest& r) {
   } else if (r.is("GET", "/api/wifi/scan")) {
     c.out = jsonOk(jsonObject([&](CamJson& j) {
       radio_->wifiNetworks(j);
-      j.flag("needPassword", cfg_.webPassword.empty());
+      j.flag("needPassword", webPassword_.empty());
     }));
   } else if (r.is("POST", "/api/wifi")) {
     // A blank hub's setup network is open, so whoever sets it up chooses the hub password in the same step. It then
     // guards the pages, ONVIF, the video and the setup network itself.
     std::string ssid = r.field("ssid"), password = r.field("password"), hubPassword = r.field("hubpw");
-    bool needPassword = cfg_.webPassword.empty();
+    bool needPassword = webPassword_.empty();
     if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63)))
       c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
     else if (needPassword && (hubPassword.size() < 8 || hubPassword.size() > 63))
       c.out = jsonFail(400, "choose a hub password of 8 to 63 characters");
     else if (needPassword && !store_->passwordSave(hubPassword))
       c.out = jsonFail(507, "could not save the hub password");
-    else
+    else {
+      if (needPassword) setPassword(hubPassword);  // guards the hub from now on, even if the network cannot be saved
       c.out = saved(radio_->wifiSave(ssid, password, r.field("role") == "backup"), "could not save the Wi-Fi settings");
+    }
   } else {
     c.out = jsonFail(404, "not found");
   }
@@ -464,7 +466,7 @@ bool CamWeb::apiInfo(const ApiRequest& r) {
           .num("rtspPort", cfg_.rtspPort)
           .num("streams", video_.streamCount())
           .num("subscribers", events_.subs().count());
-      j.str("serial", cfg_.serial).flag("password", !cfg_.webPassword.empty()).str("hosts", cfg_.extraHosts).flag("armed", alarm_.armed());
+      j.str("serial", cfg_.serial).flag("password", !webPassword_.empty()).str("hosts", cfg_.extraHosts).flag("armed", alarm_.armed());
     }));
   } else {
     return false;
@@ -597,7 +599,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
     bool nameOk = validHubName(name);
     // The hub always has a password, which guards the pages, ONVIF and the video: it can be changed, never turned off.
     // A new one has 8 characters or more. A hub that has none, from secrets.h or an older firmware, gets one here first.
-    bool keeps = password.empty() && !cfg_.webPassword.empty();
+    bool keeps = password.empty() && !webPassword_.empty();
     if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
       c.out = jsonFail(400, "ports must be 1 to 65535 and all different");
     } else if (!nameOk) {

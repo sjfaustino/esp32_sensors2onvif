@@ -309,6 +309,7 @@ bool CamEventLog::save(bool downloading) {
   if (!downloading && curBytes_ + pending_.size() > fileMax_ && storage_.renameFile(LOG, LOG_OLD)) {
     oldBytes_ = curBytes_;
     curBytes_ = 0;
+    rotations_++;
   }
   saveFailed_ = !storage_.writeAt(LOG, curBytes_, pending_.data(), pending_.size());
   // Refused, as by full storage: the older log goes for room, as it would at the next new log anyway, since a report
@@ -316,6 +317,7 @@ bool CamEventLog::save(bool downloading) {
   if (saveFailed_ && !downloading && curBytes_ && storage_.renameFile(LOG, LOG_OLD)) {
     oldBytes_ = curBytes_;
     curBytes_ = 0;
+    rotations_++;
     saveFailed_ = !storage_.writeAt(LOG, 0, pending_.data(), pending_.size());
   }
   if (saveFailed_) return false;
@@ -329,32 +331,63 @@ bool CamEventLog::save(bool downloading) {
 }
 
 bool CamEventLog::eachSince(time_t since, size_t most, const std::function<void(const CamEvent&)>& each) const {
-  size_t seen = 0;
+  CamHistoryScan s;
+  scanBegin(s, since, most);
+  while (!scanStep(s, 64, each)) {
+  }
+  return s.complete;
+}
+
+void CamEventLog::scanBegin(CamHistoryScan& s, time_t since, size_t most) const {
+  s = CamHistoryScan();
+  s.since = since;
+  s.most = most;
+}
+
+bool CamEventLog::scanStep(CamHistoryScan& s, size_t records, const std::function<void(const CamEvent&)>& each) const {
   CamEvent e;
-  // 1 when an event older than since was found, -1 when most was reached, 0 to go on.
+  // 1 when an event older than since was found or most was reached, 0 to go on.
   auto take = [&](const uint8_t* record) {
     if (!camEventDecode(record, e) || e.received < CAM_CLOCK_VALID_AFTER) return 0;
-    if (e.received < since) return 1;
+    if (e.received < s.since) {
+      s.complete = true;
+      return 1;
+    }
     each(e);
-    return ++seen >= most ? -1 : 0;
+    return ++s.seen >= s.most ? 1 : 0;
   };
-  for (size_t end = pending_.size() - pending_.size() % CAM_EVENT_RECORD; end >= CAM_EVENT_RECORD; end -= CAM_EVENT_RECORD) {
-    int r = take((const uint8_t*)pending_.data() + end - CAM_EVENT_RECORD);
-    if (r) return r > 0;
+  auto over = [&]() {
+    s.part = 3;
+    return true;
+  };
+  if (s.part == 0) {  // those waiting, all at once, as they are in memory; and the current log as it is at this moment
+    for (size_t end = pending_.size() - pending_.size() % CAM_EVENT_RECORD; end >= CAM_EVENT_RECORD; end -= CAM_EVENT_RECORD)
+      if (take((const uint8_t*)pending_.data() + end - CAM_EVENT_RECORD)) return over();
+    s.part = 1;
+    s.left = curBytes_ / CAM_EVENT_RECORD;
+    s.rotations = rotations_;
+    return false;
+  }
+  if (s.part > 2) return true;
+  if (rotations_ != s.rotations) {                                   // a new log was begun: the current one became the older one
+    if (s.part == 2 || rotations_ - s.rotations > 1) return over();  // and the older one, being read, is gone
+    s.part = 2;
+    s.rotations = rotations_;
   }
   uint8_t chunk[8 * CAM_EVENT_RECORD];
-  for (int old = 0; old < 2; old++) {
-    size_t records = (old ? oldBytes_ : curBytes_) / CAM_EVENT_RECORD;
-    while (records) {
-      size_t n = records < 8 ? records : 8;
-      records -= n;
-      if (!storage_.readAt(old ? LOG_OLD : LOG, records * CAM_EVENT_RECORD, (char*)chunk, n * CAM_EVENT_RECORD)) return false;
-      for (size_t i = n; i-- > 0;) {
-        int r = take(chunk + i * CAM_EVENT_RECORD);
-        if (r) return r > 0;
-      }
-    }
+  while (records && s.left) {
+    size_t n = s.left < 8 ? s.left : 8;
+    n = n < records ? n : records;
+    s.left -= n;
+    records -= n;
+    if (!storage_.readAt(s.part == 2 ? LOG_OLD : LOG, s.left * CAM_EVENT_RECORD, (char*)chunk, n * CAM_EVENT_RECORD)) return over();
+    for (size_t i = n; i-- > 0;)
+      if (take(chunk + i * CAM_EVENT_RECORD)) return over();
   }
+  if (s.left) return false;
+  if (s.part == 2) return over();  // the history ends here
+  s.part = 2;
+  s.left = oldBytes_ / CAM_EVENT_RECORD;
   return false;
 }
 
