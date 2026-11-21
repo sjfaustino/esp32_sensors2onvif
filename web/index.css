@@ -1,3 +1,83 @@
+/* Every colour of the pages, by what it is for: light, and below it dark, for a device set to dark. The rules use only
+   these names, so a new one is dark-ready by naming its colour here; tools/check_colours.py, run by CI, refuses a
+   colour written anywhere else. The floor plan's spots, the week's hits and white text on a coloured button stay the
+   same in both. */
+:root {
+  color-scheme: light dark;
+  --bg: #fff; /* the page */
+  --surface: #fff; /* cards, buttons and fields */
+  --text: #1b1f24;
+  --muted-text: #5a636d; /* labels and explanations */
+  --muted: #8a929b; /* what is missing */
+  --border: #d8dde3; /* cards */
+  --border-input: #b9c0c8; /* buttons, fields, dialogs and pictures */
+  --line: #e6e9ed; /* between sensors, and the bars' track */
+  --line-soft: #f0f2f4; /* between table rows, and a field turned off */
+  --menu: #f5f5f5; /* the menu */
+  --menu-hover: #ddd;
+  --menu-mark: #666; /* the menu's arrows and bullets */
+  --active: #fff; /* the page open in the menu */
+  --active-text: blue;
+  --link: #0000ee;
+  --link-visited: #551a8b;
+  --danger: #b3261e; /* errors, and buttons that delete */
+  --danger-border: #e0b4b0;
+  --accent: #3b6fd4; /* progress bars and the main button */
+  --ok-bg: #e6f4ea; /* the status line: all good */
+  --ok-text: #1e6b34;
+  --attention-bg: #fdf3d8; /* needs attention */
+  --attention-text: #7a5400;
+  --bad-bg: #fbe4e2; /* not protecting */
+  --bad-text: #b3261e;
+  --wizard-bg: #f1f5fd; /* the first steps */
+  --wizard-border: #b9cdf0;
+  --wizard-track: #dbe3f3;
+  --week-line: #eef0f2; /* a sensor's week */
+  --chart-grid: #dde1e5; /* the battery chart */
+  --chart-text: #1b1f24;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191d;
+    --surface: #16191d;
+    --text: #e3e6ea;
+    --muted-text: #9aa1a9;
+    --muted: #9aa1a9;
+    --border: #3c434b;
+    --border-input: #3c434b;
+    --line: #2c3138;
+    --line-soft: #2a2f35;
+    --menu: #1f2328;
+    --menu-hover: #2c3138;
+    --menu-mark: #9aa1a9;
+    --active: #16191d;
+    --active-text: #8ab4f8;
+    --link: #8ab4f8;
+    --link-visited: #c58af9;
+    --danger: #f28b82;
+    --danger-border: #6b2f2a;
+    --accent: #3b6fd4;
+    --ok-bg: #173a22;
+    --ok-text: #a8dab5;
+    --attention-bg: #3d3114;
+    --attention-text: #f2d48a;
+    --bad-bg: #45201d;
+    --bad-text: #f6aea9;
+    --wizard-bg: #18243a;
+    --wizard-border: #2f4a78;
+    --wizard-track: #2c3138;
+    --week-line: #2a2f35;
+    --chart-grid: #3c434b;
+    --chart-text: #9aa1a9;
+  }
+}
+a {
+  color: var(--link);
+}
+a:visited {
+  color: var(--link-visited);
+}
+
 /* A hidden element stays hidden, whatever display its class gives it. */
 [hidden] {
   display: none !important;
@@ -6,11 +86,11 @@ body {
   font:
     15px/1.4 system-ui,
     sans-serif;
-  color: #1b1f24;
+  color: var(--text);
   display: flex;
   min-height: 100vh;
   margin: 0;
-  background: #fff;
+  background: var(--bg);
 }
 h1 {
   font-size: 22px;
@@ -22,8 +102,8 @@ h2 {
   font-family: ui-monospace, monospace;
 }
 .card {
-  background: #fff;
-  border: 1px solid #d8dde3;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   margin: 12px 0;
@@ -36,7 +116,7 @@ h2 {
   flex-wrap: wrap;
 }
 .sensor {
-  border-top: 1px solid #e6e9ed;
+  border-top: 1px solid var(--line);
   margin-top: 10px;
   padding-top: 10px;
 }
@@ -47,7 +127,7 @@ table {
 }
 td {
   padding: 3px 6px 3px 0;
-  border-top: 1px solid #f0f2f4;
+  border-top: 1px solid var(--line-soft);
   font-size: 14px;
 }
 td:first-child {
@@ -55,13 +135,15 @@ td:first-child {
   word-break: break-all;
 }
 .missing {
-  color: #8a929b;
+  color: var(--muted);
 }
 td.acts {
   text-align: right;
 }
 dialog {
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
+  background: var(--surface);
+  color: var(--text);
   border-radius: 8px;
   padding: 16px;
   max-width: min(92vw, 560px);
@@ -76,22 +158,24 @@ button,
   font: inherit;
   font-size: 13px;
   padding: 3px 9px;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   color: inherit;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
 }
 button.del {
-  color: #b3261e;
-  border-color: #e0b4b0;
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 input[type="text"] {
   font: inherit;
   padding: 4px 8px;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
+  background: var(--surface);
+  color: inherit;
   border-radius: 5px;
 }
 details {
@@ -108,23 +192,23 @@ summary {
   white-space: pre-wrap;
 }
 #msg.err {
-  color: #b3261e;
+  color: var(--danger);
 }
 .bar {
   height: 8px;
-  background: #e6e9ed;
+  background: var(--line);
   border-radius: 4px;
   overflow: hidden;
   margin-top: 6px;
 }
 .bar div {
   height: 100%;
-  background: #3b6fd4;
+  background: var(--accent);
 }
 #menu {
   width: 240px;
   min-width: 240px;
-  background: #f5f5f5;
+  background: var(--menu);
   padding: 15px 0;
 }
 .first {
@@ -137,7 +221,7 @@ summary {
 }
 .first::after {
   content: "\25BE";
-  color: #666;
+  color: var(--menu-mark);
 }
 .first.open::after {
   content: "\25B4";
@@ -162,16 +246,16 @@ summary {
   left: 24px;
   top: 50%;
   transform: translateY(-50%);
-  color: #666;
+  color: var(--menu-mark);
   font-size: 10px;
 }
 .first:hover,
 .item:hover {
-  background: #ddd;
+  background: var(--menu-hover);
 }
 .item.active {
-  background: #fff;
-  color: blue;
+  background: var(--active);
+  color: var(--active-text);
 }
 main {
   flex: 1;
@@ -186,7 +270,7 @@ main {
 }
 .info td:first-child {
   font-family: inherit;
-  color: #5a636d;
+  color: var(--muted-text);
   width: 40%;
 }
 .info td {
@@ -200,7 +284,9 @@ main {
 input[type="number"] {
   font: inherit;
   padding: 4px 8px;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
+  background: var(--surface);
+  color: inherit;
   border-radius: 5px;
   width: 8em;
 }
@@ -212,22 +298,22 @@ input[type="number"] {
 }
 .netRow span {
   width: 9em;
-  color: #5a636d;
+  color: var(--muted-text);
 }
 .netRow input,
 .netRow select {
   font: inherit;
   padding: 4px 8px;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
   border-radius: 5px;
   width: 14em;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--surface);
   color: inherit;
 }
 .netRow input:disabled {
-  background: #f0f2f4;
-  color: #5a636d;
+  background: var(--line-soft);
+  color: var(--muted-text);
 }
 .portForm {
   margin-bottom: 6px;
@@ -238,7 +324,7 @@ input[type="number"] {
   margin-bottom: 8px;
 }
 .portMsg.err {
-  color: #b3261e;
+  color: var(--danger);
 }
 @media (max-width: 640px) {
   body {
@@ -261,9 +347,9 @@ h2.sub {
 .warn {
   margin: 0 0 12px;
   padding: 8px 10px;
-  border: 1px solid #e0b4b0;
+  border: 1px solid var(--danger-border);
   border-radius: 6px;
-  color: #b3261e;
+  color: var(--danger);
   font-size: 14px;
 }
 .block {
@@ -281,16 +367,16 @@ h2.sub {
   text-decoration: none;
 }
 .status.ok {
-  background: #e6f4ea;
-  color: #1e6b34;
+  background: var(--ok-bg);
+  color: var(--ok-text);
 }
 .status.attention {
-  background: #fdf3d8;
-  color: #7a5400;
+  background: var(--attention-bg);
+  color: var(--attention-text);
 }
 .status.bad {
-  background: #fbe4e2;
-  color: #b3261e;
+  background: var(--bad-bg);
+  color: var(--bad-text);
 }
 .ready {
   margin: 0;
@@ -317,7 +403,7 @@ h2.sub {
 .planImg {
   display: block;
   width: 100%;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
   border-radius: 6px;
 }
 .spot {
@@ -330,7 +416,7 @@ h2.sub {
   color: #fff;
   text-decoration: none;
   background: #1e6b34;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 .spot.alert {
   background: #b3261e;
@@ -346,8 +432,8 @@ h2.sub {
   background: #1f5fbf;
 }
 .spot.waiting {
-  background: #fff;
-  color: #333;
+  background: var(--surface);
+  color: var(--text);
   box-shadow: 0 0 0 2px #1f5fbf;
 }
 @keyframes pulse {
@@ -362,7 +448,7 @@ tr.explains {
 }
 tr.explanation td {
   font-size: 13px;
-  color: #5a636d;
+  color: var(--muted-text);
   padding: 2px 0 8px;
 }
 ul.explained {
@@ -384,7 +470,7 @@ table.week th {
 table.week td {
   width: 12px;
   height: 14px;
-  border: 1px solid #eef0f2;
+  border: 1px solid var(--week-line);
 }
 table.week td.hit {
   background: #b3261e;
@@ -395,7 +481,10 @@ svg.chart {
   font-size: 9px;
 }
 svg.chart .grid {
-  stroke: #dde1e5;
+  stroke: var(--chart-grid);
+}
+svg.chart text {
+  fill: var(--chart-text);
 }
 svg.chart .line {
   fill: none;
@@ -420,9 +509,9 @@ dialog.guide {
 .wizard {
   margin: 0 0 16px;
   padding: 12px 14px;
-  border: 1px solid #b9cdf0;
+  border: 1px solid var(--wizard-border);
   border-radius: 8px;
-  background: #f1f5fd;
+  background: var(--wizard-bg);
 }
 .wizard h2 {
   font-family: inherit;
@@ -430,22 +519,22 @@ dialog.guide {
 }
 .wizBar {
   height: 6px;
-  background: #dbe3f3;
+  background: var(--wizard-track);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 8px;
 }
 .wizBar div {
   height: 100%;
-  background: #3b6fd4;
+  background: var(--accent);
 }
 .wizStep {
   font-weight: 600;
   margin: 0 0 4px;
 }
 button.primary {
-  background: #3b6fd4;
-  border-color: #3b6fd4;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
@@ -476,118 +565,5 @@ button.primary {
     font-size: 14px;
     padding: 6px 11px;
     margin-bottom: 4px;
-  }
-}
-
-/* Dark, when the device is set to it: the same pages with the light and dark swapped. */
-:root {
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  body,
-  .card,
-  button,
-  .btn,
-  .netRow input,
-  .netRow select,
-  input[type="text"],
-  input[type="number"],
-  textarea,
-  dialog {
-    background: #16191d;
-    color: #e3e6ea;
-  }
-  .card,
-  button,
-  .btn,
-  dialog,
-  .netRow input,
-  .netRow select,
-  input[type="text"],
-  input[type="number"],
-  .planImg {
-    border-color: #3c434b;
-  }
-  td,
-  .sensor {
-    border-color: #2a2f35;
-  }
-  #menu {
-    background: #1f2328;
-  }
-  .first:hover,
-  .item:hover {
-    background: #2c3138;
-  }
-  .item.active {
-    background: #16191d;
-    color: #8ab4f8;
-  }
-  .first::after,
-  .item::before {
-    color: #9aa1a9;
-  }
-  .missing,
-  .info td:first-child,
-  .netRow span,
-  tr.explanation td,
-  .netRow input:disabled {
-    color: #9aa1a9;
-  }
-  .netRow input:disabled {
-    background: #22262b;
-  }
-  a {
-    color: #8ab4f8;
-  }
-  a:visited {
-    color: #c58af9;
-  }
-  .bar,
-  .wizBar {
-    background: #2c3138;
-  }
-  button.del,
-  #msg.err,
-  .portMsg.err,
-  .warn {
-    color: #f28b82;
-    border-color: #6b2f2a;
-  }
-  .status.ok {
-    background: #173a22;
-    color: #a8dab5;
-  }
-  .status.attention {
-    background: #3d3114;
-    color: #f2d48a;
-  }
-  .status.bad {
-    background: #45201d;
-    color: #f6aea9;
-  }
-  .wizard {
-    background: #18243a;
-    border-color: #2f4a78;
-  }
-  button.primary {
-    background: #3b6fd4;
-    color: #fff;
-  }
-  .spot {
-    box-shadow: 0 0 0 2px #16191d;
-  }
-  .spot.waiting {
-    background: #16191d;
-    color: #e3e6ea;
-  }
-  table.week td {
-    border-color: #2a2f35;
-  }
-  svg.chart .grid {
-    stroke: #3c434b;
-  }
-  svg.chart text {
-    fill: #9aa1a9;
   }
 }

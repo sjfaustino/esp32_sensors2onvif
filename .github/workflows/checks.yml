@@ -43,6 +43,9 @@ jobs:
       - name: Every setting is loaded and saved
         run: python tools/check_settings.py
 
+      - name: Every colour of the pages is named, light and dark
+        run: python tools/check_colours.py
+
       - name: Unit tests
         run: pio test -e native
 

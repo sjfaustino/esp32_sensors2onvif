@@ -38,6 +38,9 @@ pio run -e esp32_16mb         # the firmware for the board you have; CI builds t
   `docs/protocol.md` for the messages. Every time the hub waits for is in `lib/sensorcam/cam_timing.h`.
 - **Commit messages say what changed for the hub**, in a sentence, such as "A scheduled restart waits for alerts to
   end", with the reason in the body.
+- **A colour is named, light and dark.** The pages' stylesheets set every colour once, as a variable in their
+  `:root` blocks, with its dark value beside it, and the rules use only those names. `tools/check_colours.py`, run by
+  CI, refuses a colour written anywhere else.
 - **A new setting starts in the table.** Every setting kept in flash is one line of `CAM_SETTINGS` in
   `lib/sensorcam/cam_web_api.cpp`: its key, its kind and what a good value is. The page's checks and the backup's come
   from it, and `tools/check_settings.py`, run by CI, fails until `src/hub_settings.cpp` loads and saves it.

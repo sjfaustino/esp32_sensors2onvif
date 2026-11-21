@@ -1,3 +1,21 @@
+/* Every colour of the setup page, by what it is for, light and then dark; see index.css. */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #fff; /* fields and the button */
+  --text: #1b1f24;
+  --border-input: #b9c0c8;
+  --danger: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191d;
+    --surface: #22262b;
+    --text: #e3e6ea;
+    --border-input: #3c434b;
+    --danger: #f28b82;
+  }
+}
 body {
   font:
     16px/1.4 system-ui,
@@ -5,8 +23,8 @@ body {
   margin: 0 auto;
   max-width: 26rem;
   padding: 16px;
-  color: #1b1f24;
-  background: #f6f7f9;
+  color: var(--text);
+  background: var(--bg);
 }
 h1 {
   font-size: 22px;
@@ -25,9 +43,9 @@ button {
   padding: 10px;
   margin-top: 4px;
   box-sizing: border-box;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--border-input);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   color: inherit;
 }
 button {
@@ -40,27 +58,9 @@ button {
   white-space: pre-wrap;
 }
 #msg.err {
-  color: #b3261e;
+  color: var(--danger);
 }
 p {
   font-size: 14px;
   margin: 16px 0 0;
-}
-:root {
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  body {
-    color: #e3e6ea;
-    background: #16191d;
-  }
-  input,
-  select,
-  button {
-    background: #22262b;
-    border-color: #3c434b;
-  }
-  #msg.err {
-    color: #f28b82;
-  }
 }
