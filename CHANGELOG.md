@@ -5,37 +5,53 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-21
+
+Update from 0.2.0: it closes ways to defeat the hub from nearby, below. None needs the hub password.
+
+### Security
+
+- Someone on the network could keep the NVR out by holding the hub's few connections, trickling the body of a refused
+  request. Kept out for 10 minutes, the NVR's subscription lapsed and alerts stopped reaching it. A refused body is now
+  read for at most a minute, and the NVR always gets a connection, in place of the oldest that is not its own.
+- Likewise its video: a video connection kept itself open with any request, even without the password, and the NVR,
+  without its video, records nothing at an alert. One that is not playing is now closed two minutes after it opened,
+  and the NVR always gets one.
+- While pairing was open, a hello from a node's address with another key replaced the key waiting, and approving the
+  node paired that key: anyone in radio range could pair their own in the node's place. Approval now names the
+  fingerprint that was checked.
+- Another site could show the hub's pages in a hidden frame, with the browser's saved login, and lead someone to
+  click Disarm unseen. Pages may now be framed only by the hub itself.
+- The setup network uses WPA3: under WPA2 its password, usually the hub password, could be guessed offline from a
+  recording of someone joining it.
+- A blank hub's first password guards it as soon as it is chosen, not only after the restart that follows.
+- Sealed messages are numbered on from where the last start left off, so after a power cut no number seals two
+  messages, on the hub or, with their next firmware, on the nodes.
+- The hub shows 16-character fingerprints, beyond what a made-up key can match; a node's 12-character label is their
+  start, and still matches.
+- The video's login is checked in the same time, right or wrong; the settings backup, with its passwords, is never
+  cached.
+- ONVIF logins that repeat a nonce are counted (onvifRepeats in /api/info), to learn whether the NVR ever repeats one
+  before such replays are refused.
+
 ### The hub
 
 - Notifications go to ntfy or Gotify as those servers take them, with a title and a priority for the phone (alerts
   urgent, problems high, news low), and an access token. The Notifications page explains what each needs.
 - A weekly summary, on the day and time chosen: the week's alerts and whether they reached the NVR, the sensor that
-  fired most, the problems, the batteries running low and the last test alert. It can also be sent at once.
+  fired most, the problems, the batteries running low and the last test alert. It can also be sent at once. It reads
+  the history a little at a time, so the hub stays responsive meanwhile.
 - Each sensor can name the NVR camera that covers it. Its alert notifications and the Events page say which camera to
   look at.
 - **Getting started** on the Overview takes a new hub through its setup a step at a time, saying what to do and why.
 - The pages follow the device's dark setting, and fit a phone: forms wrap and wide tables scroll.
-- The setup network uses WPA3, so its password, usually the hub password, cannot be guessed offline from a recording of
-  someone joining it.
-- A blank hub's first password guards it as soon as it is chosen, not only after the restart that follows.
-- The weekly summary reads the history a little at a time, so the hub stays responsive meanwhile.
 - A new hub password, or other names for the hub, apply at once. Only a new port or hub name restarts the hub.
-- Someone on the network can no longer keep the NVR out by holding the hub's few connections: a refused request's body
-  is read for at most a minute, and the NVR always gets a connection, in place of the oldest that is not its own.
-  Kept out for 10 minutes, its subscription lapsed and alerts stopped reaching it.
-- Sealed messages are numbered on from where the last start left off, reserved in flash, so no number seals two
-  messages after a power cut; on the hub and on the nodes.
-- The hub shows fingerprints 16 characters long; a node's 12-character label is their start, and still matches.
-- ONVIF logins that come again with the same nonce are counted on the ONVIF data the page reads, to learn whether the
-  NVR ever repeats one before such replays are refused.
-- The video's login is checked in the same time, right or wrong.
-- Approving a node approves the key whose fingerprint was checked. A hello from the node's address with another key,
-  as anyone in radio range could send while pairing is open, replaced the one waiting, and approval by address alone
-  paired that key instead.
-- The hub's pages can no longer be shown in a frame by another site, which with the browser's saved login could lead
-  someone to click Disarm unseen; the settings backup, with its passwords, is never cached.
-- The NVR's video can no longer be kept out: a video connection that is not playing is closed two minutes after it
-  opened, however much it sends, and the NVR always gets one, in place of the oldest that is not its own.
+
+### The project
+
+- Every saved setting, API route and page colour is described once, in a table, and CI checks the rest follows it.
+- The board's decisions (which network to try, the setup network's password, what is kept through a restart) are in
+  the library with unit tests, and src/main.cpp is split into the parts of the board.
 
 ## [0.2.0] - 2026-11-21
 
@@ -82,6 +98,7 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sjfaustino/esp32_sensors2onvif/releases/tag/v0.1.0
