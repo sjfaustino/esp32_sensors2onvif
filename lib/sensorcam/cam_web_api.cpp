@@ -264,11 +264,21 @@ void CamWeb::apiSetup(const ApiRequest& r) {
   if (r.method == "GET" && (r.route == "/" || r.route == "/setup")) {
     sendBody(c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, PAGE_HEADERS);
   } else if (r.is("GET", "/api/wifi/scan")) {
-    c.out = jsonOk(jsonObject([&](CamJson& j) { radio_->wifiNetworks(j); }));
+    c.out = jsonOk(jsonObject([&](CamJson& j) {
+      radio_->wifiNetworks(j);
+      j.flag("needPassword", cfg_.webPassword.empty());
+    }));
   } else if (r.is("POST", "/api/wifi")) {
-    std::string ssid = r.field("ssid"), password = r.field("password");
+    // A blank hub's setup network is open, so whoever sets it up chooses the hub password in the same step. It then
+    // guards the pages, ONVIF, the video and the setup network itself.
+    std::string ssid = r.field("ssid"), password = r.field("password"), hubPassword = r.field("hubpw");
+    bool needPassword = cfg_.webPassword.empty();
     if (ssid.empty() || ssid.size() > 32 || (!password.empty() && (password.size() < 8 || password.size() > 63)))
       c.out = jsonFail(400, "the name must be 1 to 32 characters and the password empty or 8 to 63");
+    else if (needPassword && (hubPassword.size() < 8 || hubPassword.size() > 63))
+      c.out = jsonFail(400, "choose a hub password of 8 to 63 characters");
+    else if (needPassword && !store_->passwordSave(hubPassword))
+      c.out = jsonFail(507, "could not save the hub password");
     else
       c.out = saved(radio_->wifiSave(ssid, password, r.field("role") == "backup"), "could not save the Wi-Fi settings");
   } else {

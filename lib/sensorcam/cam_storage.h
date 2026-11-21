@@ -45,6 +45,7 @@ struct CamFsEntry {
 
 #ifdef CAM_TEST_HOOKS
 extern bool camStorageListsFail;  // PC builds only: every folder listing fails, as a storage error would
+extern bool camStorageStatsFail;  // PC builds only: a listed entry cannot be looked at, as when memory runs out
 #endif
 
 class CamStorage {

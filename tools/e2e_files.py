@@ -129,6 +129,7 @@ def file_manager_tests(files, hub_files_free):
         if not DEVICE:
             names = [n['ssid'] for n in get_json('/api/wifi/scan')['networks']]
             check('a network name with quotes, a backslash and control characters arrives exactly', names == ['test-net', 'say "hi" \\ to\tall\x01'], names)
+        check('a hub with a password does not ask for one on the setup page', get_json('/api/wifi/scan').get('needPassword') is False)
         check('short Wi-Fi password is refused', api('POST', '/api/wifi', 'ssid=x&password=short')[0] == 400)
         check('empty Wi-Fi name is refused', api('POST', '/api/wifi', 'ssid=&password=longenough')[0] == 400)
         secret = 'password=p%25ss%20w%2Brd%26ok'

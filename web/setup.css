@@ -42,3 +42,7 @@ button {
 #msg.err {
   color: #b3261e;
 }
+p {
+  font-size: 14px;
+  margin: 16px 0 0;
+}

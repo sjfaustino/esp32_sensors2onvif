@@ -1,6 +1,7 @@
 #include "cam_storage.h"
 #include "cam_number.h"
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -199,8 +200,22 @@ size_t CamStorage::fileSize(const std::string& path) const {
 
 #ifdef CAM_TEST_HOOKS
 bool camStorageListsFail = false;
+bool camStorageStatsFail = false;
 #endif
 
+static int statEntry(const std::string& path, struct stat* st) {
+#ifdef CAM_TEST_HOOKS
+  if (camStorageStatsFail) {
+    errno = EIO;
+    return -1;
+  }
+#endif
+  return stat(path.c_str(), st);
+}
+
+// A listing is all of the folder or a failure. One that left out an entry it could not look at would make a rebuilt
+// sensor table forget that sensor, and its alerts would be refused as from an unknown sender. An entry deleted between
+// the two steps is simply not there.
 bool CamStorage::list(const std::string& path, std::vector<CamFsEntry>& out) const {
 #ifdef CAM_TEST_HOOKS
   if (camStorageListsFail) return false;
@@ -211,7 +226,11 @@ bool CamStorage::list(const std::string& path, std::vector<CamFsEntry>& out) con
   while (struct dirent* e = readdir(dir)) {
     if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
     struct stat st;
-    if (stat((base + "/" + e->d_name).c_str(), &st) != 0) continue;
+    if (statEntry(base + "/" + e->d_name, &st) != 0) {
+      if (errno == ENOENT) continue;
+      closedir(dir);
+      return false;
+    }
     CamFsEntry item;
     item.name = e->d_name;
     item.dir = S_ISDIR(st.st_mode);

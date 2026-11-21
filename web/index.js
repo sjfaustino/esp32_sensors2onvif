@@ -582,7 +582,7 @@
     return [
       {
         ok: r.password,
-        text: "A web password of your own, not the setup network's, which is built into the firmware",
+        text: "A hub password of your own, not one built into the firmware",
         view: "http",
       },
       { ok: r.clock, text: "The hub's clock is set", view: "time" },

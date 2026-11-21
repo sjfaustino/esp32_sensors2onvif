@@ -112,11 +112,20 @@ static void promoteBackup() {
   Serial.printf("Joined the backup network; it is now the main network%s.\n", ok ? "" : " until the next restart (could not save)");
 }
 
+// The setup network's password: one from secrets.h, else the hub password. A blank hub has neither, so its setup network
+// is open and its setup page asks for a hub password first. A password too short for WPA2, from an old firmware, keeps
+// the setup network off rather than open.
+static bool setupPassword(String& out) {
+  out = strlen(SETUP_AP_PASSWORD) >= 8 ? String(SETUP_AP_PASSWORD) : settings.webPassword;
+  return out.isEmpty() || out.length() >= 8;
+}
+
 static void openSetup() {
-  if (setupOpen || strlen(SETUP_AP_PASSWORD) < 8) return;
+  String password;
+  if (setupOpen || !setupPassword(password)) return;
   WiFi.disconnect(false);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(SETUP_AP_NAME, SETUP_AP_PASSWORD);
+  WiFi.softAP(SETUP_AP_NAME, password.isEmpty() ? nullptr : password.c_str());
   dnsServer.start(53, "*", WiFi.softAPIP());
   setupOpen = true;
   Serial.printf("Setup network %s is open at %s\n", SETUP_AP_NAME, WiFi.softAPIP().toString().c_str());
@@ -337,6 +346,7 @@ class HubRadio : public CamRadio {
 class HubStore : public CamStore {
  public:
   bool settingsSave(const CamSettings& s) override { return saveSettings(s); }
+  bool passwordSave(const std::string& password) override { return storePassword(password); }
   bool healthSave(bool alarm) override { return storeHealthAlarm(alarm); }
   std::string backupText() override { return ::backupText(); }
   bool restoreText(const std::string& text) override { return restoreBackup(text); }

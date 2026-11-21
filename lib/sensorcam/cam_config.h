@@ -165,7 +165,8 @@ class CamRadio {
 class CamStore {
  public:
   virtual ~CamStore() = default;
-  virtual bool settingsSave(const CamSettings& s) { return false; }  // new settings; they apply after a restart
+  virtual bool settingsSave(const CamSettings& s) { return false; }         // new settings; they apply after a restart
+  virtual bool passwordSave(const std::string& password) { return false; }  // a blank hub's first password; it applies after a restart
   virtual bool healthSave(bool alarm) { return false; }
   virtual std::string backupText() { return std::string(); }
   virtual bool restoreText(const std::string& text) { return false; }

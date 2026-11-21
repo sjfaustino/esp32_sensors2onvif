@@ -479,6 +479,24 @@ static void the_table_reports_a_sensor_whose_folder_went() {
   TEST_ASSERT_EQUAL(1, table.sensorCount());
 }
 
+// A folder whose entries cannot be looked at, as when memory runs out, must not make the table forget its sensors:
+// their alerts would be refused as from unknown senders.
+static void the_table_keeps_its_sensors_when_a_folder_cannot_be_looked_at() {
+  CamConfig cfg;
+  CamStorage storage(emptyFolder("cam_table_stat"));
+  storage.makeDirs("AA-BB-CC-DD-EE-01/1");
+  storage.makeDirs("AA-BB-CC-DD-EE-01/2");
+  CamSensorTable table(cfg, storage);
+  table.rescan(1000);
+  camStorageStatsFail = true;
+  CamSensorTable::Changes c = table.rescan(2000);
+  camStorageStatsFail = false;
+  TEST_ASSERT_FALSE(c.readable);
+  TEST_ASSERT_FALSE(c.listChanged);
+  TEST_ASSERT_EQUAL(2, table.sensorCount());
+  TEST_ASSERT_TRUE(table.findSlot(DOOR, 1) && table.findSlot(DOOR, 2));
+}
+
 static void the_table_refuses_a_sensor_beyond_the_limit() {
   CamConfig cfg;
   CamStorage storage(emptyFolder("cam_table_full"));
@@ -517,5 +535,6 @@ void runAlarmTests() {
   RUN_TEST(battery_readings_need_the_clock);
   RUN_TEST(the_table_reads_sensors_nodes_and_their_settings);
   RUN_TEST(the_table_reports_a_sensor_whose_folder_went);
+  RUN_TEST(the_table_keeps_its_sensors_when_a_folder_cannot_be_looked_at);
   RUN_TEST(the_table_refuses_a_sensor_beyond_the_limit);
 }

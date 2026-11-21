@@ -247,6 +247,14 @@ def arm_tests():
         check('a folder that cannot be read keeps its sensors', changed == 200 and code == 200 and name(1) in status()['active'], (changed, code, status()))
         clear(1)
         api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=')
+        control('stats-fail')  # likewise a folder whose entries cannot be looked at, as when memory runs out
+        changed = api('POST', f'/api/node-settings?path={SENSORS[3][0]}', 'late=300')[0]
+        code = get(f'/sensor?{sid(3)}')[0]
+        control('stats-work')
+        check('a folder whose entries cannot be looked at keeps its sensors', changed == 200 and code == 200 and name(3) in status()['active'],
+              (changed, code, status()))
+        clear(3)
+        api('POST', f'/api/node-settings?path={SENSORS[3][0]}', '')
 
     # A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched.
     check('a disarm longer than a week is refused', api('POST', '/api/arm', 'armed=0&for=10081')[0] == 400)

@@ -82,6 +82,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     reply = std::to_string(hub.memoryFailures());
   } else if (command == "lists-fail" || command == "lists-work") {  // folder listings fail, as on a storage error
     camStorageListsFail = command == "lists-fail";
+  } else if (command == "stats-fail" || command == "stats-work") {  // listed entries cannot be looked at, as when memory runs out
+    camStorageStatsFail = command == "stats-fail";
   } else if (command == "save-now") {  // what the board does before a planned restart
     hub.saveNow();
   } else if (command.compare(0, 12, "busy-alerts ") == 0) {  // how many alerts within an hour count as firing often
@@ -248,6 +250,7 @@ class TestRadio : public CamRadio {
 class TestStore : public CamStore {
  public:
   bool settingsSave(const CamSettings&) override { return true; }
+  bool passwordSave(const std::string& password) override { return password == "first-password"; }
   bool healthSave(bool) override { return true; }
   std::string backupText() override { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); }
   bool restoreText(const std::string& text) override { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; }

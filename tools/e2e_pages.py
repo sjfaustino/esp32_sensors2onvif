@@ -192,6 +192,38 @@ def test_a_hub_without_a_password_asks_for_one(browser, storage):
     page.close()
 
 
+def test_a_blank_hub_is_set_up(browser):
+    # A hub flashed from a release has no Wi-Fi and no password, and its setup network is open. Its setup page asks for
+    # the hub password with the network, so the hub is never left without one, and the API refuses to go on without it.
+    control('setup-on')
+    try:
+        page = browser.new_page()
+        dialogs = Dialogs(page)
+        page.goto(URL + 'setup')
+        page.wait_for_selector('#hubpw', state='visible')
+        check('the setup page of a blank hub asks for a hub password', page.is_visible('#hubpw2'))
+        page.select_option('#list', 'test-net')
+        page.fill('#pass', 'p%ss w+rd&ok')
+        page.fill('#hubpw', 'short')
+        page.fill('#hubpw2', 'short')
+        page.click('#save')
+        check('a short hub password is refused on the page', wait_text(page, 'msg', '8 to 63 characters'), page.text_content('#msg'))
+        page.fill('#hubpw', 'first-password')
+        page.fill('#hubpw2', 'first-passwordd')
+        page.click('#save')
+        check('two hub passwords that differ are refused', wait_text(page, 'msg', 'differ'), page.text_content('#msg'))
+        code = api('POST', '/api/wifi', 'ssid=test-net&password=p%25ss%20w%2Brd%26ok', auth=False)[0]
+        check('the hub will not take a network without a hub password', code == 400, code)
+        page.fill('#hubpw2', 'first-password')
+        page.click('#save')
+        check('the network and the hub password are saved together', wait_text(page, 'msg', 'with the hub password as its password'),
+              page.text_content('#msg'))
+        check('no dialogs on the way', not dialogs.seen, dialogs.seen)
+        page.close()
+    finally:
+        control('setup-off')
+
+
 def main():
     if DEVICE:
         sys.exit('the page test changes the arm mode, so it runs against the PC build only')
@@ -221,6 +253,10 @@ def main():
                     test_a_hub_without_a_password_asks_for_one(browser, storage)
                 except Exception as e:
                     check('the password page could be used', False, str(e).splitlines()[0])
+                try:
+                    test_a_blank_hub_is_set_up(browser)
+                except Exception as e:
+                    check('the setup page could be used', False, str(e).splitlines()[0])
                 browser.close()
         finally:
             common.HUB.kill()

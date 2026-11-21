@@ -128,6 +128,12 @@ bool storeSettings(const CamSettings& s) {
   });
 }
 
+bool storePassword(const std::string& password) {
+  if (!withPrefs("net", [&](Preferences& p) { return putText(p, "webpw", password.c_str()); })) return false;
+  settings.webPassword = password.c_str();  // the setup network takes it the next time it opens
+  return true;
+}
+
 void forgetPorts() {
   withPrefs("net", [](Preferences& p) {
     p.remove("onvif");

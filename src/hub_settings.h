@@ -33,9 +33,10 @@ extern HubSettings settings;
 // token and the ESP-NOW key the first time.
 void loadSettings();
 
-bool storeSettings(const CamSettings& s);  // ports, name and web password
-void forgetPorts();                        // keeps the name and password, which cannot stop the ports from opening
-bool storeWifi();                          // both networks, as they are in settings
+bool storeSettings(const CamSettings& s);         // ports, name and web password
+bool storePassword(const std::string& password);  // a blank hub's first password, from the setup page
+void forgetPorts();                               // keeps the name and password, which cannot stop the ports from opening
+bool storeWifi();                                 // both networks, as they are in settings
 // A network saved on the page: the main network, whose old one becomes the backup, or the backup.
 bool rememberWifi(const std::string& ssid, const std::string& password, bool backup);
 bool storeTime(const CamTime& t);

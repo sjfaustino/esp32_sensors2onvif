@@ -1,10 +1,13 @@
 const $ = (i) => document.getElementById(i);
 let hub = "";
+let needPassword = false;
 async function scan() {
   try {
     const r = await fetch("/api/wifi/scan");
     const j = await r.json();
     hub = j.name || "";
+    needPassword = !!j.needPassword;
+    $("pwBox").hidden = !needPassword;
     if (j.scanning) {
       setTimeout(scan, 1500);
       return;
@@ -37,6 +40,17 @@ $("save").onclick = async () => {
     m.textContent = "Choose or type a network.";
     return;
   }
+  const hubpw = $("hubpw").value;
+  if (needPassword && (hubpw.length < 8 || hubpw.length > 63)) {
+    m.className = "err";
+    m.textContent = "Choose a hub password of 8 to 63 characters.";
+    return;
+  }
+  if (needPassword && hubpw != $("hubpw2").value) {
+    m.className = "err";
+    m.textContent = "The two hub passwords differ.";
+    return;
+  }
   try {
     const r = await fetch("/api/wifi", {
       method: "POST",
@@ -46,7 +60,8 @@ $("save").onclick = async () => {
         "&password=" +
         encodeURIComponent($("pass").value) +
         "&role=" +
-        $("role").value,
+        $("role").value +
+        (needPassword ? "&hubpw=" + encodeURIComponent(hubpw) : ""),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -61,7 +76,12 @@ $("save").onclick = async () => {
           ssid +
           ". Reconnect this device to that network" +
           (hub ? ", then open http://" + hub : "") +
-          ". If neither saved network works, the setup network comes back in about a minute.";
+          ". If neither saved network works, the setup network comes back in about a minute" +
+          (needPassword ? ", with the hub password as its password." : ".");
+    if (needPassword) {
+      needPassword = false;
+      $("pwBox").hidden = true;
+    }
   } catch (e) {
     m.className = "err";
     m.textContent = "The hub did not answer. Try again.";
