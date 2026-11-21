@@ -58,6 +58,7 @@ class CamWeb {
   // A blank hub's first password, from its setup page: it guards the pages, ONVIF and the video at once, rather than
   // after the restart that follows, which a failed Wi-Fi save would not bring.
   void setPassword(const std::string& password);
+  std::string routesText();  // each route as "METHOD path login|setup", separated by ";", for the PC tests
 
  private:
   using Health = CamSensorTable::Health;
@@ -129,13 +130,60 @@ class CamWeb {
 
   // ---- the API: cam_web_api.cpp ----
   void handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body, size_t bodyLen);
-  void apiSetup(const ApiRequest& r);
-  bool apiPages(const ApiRequest& r);
-  bool apiInfo(const ApiRequest& r);
-  bool apiSystem(const ApiRequest& r);
-  bool apiNetwork(const ApiRequest& r);
-  bool apiSensors(const ApiRequest& r);
-  void apiFiles(const ApiRequest& r);
+  struct Route;
+  static const Route* routes(size_t& count);  // the table, in cam_web_api.cpp
+  // One handler a route; the routes table says which and who may call it.
+  void getSetup(const ApiRequest& r);
+  void getWifiScan(const ApiRequest& r);
+  void postWifi(const ApiRequest& r);
+  void getFiles(const ApiRequest& r);
+  void getRoot(const ApiRequest& r);
+  void postNodeFirmwareDelete(const ApiRequest& r);
+  void apiFiles(const ApiRequest& r);  // /api/file and /api/mkdir, by method
+  void getAlerts(const ApiRequest& r);
+  void getArm(const ApiRequest& r);
+  void getBackup(const ApiRequest& r);
+  void getCrash(const ApiRequest& r);
+  void getDevice(const ApiRequest& r);
+  void getEspnow(const ApiRequest& r);
+  void getEvents(const ApiRequest& r);
+  void getEventsCsv(const ApiRequest& r);
+  void getInfo(const ApiRequest& r);
+  void getLive(const ApiRequest& r);
+  void getLiveFrame(const ApiRequest& r);
+  void getMqtt(const ApiRequest& r);
+  void getNetwork(const ApiRequest& r);
+  void getNvr(const ApiRequest& r);
+  void getOverview(const ApiRequest& r);
+  void getPairing(const ApiRequest& r);
+  void getSchedule(const ApiRequest& r);
+  void getTime(const ApiRequest& r);
+  void getTree(const ApiRequest& r);
+  void getWebhook(const ApiRequest& r);
+  void pairingDecide(const ApiRequest& r);
+  void pairingOpenOrClose(const ApiRequest& r);
+  void postAlerts(const ApiRequest& r);
+  void postArm(const ApiRequest& r);
+  void postArmRearm(const ApiRequest& r);
+  void postCrashDelete(const ApiRequest& r);
+  void postMqtt(const ApiRequest& r);
+  void postNetwork(const ApiRequest& r);
+  void postNewkeys(const ApiRequest& r);
+  void postNodeSettings(const ApiRequest& r);
+  void postNvr(const ApiRequest& r);
+  void postReboot(const ApiRequest& r);
+  void postReset(const ApiRequest& r);
+  void postRestore(const ApiRequest& r);
+  void postSchedule(const ApiRequest& r);
+  void postSensorSettings(const ApiRequest& r);
+  void postSettings(const ApiRequest& r);
+  void postTestAlert(const ApiRequest& r);
+  void postTime(const ApiRequest& r);
+  void postWalkTest(const ApiRequest& r);
+  void postWebhook(const ApiRequest& r);
+  void postWebhookTest(const ApiRequest& r);
+  void postWebhookWeekly(const ApiRequest& r);
+  void radioTest(const ApiRequest& r);
   std::string espNowJson();
   std::string treeJson();
   bool roomBesideHistory(size_t bytes) const;  // whether a picture of this size still leaves the event history its room
@@ -152,8 +200,6 @@ class CamWeb {
   void finishNodeImage(HttpConn& c, bool ok);
   void startNodeImage(HttpConn& c, size_t length);
   void dropNodeImage();  // an upload abandoned partway through
-  bool apiNodeImages(const ApiRequest& r);
-  bool apiPairing(const ApiRequest& r);
 
   bool roomFor(size_t bytes) const { return chip_->canAllocate(bytes); }
   bool hasHeadroom() const { return chip_->hasHeadroom(); }

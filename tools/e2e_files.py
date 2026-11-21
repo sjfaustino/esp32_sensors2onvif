@@ -121,6 +121,15 @@ def file_manager_tests(files, hub_files_free):
         check('reset needs the web password', api('POST', '/api/reset', 'confirm=yes', auth=False)[0] == 401)
         check('confirmed reset is accepted', api('POST', '/api/reset', 'confirm=yes')[0] == 200)
 
+        if not DEVICE:  # every route of the API, from the hub's own table, refuses a request without the login
+            listed = [line.split(' ') for line in control('routes').split(';')]
+            open_ones = [f'{m} {p}' for m, p, access in listed
+                         if api('GET' if m == '*' else m, p, b'' if m != 'GET' else None, auth=False)[0] != 401]
+            check(f'all {len(listed)} routes need the login', len(listed) > 40 and not open_ones, open_ones)
+            check('the setup routes are marked as such', sorted(p for _, p, a in listed if a == 'setup') == ['/', '/api/wifi', '/api/wifi/scan', '/setup'],
+                  [l for l in listed if l[2] == 'setup'])
+            check('an unknown route needs the login before it is called unknown', api('GET', '/api/nothing-here', auth=False)[0] == 401
+                  and api('GET', '/api/nothing-here')[0] == 404)
         code, page = api('GET', '/setup', auth=False)
         check('setup page needs the web password on the home network', code == 401, code)
         code, page = api('GET', '/setup')

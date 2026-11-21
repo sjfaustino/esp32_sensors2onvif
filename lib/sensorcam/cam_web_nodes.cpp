@@ -37,46 +37,49 @@ void CamWeb::finishNodeImage(HttpConn& c, bool ok) {
   }
 }
 
-bool CamWeb::apiNodeImages(const ApiRequest& r) {
+void CamWeb::postNodeFirmwareDelete(const ApiRequest& r) {
   HttpConn& c = r.c;
-  if (!r.is("POST", "/api/node-firmware/delete")) return false;
   std::string chip = r.field("chip");
   uint16_t n = 0;
   if (!camNumber(chip, n) || !nodes_.images().forChip(n))
     c.out = jsonFail(404, "there is no firmware for that chip");
   else
     c.out = saved(nodes_.images().remove(n), "could not delete the file");
-  return true;
 }
 
-bool CamWeb::apiPairing(const ApiRequest& r) {
+void CamWeb::getPairing(const ApiRequest& r) {
   HttpConn& c = r.c;
   uint32_t now = millis_();
   nodes_.forgetQuiet(now);
-  if (r.is("GET", "/api/pairing")) {
-    reply(c, 200, JSON_TYPE, nodes_.pairingJson());
-  } else if (r.is("POST", "/api/pairing/open") || r.is("POST", "/api/pairing/close")) {
-    if (!nodes_.pairingReady()) {
-      c.out = jsonFail(409, "pairing is not available: the hub has no pairing key");
-      return true;
-    }
-    nodes_.openPairing(r.route == "/api/pairing/open", now);
-    c.out = jsonOk(JSON_OK);
-  } else if (r.is("POST", "/api/pairing/approve") || r.is("POST", "/api/pairing/reject")) {
-    uint8_t mac[6];
-    if (!camParseMac(r.field("mac"), mac)) {
-      c.out = jsonFail(400, "give the node's MAC address, as AA-BB-CC-DD-EE-FF");
-      return true;
-    }
-    std::string error;
-    if (r.route == "/api/pairing/reject") {
-      nodes_.reject(mac);
-      c.out = jsonOk(JSON_OK);
-    } else {
-      c.out = nodes_.approve(mac, error) ? jsonOk(JSON_OK) : jsonFail(409, error);
-    }
-  } else {
-    return false;
+  reply(c, 200, JSON_TYPE, nodes_.pairingJson());
+}
+
+void CamWeb::pairingOpenOrClose(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  uint32_t now = millis_();
+  nodes_.forgetQuiet(now);
+  if (!nodes_.pairingReady()) {
+    c.out = jsonFail(409, "pairing is not available: the hub has no pairing key");
+    return;
   }
-  return true;
+  nodes_.openPairing(r.route == "/api/pairing/open", now);
+  c.out = jsonOk(JSON_OK);
+}
+
+void CamWeb::pairingDecide(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  uint32_t now = millis_();
+  nodes_.forgetQuiet(now);
+  uint8_t mac[6];
+  if (!camParseMac(r.field("mac"), mac)) {
+    c.out = jsonFail(400, "give the node's MAC address, as AA-BB-CC-DD-EE-FF");
+    return;
+  }
+  std::string error;
+  if (r.route == "/api/pairing/reject") {
+    nodes_.reject(mac);
+    c.out = jsonOk(JSON_OK);
+  } else {
+    c.out = nodes_.approve(mac, error) ? jsonOk(JSON_OK) : jsonFail(409, error);
+  }
 }

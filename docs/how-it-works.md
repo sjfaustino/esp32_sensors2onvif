@@ -89,7 +89,9 @@ runs the same loop in one process, which is what the end-to-end tests drive. The
   and whether the NVR is listening.
 - `CamVideo` (`cam_video.h`): the RTSP connections and the picture they send.
 - `CamWeb` (`cam_web_server.h`): HTTP, which carries the ONVIF requests, the pages and their API, sensor reports and
-  uploads.
+  uploads. Every API route is one line of the table in `CamWeb::routes()` (`cam_web_api.cpp`): its method, path,
+  handler and who may call it, the login or, while it is open, the setup network. The login is checked there, once,
+  before any handler runs, and the end-to-end test asks the PC build for the table and tries every route without it.
 - `CamRestartRules` (`cam_restart_rules.h`): when the hub restarts itself (off Wi-Fi, short of memory, stalled, a
   silent router, a wrong fixed address, the schedule) and whether a new firmware is kept. `src/main.cpp` tells it what
   the board sees once a pass and carries out what it decides, so the rules are unit tested apart from the board. The

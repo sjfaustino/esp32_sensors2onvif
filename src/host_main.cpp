@@ -63,6 +63,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     setupOn = command == "setup-on";
   } else if (command == "end-alerts") {  // so the test need not wait out each hold
     hub.alarm().endAlerts();
+  } else if (command == "routes") {  // every route of the API, and who may use it
+    reply = hub.routes();
   } else if (command == "last-sent") {  // answered "done last-sent: MAC HEX", or "done last-sent" when nothing was sent
     reply = lastSent;
     lastSent.clear();
