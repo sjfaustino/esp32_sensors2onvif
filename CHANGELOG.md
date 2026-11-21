@@ -5,6 +5,8 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
 ### The hub
 
 - A hub can be set up from a release, with no PC: each release has a `-full.bin` for every board to write to a blank
@@ -48,5 +50,6 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sjfaustino/esp32_sensors2onvif/releases/tag/v0.1.0
