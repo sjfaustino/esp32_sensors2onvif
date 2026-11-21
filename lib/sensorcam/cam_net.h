@@ -19,13 +19,26 @@ inline bool netWouldBlock() {
   int e = WSAGetLastError();
   return e == WSAEWOULDBLOCK || e == WSAEINPROGRESS || e == WSAEALREADY;
 }
-#else
+#elif defined(ESP_PLATFORM)
 #include <errno.h>
 #include <fcntl.h>
 #include <lwip/netdb.h>
 #include <lwip/sockets.h>
 inline void netInit() {}
 inline void netClose(int fd) { closesocket(fd); }
+inline void netNonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
+inline bool netWouldBlock() { return errno == EWOULDBLOCK || errno == EAGAIN || errno == EINPROGRESS; }
+#else  // Linux or macOS, for the fuzzer
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
+inline void netInit() {}
+inline void netClose(int fd) { close(fd); }
 inline void netNonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
 inline bool netWouldBlock() { return errno == EWOULDBLOCK || errno == EAGAIN || errno == EINPROGRESS; }
 #endif

@@ -1,4 +1,5 @@
-# Runs the unit tests and the end-to-end test of the PC build, and builds the firmware for every board, on each push.
+# Runs the unit tests and the end-to-end test of the PC build, builds the firmware for every board, and fuzzes the
+# parsers, on each push.
 # Windows, because the PC build links Winsock (-lws2_32 in platformio.ini).
 name: Checks
 
@@ -82,3 +83,27 @@ jobs:
             .pio/build/esp32_16mb/firmware.bin
             .pio/build/esp32_16mb/firmware.elf
           retention-days: 30
+
+  # Every parser of what reaches the hub from outside, under libFuzzer with AddressSanitizer and UndefinedBehavior
+  # Sanitizer, for two minutes: on Linux, where clang has them. The inputs it built up are kept for the next run.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .pio/fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      - name: Fuzz the parsers
+        run: FUZZ_SECONDS=120 sh tools/fuzz.sh
+
+      - name: Keep what made it fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failure
+          path: .pio/fuzz/crash-*
