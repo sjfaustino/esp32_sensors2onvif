@@ -81,6 +81,6 @@ void CamWeb::pairingDecide(const ApiRequest& r) {
     nodes_.reject(mac);
     c.out = jsonOk(JSON_OK);
   } else {
-    c.out = nodes_.approve(mac, error) ? jsonOk(JSON_OK) : jsonFail(409, error);
+    c.out = nodes_.approve(mac, r.field("fingerprint"), error) ? jsonOk(JSON_OK) : jsonFail(409, error);
   }
 }

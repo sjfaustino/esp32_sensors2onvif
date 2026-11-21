@@ -186,7 +186,9 @@ void CamVideo::serviceConn(RtspConn& c, bool readable, bool writable, uint32_t n
     }
   }
   if (c.fd >= 0 && (writable || !c.out.empty())) flush(c, now);  // a new reply is tried at once
-  if (c.fd >= 0 && (now - c.activityAt > (c.playing ? CAM_RTSP_STALL_MS : CAM_RTSP_IDLE_MS))) closeConn(c);
+  // Not playing, a connection's time runs from its opening, not from what it last sent: anyone could otherwise keep
+  // both by sending a request now and then without the password, and keep the NVR's video out.
+  if (c.fd >= 0 && (c.playing ? now - c.activityAt > CAM_RTSP_STALL_MS : now - c.openedAt > CAM_RTSP_IDLE_MS)) closeConn(c);
 }
 
 void CamVideo::tick(uint32_t now) {
@@ -282,15 +284,28 @@ void CamVideo::acceptViewer(uint32_t now) {
     netClose(fd);
     return;
   }
-  for (RtspConn& c : rtsp_) {
-    if (c.fd >= 0) continue;
-    netNonblock(fd);
-    c.fd = fd;
-    c.peer = a.sin_addr.s_addr;
-    c.activityAt = now;
+  RtspConn* place = nullptr;
+  for (RtspConn& c : rtsp_)
+    if (c.fd < 0) {
+      place = &c;
+      break;
+    }
+  if (!place && nvr_ && a.sin_addr.s_addr == nvr_) {  // full: the NVR takes the place of the oldest that is not its own
+    for (RtspConn& c : rtsp_)
+      if (c.peer != nvr_ && (!place || now - c.openedAt > now - place->openedAt)) place = &c;
+    if (place) {
+      closeConn(*place);
+      nvrLetIn_++;
+    }
+  }
+  if (!place) {
+    netClose(fd);
     return;
   }
-  netClose(fd);
+  netNonblock(fd);
+  place->fd = fd;
+  place->peer = a.sin_addr.s_addr;
+  place->activityAt = place->openedAt = now;
 }
 
 int CamVideo::streamCount() const {

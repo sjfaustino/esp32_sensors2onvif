@@ -63,6 +63,10 @@ class CamVideo {
     frameKey_.clear();
   }
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
+  // The NVR's address, 0 for none: it always gets a video connection, in place of the oldest that is not its own, as
+  // without the video it records nothing at an alert.
+  void setNvr(uint32_t peer) { nvr_ = peer; }
+  uint32_t nvrLetIn() const { return nvrLetIn_; }
 
  private:
   static const int MAX_RTSP = 2;  // the NVR and one viewer; each costs a packet buffer plus network buffers
@@ -70,7 +74,8 @@ class CamVideo {
     int fd = -1;
     uint32_t peer = 0;
     uint32_t activityAt = 0;
-    std::string in, out;  // out holds the RTSP replies; video goes through packet
+    uint32_t openedAt = 0;  // a connection that is not playing is closed CAM_RTSP_IDLE_MS from here, however busy
+    std::string in, out;    // out holds the RTSP replies; video goes through packet
     size_t outPos = 0;
     RtpSend video;                   // the frame being sent, packet by packet
     uint8_t packet[RTP_PACKET_MAX];  // the packet being sent, which may go out in parts
@@ -83,6 +88,8 @@ class CamVideo {
     RtpState rtp;
   };
   void acceptViewer(uint32_t now);
+  uint32_t nvr_ = 0;
+  uint32_t nvrLetIn_ = 0;
   void serviceConn(RtspConn& c, bool readable, bool writable, uint32_t now);
   void request(RtspConn& c, const std::string& text, uint32_t now);
   void flush(RtspConn& c, uint32_t now);

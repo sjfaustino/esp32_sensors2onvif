@@ -50,6 +50,29 @@ def test_connections_cannot_be_held():
     finally:
         for h in held:
             h.close()
+
+    # Both video connections held by someone asking without the password: the NVR's video still gets in.
+    video_in = int(control('nvr-video-let-in'))
+    viewers = []
+    try:
+        for _ in range(2):
+            v = socket.create_connection((HOST, RTSP), timeout=5)
+            v.sendall(f'OPTIONS rtsp://{HOST}:{RTSP}/stream RTSP/1.0\r\nCSeq: 1\r\n\r\n'.encode())
+            v.recv(4096)
+            viewers.append(v)
+        nvr = socket.create_connection((HOST, RTSP), timeout=5, source_address=('127.0.0.2', 0))
+        try:
+            nvr.sendall(f'OPTIONS rtsp://{HOST}:{RTSP}/stream RTSP/1.0\r\nCSeq: 1\r\n\r\n'.encode())
+            answer = nvr.recv(4096).decode(errors='replace')
+        except OSError as e:
+            answer = str(e)
+        finally:
+            nvr.close()
+        check("the NVR's video gets in while both video connections are held", answer.startswith('RTSP/1.0 200')
+              and int(control('nvr-video-let-in')) == video_in + 1, answer[:60])
+    finally:
+        for v in viewers:
+            v.close()
         api('POST', '/api/nvr', 'ip=')
 
 

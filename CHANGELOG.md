@@ -29,6 +29,11 @@ before that, a new minor version may change settings or the messages.
 - ONVIF logins that come again with the same nonce are counted on the ONVIF data the page reads, to learn whether the
   NVR ever repeats one before such replays are refused.
 - The video's login is checked in the same time, right or wrong.
+- Approving a node approves the key whose fingerprint was checked. A hello from the node's address with another key,
+  as anyone in radio range could send while pairing is open, replaced the one waiting, and approval by address alone
+  paired that key instead.
+- The NVR's video can no longer be kept out: a video connection that is not playing is closed two minutes after it
+  opened, however much it sends, and the NVR always gets one, in place of the oldest that is not its own.
 
 ## [0.2.0] - 2026-11-21
 

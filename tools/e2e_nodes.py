@@ -55,7 +55,16 @@ def pairing_tests():
     check("the page shows the hub's fingerprint", page['hub'] == fingerprint(hub_public) and page['open'] > 100, page)
     check('a report before approval is ignored', say(report(1, 1, b'anything')) is None and not node_row(1))
     check('approval needs the web password', api('POST', '/api/pairing/approve', f'mac={folder}', auth=False)[0] == 401)
-    check('the node can be approved', api('POST', '/api/pairing/approve', f'mac={folder}')[0] == 200)
+    # The key approved is the one whose fingerprint was checked: another sent from the node's address meanwhile, as
+    # anyone in range could, takes the waiting one's place, and approving the fingerprint that was shown is refused.
+    shown = waiting[0]['fingerprint'] if waiting else ''
+    stranger = raw(X25519PrivateKey.generate().public_key())
+    say(bytes([4, 2]) + stranger)
+    check("a stranger's key sent from the node's address is not approved with the fingerprint that was checked",
+          api('POST', '/api/pairing/approve', f'mac={folder}&fingerprint={shown}')[0] == 409)
+    check('nor without a fingerprint', api('POST', '/api/pairing/approve', f'mac={folder}')[0] == 409)
+    say(hello)  # the node's own hello again
+    check('the node can be approved, by the fingerprint that was checked', api('POST', '/api/pairing/approve', f'mac={folder}&fingerprint={shown}')[0] == 200)
     tree = get_json('/api/tree')
     added = next((n for n in tree['nodes'] if n['mac'] == folder), {})
     check('approval adds the node and its sensors, paired', added.get('paired') is True and [s['input'] for s in added.get('sensors', [])] == [1, 2], added)

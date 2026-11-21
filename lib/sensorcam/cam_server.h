@@ -46,6 +46,7 @@ class SensorCamServer : private CamAlarmOutside {
   std::string routes() { return web_.routesText(); }                   // for the PC tests
   void setDrainMs(uint32_t ms) { web_.setDrainMs(ms); }                // for the PC tests
   uint32_t nvrLetIn() const { return web_.nvrLetIn(); }                // times the NVR took the place of another connection
+  uint32_t nvrVideoLetIn() const { return video_.nvrLetIn(); }         // the same for its video
   bool alarmBusy() const { return alarm_.busy(); }                     // see CamAlarm::busy
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped

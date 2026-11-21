@@ -29,7 +29,7 @@ class CamNodes {
   void openPairing(bool open, uint32_t now);  // open for a while, or closed
   void forgetQuiet(uint32_t now);             // nodes waiting for approval that have stopped asking
   // Writes the node's key, then makes its inputs' folders. False, with why, when it cannot.
-  bool approve(const uint8_t mac[6], std::string& error);
+  bool approve(const uint8_t mac[6], const std::string& fingerprint, std::string& error);  // the fingerprint the person checked
   void reject(const uint8_t mac[6]);
   std::string pairingJson();
 

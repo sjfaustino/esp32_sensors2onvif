@@ -1239,7 +1239,11 @@
                   if (!confirm("Approve " + n.mac + "? Only if its label shows the fingerprint " + n.fingerprint + "."))
                     return;
                   try {
-                    await call("POST", "/api/pairing/approve", "mac=" + n.mac);
+                    await call(
+                      "POST",
+                      "/api/pairing/approve",
+                      "mac=" + n.mac + "&fingerprint=" + encodeURIComponent(n.fingerprint),
+                    );
                     // Named now, so no sensor goes into service as a MAC address in every alert and notification.
                     for (let i = 1; i <= n.inputs; i++) {
                       const where = prompt(

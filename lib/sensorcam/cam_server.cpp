@@ -82,6 +82,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   } catch (const std::bad_alloc&) {
     failures_.note();
   }
+  video_.setNvr(events_.nvrIp().empty() ? 0 : inet_addr(events_.nvrIp().c_str()));
   video_.tick(now);
 }
 

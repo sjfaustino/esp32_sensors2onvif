@@ -56,12 +56,19 @@ void CamNodes::hello(const uint8_t mac[6], const uint8_t* data, int len, int8_t 
 }
 
 // Takes tens of milliseconds on the board, once per node.
-bool CamNodes::approve(const uint8_t mac[6], std::string& error) {
+bool CamNodes::approve(const uint8_t mac[6], const std::string& fingerprint, std::string& error) {
   PairRequest* request = nullptr;
   for (PairRequest& p : pairRequests_)
     if (p.used && memcmp(p.mac, mac, 6) == 0) request = &p;
   if (!request) {
     error = "that node is not waiting for approval";
+    return false;
+  }
+  // The key approved is the one whose fingerprint the person checked. A hello from the same address with another key,
+  // as anyone in radio range could send between the page showing the node and the press of Approve, replaces the one
+  // waiting; approved by address alone, it would pair a stranger's key in the node's place.
+  if (fingerprint != camKeyFingerprint(request->publicKey)) {
+    error = "that node's key changed since the page showed it: check its fingerprint again before approving";
     return false;
   }
   std::string node = camMacText(mac);

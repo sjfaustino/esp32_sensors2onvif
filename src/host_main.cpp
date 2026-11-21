@@ -100,6 +100,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
     hub.setDrainMs(command == "drain-fast" ? 3000 : CAM_HTTP_DRAIN_MS);
   } else if (command == "nvr-let-in") {  // how often the NVR took the place of another connection
     reply = std::to_string(hub.nvrLetIn());
+  } else if (command == "nvr-video-let-in") {  // and of another video connection
+    reply = std::to_string(hub.nvrVideoLetIn());
   } else if (command == "nvr-gone-fast" || command == "nvr-gone-normal") {  // so the test need not wait 3 minutes
     hub.alarm().setNvrGoneMs(command == "nvr-gone-fast" ? 3000 : 3 * 60 * 1000);
   } else if (command == "auth-on" || command == "auth-off") {
