@@ -24,28 +24,37 @@ static SensorCamServer** server_ = nullptr;
 static bool pending = false;
 static uint32_t requestedAt = 0;
 static RestartCause requested = RESTART_UNKNOWN;
-RTC_NOINIT_ATTR static uint32_t savedCause;  // kept through the restart
 static uint32_t lastCause = 0;
 
 // The core would otherwise accept every new firmware the moment it starts. loop() does that once it has proved itself.
 extern "C" bool verifyRollbackLater() { return true; }
 
 static bool unproven = false;
-// Set as an update starts and kept through the restart into it: whether the NVR was listening then, so the new firmware
-// must get it listening again before it is kept. A random value after a power cut is told apart by the mark.
-struct UpdateProof {
+
+// What is kept through a restart, in the memory a restart leaves alone: why the hub restarted itself, and, set as an
+// update starts, whether the NVR was listening then, so the new firmware must get it listening again before it is kept.
+// One object, the only one there, so it stays at the same place from one firmware to the next; and marked, so what a
+// power cut leaves, or a firmware that kept these elsewhere, is told apart from what this one wrote. Change the mark
+// with the layout.
+struct Kept {
   uint32_t mark;
-  bool needNvr;
+  uint32_t cause;  // a RestartCause
+  uint32_t updateMark;
+  uint32_t needNvr;
 };
-static const uint32_t UPDATE_PROOF_MARK = 0x50524F46;
-RTC_NOINIT_ATTR static UpdateProof updateProof;
+static const uint32_t KEPT_MARK = 0x4B505431;    // "KPT1"
+static const uint32_t UPDATE_MARK = 0x50524F46;  // "PROF"
+RTC_NOINIT_ATTR static Kept kept;
 
 void restartBegin(SensorCamServer** server) {
   server_ = server;
   esp_ota_img_states_t state;
   unproven = esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY;
-  lastCause = esp_reset_reason() == ESP_RST_SW ? savedCause : 0;
-  savedCause = 0;
+  bool ours = kept.mark == KEPT_MARK;
+  lastCause = esp_reset_reason() == ESP_RST_SW && ours && kept.cause < RESTART_CAUSES ? kept.cause : RESTART_UNKNOWN;
+  if (!ours) kept.updateMark = 0;  // not this firmware's, so not a proof either
+  kept.mark = KEPT_MARK;
+  kept.cause = RESTART_UNKNOWN;
 }
 
 void requestRestart(RestartCause cause) {
@@ -63,7 +72,8 @@ void restartWhenAsked() {
 
 void restartFor(RestartCause cause) {
   if (server_ && *server_) (*server_)->saveNow();
-  savedCause = cause;
+  kept.mark = KEPT_MARK;
+  kept.cause = cause;
   ESP.restart();
 }
 
@@ -117,19 +127,19 @@ void confirmFirmware() {
 }
 
 void noteUpdateStarting(bool nvrListening) {
-  updateProof.mark = UPDATE_PROOF_MARK;
-  updateProof.needNvr = nvrListening;
+  kept.updateMark = UPDATE_MARK;
+  kept.needNvr = nvrListening;
 }
 
 // Keeps a new firmware once it has proved itself, or goes back to the previous one; see CamRestartRules::firmware.
 void proveFirmware(const CamRestartRules::Pass& p, CamRestartRules& rules, bool espNowStarted) {
   if (!unproven || !server_ || !*server_) return;
   SensorCamServer* server = *server_;
-  bool needNvr = updateProof.mark == UPDATE_PROOF_MARK && updateProof.needNvr;
+  bool needNvr = kept.updateMark == UPDATE_MARK && kept.needNvr;
   CamFirmwareVerdict verdict = rules.firmware(p, espNowStarted, needNvr, server->nvrListeningNow());
   if (verdict == CAM_FIRMWARE_KEEP) {
     confirmFirmware();
-    updateProof.mark = 0;
+    kept.updateMark = 0;
     Serial.println("The new firmware has proved itself and is kept.");
   } else if (verdict == CAM_FIRMWARE_UNDO) {
     Serial.printf("The new firmware has not %s in 10 minutes; going back to the previous firmware.\n", !espNowStarted ? "started ESP-NOW"
@@ -137,7 +147,7 @@ void proveFirmware(const CamRestartRules::Pass& p, CamRestartRules& rules, bool 
                                                                                                            ? "stayed on the network"
                                                                                                            : "got the NVR listening again");
     server->saveNow();
-    updateProof.mark = 0;
+    kept.updateMark = 0;
     esp_ota_mark_app_invalid_rollback_and_reboot();
   }
 }
