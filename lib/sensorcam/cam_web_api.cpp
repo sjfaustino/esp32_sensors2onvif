@@ -205,46 +205,101 @@ static bool validMqttText(const std::string& s) {
   return ok;
 }
 
-// 1 for a good value, 0 for a bad one, -1 for a key it does not know, which no backup may hold.
-static int backupCheck(const std::string& key, const std::string& value) {
-  long long n = 0;
-  bool number = wholeNumber(value, n);
+static bool anyIpv4(const std::string& v) {
   uint32_t ip;
-  if (key == "net.onvif" || key == "net.web" || key == "net.rtsp" || key == "net.mqport") return number && n >= 1 && n <= 65535;
-  if (key == "net.mqhost") return value.empty() || parseIpv4(value, ip);
-  if (key == "net.rearm") return number && n >= 0 && n <= CAM_MAX_DISARM_MINUTES;
-  if (key == "net.mquser" || key == "net.mqpw") return validMqttText(value);
-  if (key == "net.ntp" || key == "net.rben" || key == "net.hlth" || key == "net.hooktx" || key == "net.hookal" || key == "net.hookpr")
-    return value == "0" || value == "1";
-  if (key == "net.hookdy") return number && n >= -1 && n <= 1439;  // the daily check's minute; -1 for none
-  if (key == "net.hookfm") return number && n >= CAM_HOOK_JSON && n <= CAM_HOOK_GOTIFY;
-  if (key == "net.hooktk") return value.empty() || validToken(value);
-  if (key == "net.hookwd") return number && n >= -1 && n <= 6;  // the weekly summary's day; -1 for none
-  if (key == "net.hookwm") return number && n >= 0 && n <= 1439;
-  if (key == "net.enkey") return value.size() >= 16 && validToken(value);
-  if (key == "net.pairkey") {
-    uint8_t k[CAM_X25519_LEN];
-    return camParseHex(value, k, sizeof(k));
-  }
-  if (key == "net.hook") return validHookUrl(value);
-  if (key == "net.tzoff") return number && validOffset(n);
-  if (key == "net.tzdst") return number && n >= 0 && n <= 2;
-  if (key == "net.rbday") return number && n >= -1 && n <= 6;
-  if (key == "net.rbmin") return number && n >= 0 && n <= 1439;
-  if (key == "net.name") return !value.empty() && validHubName(value);
-  if (key == "net.ntpsrv") return validNtpServer(value);
-  if (key == "net.token") return validToken(value);
-  if (key == "net.ip" || key == "net.mask" || key == "net.gw") return parseIpv4(value, ip);
-  if (key == "net.dns" || key == "net.nvrip") return value.empty() || parseIpv4(value, ip);
-  if (key == "net.webpw") return value.size() <= 63;
-  if (key == "net.hosts") return camHostListValid(value);
-  if (key == "wifi.ssid" || key == "wifi.ssid2" || key == "net.ipfor") return value.size() <= 32;
-  if (key == "wifi.password" || key == "wifi.password2") return value.empty() || (value.size() >= 8 && value.size() <= 63);
-  return -1;
+  return parseIpv4(v, ip);
+}
+static bool noneOrIpv4(const std::string& v) { return v.empty() || anyIpv4(v); }
+static bool zeroOrOne(const std::string& v) { return v == "0" || v == "1"; }
+static bool ssid(const std::string& v) { return v.size() <= 32; }
+static bool wifiPassword(const std::string& v) { return v.empty() || (v.size() >= 8 && v.size() <= 63); }
+
+const CamSetting CAM_SETTINGS[] = {
+    {"wifi", "ssid", 's', 0, 0, ssid},
+    {"wifi", "password", 's', 0, 0, wifiPassword},
+    {"wifi", "ssid2", 's', 0, 0, ssid},
+    {"wifi", "password2", 's', 0, 0, wifiPassword},
+    {"net", "onvif", 'u', 1, 65535, nullptr},
+    {"net", "web", 'u', 1, 65535, nullptr},
+    {"net", "rtsp", 'u', 1, 65535, nullptr},
+    {"net", "name", 's', 0, 0, [](const std::string& v) { return !v.empty() && validHubName(v); }},
+    {"net", "webpw", 's', 0, 0, [](const std::string& v) { return v.size() <= 63; }},  // empty in a backup from before it was required
+    {"net", "token", 's', 0, 0, validToken},
+    {"net", "ipfor", 's', 0, 0, ssid},  // the network a fixed address is for
+    {"net", "ip", 's', 0, 0, anyIpv4},
+    {"net", "mask", 's', 0, 0, anyIpv4},
+    {"net", "gw", 's', 0, 0, anyIpv4},
+    {"net", "dns", 's', 0, 0, noneOrIpv4},
+    {"net", "nvrip", 's', 0, 0, noneOrIpv4},
+    {"net", "ntp", 'b', 0, 1, nullptr},
+    {"net", "ntpsrv", 's', 0, 0, validNtpServer},
+    {"net", "tzoff", 'i', -720, 840,
+     [](const std::string& v) {
+       long long n = 0;
+       return camNumber(v, n) && validOffset(n);  // whole quarter hours
+     }},
+    {"net", "tzdst", 'i', 0, 2, nullptr},
+    {"net", "rben", 'b', 0, 1, nullptr},
+    {"net", "rbday", 'i', -1, 6, nullptr},  // the scheduled restart's day, 0 for Sunday; -1 every day
+    {"net", "rbmin", 'i', 0, 1439, nullptr},
+    {"net", "hlth", 'b', 0, 1, nullptr},
+    {"net", "enkey", 's', 0, 0, [](const std::string& v) { return v.size() >= 16 && validToken(v); }},
+    {"net", "hook", 's', 0, 0, validHookUrl},
+    {"net", "hooktx", 'b', 0, 1, nullptr},  // plain text, from before the format; still saved beside it
+    {"net", "hookal", 'b', 0, 1, nullptr},
+    {"net", "hookpr", 'b', 0, 1, nullptr},
+    {"net", "hookdy", 'i', -1, 1439, nullptr},  // the daily check's minute; -1 for none
+    {"net", "hosts", 's', 0, 0, camHostListValid},
+    {"net", "pairkey", 's', 0, 0,
+     [](const std::string& v) {
+       uint8_t k[CAM_X25519_LEN];
+       return camParseHex(v, k, sizeof(k));
+     }},
+    {"net", "rearm", 'u', 0, CAM_MAX_DISARM_MINUTES, nullptr},
+    {"net", "mqhost", 's', 0, 0, noneOrIpv4},
+    {"net", "mqport", 'u', 1, 65535, nullptr},
+    {"net", "mquser", 's', 0, 0, validMqttText},
+    {"net", "mqpw", 's', 0, 0, validMqttText},
+    {"net", "hookfm", 'i', CAM_HOOK_JSON, CAM_HOOK_GOTIFY, nullptr},
+    {"net", "hooktk", 's', 0, 0, [](const std::string& v) { return v.empty() || validToken(v); }},
+    {"net", "hookwd", 'i', -1, 6, nullptr},  // the weekly summary's day, 0 for Sunday; -1 for none
+    {"net", "hookwm", 'i', 0, 1439, nullptr},
+};
+const size_t CAM_SETTING_COUNT = sizeof(CAM_SETTINGS) / sizeof(CAM_SETTINGS[0]);
+
+const CamSetting* camSetting(const std::string& key) {
+  for (const CamSetting& s : CAM_SETTINGS)
+    if (key == std::string(s.space) + "." + s.key) return &s;
+  return nullptr;
 }
 
-bool camBackupValueValid(const std::string& key, const std::string& value) { return backupCheck(key, value) == 1; }
-bool camBackupKeyKnown(const std::string& key) { return backupCheck(key, "") != -1; }
+bool camSettingNumber(const std::string& key, const std::string& value, long long& out) {
+  const CamSetting* s = camSetting(key);
+  long long n = 0;
+  if (!s || s->kind == 's' || !wholeNumber(value, n) || n < s->min || n > s->max || (s->check && !s->check(value))) return false;
+  out = n;
+  return true;
+}
+
+bool camSettingValid(const std::string& key, const std::string& value) {
+  const CamSetting* s = camSetting(key);
+  if (!s) return false;
+  if (s->kind == 'b') return zeroOrOne(value);
+  long long n;
+  if (s->kind != 's') return camSettingNumber(key, value, n);
+  return s->check && s->check(value);
+}
+
+bool camBackupValueValid(const std::string& key, const std::string& value) { return camSettingValid(key, value); }
+
+// A setting's number, for one kept as an int.
+static bool settingInt(const char* key, const std::string& value, int& out) {
+  long long n = 0;
+  if (!camSettingNumber(key, value, n)) return false;
+  out = (int)n;
+  return true;
+}
+bool camBackupKeyKnown(const std::string& key) { return camSetting(key) != nullptr; }
 
 void CamWeb::handleApi(HttpConn& c, const std::string& method, const std::string& target, const std::string& headers, const char* body,
                        size_t bodyLen) {
@@ -484,7 +539,7 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
     t.ntp = r.field("mode") != "manual";
     t.server = r.field("server");
     long long offset = 0, dst = 0, epoch = 0;
-    bool ok = wholeNumber(r.field("offset"), offset) && validOffset(offset) && wholeNumber(r.field("dst"), dst) && dst >= 0 && dst <= 2;
+    bool ok = camSettingNumber("net.tzoff", r.field("offset"), offset) && camSettingNumber("net.tzdst", r.field("dst"), dst);
     if (t.ntp)
       ok = ok && validNtpServer(t.server);
     else
@@ -502,7 +557,7 @@ bool CamWeb::apiSystem(const ApiRequest& r) {
     c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("on", schedule_.on).num("day", schedule_.day).num("minute", schedule_.minute); }));
   } else if (r.is("POST", "/api/schedule")) {
     long long day = 0, minute = 0;
-    if (!wholeNumber(r.field("day"), day) || day < -1 || day > 6 || !wholeNumber(r.field("minute"), minute) || minute < 0 || minute > 1439) {
+    if (!camSettingNumber("net.rbday", r.field("day"), day) || !camSettingNumber("net.rbmin", r.field("minute"), minute)) {
       c.out = jsonFail(400, "check the day and the time");
     } else {
       CamSchedule s;
@@ -590,7 +645,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
     auto port = [&](const char* name, long long current) {  // absent keeps the current port; anything but a plain number is invalid
       std::string text = r.field(name);
       long long value = current;
-      return text.empty() || wholeNumber(text, value) ? value : -1LL;
+      return text.empty() || camSettingNumber(std::string("net.") + name, text, value) ? value : -1LL;
     };
     long long onvif = port("onvif", cfg_.onvifPort), web = port("web", cfg_.webPort), rtsp = port("rtsp", cfg_.rtspPort);
     std::string name = r.field("name"), protect = r.field("protect"), password = r.field("password");
@@ -600,7 +655,7 @@ bool CamWeb::apiNetwork(const ApiRequest& r) {
     // The hub always has a password, which guards the pages, ONVIF and the video: it can be changed, never turned off.
     // A new one has 8 characters or more. A hub that has none, from secrets.h or an older firmware, gets one here first.
     bool keeps = password.empty() && !webPassword_.empty();
-    if (onvif < 1 || onvif > 65535 || web < 1 || web > 65535 || rtsp < 1 || rtsp > 65535 || onvif == web || onvif == rtsp || web == rtsp) {
+    if (onvif < 0 || web < 0 || rtsp < 0 || onvif == web || onvif == rtsp || web == rtsp) {
       c.out = jsonFail(400, "ports must be 1 to 65535 and all different");
     } else if (!nameOk) {
       c.out = jsonFail(400, "the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen");
@@ -699,22 +754,22 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     w.problems = r.field("problems") == "1";
     std::string daily = r.field("daily"), weekDay = r.field("weekday"), weekMinute = r.field("weekminute");
     HttpUrl u;
-    bool urlOk = validHookUrl(w.url) && (w.url.empty() || parseHttpUrl(w.url, u));
+    bool urlOk = camSettingValid("net.hook", w.url) && (w.url.empty() || parseHttpUrl(w.url, u));
     if (!format.empty() && format != "json" && format != "text" && format != "ntfy" && format != "gotify") {
       c.out = jsonFail(400, "the format must be json, text, ntfy or gotify");
     } else if (!urlOk) {
       c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
     } else if (w.format == CAM_HOOK_NTFY && !w.url.empty() && (u.path.size() < 2 || u.path.find('?') != std::string::npos)) {
       c.out = jsonFail(400, "for ntfy, end the address with the topic, as in http://192.168.1.10/alarm");
-    } else if (!w.token.empty() && !validToken(w.token)) {
+    } else if (!camSettingValid("net.hooktk", w.token)) {
       c.out = jsonFail(400, "the token must be up to 64 letters, digits, dots, hyphens and underscores");
     } else if (w.format == CAM_HOOK_GOTIFY && !w.url.empty() && w.token.empty()) {
       c.out = jsonFail(400, "Gotify needs the application's token");
-    } else if (!daily.empty() && daily != "-1" && !camNumberIn(daily, 0, 1439, w.dailyMinute)) {
+    } else if (!daily.empty() && !settingInt("net.hookdy", daily, w.dailyMinute)) {
       c.out = jsonFail(400, "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none");
-    } else if (!weekDay.empty() && weekDay != "-1" && !camNumberIn(weekDay, 0, 6, w.weeklyDay)) {
+    } else if (!weekDay.empty() && !settingInt("net.hookwd", weekDay, w.weeklyDay)) {
       c.out = jsonFail(400, "the weekly summary's day must be 0 for Sunday to 6, or -1 for none");
-    } else if (!weekMinute.empty() && !camNumberIn(weekMinute, 0, 1439, w.weeklyMinute)) {
+    } else if (!weekMinute.empty() && !settingInt("net.hookwm", weekMinute, w.weeklyMinute)) {
       c.out = jsonFail(400, "the weekly summary's time must be 0 to 1439 minutes after midnight");
     } else {
       bool ok = store_->webhookSave(w);
@@ -759,7 +814,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     reply(c, 200, JSON_TYPE, overviewJson(millis_()));
   } else if (r.is("POST", "/api/arm/rearm")) {
     long long minutes = -1;
-    if (!wholeNumber(r.field("minutes"), minutes) || minutes < 0 || minutes > CAM_MAX_DISARM_MINUTES) {
+    if (!camSettingNumber("net.rearm", r.field("minutes"), minutes)) {
       c.out = jsonFail(400, "a disarm lasts 0 to 10080 minutes");
     } else {
       bool ok = store_->rearmSave((uint32_t)minutes);
@@ -776,7 +831,7 @@ bool CamWeb::apiSensors(const ApiRequest& r) {
     m.password = r.field("password");
     long long n = 1883;
     uint32_t ip;
-    bool portOk = (port.empty() || wholeNumber(port, n)) && n >= 1 && n <= 65535;
+    bool portOk = port.empty() || camSettingNumber("net.mqport", port, n);
     if (!m.host.empty() && !parseIpv4(m.host, ip)) {
       c.out = jsonFail(400, "enter the broker's IP address, such as 192.168.1.10; names are not supported");
     } else if (!portOk) {

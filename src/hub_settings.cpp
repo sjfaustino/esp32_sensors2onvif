@@ -263,16 +263,16 @@ bool forgetKeys() {
 
 // ---- backup and restore ----
 
-using BackupKey = CamBackupKey;  // the list, CAM_BACKUP_KEYS, is in cam_server.h beside the check of each value
+using BackupKey = CamSetting;  // the list, CAM_SETTINGS, is in cam_web_api.cpp beside the check of each value
 
 std::string backupText() {
   std::string out = "sensorcam-backup 1\n";
-  for (const BackupKey& k : CAM_BACKUP_KEYS) {
+  for (const BackupKey& k : camSettings()) {
     withPrefs(k.space, [&](Preferences& p) {
       if (!p.isKey(k.key)) return true;
-      String value = k.type == 's'   ? p.getString(k.key, "")
-                     : k.type == 'u' ? String(p.getUShort(k.key, 0))
-                     : k.type == 'i' ? String(p.getInt(k.key, 0))
+      String value = k.kind == 's'   ? p.getString(k.key, "")
+                     : k.kind == 'u' ? String(p.getUShort(k.key, 0))
+                     : k.kind == 'i' ? String(p.getInt(k.key, 0))
                                      : String(p.getBool(k.key, false) ? 1 : 0);
       out += std::string(k.space) + "." + k.key + "=";
       char hex[4];
@@ -305,7 +305,7 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
     size_t eq = line.find('=');
     if (eq == std::string::npos) return false;
     const BackupKey* found = nullptr;
-    for (const BackupKey& k : CAM_BACKUP_KEYS)
+    for (const BackupKey& k : camSettings())
       if (line.compare(0, eq, std::string(k.space) + "." + k.key) == 0) found = &k;
     if (!found) return false;
     std::string value;
@@ -321,9 +321,9 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
 
 static bool writeBackupLine(const BackupLine& l) {
   return withPrefs(l.key->space, [&](Preferences& p) {
-    if (l.key->type == 's') return putText(p, l.key->key, l.value.c_str());
-    if (l.key->type == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
-    if (l.key->type == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
+    if (l.key->kind == 's') return putText(p, l.key->key, l.value.c_str());
+    if (l.key->kind == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
+    if (l.key->kind == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
     return p.putBool(l.key->key, l.value == "1") == 1;
   });
 }

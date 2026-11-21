@@ -6,29 +6,32 @@
 #include "cam_json.h"
 #include "cam_soap.h"
 
-// Whether a value from a settings backup is one the web pages would also accept. key is "space.key", such as "net.web".
-bool camBackupValueValid(const std::string& key, const std::string& value);
-bool camBackupKeyKnown(const std::string& key);  // whether camBackupValueValid checks this key at all
-
-// The settings a backup holds, by their place in the hub's flash, and their kind: s text, u 16-bit number, i number,
-// b true or false. A key camBackupValueValid does not check makes every backup holding it unreadable, so a unit test
-// goes through them all: add a setting here and its check there.
-struct CamBackupKey {
+// Every setting the hub keeps in flash and a backup holds, in one table: its place, its kind, and what a good value is.
+// kind is s for text, u a 16-bit number, i a number, b true or false. A number is good within min and max; a text when
+// check says so. The pages' checks of what they save, the backup's checks of what it restores, and the list of what a
+// backup holds all come from here; tools/check_settings.py checks that hub_settings.cpp loads and saves each one.
+struct CamSetting {
   const char* space;
   const char* key;
-  char type;
+  char kind;
+  long long min, max;
+  bool (*check)(const std::string& value);
 };
-inline const CamBackupKey CAM_BACKUP_KEYS[] = {
-    {"wifi", "ssid", 's'},  {"wifi", "password", 's'}, {"wifi", "ssid2", 's'}, {"wifi", "password2", 's'}, {"net", "onvif", 'u'},
-    {"net", "web", 'u'},    {"net", "rtsp", 'u'},      {"net", "name", 's'},   {"net", "webpw", 's'},      {"net", "token", 's'},
-    {"net", "ipfor", 's'},  {"net", "ip", 's'},        {"net", "mask", 's'},   {"net", "gw", 's'},         {"net", "dns", 's'},
-    {"net", "nvrip", 's'},  {"net", "ntp", 'b'},       {"net", "ntpsrv", 's'}, {"net", "tzoff", 'i'},      {"net", "tzdst", 'i'},
-    {"net", "rben", 'b'},   {"net", "rbday", 'i'},     {"net", "rbmin", 'i'},  {"net", "hlth", 'b'},       {"net", "enkey", 's'},
-    {"net", "hook", 's'},   {"net", "hooktx", 'b'},    {"net", "hookal", 'b'}, {"net", "hookpr", 'b'},     {"net", "hookdy", 'i'},
-    {"net", "hosts", 's'},  {"net", "pairkey", 's'},   {"net", "rearm", 'u'},  {"net", "mqhost", 's'},     {"net", "mqport", 'u'},
-    {"net", "mquser", 's'}, {"net", "mqpw", 's'},      {"net", "hookfm", 'i'}, {"net", "hooktk", 's'},     {"net", "hookwd", 'i'},
-    {"net", "hookwm", 'i'},
+extern const CamSetting CAM_SETTINGS[];
+extern const size_t CAM_SETTING_COUNT;
+const CamSetting* camSetting(const std::string& key);  // key is "space.key", such as "net.web"; nullptr for none
+// Whether a value, as text, is good for that setting, as the page and a backup give it. False for an unknown key.
+bool camSettingValid(const std::string& key, const std::string& value);
+// The same for a number, read into out when it is good.
+bool camSettingNumber(const std::string& key, const std::string& value, long long& out);
+bool camBackupValueValid(const std::string& key, const std::string& value);  // camSettingValid, for the backup
+bool camBackupKeyKnown(const std::string& key);
+// The table, to go through with a for loop.
+struct CamSettingList {
+  const CamSetting* begin() const { return CAM_SETTINGS; }
+  const CamSetting* end() const { return CAM_SETTINGS + CAM_SETTING_COUNT; }
 };
+inline CamSettingList camSettings() { return {}; }
 
 const uint32_t CAM_MAX_DISARM_MINUTES = 7 * 1440;
 // A disarm with an end, read back after a restart: until is when it ends in seconds since 1970, or 1 when the clock was

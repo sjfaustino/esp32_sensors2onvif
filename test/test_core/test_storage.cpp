@@ -136,7 +136,7 @@ static void backup_values_follow_the_page_rules() {
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath("plan.json"));
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath("plan.png"));
   // Every setting a backup holds is checked, or no backup holding it could be restored.
-  for (const CamBackupKey& k : CAM_BACKUP_KEYS) TEST_ASSERT_TRUE_MESSAGE(camBackupKeyKnown(std::string(k.space) + "." + k.key), k.key);
+  for (const CamSetting& k : camSettings()) TEST_ASSERT_TRUE_MESSAGE(camBackupKeyKnown(std::string(k.space) + "." + k.key), k.key);
   TEST_ASSERT_FALSE(camBackupKeyKnown("net.unknown"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.hookdy", "-1"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.hookdy", "450"));
