@@ -19,6 +19,9 @@ python tools/e2e_test.py      # the end-to-end test, playing the NVR's part
 python tools/e2e_pages.py     # the pages in a real browser: pip install playwright==1.52.0, then
                               # python -m playwright install chromium
 pio run -e esp32_16mb         # the firmware for the board you have; CI builds the others
+sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS with clang, as CI runs them; on
+                              # Windows: powershell -ExecutionPolicy Bypass -File tools\fuzz.ps1, after
+                              # winget install LLVM.LLVM, with Visual Studio's C++ build tools
 ```
 
 [docs/how-it-works.md](docs/how-it-works.md) explains where things are and why, and

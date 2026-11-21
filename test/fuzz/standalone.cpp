@@ -1,6 +1,6 @@
 // For a computer without libFuzzer: runs fuzz_parsers.cpp's target on each file given, then on as many randomly changed
 // copies of them as asked. It finds far less than libFuzzer, which follows the code it reaches, but shows the target
-// builds and runs. tools/fuzz.sh uses libFuzzer where it can.
+// builds and runs. tools/fuzz.sh and tools/fuzz.ps1 use libFuzzer.
 //   standalone [-random N] file...
 #include <stdint.h>
 #include <stdio.h>

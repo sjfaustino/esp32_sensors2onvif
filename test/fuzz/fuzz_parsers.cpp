@@ -1,7 +1,8 @@
 // Every parser of what reaches the hub from outside, under libFuzzer with AddressSanitizer and UndefinedBehavior
 // Sanitizer: the radio's messages, the files kept on storage, HTTP's headers and logins, ONVIF's XML, MQTT, and what a
 // backup restores. The first byte picks the parser and the rest is its input. A parser may refuse anything; it must
-// never read out of bounds, overflow, or crash. tools/fuzz.sh builds and runs it, on Linux with clang, as CI does.
+// never read out of bounds, overflow, or crash. tools/fuzz.sh builds and runs it, on Linux with clang, as CI does;
+// tools/fuzz.ps1 does the same on Windows.
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
