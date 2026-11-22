@@ -197,7 +197,14 @@ const plan = (() => {
     input.click();
   };
   $("planDelete").onclick = async () => {
-    if (!confirm("Delete the floor plan and every sensor's place on it?")) return;
+    if (
+      !(await ask("Every sensor's place on it goes too.", {
+        title: "Delete the floor plan?",
+        ok: "Delete",
+        danger: true,
+      }))
+    )
+      return;
     try {
       // Either may be missing, such as places kept from a picture deleted before; the other still goes.
       const gone = await Promise.allSettled([

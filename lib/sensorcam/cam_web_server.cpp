@@ -487,7 +487,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
   // never have an alert refused.
   bool sensorReport = isGet && target.compare(0, 8, "/sensor?") == 0;
   if (c.web && !sensorReport && !knownHost(headerValue(headers, "host")))
-    return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network Manager > HTTP > Other names");
+    return refuse(421, "the hub does not answer to this name; open it by its IP address and add the name under Network > HTTP > Other names");
   if (isApi && !isGet) {  // a browser names the site a request came from, so another site cannot use this browser's login
     std::string origin = headerValue(headers, "origin");
     if (!origin.empty() && origin != "http://" + headerValue(headers, "host")) return refuse(403, "request from another site refused");

@@ -63,7 +63,7 @@
           ),
         ),
       );
-      $("espEmpty").textContent = j.nodes.length ? "" : "No sensor nodes yet. Add one under Sensors Manager > Sensors.";
+      $("espEmpty").textContent = j.nodes.length ? "" : "No sensor nodes yet. Add one under Sensors > Sensors.";
       $("nfList").replaceChildren(
         ...(j.nodeFirmware.length
           ? [headRow(["Chip", "Version", "Size", ""])]
@@ -119,7 +119,7 @@
       );
       loadPairing();
       $("espNone").textContent = j.unknown.length
-        ? "These are ignored until added under Sensors Manager > Sensors."
+        ? "These are ignored until added under Sensors > Sensors."
         : "None since the hub last started.";
     } catch (e) {}
   }
@@ -151,7 +151,12 @@
               el("button", {
                 textContent: "Approve",
                 onclick: async () => {
-                  if (!confirm("Approve " + n.mac + "? Only if its label shows the fingerprint " + n.fingerprint + "."))
+                  if (
+                    !(await ask("Only if its label shows the fingerprint " + n.fingerprint + ".", {
+                      title: "Approve " + n.mac + "?",
+                      ok: "Approve",
+                    }))
+                  )
                     return;
                   try {
                     await call(
@@ -161,12 +166,12 @@
                     );
                     // Named now, so no sensor goes into service as a MAC address in every alert and notification.
                     for (let i = 1; i <= n.inputs; i++) {
-                      const where = prompt(
-                        "Where is " +
-                          (n.inputs > 1 ? "sensor " + i + " of this node" : "this sensor") +
-                          "? For example: Back door. Alerts and notifications will use this name.",
-                        "",
-                      );
+                      const where = await ask("For example: Back door. Alerts and notifications will use this name.", {
+                        title: "Where is " + (n.inputs > 1 ? "sensor " + i + " of this node" : "this sensor") + "?",
+                        input: "",
+                        ok: "Save name",
+                        cancel: "Skip",
+                      });
                       if (where && where.trim())
                         await call("PUT", "/api/file?path=" + n.mac + "/" + i + "/name.txt", where.trim()).catch(
                           () => {},

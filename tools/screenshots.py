@@ -17,7 +17,7 @@ NAMES = {1: 'Front door', 2: 'Hall', 3: 'Kitchen window', 4: 'Garage', 5: 'Garde
 # The pages to take, with the element each must show first.
 PAGES = [
     ('overview', '#view-overview'),
-    ('sensors', '#view-sensors table'),
+    ('sensors', '#view-sensors .slots'),
     ('events', '#view-events table'),
     ('walk', '#view-walk'),
     ('espnow', '#view-espnow table'),
@@ -87,7 +87,7 @@ def main():
                                        viewport={'width': 390, 'height': 760}, device_scale_factor=2).new_page()
             dark.goto(URL + '#overview')
             dark.wait_for_selector('#wizard', state='visible')
-            dark.evaluate("document.getElementById('menu').scrollIntoView(false); scrollTo(0, document.getElementById('status').offsetTop - 8)")
+            dark.evaluate("document.getElementById('menu').scrollIntoView(false); scrollTo(0, document.getElementById('status').offsetTop - 60)")
             dark.wait_for_timeout(800)
             dark.screenshot(path=os.path.join(OUT, 'phone-dark.png'))
             print('took phone-dark')

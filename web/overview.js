@@ -1,7 +1,13 @@
 // The Overview: arming and disarming, what happened since the hub was armed, the hub at a glance, and Getting
 // started.
 (() => {
-  const { fill, readyItems, sensorLink, showStatus, repeat } = window.hub;
+  const { fill, chip, readyItems, sensorLink, showStatus, showMode, MODE_WORDS, repeat } = window.hub;
+  // The panel's icon for each mode: a closed lock, a house, an open lock. Fixed markup, never from the hub.
+  const ICONS = {
+    away: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    disarmed: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>',
+  };
   // Armed away, armed home, or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
   // A disarm can last a while and then end by itself, so forgetting to arm again cannot leave the house unwatched.
   const DISARM_TIMES = [
@@ -16,9 +22,10 @@
   ];
   for (const id of ["armFor", "rearmDefault"])
     $(id).replaceChildren(
-      ...DISARM_TIMES.map(([m, t]) => el("option", { value: m, textContent: (id == "armFor" ? "for " : "") + t })),
+      ...DISARM_TIMES.map(([m, t]) => el("option", { value: m, textContent: (id == "armFor" && m ? "for " : "") + t })),
     );
-  let armWasMode = null;
+  let armWasMode = null,
+    armMode = null; // as the hub last said, for a change to be undone back to
   function timeLeft(s) {
     const m = Math.ceil(s / 60);
     return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
@@ -26,23 +33,38 @@
   async function loadArm() {
     try {
       const a = await call("GET", "/api/arm");
+      armMode = a.mode;
+      $("armPanel").className = "armPanel " + a.mode;
+      $("armTitle").textContent = MODE_WORDS[a.mode] || a.mode;
       $("armState").textContent =
         a.mode == "away"
-          ? "armed away: every sensor counts"
+          ? "Every sensor counts."
           : a.mode == "home"
-            ? "armed home: interior sensors are logged but not sent to the NVR"
-            : "disarmed" +
-              (!a.timed
-                ? " until armed again"
+            ? "Interior sensors are logged but not sent to the NVR."
+            : (!a.timed
+                ? "Until armed again."
                 : a.left_s != null
-                  ? ", arms again in " + timeLeft(a.left_s)
-                  : ", arms again soon") +
-              ": alerts are logged but not sent to the NVR";
+                  ? "Arms again in " + timeLeft(a.left_s) + "."
+                  : "Arms again soon.") + " Alerts are logged but not sent to the NVR, so nothing is recorded.";
+      if ($("armIcon").dataset.mode != a.mode) {
+        $("armIcon").innerHTML =
+          '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          (ICONS[a.mode] || "") +
+          "</svg>";
+        $("armIcon").dataset.mode = a.mode;
+      }
+      showMode(a.mode);
       if (armWasMode !== a.mode) $("armFor").value = a.rearm; // only when the mode changes, so a choice being made stays
       armWasMode = a.mode;
       if (document.activeElement != $("rearmDefault")) $("rearmDefault").value = a.rearm;
       $("armAway").disabled = a.mode == "away";
       $("armHome").disabled = a.mode == "home";
+      for (const [id, m] of [
+        ["armAway", "away"],
+        ["armHome", "home"],
+        ["disarmBtn", "disarmed"],
+      ])
+        $(id).setAttribute("aria-pressed", a.mode == m);
       $("armWarn").hidden = a.mode != "disarmed";
     } catch (e) {}
   }
@@ -113,19 +135,26 @@
     try {
       const o = await call("GET", "/api/overview");
       const who = (s) => (s.name ? s.name + " (" + s.sensor + ")" : s.sensor);
-      fill("ovInfo", [
+      const listOf = (items, line) =>
+        el("span", null, ...(items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : ["None"]));
+      // Home Assistant's connection, as the hub words it: not set up, connected, connecting, or why it failed.
+      const mqtt = o.mqtt || "",
+        mqttChip =
+          mqtt == "not set up"
+            ? chip("Not set up", "none")
+            : mqtt == "connected"
+              ? chip("Connected", "ok")
+              : mqtt == "connecting"
+                ? chip("Connecting", "warn")
+                : chip(mqtt.charAt(0).toUpperCase() + mqtt.slice(1), "bad");
+      fill("ovNow", [
+        ["Alerts", listOf(o.active, (a) => [sensorLink(a.sensor, who(a)), a.past ? " (a past event replaying)" : ""])],
         [
-          "NVR",
-          !o.nvr.set
-            ? "No address set, so the hub cannot tell whether the NVR is listening"
-            : o.nvr.listening
-              ? "Listening" + (o.nvr.streams ? ", watching the video" : "")
-              : "Not listening: alerts are not reaching it",
-        ],
-        ["Home Assistant", o.mqtt],
-        [
-          "Notifications",
-          !o.webhook.set ? "Not set up" : o.webhook.last ? "Last message: " + o.webhook.last : "Nothing sent yet",
+          "Sensor problems",
+          listOf(o.problems, (p) => [
+            sensorLink(p.sensor, who(p)),
+            ": " + p.problem + (PROBLEM_HINT[p.problem] ? " (" + PROBLEM_HINT[p.problem] + ")" : ""),
+          ]),
         ],
         [
           "Last alert",
@@ -136,19 +165,27 @@
               (o.last.received ? ", " + new Date(o.last.received).toLocaleString() : "")
             : "None in the history",
         ],
-        ["Work dropped for lack of memory", o.dropped],
+        ["Work dropped for lack of memory", String(o.dropped)],
       ]);
-      const listOf = (items, line) =>
-        items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : ["None."];
-      $("ovActive").replaceChildren(
-        ...listOf(o.active, (a) => [sensorLink(a.sensor, who(a)), a.past ? " (a past event replaying)" : ""]),
-      );
-      $("ovProblems").replaceChildren(
-        ...listOf(o.problems, (p) => [
-          sensorLink(p.sensor, who(p)),
-          ": " + p.problem + (PROBLEM_HINT[p.problem] ? " (" + PROBLEM_HINT[p.problem] + ")" : ""),
-        ]),
-      );
+      fill("ovInfo", [
+        [
+          "NVR",
+          !o.nvr.set
+            ? chip("No address set", "warn")
+            : o.nvr.listening
+              ? chip("Listening" + (o.nvr.streams ? ", watching the video" : ""), "ok")
+              : chip("Not listening: alerts are not reaching it", "bad"),
+        ],
+        [
+          "Notifications",
+          !o.webhook.set
+            ? chip("Not set up", "none")
+            : o.webhook.last
+              ? "Last message: " + o.webhook.last
+              : "Nothing sent yet",
+        ],
+        ["Home Assistant", mqttChip],
+      ]);
       call("GET", "/api/events")
         .then((events) => ($("ovSince").textContent = sinceArmed(events, o.mode, o.nvr.set)))
         .catch(() => {});
@@ -161,7 +198,8 @@
           el(
             "li",
             null,
-            (i.ok ? "✓ " : "✗ ") + i.text,
+            el("span", { className: i.ok ? "yes" : "no", textContent: i.ok ? "✓ " : "✗ " }),
+            i.text,
             i.ok ? "" : el("a", { href: "#" + i.view, textContent: "Fix" }),
           ),
         ),
@@ -182,6 +220,8 @@
       next = left[0];
     $("wizard").hidden = !next || laterKey();
     $("wizBack").hidden = !$("wizard").hidden;
+    // While the step shown is the test, its button is the page's Test everything, so the page does not offer it twice.
+    $("testRow").hidden = !$("wizard").hidden && !!next.run;
     if (!next) return;
     const done = items.length - left.length;
     $("wizTitle").textContent = done
@@ -199,6 +239,7 @@
     } catch (e) {}
     $("wizard").hidden = true;
     $("wizBack").hidden = false;
+    $("testRow").hidden = false;
   };
   $("wizBack").onclick = (e) => {
     e.preventDefault();
@@ -208,33 +249,40 @@
     loadOverview();
     scrollTo(0, 0);
   };
-  async function setMode(mode, minutes) {
+  // Changes the mode and says so at the foot of the page, with a way back to the mode before. A refusal is said there
+  // too, with the hub's reason, and the page goes on showing the hub as it is.
+  async function setMode(mode, minutes, done) {
+    const before = armMode;
     try {
       await call("POST", "/api/arm", "mode=" + mode + "&for=" + (minutes || 0));
+      notice(done || MODE_WORDS[mode], {
+        undo: before && before != mode ? () => setMode(before, 0, "Back to " + MODE_WORDS[before].toLowerCase()) : null,
+      });
     } catch (e) {
-      alert(e.message);
+      notice("Not changed: " + e.message, { err: true });
     }
     loadArm();
   }
   $("armAway").onclick = () => setMode("away");
   $("armHome").onclick = () => setMode("home");
-  $("disarmBtn").onclick = () => {
+  $("disarmBtn").onclick = async () => {
     const minutes = $("armFor").value,
-      how = DISARM_TIMES.find(([m]) => m == minutes)[1];
+      how = DISARM_TIMES.find(([m]) => m == minutes)[1],
+      when = minutes == 0 ? how : "for " + how;
     if (
-      confirm(
-        "Disarm the hub " +
-          (minutes == 0 ? how : "for " + how) +
-          "? Alerts will be logged but not sent to the NVR, so nothing is recorded.",
-      )
+      await ask("Alerts will be logged but not sent to the NVR, so nothing is recorded.", {
+        title: "Disarm the hub " + when + "?",
+        ok: "Disarm",
+      })
     )
-      setMode("disarmed", minutes);
+      setMode("disarmed", minutes, "Disarmed " + when);
   };
   $("rearmDefault").onchange = async () => {
     try {
       await call("POST", "/api/arm/rearm", "minutes=" + $("rearmDefault").value);
+      notice("Saved");
     } catch (e) {
-      alert(e.message);
+      notice("Not saved: " + e.message, { err: true });
     }
     loadArm();
   };

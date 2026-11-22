@@ -120,7 +120,7 @@
           return !walkSeen ? "ok" : f && Date.now() - f.at < 5000 ? "alert" : f ? "fired" : "waiting";
         });
       if (!esp.nodes.length)
-        $("walkMsg").textContent = "No sensor nodes yet. Pair one under Sensors Manager > Nodes and pairing.";
+        $("walkMsg").textContent = "No sensor nodes yet. Pair one under Sensors > Nodes and pairing.";
     } catch (e) {}
   }
   async function walkAll(stop) {

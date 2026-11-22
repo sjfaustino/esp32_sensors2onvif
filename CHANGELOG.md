@@ -5,6 +5,18 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Changed
+
+- The Overview opens with the alarm's state in large type and its colour, red for armed away, amber for armed home and
+  green for disarmed, with an icon and large buttons; the bar across the top of every page shows the hub's name and the
+  same state.
+- The pages ask in the page, never in the browser's own boxes, with a red button for what cannot be undone, and confirm
+  a change in a notice at the foot of the page. A change of mode can be undone from it.
+- The Sensors page names each picture by what it is shown for, with a small preview of it or of what is shown in its
+  place, and each node by its sensors' names; the file names show only when asked for.
+- The menu's groups are Alarm, Sensors, Network, Recording and System, and the Overview groups what is happening now
+  and what the hub is connected to in two cards.
+
 ## [0.3.0] - 2026-11-21
 
 Update from 0.2.0: it closes ways to defeat the hub from nearby, below. None needs the hub password.

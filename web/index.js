@@ -12,7 +12,8 @@
           a = r.insertCell(),
           b = r.insertCell();
         a.textContent = k;
-        b.textContent = v;
+        if (v instanceof Node) b.append(v);
+        else b.textContent = v;
         return r;
       }),
     );
@@ -36,18 +37,24 @@
       return false;
     }
   }
+  // A label for a state at a glance. kind: ok, warn, bad or none (not set up).
+  const chip = (text, kind) => el("span", { className: "chip " + kind, textContent: text });
+  // The alarm's mode in the bar at the top of every page: away, home or disarmed.
+  const MODE_WORDS = { away: "Armed away", home: "Armed home", disarmed: "Disarmed" };
+  function showMode(mode) {
+    const c = $("modeChip");
+    if (!MODE_WORDS[mode]) return;
+    c.className = "chip " + mode;
+    c.textContent = MODE_WORDS[mode];
+    c.hidden = false;
+  }
   // The one timer a page refreshes itself with, stopped as another page shows: see repeat.
   let pageTimer = 0;
   function repeat(fn, ms) {
     clearInterval(pageTimer);
     pageTimer = setInterval(fn, ms);
   }
-  const headRow = (names) =>
-    el(
-      "tr",
-      null,
-      ...names.map((h) => el("th", { textContent: h, style: "text-align:left;font-size:13px;padding-right:6px" })),
-    );
+  const headRow = (names) => el("tr", null, ...names.map((h) => el("th", { textContent: h, className: "left" })));
   const sensorLink = (sensor, text) =>
     el("a", { href: "#sensor:" + sensor, textContent: text, onclick: (ev) => ev.stopPropagation() });
   // What must be right before the hub can be trusted, each with the page that puts it right and, for the steps shown
@@ -128,6 +135,7 @@
       attention.push(o.problems.length + (o.problems.length == 1 ? " sensor problem" : " sensor problems"));
     const todo = readyItems(o).filter((i) => !i.ok).length;
     if (todo) attention.push(todo + (todo == 1 ? " setup step" : " setup steps") + " left");
+    showMode(o.mode);
     const s = $("status");
     s.className = "status " + (bad.length ? "bad" : attention.length ? "attention" : "ok");
     s.textContent = bad.length
@@ -206,6 +214,9 @@
     ago,
     headRow,
     fill,
+    chip,
+    showMode,
+    MODE_WORDS,
     send,
     sensorLink,
     readyItems,
@@ -254,7 +265,11 @@
     .then((i) => {
       $("openWarn").hidden = i.password;
       if (!i.password) $("needPw").focus();
-      if (i.name) document.title = i.name.replace(/\.local$/, "") + ": alarm hub";
+      if (i.name) {
+        const name = i.name.replace(/\.local$/, "");
+        document.title = name + ": alarm hub";
+        $("hubTitle").textContent = name;
+      }
       $("armWarn").hidden = i.armed !== false;
     })
     .catch(() => {});

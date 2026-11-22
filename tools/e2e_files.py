@@ -128,9 +128,9 @@ def file_manager_tests(files, hub_files_free):
         check('ten wrong passwords shut that address out', raw_get('/api/info', source='127.0.0.2', password=PASSWORD) == 401)
         check('other addresses are not shut out', raw_get('/api/info', password=PASSWORD) == 200)
     check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES = ' in page and b'src="index.js"' not in page)
-    check('page offers a picture preview', b'title: "Preview"' in page)
-    check('page has the menu',all(t in page for t in [b'Network Manager', b'Sensors Manager', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
-                                                  b'data-view="espnow"', b'data-view="events"', b'System Manager', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'NVR Manager', b'data-view="nvr"', b'data-view="live">Live Video<']))
+    check('page offers to show a picture', b'"Show it"' in page)
+    check('page has the menu',all(t in page for t in [b'>Network</div>', b'>Sensors</div>', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
+                                                  b'data-view="espnow"', b'data-view="events"', b'>System</div>', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'>Recording</div>', b'data-view="nvr"', b'data-view="live">Live video<']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -437,7 +437,7 @@ def file_manager_tests(files, hub_files_free):
         check('hub text can be deleted', api('DELETE', '/api/file?path=text.json')[0] == 200)
     check('text path cannot be a folder', api('POST', f'/api/mkdir?path={text}')[0] == 400)
     full = api('GET', '/')
-    check('whole page arrives', full[1].rstrip().endswith(b'</html>') and b'Make and save 10 pictures' in full[1] and b'Use an image' in full[1], len(full[1]))
+    check('whole page arrives', full[1].rstrip().endswith(b'</html>') and b'Make and save 10 pictures' in full[1] and b'Make it from an image' in full[1], len(full[1]))
 
     check('picture can be deleted', api('DELETE', f'/api/file?path={path}')[0] == 200)
     check('deleted picture is gone', api('GET', f'/api/file?path={path}')[0] == 404)

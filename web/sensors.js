@@ -1,6 +1,5 @@
 // The Sensors page: nodes, sensors, their pictures and settings. Shared helpers such as $, el and call are here too.
 const STATES = ["active", "approaching", "away", "ltr", "rtl"];
-const FILES = STATES.flatMap((s) => [s + ".h264", s + "-delayed.h264"]);
 const MAX = 32768,
   $ = (id) => document.getElementById(id);
 function el(tag, props, ...kids) {
@@ -8,9 +7,78 @@ function el(tag, props, ...kids) {
   e.append(...kids);
   return e;
 }
+// A question asked in the page, in place of the browser's confirm, prompt and alert boxes, which cannot be styled and
+// look like an error. Resolves true when confirmed, or with the text typed when opts.input is given (null if not).
+// opts: title, ok (the confirming button's words), cancel, danger (a red button, for what cannot be undone), input (the
+// starting text, which asks for a line of text), max (its length), only (one button, to acknowledge).
+function ask(text, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const typed =
+      opts.input == null
+        ? null
+        : el("input", { type: "text", value: opts.input, maxLength: opts.max || 24, ariaLabel: text });
+    const ok = el("button", {
+        id: "askOk",
+        className: opts.danger ? "danger" : "primary",
+        textContent: opts.ok || "OK",
+      }),
+      cancel = el("button", { id: "askCancel", textContent: opts.cancel || "Cancel" });
+    const dlg = el(
+      "dialog",
+      { id: "ask", className: "ask" },
+      opts.title ? el("h2", { textContent: opts.title }) : "",
+      el("p", { id: "askText", textContent: text }),
+      typed || "",
+      el("div", { className: "askActs" }, opts.only ? "" : cancel, ok),
+    );
+    let answer = typed ? null : false;
+    ok.onclick = () => {
+      answer = typed ? typed.value : true;
+      dlg.close();
+    };
+    cancel.onclick = () => dlg.close();
+    if (typed) typed.onkeydown = (e) => e.key == "Enter" && ok.click();
+    dlg.onclose = () => {
+      dlg.remove();
+      resolve(answer);
+    };
+    document.body.append(dlg);
+    dlg.showModal();
+    // Enter on a dangerous question cancels, so a slip of the hand deletes nothing.
+    (typed || (opts.danger ? cancel : ok)).focus();
+  });
+}
+const tell = (text, title) => ask(text, { only: true, title });
+// A short notice at the foot of the page that goes by itself: a change saved, or a refusal with the hub's reason.
+// opts.undo, a function, adds an Undo button, and the notice stays longer to give time for it.
+let noticeTimer = 0;
+function notice(text, opts) {
+  opts = opts || {};
+  const t = $("toast");
+  if (!t) return;
+  clearTimeout(noticeTimer);
+  t.className = "toast" + (opts.err ? " err" : "");
+  t.replaceChildren(
+    el("span", { textContent: text }),
+    opts.undo
+      ? el("button", {
+          textContent: "Undo",
+          onclick: () => {
+            t.hidden = true;
+            opts.undo();
+          },
+        })
+      : "",
+  );
+  t.hidden = false;
+  noticeTimer = setTimeout(() => (t.hidden = true), opts.undo || opts.err ? 8000 : 4000);
+}
+// The Sensors page's messages: an error stays on the page, next to what it is about; anything else is a notice.
 function say(t, err) {
-  $("msg").textContent = t;
+  $("msg").textContent = err ? t : "";
   $("msg").className = err ? "err" : "";
+  if (!err) notice(t);
 }
 async function call(method, url, body) {
   const r = await fetch(url, { method, body });
@@ -46,20 +114,133 @@ function pick(path) {
   };
   i.click();
 }
-function del(path, what) {
-  if (confirm("Delete " + what + "?")) act(() => call("DELETE", "/api/file?path=" + path), "Deleted " + what);
+// what: what is deleted, as a question's title names it; more: what goes with it.
+async function del(path, what, more) {
+  if (await ask(more || "This cannot be undone.", { title: "Delete " + what + "?", ok: "Delete", danger: true }))
+    act(() => call("DELETE", "/api/file?path=" + path), "Deleted " + what);
 }
-function previewButton(path, name) {
-  return el("button", {
-    textContent: "\u{1F441}",
-    title: "Preview",
-    ariaLabel: "Preview " + name,
-    onclick: () => showPicture(path, name),
-  });
+// A choice of things to do, asked in the page: each choice is [words, what it does, true for a red button].
+function choose(title, text, choices) {
+  const dlg = el(
+    "dialog",
+    { id: "ask", className: "ask" },
+    el("h2", { textContent: title }),
+    text ? el("p", { textContent: text }) : "",
+    el(
+      "div",
+      { className: "askActs column" },
+      ...choices.map(([words, fn, danger]) =>
+        el("button", {
+          className: danger ? "del" : "",
+          textContent: words,
+          onclick: () => {
+            dlg.close();
+            fn();
+          },
+        }),
+      ),
+      el("button", { id: "askCancel", textContent: "Cancel", onclick: () => dlg.close() }),
+    ),
+  );
+  dlg.onclose = () => dlg.remove();
+  document.body.append(dlg);
+  dlg.showModal();
+}
+// What each picture is shown for, in words, by the state its file is named after.
+const STATE_WORDS = {
+  active: "Seen",
+  approaching: "Coming closer",
+  away: "Going away",
+  ltr: "Left to right",
+  rtl: "Right to left",
+};
+// One picture: a small preview of it, or of what is shown in its place, and a button with what can be done to it.
+// files maps each file of the sensor's folder to its size and whether it has a preview.
+function slot(base, state, delayed, files) {
+  const name = state + (delayed ? "-delayed" : "") + ".h264",
+    path = base + "/" + name,
+    first = delayed ? "active-delayed.h264" : "active.h264",
+    own = files[name],
+    same = !own && name != first && files[first],
+    shown = own || same,
+    words = (delayed ? "Past event: " : "Live alert: ") + STATE_WORDS[state].toLowerCase();
+  const thumb =
+    shown && shown.preview
+      ? el("img", {
+          className: "thumb" + (same ? " same" : ""),
+          alt: "",
+          src: "/api/file?path=" + (own ? path : base + "/" + first).replace(/\.h264$/, ".jpg"),
+        })
+      : el("span", {
+          className: "thumb" + (delayed ? " past" : "") + (same ? " same" : ""),
+          textContent: shown ? "YOUR PICTURE" : delayed ? "PAST EVENT" : "ALERT",
+        });
+  const what = own ? "Your picture" : same ? "Same as Seen" : "Built-in",
+    detail = own ? (own.size / 1024).toFixed(1) + " KB" : same ? "" : delayed ? "“PAST EVENT, CHECK LOGS”" : "“ALERT”";
+  const acts = [
+    [own ? "Upload another .h264 file" : "Upload a .h264 file", () => pick(path)],
+    ["Make it from an image", () => imageDialog(path)],
+  ];
+  if (own)
+    acts.push(
+      ["Show it", () => showPicture(path, words)],
+      [
+        "Download it",
+        () => el("a", { href: "/api/file?path=" + path, download: base.replace("/", "-") + "-" + name }).click(),
+      ],
+      [
+        "Delete it",
+        () =>
+          del(
+            path,
+            "this picture",
+            name == first
+              ? "The built-in picture is shown in its place."
+              : "The Seen picture, or the built-in one, is shown in its place.",
+          ),
+        true,
+      ],
+    );
+  return el(
+    "div",
+    { className: "slot" },
+    thumb,
+    el(
+      "div",
+      { className: "slotText" },
+      el("div", { textContent: what }),
+      detail ? el("div", { className: "slotDetail", textContent: detail }) : "",
+      el("code", { className: "fname", textContent: name }),
+    ),
+    el("button", {
+      textContent: "Change",
+      ariaLabel: "Change the picture for " + words,
+      onclick: () => choose(words, name, acts),
+    }),
+  );
+}
+// A sensor's ten pictures: a row for each way it can see someone, live and past.
+function slotGrid(base, files) {
+  const grid = el(
+    "div",
+    { className: "slots" },
+    el("span", { className: "gap" }),
+    el("span", { className: "slotHead", textContent: "Shown for a live alert" }),
+    el("span", { className: "slotHead", textContent: "Shown for a past event" }),
+  );
+  for (const s of STATES) {
+    grid.append(el("span", { className: "slotName", textContent: STATE_WORDS[s] }));
+    for (const delayed of [false, true]) {
+      const one = slot(base, s, delayed, files);
+      one.querySelector(".slotText").dataset.when = delayed ? "Past event" : "Live alert";
+      grid.append(one);
+    }
+  }
+  return grid;
 }
 // The hub stores H.264 only, so the browser decodes the picture with the same ffmpeg.wasm that makes them.
 async function showPicture(path, name) {
-  const img = el("img", { alt: name, style: "display:none;width:100%;max-width:640px" }),
+  const img = el("img", { alt: name, className: "pictureShown", hidden: true }),
     status = el("p", { textContent: "Loading the picture..." });
   const dlg = el(
     "dialog",
@@ -87,44 +268,17 @@ async function showPicture(path, name) {
         "The decoder could not load or could not read this picture. It needs internet access the first time.",
       );
     });
-    img.style.display = "block";
+    img.hidden = false;
     status.remove();
   } catch (e) {
     status.textContent = "Could not show this picture. " + e.message;
   }
 }
-function fileRow(path, name, size) {
-  const acts = el("td", { className: "acts" });
-  acts.append(
-    el("button", { textContent: size == null ? "Upload" : "Replace", onclick: () => pick(path) }),
-    " ",
-    el("button", { textContent: "Use an image", onclick: () => imageDialog(path) }),
-  );
-  if (size != null) {
-    acts.prepend(previewButton(path, name), " ");
-    acts.append(
-      " ",
-      el("a", { className: "btn", href: "/api/file?path=" + path, download: name, textContent: "Download" }),
-      " ",
-      el("button", { className: "del", textContent: "Delete", onclick: () => del(path, path) }),
-    );
-  }
-  return el(
-    "tr",
-    null,
-    el("td", { textContent: name }),
-    el("td", {
-      className: size == null ? "missing" : "",
-      textContent: size == null ? "uses a fallback" : (size / 1024).toFixed(1) + " KB",
-    }),
-    acts,
-  );
-}
 function field(v) {
   return el("input", { type: "text", value: v, maxLength: 24, size: 24 });
 }
 function textPanel(base, number) {
-  const d = el("details", null, el("summary", { textContent: "Change the text" }));
+  const d = el("details", null, el("summary", { textContent: "Change the words" }));
   let built = false;
   d.ontoggle = async () => {
     if (!d.open || built) return;
@@ -139,7 +293,7 @@ function textPanel(base, number) {
     const c = el("canvas", {
       width: 640,
       height: 360,
-      style: "width:240px;display:block;margin:8px 0;border-radius:4px",
+      className: "wordsCanvas",
     });
     const show = () => paint(c, RED, [f.label.value, f.active.value]);
     for (const k in f) f[k].oninput = show;
@@ -176,7 +330,7 @@ function settingsPanel(base, n) {
     max: 3600,
     value: n.hold || "",
     placeholder: "default",
-    style: "width:6em",
+    className: "short",
   });
   const from = el("input", { type: "time", value: n.quiet ? hm(n.quiet[0]) : "" }),
     to = el("input", { type: "time", value: n.quiet ? hm(n.quiet[1]) : "" });
@@ -224,10 +378,11 @@ function settingsPanel(base, n) {
       null,
       el("button", {
         textContent: "Send test alert",
-        onclick: () => {
+        onclick: async () => {
           if (
-            confirm(
-              "Send a test alert from this sensor? It goes to the NVR, Notifications and Home Assistant, whatever the alarm is set to, and is logged as a test.",
+            await ask(
+              "It goes to the NVR, Notifications and Home Assistant, whatever the alarm is set to, and is logged as a test.",
+              { title: "Send a test alert from this sensor?", ok: "Send test alert" },
             )
           )
             act(
@@ -268,7 +423,7 @@ function nodePanel(s) {
     max: 86400,
     value: s.late || "",
     placeholder: "30",
-    style: "width:7em",
+    className: "mid",
   });
   const silent = el("input", {
     type: "number",
@@ -276,7 +431,7 @@ function nodePanel(s) {
     max: 10080,
     value: s.silent ? Math.round(s.silent / 60) : "",
     placeholder: String(Math.round((s.autoSilent || 10800) / 60)),
-    style: "width:7em",
+    className: "mid",
   });
   const every = el("input", {
     type: "number",
@@ -284,9 +439,9 @@ function nodePanel(s) {
     max: 1440,
     value: s.reportEvery ? Math.round(s.reportEvery / 60) : "",
     placeholder: s.every && !s.reportEvery ? String(Math.round(s.every / 60)) : "",
-    style: "width:7em",
+    className: "mid",
   });
-  const repeat = el("input", { type: "number", min: 1, max: 60, value: s.repeat || "", style: "width:5em" });
+  const repeat = el("input", { type: "number", min: 1, max: 60, value: s.repeat || "", className: "tiny" });
   const seconds = (input) => (input.value ? String(Math.round(input.value * 60)) : "");
   const walk = el("span", {
     textContent: s.walkLeft ? " Running, " + Math.ceil(s.walkLeft / 60) + " min left." : "",
@@ -361,7 +516,7 @@ function nodePanel(s) {
   );
 }
 function clearPanel() {
-  const d = el("details", null, el("summary", { textContent: "Change the text" }));
+  const d = el("details", null, el("summary", { textContent: "Change the words" }));
   let built = false;
   d.ontoggle = async () => {
     if (!d.open || built) return;
@@ -389,7 +544,8 @@ function clearPanel() {
 }
 function render(t) {
   $("usage").textContent = t.total
-    ? (t.used / 1024).toFixed(0) +
+    ? "Picture storage: " +
+      (t.used / 1024).toFixed(0) +
       " KB of " +
       (t.total / 1024).toFixed(0) +
       " KB used. " +
@@ -397,35 +553,62 @@ function render(t) {
       " KB of what is left is kept for the event history, so pictures cannot use it."
     : "";
   $("fill").style.width = t.total ? (100 * t.used) / t.total + "%" : "0";
-  const c = $("clear");
-  c.textContent = "";
-  c.append(
-    "clear.h264 " + (t.clear == null ? "(built-in) " : (t.clear / 1024).toFixed(1) + " KB "),
-    el("button", { textContent: t.clear == null ? "Upload" : "Replace", onclick: () => pick("clear.h264") }),
-    " ",
-    el("button", { textContent: "Use an image", onclick: () => imageDialog("clear.h264") }),
-  );
-  if (t.clear != null)
-    c.append(
-      " ",
-      previewButton("clear.h264", "clear.h264"),
-      " ",
-      el("button", { className: "del", textContent: "Delete", onclick: () => del("clear.h264", "clear.h264") }),
+  // The picture shown when no alert is on, for every sensor.
+  const own = t.clear != null,
+    clearActs = [
+      [own ? "Upload another .h264 file" : "Upload a .h264 file", () => pick("clear.h264")],
+      ["Make it from an image", () => imageDialog("clear.h264")],
+    ];
+  if (own)
+    clearActs.push(
+      ["Show it", () => showPicture("clear.h264", "All clear")],
+      ["Delete it", () => del("clear.h264", "this picture", "The built-in one is shown in its place."), true],
     );
-  c.append(clearPanel());
+  $("clear").replaceChildren(
+    el(
+      "div",
+      { className: "slot" },
+      own && t.clearPreview
+        ? el("img", { className: "thumb", alt: "", src: "/api/file?path=clear.jpg" })
+        : el("span", { className: "thumb clear", textContent: own ? "YOUR PICTURE" : "ALL CLEAR" }),
+      el(
+        "div",
+        { className: "slotText" },
+        el("div", { textContent: "Shown when no alert is on" }),
+        el("div", {
+          className: "slotDetail",
+          textContent: own ? "Your picture, " + (t.clear / 1024).toFixed(1) + " KB" : "Built-in “ALL CLEAR”",
+        }),
+        el("code", { className: "fname", textContent: "clear.h264" }),
+      ),
+      el("button", {
+        textContent: "Change",
+        ariaLabel: "Change the all clear picture",
+        onclick: () => choose("Shown when no alert is on", "clear.h264", clearActs),
+      }),
+    ),
+    clearPanel(),
+  );
   const tree = $("tree");
   tree.textContent = "";
   if (!t.nodes.length)
     tree.append(el("p", { className: "missing", textContent: "No nodes yet. Add one by its MAC address." }));
   for (const s of t.nodes) {
-    const num = el("input", { type: "text", placeholder: "sensor no.", size: 9 });
+    const num = el("input", { type: "text", placeholder: "sensor no.", size: 9, ariaLabel: "Sensor number" });
+    // A node has no name of its own, so it goes by its sensors' names, with its address below.
+    const names = s.sensors.map((n) => n.name).filter((n) => n);
     const card = el(
-      "div",
+      "section",
       { className: "card" },
       el(
         "div",
         { className: "head" },
-        el("h2", { textContent: s.mac }),
+        el(
+          "div",
+          null,
+          el("h2", { className: "nodeName", textContent: names.length ? names.join(", ") : "Node " + s.mac }),
+          names.length ? el("div", { className: "mac", textContent: s.mac }) : "",
+        ),
         el(
           "span",
           null,
@@ -450,21 +633,27 @@ function render(t) {
           el("button", {
             className: "del",
             textContent: "Delete node",
-            onclick: () => del(s.mac, "node " + s.mac + " and all its pictures"),
+            onclick: () =>
+              del(
+                s.mac,
+                "the node " + (names.length ? names.join(", ") : s.mac),
+                "Its sensors, their pictures and settings go too. Their past alerts stay in the event history.",
+              ),
           }),
         ),
       ),
       nodePanel(s),
     );
     for (const n of s.sensors) {
-      const sizes = Object.fromEntries(n.files.map((f) => [f.name, f.size]));
+      const files = Object.fromEntries(n.files.map((f) => [f.name, f]));
       const base = s.mac + "/" + n.input;
       const nameField = el("input", {
         type: "text",
         value: n.name || "",
         maxLength: 24,
         size: 18,
-        placeholder: "Name",
+        placeholder: "Name, such as Back door",
+        ariaLabel: "Name of sensor " + n.input,
       });
       card.append(
         el(
@@ -472,27 +661,27 @@ function render(t) {
           { className: "sensor" },
           el(
             "div",
-            { className: "head" },
-            el(
-              "span",
-              null,
-              el("strong", { textContent: "Sensor " + n.input }),
-              " ",
-              nameField,
-              " ",
-              el("button", {
-                textContent: "Save name",
-                onclick: () =>
-                  act(() => call("PUT", "/api/file?path=" + base + "/name.txt", nameField.value), "Saved the name"),
-              }),
-            ),
+            { className: "sensorHead" },
+            el("span", { className: "sensorNo", textContent: "Sensor " + n.input }),
+            nameField,
+            el("button", {
+              textContent: "Save name",
+              onclick: () =>
+                act(() => call("PUT", "/api/file?path=" + base + "/name.txt", nameField.value), "Saved the name"),
+            }),
+            el("span", { className: "grow" }),
             el("button", {
               className: "del",
               textContent: "Delete sensor",
-              onclick: () => del(base, "sensor " + base + " and its pictures"),
+              onclick: () =>
+                del(
+                  base,
+                  "the sensor " + (n.name || base),
+                  "Its pictures and settings go too. Its past alerts stay in the event history.",
+                ),
             }),
           ),
-          el("table", null, el("tbody", null, ...FILES.map((f) => fileRow(base + "/" + f, f, sizes[f])))),
+          slotGrid(base, files),
           textPanel(base, n.input),
           settingsPanel(base, n),
         ),
@@ -501,6 +690,7 @@ function render(t) {
     tree.append(card);
   }
 }
+$("showNames").onchange = () => $("view-sensors").classList.toggle("showNames", $("showNames").checked);
 async function load() {
   try {
     render(await call("GET", "/api/tree"));

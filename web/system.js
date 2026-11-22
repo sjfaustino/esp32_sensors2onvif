@@ -109,24 +109,26 @@
   async function sysAction(url, body, done, after) {
     if ((await send($("sysMsg"), url, body, done)) && after) setTimeout(after, 12000);
   }
-  $("rebootNow").onclick = () => {
-    if (confirm("Restart the hub now? The video stops for a few seconds."))
+  $("rebootNow").onclick = async () => {
+    if (await ask("The video stops for a few seconds.", { title: "Restart the hub now?", ok: "Restart" }))
       sysAction("/api/reboot", "", "The hub is restarting.", () => location.reload());
   };
-  $("newKeys").onclick = () => {
+  $("newKeys").onclick = async () => {
     if (
-      confirm(
-        "Make new keys? Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts.",
+      await ask(
+        "Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts.",
+        { title: "Make new keys?", ok: "Make new keys", danger: true },
       )
     )
       sysAction("/api/newkeys", "confirm=yes", "New keys are being made. The hub is restarting.", () =>
         location.reload(),
       );
   };
-  $("resetAll").onclick = () => {
+  $("resetAll").onclick = async () => {
     if (
-      confirm(
-        "Erase the saved WiFi networks, ports, name, web password, fixed address and time settings? The hub will restart and may move to another address.",
+      await ask(
+        "The saved Wi-Fi networks, ports, name, web password, fixed address and time settings are erased. The hub restarts and may move to another address.",
+        { title: "Reset the settings?", ok: "Reset settings", danger: true },
       )
     )
       sysAction(
@@ -155,8 +157,8 @@
         el("button", {
           className: "del",
           textContent: "Delete crash report",
-          onclick: () => {
-            if (confirm("Delete the crash report?"))
+          onclick: async () => {
+            if (await ask("This cannot be undone.", { title: "Delete the crash report?", ok: "Delete", danger: true }))
               act(() => call("POST", "/api/crash/delete", "x=1"), "Deleted the crash report").then(loadDevice);
           },
         }),
@@ -293,9 +295,10 @@
       return;
     }
     if (
-      !confirm(
-        "Restore this backup? Its sensors, pictures and names are added, replacing any with the same name, then the settings are replaced and the hub restarts. It may move to another address.",
-      )
+      !(await ask(
+        "Its sensors, pictures and names are added, replacing any with the same name, then the settings are replaced and the hub restarts. It may move to another address.",
+        { title: "Restore this backup?", ok: "Restore" },
+      ))
     )
       return;
     try {
@@ -353,7 +356,13 @@
       m.textContent = "Choose a firmware .bin file first.";
       return;
     }
-    if (!confirm("Update the firmware? The hub restarts when it finishes, and the video stops until then.")) return;
+    if (
+      !(await ask("The hub restarts when it finishes, and the video stops until then.", {
+        title: "Update the firmware?",
+        ok: "Update",
+      }))
+    )
+      return;
     m.textContent = "Uploading. Keep this page open.";
     if (
       await send(
@@ -376,7 +385,12 @@
       m.textContent = "Choose a backup file first.";
       return;
     }
-    if (!confirm("Replace the hub's settings with this backup? It will restart and may move to another address."))
+    if (
+      !(await ask("The hub restarts and may move to another address.", {
+        title: "Replace the hub's settings with this backup?",
+        ok: "Restore",
+      }))
+    )
       return;
     send(m, "/api/restore", await f.text(), "Restored. The hub is restarting.");
   };

@@ -2,35 +2,38 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Alarm hub</title>
 <link rel="stylesheet" href="index.css"></head><body>
+<header class="top"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><span class="name" id="hubTitle">Alarm hub</span><a id="modeChip" class="chip" href="#overview" hidden></a></header>
+<div class="frame">
 <nav id="menu">
 <div class="first">Alarm</div>
 <div class="subs"><div class="item" data-view="overview">Overview</div><div class="item" data-view="events">Events</div><div class="item" data-view="walk">Walk test</div><div class="item" data-view="plan">Floor plan</div></div>
-<div class="first">Sensors Manager</div>
+<div class="first">Sensors</div>
 <div class="subs"><div class="item" data-view="sensors">Sensors</div><div class="item" data-view="espnow">Nodes and pairing</div><div class="item" data-view="notify">Notifications</div><div class="item" data-view="ha">Home Assistant</div></div>
-<div class="first">Network Manager</div>
-<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">WiFi</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
-<div class="first">NVR Manager</div>
-<div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live Video</div></div>
-<div class="first">System Manager</div>
-<div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device Info</div></div>
+<div class="first">Network</div>
+<div class="subs"><div class="item" data-view="network">Network</div><div class="item" data-view="wifi">Wi-Fi</div><div class="item" data-view="onvif">ONVIF</div><div class="item" data-view="http">HTTP</div><div class="item" data-view="rtsp">RTSP</div></div>
+<div class="first">Recording</div>
+<div class="subs"><div class="item" data-view="nvr">NVR</div><div class="item" data-view="live">Live video</div></div>
+<div class="first">System</div>
+<div class="subs"><div class="item" data-view="maintenance">Maintenance</div><div class="item" data-view="time">Time</div><div class="item" data-view="device">Device info</div></div>
 </nav>
 <main>
 <a id="status" class="status" href="#overview" hidden></a>
-<div id="openWarn" hidden class="warn"><p style="margin:0 0 6px"><b>Choose a password for the hub.</b> Without one, anyone on this network can disarm it, change it and watch its video. It is also the NVR's login for this camera, so enter it on the NVR's channel too. The hub restarts to use it.</p>
-<p class="portForm" style="margin:0"><label>Password <input id="needPw" type="password" maxlength="63" autocomplete="new-password"></label> <label>Again <input id="needPw2" type="password" maxlength="63" autocomplete="new-password"></label> <button id="saveNeedPw">Save</button></p><div class="portMsg" id="needPwMsg"></div></div>
+<div id="openWarn" hidden class="warn"><p class="tight"><b>Choose a password for the hub.</b> Without one, anyone on this network can disarm it, change it and watch its video. It is also the NVR's login for this camera, so enter it on the NVR's channel too. The hub restarts to use it.</p>
+<p class="portForm flush"><label>Password <input id="needPw" type="password" maxlength="63" autocomplete="new-password"></label> <label>Again <input id="needPw2" type="password" maxlength="63" autocomplete="new-password"></label> <button id="saveNeedPw">Save</button></p><div class="portMsg" id="needPwMsg"></div></div>
 <p id="armWarn" hidden class="warn">The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page.</p>
-<p id="nvrWarn" hidden class="warn">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under NVR Manager &gt; NVR.</p>
+<p id="nvrWarn" hidden class="warn">No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under Recording &gt; NVR.</p>
 <div class="view" id="view-overview" hidden><h1>Overview</h1>
+<section id="armPanel" class="armPanel" aria-live="polite"><div class="armHead"><span class="armIcon" id="armIcon" aria-hidden="true"></span><div><div class="armTitle" id="armTitle">…</div><div class="armSub" id="armState"></div></div></div>
+<div class="armBtns"><button id="armAway">Arm away</button><button id="armHome">Arm home</button><button id="disarmBtn">Disarm</button><select id="armFor" aria-label="How long a disarm lasts"></select></div>
+<p class="armSince" id="ovSince"></p></section>
+<p class="armDefault"><label>A disarm from Home Assistant lasts <select id="rearmDefault"></select></label></p>
 <div id="wizard" class="wizard" hidden><h2 id="wizTitle"></h2><div class="wizBar"><div id="wizDone"></div></div><p id="wizStep" class="wizStep"></p><p id="wizHelp" class="note"></p><p class="portForm"><button id="wizGo" class="primary"></button> <button id="wizLater">Hide for now</button></p></div>
-<p class="portForm" style="margin:0 0 4px">Alarm: <b id="armState">…</b></p>
-<p class="portForm" style="margin:0 0 4px"><button id="armAway">Arm away</button> <button id="armHome">Arm home</button> <button id="disarmBtn">Disarm</button> <select id="armFor"></select></p>
-<p class="portForm" style="margin:0 0 10px;font-size:14px">A disarm from Home Assistant lasts <select id="rearmDefault"></select></p>
-<p class="portMsg" id="ovSince"></p>
-<p class="portForm"><button id="testAll">Test everything</button> <span class="note">a test alert along the whole path, checked step by step</span></p>
-<table class="info" id="ovInfo"></table>
-<h2 class="sub">Alerts now</h2><div class="portMsg" id="ovActive"></div>
-<h2 class="sub">Sensor problems</h2><div class="portMsg" id="ovProblems"></div>
-<div id="ovReadyBox" hidden><h2 class="sub">Ready to protect?</h2><p class="note">What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips. <a href="#overview" id="wizBack">Show the steps one at a time</a></p><ul class="ready" id="ovReady"></ul></div></div>
+<div class="cards2">
+<section class="card"><h2 class="sec">Right now</h2><table class="info" id="ovNow"></table></section>
+<section class="card"><h2 class="sec">Connections</h2><table class="info" id="ovInfo"></table></section>
+</div>
+<p class="testRow" id="testRow"><button id="testAll">Test everything</button> <span class="note flush">a test alert along the whole path, checked step by step</span></p>
+<section id="ovReadyBox" class="card" hidden><h2 class="sec">Ready to protect?</h2><p class="note">What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips. <a href="#overview" id="wizBack">Show the steps one at a time</a></p><ul class="ready" id="ovReady"></ul></section></div>
 <div class="view" id="view-walk" hidden><h1>Walk test</h1>
 <p class="note">Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.</p>
 <div class="portForm"><button id="walkStart">Start on every node</button> <button id="walkStop">Stop</button></div>
@@ -56,19 +59,19 @@
 <label class="netRow"><span>MAC address</span><input id="netMac" disabled></label>
 <div class="portForm"><button id="saveNet">Save</button></div>
 <div class="portMsg" id="netMsg"></div></div>
-<div class="view" id="view-wifi" hidden><h1>WiFi</h1><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
+<div class="view" id="view-wifi" hidden><h1>Wi-Fi</h1><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
 <div class="view" id="view-onvif" hidden><h1>ONVIF</h1><div class="portForm"><label>Port <input id="onvifPort" type="number" min="1" max="65535"></label> <button id="saveOnvif">Save</button></div><div class="portMsg" id="onvifMsg"></div><table class="info" id="onvifInfo"></table></div>
 <div class="view" id="view-http" hidden><h1>HTTP</h1>
 <div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
 <div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
 <div class="portForm"><label>Other names <input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box"></label></div>
 <p class="note">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
-<div class="portForm" id="pwRow"><label>Password (user admin) <input id="webPw" type="password" maxlength="63" autocomplete="new-password" style="font:inherit;padding:4px 8px;border:1px solid #b9c0c8;border-radius:5px"></label></div>
+<div class="portForm" id="pwRow"><label>Password (user admin) <input id="webPw" type="password" maxlength="63" autocomplete="new-password"></label></div>
 <div class="portForm"><button id="saveWeb">Save</button></div>
 <div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
 <div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
 <div class="view" id="view-espnow" hidden><h1>Nodes and pairing</h1><p class="note">The sensor nodes, which talk to the hub over ESP-NOW, a radio link of their own beside Wi-Fi.</p><table class="info" id="espInfo"></table>
-<label class="portForm" style="display:block;margin-top:10px"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
+<label class="portForm spaced"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
 <p class="portForm"><button id="addSensor">Add a sensor</button> <span class="note">a node, or a device that calls a web address</span></p>
 <h2 class="sub">Pairing</h2>
 <p class="note">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
@@ -84,8 +87,8 @@
 <label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
 <div class="portForm"><button id="saveNvr">Save</button></div>
 <div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
-<div class="view" id="view-live" hidden><h1>Live Video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" style="display:none;width:100%;max-width:640px;background:#000"><div class="portMsg" id="liveFile"></div></div>
-<div class="view" id="view-events" hidden><h1>Events</h1><p style="margin:0 0 8px"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><p class="portForm">Show <select id="evSensor"><option value="">every sensor and the hub</option></select> <select id="evKind"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select></p>
+<div class="view" id="view-live" hidden><h1>Live video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" class="liveImg off"><div class="portMsg" id="liveFile"></div></div>
+<div class="view" id="view-events" hidden><h1>Events</h1><p class="portForm"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><p class="portForm">Show <select id="evSensor"><option value="">every sensor and the hub</option></select> <select id="evKind"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select></p>
 <table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
 <div class="view" id="view-notify" hidden><h1>Notifications</h1>
 <p class="note">The hub can send each alert to a server on your network: an ntfy or Gotify server, which passes it on to your phone, a Home Assistant webhook, or Node-RED. Use http:// and an IP address; https and names are not supported, so services on the internet need a server on your network in between.</p>
@@ -113,8 +116,8 @@
 <div class="portForm"><button id="saveMq">Save</button></div>
 <div class="portMsg" id="mqMsg"></div><table class="info" id="mqInfo"></table></div>
 <div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
-<h2 style="font-family:inherit;margin-bottom:6px">Scheduled restart</h2>
-<label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" style="width:auto"></label>
+<h2 class="plain">Scheduled restart</h2>
+<label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" class="box"></label>
 <label class="netRow"><span>Day</span><select id="rbDay"><option value="-1">Every day</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
 <label class="netRow"><span>Time</span><input id="rbTime" type="time"></label>
 <p class="note">The restart waits while an alert is on, and is skipped until the next time if the alert lasts over 30 minutes.</p>
@@ -147,17 +150,19 @@
 <label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
 <div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
 <div class="portMsg" id="tmMsg"></div>
-<p class="note" style="margin:0">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
-<div class="view" id="view-device" hidden><h1>Device Info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
+<p class="note flush">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
+<div class="view" id="view-device" hidden><h1>Device info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
-<div id="usage"></div><div class="bar"><div id="fill" style="width:0"></div></div>
+<div id="usage"></div><div class="bar"><div id="fill"></div></div>
 <div id="msg"></div>
-<div class="card head"><span><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20"> <button id="addNode">Add node</button></span>
-<span id="clear"></span></div>
+<section class="card"><h2 class="sec">All clear picture</h2><div id="clear"></div></section>
+<p class="portForm"><input id="mac" type="text" placeholder="AA:BB:CC:DD:EE:01" size="20" aria-label="MAC address of a node to add"> <button id="addNode">Add node</button></p>
 <div id="tree"></div>
-<p><button id="makeThumbs">Create missing thumbnails</button></p>
-</div></main>
+<p class="portForm"><button id="makeThumbs">Create missing thumbnails</button></p>
+<label class="namesToggle"><input id="showNames" type="checkbox"> Show the file names, as the file manager and downloads use them</label>
+</div></main></div>
+<div id="toast" class="toast" role="status" hidden></div>
 <script type="text/plain" id="encoder-worker" src="encoder-worker.js"></script>
 <script src="sha256.js"></script>
 <script src="pictures.js"></script>

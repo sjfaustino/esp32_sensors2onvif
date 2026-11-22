@@ -81,7 +81,7 @@
         liveUrl = url;
         const img = $("liveImg");
         img.src = url;
-        img.style.display = "block";
+        img.classList.remove("off");
         liveSeq = seq;
         m.className = "portMsg";
         m.textContent = "";
@@ -143,9 +143,10 @@
       mode = $("netMode").value,
       ip = $("netIp").value;
     if (
-      !confirm(
-        "The hub will restart to apply this. A fixed address is used only on the WiFi network it is connected to now. Continue?",
-      )
+      !(await ask("A fixed address is used only on the Wi-Fi network it is connected to now.", {
+        title: "Restart the hub to use this address?",
+        ok: "Save and restart",
+      }))
     )
       return;
     if (
@@ -184,31 +185,32 @@
   async function savePort(field, input, msg, warning) {
     const v = $(input).value,
       m = $(msg);
-    if (!confirm(warning)) return;
+    if (!(await ask(warning, { title: "Restart the hub to use this port?", ok: "Save and restart" }))) return;
     const j = await send(m, "/api/settings", field + "=" + encodeURIComponent(v), (j) =>
       j.restart ? "Saved. The hub is restarting." : "Saved.",
     );
     if (j && j.restart) setTimeout(() => location.reload(), 10000);
   }
   $("saveRtsp").onclick = () =>
-    savePort(
-      "rtsp",
-      "rtspPort",
-      "rtspMsg",
-      "The hub will restart and the video will stop briefly. A viewer such as VLC will need the new address. Continue?",
-    );
+    savePort("rtsp", "rtspPort", "rtspMsg", "The video stops briefly. A viewer such as VLC will need the new address.");
   $("saveOnvif").onclick = () =>
     savePort(
       "onvif",
       "onvifPort",
       "onvifMsg",
-      "The hub will restart, and the NVR will lose this camera until its channel is set to the new port. Continue?",
+      "The NVR will lose this camera until its channel is set to the new port.",
     );
   $("saveWeb").onclick = async () => {
     const m = $("webMsg"),
       port = $("webPort").value,
       name = $("hubName").value;
-    if (!confirm("A new port or name restarts the hub; a new password or other names apply at once. Continue?")) return;
+    if (
+      !(await ask("A new port or name restarts the hub; a new password or other names apply at once.", {
+        title: "Save these settings?",
+        ok: "Save",
+      }))
+    )
+      return;
     const j = await send(
       m,
       "/api/settings",

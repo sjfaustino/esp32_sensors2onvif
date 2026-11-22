@@ -37,7 +37,7 @@
   async function testEverything() {
     const esp = await call("GET", "/api/espnow");
     if (!esp.nodes.length) {
-      alert("Add a sensor first: there is nothing to test with.");
+      tell("Add a sensor first: there is nothing to test with.", "No sensor yet");
       return;
     }
     const choose = el(
@@ -88,7 +88,7 @@
       await wait(7000); // the hub checks delivery 5 s after an alert starts
       const [events, o] = await Promise.all([call("GET", "/api/events"), call("GET", "/api/overview")]);
       const missed = events.some((e) => !before.has(eventKey(e)) && e.kind == 5 && e.sensor == key);
-      if (!o.nvr.set) nvr(null, "no NVR address is set, so the hub cannot tell (NVR Manager > NVR)");
+      if (!o.nvr.set) nvr(null, "no NVR address is set, so the hub cannot tell (Recording > NVR)");
       else if (missed || !o.nvr.listening)
         nvr(false, "the NVR is not listening; the hub keeps the alert and plays it once it does");
       else nvr(true);
@@ -121,7 +121,7 @@
       hub.loadOverview();
     };
   }
-  $("testAll").onclick = () => testEverything().catch((e) => alert(e.message));
+  $("testAll").onclick = () => testEverything().catch((e) => notice(e.message, { err: true }));
 
   // ---- Add a sensor ----
 
@@ -175,7 +175,7 @@
     const info = await call("GET", "/api/info");
     const name = el("input", { placeholder: "Back door", maxLength: 40 }),
       mac = el("input", { value: madeUpMac(), size: 20 }),
-      input = el("input", { type: "number", value: 1, min: 1, max: 255, style: "width:5em" }),
+      input = el("input", { type: "number", value: 1, min: 1, max: 255, className: "tiny" }),
       msg = el("p", { className: "portMsg" }),
       create = el("button", { textContent: "Add it" });
     body.replaceChildren(

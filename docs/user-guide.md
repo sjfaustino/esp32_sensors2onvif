@@ -46,7 +46,7 @@ printed on the serial console once Wi-Fi is up, as `http://<address>/`. Add the 
 
 ### IP address
 
-**Network Manager > Network** switches between DHCP and a fixed address. A fixed address is used only on the WiFi network the
+**Network > Network** switches between DHCP and a fixed address. A fixed address is used only on the WiFi network the
 hub was connected to when it was saved, and other networks use DHCP. If the router cannot be found from a fixed address, the
 hub forgets it about two minutes after joining and goes back to DHCP.
 
@@ -64,7 +64,7 @@ whether it is the main or the backup. A new main network moves the previous main
 in `secrets.h` and survive reflashing.
 
 The setup network closes as soon as the hub rejoins Wi-Fi, and the hub keeps trying both networks while nobody is connected
-to the setup network. Networks can also be changed at any time from **Network Manager > WiFi** on the web page.
+to the setup network. Networks can also be changed at any time from **Network > Wi-Fi** on the web page.
 
 ## Events and alerts
 
@@ -150,11 +150,15 @@ re-arm timer, armed away, so forgetting to arm it cannot leave the house unwatch
 off. A timed disarm survives a restart, but if the hub cannot tell how much of it is left, because its clock was not set
 when the disarm began or is not set within two minutes of the restart, it arms itself at once.
 
-**Alarm > Overview**, the page the hub opens on, shows at a glance whether it is armed, any alert running now, whether
-the NVR is listening, how the Home Assistant connection and the last notification went, the last alert, and any sensor
-that is silent, on a low battery, on a weak signal or having messages refused. The arm controls are there too.
+**Alarm > Overview**, the page the hub opens on, starts with the alarm's state in large type and its colour: red for
+armed away, amber for armed home, green for disarmed, with an icon and words that say the same, and the buttons to
+change it below. The mode's own button is filled in. A change is confirmed in a notice at the foot of the page, with
+**Undo** to go back to the mode before; a disarm asks first, in the page. Under it, **Right now** lists any alert
+running and any sensor that is silent, on a low battery, on a weak signal or having messages refused, and the last
+alert, and **Connections** whether the NVR is listening and how the notifications and Home Assistant are set up.
 
-A line at the top of every page sums it up: green when all is well, yellow when something needs attention (disarmed, a
+The bar across the top of every page shows the hub's name and the alarm's state in the same colours, and links to the
+Overview. A line below it sums the hub up: green when all is well, yellow when something needs attention (disarmed, a
 sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
 It links to the Overview. Until everything is done, the Overview starts with **Getting started**: the next step left,
 what to do and why, and a button that goes there. The steps are a hub password of your own rather than one built into
@@ -203,7 +207,7 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 
 ![The Notifications page](images/notify.png)
 
-**Sensors Manager > Notifications** sends each alert, and optionally each node problem, to a server on your network.
+**Sensors > Notifications** sends each alert, and optionally each node problem, to a server on your network.
 **Send to** chooses how:
 
 - **ntfy**: a self-hosted [ntfy](https://ntfy.sh) server passes each message to the ntfy app on your phone. The address
@@ -243,7 +247,7 @@ time; up to 8 wait, and the page shows how the last one went.
 
 ## Home Assistant
 
-**Sensors Manager > Home Assistant** connects the hub to an MQTT broker, and Home Assistant then finds the hub and each
+**Sensors > Home Assistant** connects the hub to an MQTT broker, and Home Assistant then finds the hub and each
 sensor by itself. In Home Assistant, install the Mosquitto broker add-on and the MQTT integration, make a Home Assistant
 user for the hub, and enter the broker's IP address, that user and its password here. The hub has no name lookup, so the
 address must be an IP address, and the connection is not encrypted.
@@ -378,7 +382,7 @@ that have none. A picture without a thumbnail shows the built-in All Clear, Aler
 ## Security
 
 One hub password, with the user name `admin`, protects the web page, ONVIF, RTSP and the setup network. It is chosen
-on the setup page the first time, and can be changed, but not turned off, under **Network Manager > HTTP**; a new one
+on the setup page the first time, and can be changed, but not turned off, under **Network > HTTP**; a new one
 has 8 to 63 characters. A hub built from source can take its first one from `WEB_PASSWORD` in `secrets.h`. An NVR needs
 the same user and password on its channel. ONVIF clients may ask for the clock and capabilities before logging in, as
 ONVIF requires. A hub that has no password, from an older firmware that could turn it off, asks for one at the top of
@@ -397,7 +401,7 @@ Passwords travel over the network unencrypted, as HTTP, ONVIF and RTSP between l
 the hub's flash unencrypted, so someone who takes the hub can read the Wi-Fi password, the hub password and the ESP-NOW key.
 Keep the hub out of reach.
 
-## System Manager
+## System
 
 ![Maintenance](images/maintenance.png)
 
@@ -427,7 +431,7 @@ keep backups as safe as the hub itself, and use **New keys** if one gets out.
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
-**Device Info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
+**Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
 The firmware version is the git commit it was built from, such as `c336d03`, or the tag on that commit; `-modified`
 means it was built with changes that were not committed.
 
@@ -448,10 +452,10 @@ PATH. Use `--chip esp32s3` for an S3 board.
 
 ![The Nodes and pairing page](images/espnow.png)
 
-**Sensors Manager > Nodes and pairing** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
+**Sensors > Nodes and pairing** shows the hub's MAC address, WiFi channel and ESP-NOW key, which sensor nodes need, and lists every
 sensor node with its state, last contact, battery, signal strength, last report number and refused messages. A signal marked
 "weak" has averaged below -80 dBm over the last few messages; it is cleared above -75 dBm. Only nodes added under
-**Sensors Manager > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Reports from anything
+**Sensors > Sensors** are listed as nodes, and the page refreshes itself every few seconds. Reports from anything
 else are ignored, and the eight most recent senders whose reports were signed with the ESP-NOW key appear under **Unknown
 senders** until the hub restarts or they are added; a sender with the wrong key is not listed.
 A node that sends node info also shows its sensor's kind, its firmware and chip, how often and why it last restarted, how
@@ -480,10 +484,10 @@ hub's Wi-Fi is unaffected. It does not use LR for any node yet.
 
 ![The NVR page](images/nvr.png)
 
-**NVR Manager > NVR** stores the NVR's IP address and shows whether that NVR has the video and motion events open. The address
+**Recording > NVR** stores the NVR's IP address and shows whether that NVR has the video and motion events open. The address
 is used only for that status: the NVR connects to the hub, and the hub never contacts the NVR.
 
-**NVR Manager > Live Video** shows the picture the hub is sending to the NVR and names the file it came from. The page asks
+**Recording > Live video** shows the picture the hub is sending to the NVR and names the file it came from. The page asks
 once a second which picture is being sent, and your browser decodes a new one only when it changes, so no extra video stream
 runs. The first use on a device needs internet access to load the decoder, about 30 MB.
 
@@ -510,19 +514,26 @@ The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with 
 finally to the built-in red "ALERT" or amber "PAST EVENT, CHECK LOGS", so a sensor with no pictures still makes motion
 records. A past event never falls back to a live picture.
 
+The page names each node by its sensors, with its MAC address below, and shows each sensor's ten pictures by what
+they are shown for: seen, coming closer, going away, left to right and right to left, each for a live alert and for a
+past event. Each has a small preview of the picture, or of the one shown in its place ("Same as Seen" or "Built-in").
+Its **Change** button uploads, makes, shows, downloads or deletes it. **Show the file names**, at the foot of the
+page, adds the names above to each picture. The page asks in the page before deleting anything, and says what it
+saved in a notice at the foot of the page.
+
 The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
 without a reboot. Pictures cannot use the last of the storage, which is kept for the event history; the Sensors page
 shows how much. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
 refused, because the NVR cannot follow a format change mid-stream.
 
-To change the words, open **Change the text** under a sensor, or beside `clear.h264`, and save. Your browser makes the
+To change the words, open **Change the words** under a sensor, or under the all clear picture, and save. Your browser makes the
 pictures and uploads them, so it needs internet access: it downloads the ffmpeg.wasm encoder from jsDelivr, about 30 MB
 the first time. The hub remembers the words in a `text.json` file in the same folder.
 
-To use a photo or drawing instead, click **Use an image** on any picture. The browser opens the image, fits it to
+To use a photo or drawing instead, click **Change** on any picture, then **Make it from an image**. The browser opens the image, fits it to
 640x360 with black bars if the shape differs, adds any text you type, and encodes it. Detailed images are made softer
 step by step until they fit the 32 KB limit, and a preview shows the result before you save. Only the finished picture
-is stored on the hub, not the original. Saving **Change the text** replaces all 10 of that sensor's pictures,
+is stored on the hub, not the original. Saving **Change the words** replaces all 10 of that sensor's pictures,
 including any images.
 
 Without internet, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
@@ -593,7 +604,7 @@ made-up one offered, and it shows the exact address the device must call, with t
 button; then it waits for the device's first report and says when it arrives.
 
 Port 8899 is for ONVIF only. The web port, 80, also takes plain HTTP requests, which are useful for testing without a sensor.
-The ports can be changed on the web page, under **Network Manager > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's
+The ports can be changed on the web page, under **Network > ONVIF**, **HTTP** and **RTSP**. The HTTP page also sets the hub's
 `.local` name, the web password and the other names the hub answers to. These are saved on the board and replace
 the values in `config.h` and `secrets.h`. A new port or name takes effect after the hub restarts by itself, as every
 service listens on or announces them; a new password or other names apply at once, with no restart, and the page asks

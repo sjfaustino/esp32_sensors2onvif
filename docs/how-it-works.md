@@ -160,7 +160,9 @@ Every time the hub waits for is in `lib/sensorcam/cam_timing.h`, each marked as 
 ## Changing the web pages
 
 The pages are ordinary files in `web/`: `index.html` is the main page and `setup.html` the Wi-Fi setup page. The main
-page's scripts are `sensors.js` (the Sensors page, and the `$`, `el` and `call` the others use), `pictures.js` (making
+page's scripts are `sensors.js` (the Sensors page, and the `$`, `el`, `call`, `ask`, `choose` and `notice` the others
+use: a question or a choice asked in the page, in place of the browser's own boxes, which the pages never use, and the
+notice at the foot of the page), `pictures.js` (making
 pictures), `sha256.js` (checking the downloaded encoder), `encoder-worker.js` (the encoder's worker, carried in the page as
 text), `plan.js`, `sensor.js` and `assist.js` (the floor plan, a sensor's own page and adding a sensor), `index.js` (the
 menu, which page shows, the status line and the helpers the rest share as `window.hub`), and a script for each area of
@@ -170,4 +172,6 @@ with `hub.repeat`, whose one timer stops when another page opens. Opening `web/i
 without a hub. Every build runs `tools/embed_web.py`, which puts each stylesheet and script a page links inside it, gzips
 it and builds it into the firmware. `node --check` finds script mistakes before a build. The scripts and styles are laid
 out by Prettier, and the checks on GitHub refuse them otherwise; after an edit, run
-`npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`.
+`npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`. Leave the HTML out: Prettier would
+rewrite the `<link>` and `<script src>` lines that `embed_web.py` looks for. A style belongs in `index.css` under a class
+named for what it is for, not in a `style` attribute.
