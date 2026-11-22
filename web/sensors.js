@@ -416,6 +416,109 @@ function settingsPanel(base, n) {
     }),
   );
 }
+// A node's hardware: its sensor, and where it, a tamper switch and the battery are wired. The pins offered are those the
+// node's chip can use (s2oHardwareValid in the hub's lib/s2o_proto); the node fetches the settings after its next report.
+const SENSOR_KINDS = [
+  [3, "RCWL-0516 microwave radar"],
+  [4, "HC-SR501 passive infrared"],
+  [5, "LD2410 24 GHz radar"],
+  [1, "Other, its output goes high while it detects"],
+  [2, "Other, its output goes low while it detects"],
+];
+const CELLS = [
+  [0, "None"],
+  [1, "Lithium-ion or lithium-polymer cell"],
+  [2, "Lithium iron phosphate (LiFePO4) cell"],
+];
+function chipPins(chip) {
+  const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  return chip == 13
+    ? { wake: range(0, 7), battery: range(0, 6) }
+    : chip == 5
+      ? { wake: [0, 1, 3, 4, 5], battery: range(0, 4) }
+      : chip == 9
+        ? { wake: range(1, 21), battery: range(1, 10) }
+        : chip == 0
+          ? { wake: [2, 4, 12, 13, 14, 15, 25, 26, 27, 32, 33, 34, 35, 36, 37, 38, 39], battery: range(32, 39) }
+          : { wake: range(0, 48), battery: range(0, 48) };
+}
+function hardwarePanel(s) {
+  const parse = (t) => {
+    const v = (t || "").split(",").map(Number);
+    return v.length == 6
+      ? { number: v[0], sensor: v[1], sensorPin: v[2], tamperPin: v[3], batteryPin: v[4], cell: v[5] }
+      : null;
+  };
+  const set = parse(s.hwSet),
+    runs = parse(s.hwRuns),
+    shown = set || runs,
+    pins = chipPins(s.chip);
+  const choice = (options, value, label) =>
+    el(
+      "select",
+      { ariaLabel: label },
+      ...options.map(([v, text]) => el("option", { value: v, textContent: text, selected: value == v })),
+    );
+  const pinChoice = (list, value, label, none) =>
+    choice((none ? [["", "None"]] : []).concat(list.map((p) => [p, "GPIO " + p])), value == 255 ? "" : value, label);
+  const sensor = choice(SENSOR_KINDS, shown ? shown.sensor : 3, "Sensor"),
+    sensorPin = pinChoice(pins.wake, shown ? shown.sensorPin : pins.wake[2], "The sensor's pin", false),
+    tamperPin = pinChoice(pins.wake, shown ? shown.tamperPin : 255, "The tamper switch's pin", true),
+    batteryPin = pinChoice(pins.battery, shown ? shown.batteryPin : 255, "The battery's pin", true),
+    cell = choice(CELLS, shown ? shown.cell : 0, "The battery");
+  const state = !runs
+    ? "This node's firmware is from before hardware settings: update it, and it can take them from here."
+    : !set
+      ? "Set on the node itself; save here to set it from the hub."
+      : set.number == runs.number
+        ? "The node runs these settings."
+        : runs.number > set.number
+          ? "The node runs newer settings than these."
+          : "Saved; the node takes them after its next report.";
+  return el(
+    "details",
+    null,
+    el("summary", {
+      textContent:
+        "Hardware" +
+        (!runs ? " (firmware too old)" : set && set.number != runs.number ? " (waiting for the node)" : ""),
+    }),
+    el("p", { className: "note" }, state),
+    el("label", { className: "netRow" }, el("span", { textContent: "Sensor" }), sensor),
+    el("label", { className: "netRow" }, el("span", { textContent: "Sensor's pin" }), sensorPin),
+    el("label", { className: "netRow" }, el("span", { textContent: "Tamper switch's pin" }), tamperPin),
+    el("label", { className: "netRow" }, el("span", { textContent: "Battery's pin" }), batteryPin),
+    el("label", { className: "netRow" }, el("span", { textContent: "Battery" }), cell),
+    el(
+      "p",
+      { className: "note" },
+      "The pins listed are those this node's chip can use: ones that can wake it for the sensor and the tamper switch, ones that can read a voltage for the battery, through two equal resistors. The node checks them again before it takes them.",
+    ),
+    el("button", {
+      textContent: "Save hardware",
+      disabled: !runs,
+      onclick: () =>
+        act(
+          () =>
+            call(
+              "POST",
+              "/api/node-hardware?path=" + s.mac,
+              "sensor=" +
+                sensor.value +
+                "&sensorPin=" +
+                sensorPin.value +
+                "&tamperPin=" +
+                tamperPin.value +
+                "&batteryPin=" +
+                batteryPin.value +
+                "&cell=" +
+                cell.value,
+            ),
+          "Saved the hardware; the node takes it after its next report",
+        ),
+    }),
+  );
+}
 function nodePanel(s) {
   const late = el("input", {
     type: "number",
@@ -648,6 +751,7 @@ function render(t) {
         ),
       ),
       nodePanel(s),
+      hardwarePanel(s),
     );
     for (const n of s.sensors) {
       const files = Object.fromEntries(n.files.map((f) => [f.name, f]));

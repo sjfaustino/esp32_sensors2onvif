@@ -102,12 +102,15 @@ bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, 
 // and "repeat=SECONDS" lines. An alert the node reports as having happened longer ago than late is a past event: it gets
 // the past-event picture and its own NVR record. A node not heard from for silent is reported silent, which may mean it
 // was disabled. every and repeat go to the node with each confirmation: how often it reports with nothing to report, and
-// how often while a sensor stays on.
+// how often while a sensor stays on. "hw=NUMBER,SENSOR,SENSORPIN,TAMPERPIN,BATTERYPIN,CELL" is its hardware, as set on
+// the Sensors page (S2oHardware; 255 for no pin), which the node fetches when it runs other settings.
 struct CamNodeSettings {
   uint32_t lateS = 0;    // 0 uses the hub's default
   uint32_t silentS = 0;  // 0 uses the hub's default, 3 hours
   uint32_t everyS = 0;   // 0 leaves it to the node
   uint32_t repeatS = 0;  // the same
+  bool hwSet = false;    // hardware settings made on the hub
+  S2oHardware hw;
 };
 const uint32_t CAM_MAX_LATE_S = 86400;
 const uint32_t CAM_MIN_EVERY_S = 60, CAM_MAX_EVERY_S = 86400;
@@ -151,15 +154,23 @@ struct CamNodeInfo {
   uint16_t chip = CAM_CHIP_UNKNOWN;
   uint32_t refused = 0;
   std::string sensor, version;
+  bool hasHardware = false;  // what the node says it runs; a node from before hardware settings says nothing
+  S2oHardware hardware;
   // Everything about.txt keeps.
   bool operator==(const CamNodeInfo& o) const {
     return everyS == o.everyS && saving == o.saving && restart == o.restart && restarts == o.restarts && chip == o.chip && refused == o.refused &&
-           sensor == o.sensor && version == o.version;
+           sensor == o.sensor && version == o.version && hasHardware == o.hasHardware && (!hasHardware || hardware == o.hardware);
   }
 };
 CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, CamNodeInfo& out);
 bool camParseNodeInfo(const std::string& text, CamNodeInfo& out);
 std::string camNodeInfoText(const CamNodeInfo& info);
+// Hardware settings as "NUMBER,SENSOR,SENSORPIN,TAMPERPIN,BATTERYPIN,CELL", 255 for no pin.
+std::string camHardwareText(const S2oHardware& hw);
+// A node asking for its hardware settings (S2O_HARDWARE_ASK), and the hub's answer, signed with the node's key.
+CamPacketCheck camCheckHardwareAsk(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key);
+void camHardwareMessage(const uint8_t mac[6], const S2oHardware& hw, const std::string& key, uint8_t out[S2O_HARDWARE_LEN]);
+bool camParseHardware(const std::string& text, S2oHardware& out);
 // The silent time worked out from how often a node reports: a quarter longer, and at least 10 minutes longer, so one late
 // report is not enough. 0 when the node does not say. Its own setting on the Sensors page comes first.
 uint32_t camAutoSilentS(uint32_t everyS);

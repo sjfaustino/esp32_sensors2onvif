@@ -48,7 +48,7 @@ what the hub has for the node; a sensor that needs none of it can read just the 
 | 4 | How often the node should report with nothing to report, in seconds, as set on the hub; `0` for the node's own |
 | 2 | How often it should report while a sensor stays on, in seconds, as set on the hub; `0` for its own |
 | 4 | The end of a walk test started on the hub, on the hub's time; `0` for none |
-| 1 | Flags: `1` when a firmware update is ready for the node; `2` asking the node to prove it is there (see below) |
+| 1 | Flags: `1` when a firmware update is ready for the node; `2` asking the node to prove it is there (see below); `4` when the hub has other hardware settings for it (see Hardware settings) |
 | 4 | The fresh number for the node's next report |
 | 8 | The first 8 bytes of HMAC-SHA1, keyed with the ESP-NOW key, over the **sensor's own** 6-byte MAC address followed by the 26 bytes above |
 
@@ -80,6 +80,7 @@ report, gets no confirmation, and is sent once per node, not per input:
 | 4 | The firmware update it refused, because it was undone (see Firmware updates, below); `0` for none |
 | 1 + n | The length, 0 to 24, then the text of its sensor's kind, such as `RCWL-0516` |
 | 1 + n | The same for its firmware version |
+| 9 | Optional: the hardware settings it runs, as in Hardware settings below. A node from before them leaves these out |
 | 8 | The signature, as a report's |
 
 Texts are printable ASCII. The Nodes and pairing page shows them, and the hub keeps them in the node's folder as `about.txt`, all
@@ -122,6 +123,34 @@ that it was sent: someone listening still sees a node send at other times than i
 ESP-NOW has encryption of its own, but only for a few peers at once (7 by default, 17 at most), and a hub
 has more nodes than that. So sealing is built from the same HMAC-SHA1 that signs, as a counter-mode key stream, and the
 signature covers the sealed bytes: encrypt, then sign.
+
+## Hardware settings
+
+What a node's sensor is, and where it, a tamper switch and a battery are wired, is set for each node on the Sensors page,
+so one firmware serves every node of a chip. The node says what it runs at the end of its info; when the hub has other
+settings, its confirmations carry flag `4`, and the node, with nothing else to report, asks for them:
+
+| Ask, node to hub, 9 bytes | |
+|---|---|
+| 1 | `10` |
+| 8 | The signature, as a report's |
+
+The hub answers at once:
+
+| Settings, hub to node, 18 bytes | |
+|---|---|
+| 1 | `11` |
+| 4 | Their number: one more each time they are changed on the hub. The node takes only a higher one than it runs, so a recording played back cannot set it back |
+| 1 | The sensor: `1` any whose output goes high while it detects, `2` one whose output goes low, `3` RCWL-0516, `4` HC-SR501, `5` LD2410 |
+| 1 | The sensor's GPIO |
+| 1 | The tamper switch's GPIO, `255` for none. It is the node's input 2, the sensor its input 1 |
+| 1 | The battery's GPIO, read through a divider of two equal resistors, `255` for none |
+| 1 | The battery: `0` none, `1` a lithium-ion or lithium-polymer cell, `2` lithium iron phosphate |
+| 8 | The signature, as a confirmation's |
+
+The node checks that the settings can work on its chip (`s2oHardwareValid` in `lib/s2o_proto`: pins that can wake it
+for the sensor and tamper switch, one that can read a voltage for the battery, none used twice), keeps them in flash and
+restarts into them; its next info says so. The hub's page checks them by the same rules first.
 
 ## Firmware updates
 

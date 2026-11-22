@@ -288,7 +288,96 @@ static void parsers_survive_any_input() {
   TEST_ASSERT_EQUAL(0, thrown);
 }
 
+// A node's hardware: in its info and in the hub's answer, the confirmation's flag for it, and the pins each chip allows.
+static void a_nodes_hardware_travels_and_is_checked() {
+  S2oHardware hw;
+  hw.number = 7;
+  hw.sensor = S2O_SENSOR_HC_SR501;
+  hw.sensorPin = 3;
+  hw.tamperPin = 4;
+  hw.batteryPin = 1;
+  hw.cell = S2O_CELL_LITHIUM;
+  uint8_t key[20], mac[6] = {2, 0, 0, 0, 0, 9}, msg[S2O_HARDWARE_LEN];
+  memset(key, 0x31, sizeof(key));
+  S2oKey k{key, sizeof(key)};
+  s2oHardwareMessage(k, mac, hw, msg);
+  S2oHardware back;
+  TEST_ASSERT_TRUE(s2oSignatureOk(k, mac, msg, sizeof(msg)));
+  TEST_ASSERT_TRUE(s2oReadHardware(msg, S2O_HARDWARE_BODY, back));
+  TEST_ASSERT_TRUE(back == hw);
+  msg[5] = S2O_SENSOR_KINDS;  // a sensor this code does not know
+  TEST_ASSERT_FALSE(s2oReadHardware(msg, S2O_HARDWARE_BODY, back));
+  uint8_t ask[S2O_HARDWARE_ASK_LEN];
+  s2oHardwareAsk(k, mac, ask);
+  TEST_ASSERT_EQUAL(S2O_HARDWARE_ASK, ask[0]);
+  TEST_ASSERT_TRUE(s2oSignatureOk(k, mac, ask, sizeof(ask)));
+
+  // In the info: after the texts, and read back; an info from before hardware settings has none, and still reads.
+  S2oInfo info;
+  s2oSetText(info.sensor, "HC-SR501");
+  s2oSetText(info.version, "v0.2.0");
+  uint8_t body[S2O_INFO_MAX];
+  int plain = s2oInfoBody(info, body);
+  S2oInfo read;
+  TEST_ASSERT_TRUE(s2oReadInfo(body, plain, read));
+  TEST_ASSERT_FALSE(read.hasHardware);
+  info.hasHardware = true;
+  info.hardware = hw;
+  int with = s2oInfoBody(info, body);
+  TEST_ASSERT_EQUAL(plain + S2O_HARDWARE_FIELDS, with);
+  TEST_ASSERT_TRUE(s2oReadInfo(body, with, read));
+  TEST_ASSERT_TRUE(read.hasHardware && read.hardware == hw);
+  TEST_ASSERT_FALSE(s2oReadInfo(body, with - 1, read));  // cut short
+
+  // The confirmation's flag.
+  S2oReport r;
+  S2oForNode e, got;
+  e.hardware = true;
+  uint8_t conf[S2O_CONFIRMATION_BODY];
+  s2oConfirmationBody(r, e, conf);
+  TEST_ASSERT_TRUE(s2oReadConfirmation(conf, sizeof(conf), r, got) && got.hardware && !got.update && !got.prove);
+
+  // The pins: valid on a C6, refused where they cannot work.
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(s2oHardwareValid(hw, S2O_CHIP_ESP32C6, &why));
+  TEST_ASSERT_NULL(why);
+  S2oHardware bad = hw;
+  bad.sensorPin = 9;  // the C6's BOOT button, which cannot wake it
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32C6, &why));
+  TEST_ASSERT_NOT_NULL(why);
+  bad = hw;
+  bad.sensorPin = 2;  // the C3 reads GPIO 2 as it starts
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32C3, nullptr));
+  bad = hw;
+  bad.batteryPin = 7;  // not an ADC1 pin on a C6
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32C6, nullptr));
+  bad = hw;
+  bad.cell = S2O_CELL_NONE;  // a battery pin with no kind of battery
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32C6, nullptr));
+  bad = hw;
+  bad.tamperPin = bad.sensorPin;
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32C6, nullptr));
+  bad = hw;
+  bad.sensorPin = 4, bad.tamperPin = 13, bad.batteryPin = 34, bad.sensor = S2O_SENSOR_GENERIC_LOW;
+  TEST_ASSERT_FALSE(s2oHardwareValid(bad, S2O_CHIP_ESP32, nullptr));  // a classic ESP32 wakes on all its pins one way
+  bad.sensor = S2O_SENSOR_RCWL0516;
+  TEST_ASSERT_TRUE(s2oHardwareValid(bad, S2O_CHIP_ESP32, nullptr));
+
+  // As the hub keeps it, in settings.txt and about.txt.
+  S2oHardware text;
+  TEST_ASSERT_EQUAL_STRING("7,4,3,4,1,1", camHardwareText(hw).c_str());
+  TEST_ASSERT_TRUE(camParseHardware("7,4,3,4,1,1", text) && text == hw);
+  TEST_ASSERT_FALSE(camParseHardware("7,4,3,4,1", text));
+  TEST_ASSERT_FALSE(camParseHardware("7,4,3,4,1,1,1", text));
+  TEST_ASSERT_FALSE(camParseHardware("7,4,300,4,1,1", text));
+  CamNodeSettings s;
+  TEST_ASSERT_TRUE(camParseNodeSettings("every=600\nhw=7,4,3,4,1,1\n", s));
+  TEST_ASSERT_TRUE(s.hwSet && s.hw == hw && s.everyS == 600);
+  TEST_ASSERT_EQUAL_STRING("every=600\nhw=7,4,3,4,1,1\n", camNodeSettingsText(s).c_str());
+}
+
 void runMessagesTests() {
+  RUN_TEST(a_nodes_hardware_travels_and_is_checked);
   RUN_TEST(parsers_survive_any_input);
   RUN_TEST(confirmation_is_signed_for_that_sensor);
   RUN_TEST(sealed_messages_hide_what_they_say);

@@ -85,6 +85,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"POST", "/api/settings", &CamWeb::postSettings, LOGIN},
       {"POST", "/api/sensor-settings", &CamWeb::postSensorSettings, LOGIN},
       {"POST", "/api/node-settings", &CamWeb::postNodeSettings, LOGIN},
+      {"POST", "/api/node-hardware", &CamWeb::postNodeHardware, LOGIN},
       {"POST", "/api/walk-test", &CamWeb::postWalkTest, LOGIN},
       {"GET", "/api/webhook", &CamWeb::getWebhook, LOGIN},
       {"POST", "/api/webhook", &CamWeb::postWebhook, LOGIN},

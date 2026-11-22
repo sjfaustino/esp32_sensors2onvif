@@ -91,7 +91,7 @@ void s2oConfirmationBody(const S2oReport& r, const S2oForNode& e, uint8_t d[S2O_
   put32(d + 11, e.everyS);
   put16(d + 15, e.repeatS);
   put32(d + 17, e.walkUntil);
-  d[21] = (uint8_t)((e.update ? 1 : 0) | (e.prove ? 2 : 0));
+  d[21] = (uint8_t)((e.update ? 1 : 0) | (e.prove ? 2 : 0) | (e.hardware ? 4 : 0));
   put32(d + 22, e.fresh);
 }
 
@@ -104,8 +104,88 @@ bool s2oReadConfirmation(const uint8_t* d, int len, const S2oReport& r, S2oForNo
   e.walkUntil = get32(d + 17);
   e.update = (d[21] & 1) != 0;
   e.prove = (d[21] & 2) != 0;
+  e.hardware = (d[21] & 4) != 0;
   e.fresh = get32(d + 22);
   return true;
+}
+
+// ---- the node's hardware ----
+
+static int putHardware(uint8_t* out, const S2oHardware& hw) {
+  put32(out, hw.number);
+  out[4] = hw.sensor;
+  out[5] = hw.sensorPin;
+  out[6] = hw.tamperPin;
+  out[7] = hw.batteryPin;
+  out[8] = hw.cell;
+  return S2O_HARDWARE_FIELDS;
+}
+
+static bool getHardware(const uint8_t* d, S2oHardware& out) {
+  if (d[4] < S2O_SENSOR_GENERIC_HIGH || d[4] >= S2O_SENSOR_KINDS || d[8] >= S2O_CELL_KINDS) return false;
+  out.number = get32(d);
+  out.sensor = d[4];
+  out.sensorPin = d[5];
+  out.tamperPin = d[6];
+  out.batteryPin = d[7];
+  out.cell = d[8];
+  return true;
+}
+
+void s2oHardwareAsk(S2oKey key, const uint8_t nodeMac[6], uint8_t out[S2O_HARDWARE_ASK_LEN]) {
+  out[0] = S2O_HARDWARE_ASK;
+  s2oAddSignature(key, nodeMac, out, 1);
+}
+
+void s2oHardwareMessage(S2oKey key, const uint8_t nodeMac[6], const S2oHardware& hw, uint8_t out[S2O_HARDWARE_LEN]) {
+  out[0] = S2O_HARDWARE;
+  putHardware(out + 1, hw);
+  s2oAddSignature(key, nodeMac, out, S2O_HARDWARE_BODY);
+}
+
+bool s2oReadHardware(const uint8_t* d, int len, S2oHardware& out) {
+  return len == S2O_HARDWARE_BODY && d[0] == S2O_HARDWARE && getHardware(d + 1, out);
+}
+
+bool s2oPinWakes(uint16_t chip, uint8_t pin) {
+  switch (chip) {
+    case S2O_CHIP_ESP32C6: return pin <= 7;
+    case S2O_CHIP_ESP32C3: return pin <= 5 && pin != 2;
+    case S2O_CHIP_ESP32S3: return pin >= 1 && pin <= 21;
+    case S2O_CHIP_ESP32: return pin == 2 || pin == 4 || (pin >= 12 && pin <= 15) || (pin >= 25 && pin <= 27) || (pin >= 32 && pin <= 39);
+    default: return pin < 49;
+  }
+}
+
+bool s2oPinReadsBattery(uint16_t chip, uint8_t pin) {
+  switch (chip) {
+    case S2O_CHIP_ESP32C6: return pin <= 6;
+    case S2O_CHIP_ESP32C3: return pin <= 4;
+    case S2O_CHIP_ESP32S3: return pin >= 1 && pin <= 10;
+    case S2O_CHIP_ESP32: return pin >= 32 && pin <= 39;
+    default: return pin < 49;
+  }
+}
+
+bool s2oHardwareValid(const S2oHardware& hw, uint16_t chip, const char** why) {
+  const char* fault = nullptr;
+  bool tamper = hw.tamperPin != S2O_PIN_NONE, battery = hw.batteryPin != S2O_PIN_NONE;
+  if (hw.sensor < S2O_SENSOR_GENERIC_HIGH || hw.sensor >= S2O_SENSOR_KINDS || hw.cell >= S2O_CELL_KINDS)
+    fault = "no such sensor or battery";
+  else if (hw.sensorPin == S2O_PIN_NONE || !s2oPinWakes(chip, hw.sensorPin))
+    fault = "the sensor's pin cannot wake this chip";
+  else if (tamper && !s2oPinWakes(chip, hw.tamperPin))
+    fault = "the tamper switch's pin cannot wake this chip";
+  else if (battery && !s2oPinReadsBattery(chip, hw.batteryPin))
+    fault = "the battery's pin cannot read a voltage on this chip";
+  else if (battery != (hw.cell != S2O_CELL_NONE))
+    fault = "a battery needs both its pin and its kind";
+  else if ((tamper && hw.tamperPin == hw.sensorPin) || (battery && (hw.batteryPin == hw.sensorPin || hw.batteryPin == hw.tamperPin)))
+    fault = "a pin is used twice";
+  else if (chip == S2O_CHIP_ESP32 && tamper && hw.sensor == S2O_SENSOR_GENERIC_LOW)
+    fault = "a classic ESP32 with a tamper switch needs a sensor whose output goes high";
+  if (why) *why = fault;
+  return !fault;
 }
 
 // ---- node info ----
@@ -135,6 +215,7 @@ int s2oInfoBody(const S2oInfo& info, uint8_t* out) {
   int len = S2O_INFO_HEAD;
   len += putText(out + len, info.sensor);
   len += putText(out + len, info.version);
+  if (info.hasHardware) len += putHardware(out + len, info.hardware);
   return len;
 }
 
@@ -158,6 +239,11 @@ bool s2oReadInfo(const uint8_t* d, int len, S2oInfo& out) {
     }
     text[d[at]] = 0;
     at += 1 + d[at];
+  }
+  if (at + S2O_HARDWARE_FIELDS == len) {  // a node that says its hardware; one from before says nothing more
+    if (!getHardware(d + at, info.hardware)) return false;
+    info.hasHardware = true;
+    at += S2O_HARDWARE_FIELDS;
   }
   if (at != len) return false;
   out = info;

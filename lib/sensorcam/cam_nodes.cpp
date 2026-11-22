@@ -129,6 +129,21 @@ void CamNodes::reject(const uint8_t mac[6]) {
     if (p.used && memcmp(p.mac, mac, 6) == 0) p = PairRequest();
 }
 
+// The hardware set for the node on the Sensors page, which a confirmation said it does not run yet.
+void CamNodes::hardwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
+  int id = table_.findNode(mac);
+  if (!id || !radio_->hasEspNow()) return;
+  const CamSensorTable::Node& node = table_.nodeOf(id);
+  const std::string& key = table_.keyFor(&node);
+  CamPacketCheck check = camCheckHardwareAsk(mac, data, len, key);
+  if (check == CAM_PACKET_INVALID) return;
+  if (check == CAM_PACKET_BAD_SIGNATURE) return alarm_.refuseSignature(id);
+  if (!node.settings.hwSet) return;
+  uint8_t out[S2O_HARDWARE_LEN];
+  camHardwareMessage(mac, node.settings.hw, key, out);
+  radio_->espNowSend(mac, out, sizeof(out));
+}
+
 // Answered at once, without waiting for the next pass: each part is read from storage and sent as it is asked for.
 void CamNodes::firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len) {
   int id = table_.findNode(mac);

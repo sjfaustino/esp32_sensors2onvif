@@ -75,6 +75,57 @@ void CamWeb::postNodeSettings(const ApiRequest& r) {
   }
 }
 
+// A node's hardware, set on the Sensors page: checked against the node's chip, and numbered one past both the last set
+// here and what the node runs, so the node fetches it with its next confirmation. The other settings stay.
+void CamWeb::postNodeHardware(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  std::string path = queryParam(r.target, "path"), text;
+  uint8_t mac[6];
+  if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path) || !camParseMac(path, mac)) {
+    c.out = jsonFail(404, "no such node");
+    return;
+  }
+  CamNodeSettings s;
+  if (!storage_.readFile(path + "/settings.txt", text, 256) || !camParseNodeSettings(text, s)) s = CamNodeSettings();
+  auto pin = [&](const char* key, uint8_t& out) {
+    std::string v = r.field(key);
+    uint8_t n = 0;
+    if (v.empty())
+      out = S2O_PIN_NONE;
+    else if (camNumberIn(v, (uint8_t)0, (uint8_t)48, n))
+      out = n;
+    else
+      return false;
+    return true;
+  };
+  S2oHardware hw;
+  uint8_t sensor = 0, cell = 0;
+  bool parsed = camNumber(r.field("sensor"), sensor) && camNumber(r.field("cell"), cell) && pin("sensorPin", hw.sensorPin) &&
+                pin("tamperPin", hw.tamperPin) && pin("batteryPin", hw.batteryPin);
+  hw.sensor = sensor;
+  hw.cell = cell;
+  int id = table_.findNode(mac);
+  const CamNodeInfo* info = id ? &table_.nodeOf(id).info : nullptr;
+  const char* why = nullptr;
+  if (!parsed) {
+    c.out = jsonFail(400, "give the sensor, its pin, and the tamper switch's and battery's pins, empty for none, and the battery's kind");
+  } else if (!s2oHardwareValid(hw, info ? info->chip : CAM_CHIP_UNKNOWN, &why)) {
+    c.out = jsonFail(400, why);
+  } else {
+    uint32_t last = s.hwSet ? s.hw.number : 0, runs = info && info->hasHardware ? info->hardware.number : 0;
+    hw.number = (last > runs ? last : runs) + 1;
+    s.hwSet = true;
+    s.hw = hw;
+    std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
+    bool ok = storage_.writeFile(file, clean.data(), clean.size());
+    // A tamper switch is the node's input 2. A node paired with only its sensor has no folder for it, and the hub would
+    // refuse its alerts as from an unknown sensor.
+    if (ok && hw.tamperPin != S2O_PIN_NONE) ok = storage_.makeDirs(path + "/2");
+    alarm_.rescan();
+    c.out = saved(ok, "could not save the setting; storage may be full");
+  }
+}
+
 void CamWeb::postWalkTest(const ApiRequest& r) {
   HttpConn& c = r.c;
   std::string path = queryParam(r.target, "path");

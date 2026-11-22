@@ -11,7 +11,7 @@
 #include "s2o_x25519.h"
 
 const uint8_t S2O_REPORT = 2, S2O_CONFIRMATION = 3, S2O_HELLO = 4, S2O_ANSWER = 5, S2O_INFO = 6, S2O_SEALED = 7, S2O_FIRMWARE_ASK = 8,
-              S2O_FIRMWARE_PART = 9;
+              S2O_FIRMWARE_PART = 9, S2O_HARDWARE_ASK = 10, S2O_HARDWARE = 11;
 const int S2O_SIG_LEN = 8;
 const int S2O_NODE_KEY_LEN = 20;
 const uint32_t S2O_AGE_UNKNOWN = 0xFFFFFFFFu;
@@ -65,7 +65,8 @@ bool s2oReadReport(const uint8_t* body, int len, S2oReport& out);
 // 3, the report's input, active and counter, then what the hub has for the node: its time (seconds since 1970 UTC, 0
 // while not set), the report time set on the hub (u32 seconds, 0 for the node's own), the repeat time (u16 seconds, 0
 // likewise), the end of a walk test (u32, hub time, 0 for none), flags (1: an update is ready; 2: prove the node is
-// there, by reporting again with this fresh number), and the fresh number for its next report. Then the signature.
+// there, by reporting again with this fresh number; 4: the hub has other hardware settings for it, see below), and the
+// fresh number for its next report. Then the signature.
 struct S2oForNode {
   uint32_t hubTime = 0;
   uint32_t everyS = 0;
@@ -73,6 +74,7 @@ struct S2oForNode {
   uint32_t walkUntil = 0;
   bool update = false;
   bool prove = false;
+  bool hardware = false;
   uint32_t fresh = 0;
 };
 const int S2O_CONFIRMATION_BODY = 26;
@@ -80,6 +82,63 @@ const int S2O_CONFIRMATION_LEN = S2O_CONFIRMATION_BODY + S2O_SIG_LEN;
 void s2oConfirmationBody(const S2oReport& r, const S2oForNode& forNode, uint8_t out[S2O_CONFIRMATION_BODY]);
 // True when body is a confirmation of exactly this report; forNode gets what came with it.
 bool s2oReadConfirmation(const uint8_t* body, int len, const S2oReport& r, S2oForNode& forNode);
+
+// ---- the node's hardware ----
+
+// What a node's sensor is, and where it, a tamper switch and a battery are wired: set for each node on the hub's page, so
+// one firmware serves every node of a chip. The node says what it runs at the end of its info; when the hub has other
+// settings, a confirmation says so (flag 4), the node asks for them (S2O_HARDWARE_ASK: 10, then the signature), and the
+// hub answers (S2O_HARDWARE: 11, the settings below, the signature). number is the hub's count of changes to them: the
+// node takes only a higher one than it has, so a recording played back cannot set it back.
+//   number (u32), sensor (S2oSensorKind), sensor pin, tamper pin, battery pin (each a GPIO, S2O_PIN_NONE for none), cell
+enum S2oSensorKind : uint8_t {
+  S2O_SENSOR_GENERIC_HIGH = 1,  // any output that goes high while it detects
+  S2O_SENSOR_GENERIC_LOW,       // any output that goes low
+  S2O_SENSOR_RCWL0516,          // microwave radar
+  S2O_SENSOR_HC_SR501,          // passive infrared
+  S2O_SENSOR_LD2410,            // 24 GHz radar
+  S2O_SENSOR_KINDS
+};
+enum S2oCell : uint8_t {
+  S2O_CELL_NONE,     // no battery reading: mains power, or no divider wired
+  S2O_CELL_LITHIUM,  // a lithium-ion or lithium-polymer cell, through a divider of two equal resistors
+  S2O_CELL_LIFEPO4,  // a lithium iron phosphate cell, likewise
+  S2O_CELL_KINDS
+};
+const uint8_t S2O_PIN_NONE = 0xFF;
+struct S2oHardware {
+  uint32_t number = 0;  // 0: never set on the hub, the node's own defaults
+  uint8_t sensor = S2O_SENSOR_GENERIC_HIGH;
+  uint8_t sensorPin = S2O_PIN_NONE;
+  uint8_t tamperPin = S2O_PIN_NONE;
+  uint8_t batteryPin = S2O_PIN_NONE;
+  uint8_t cell = S2O_CELL_NONE;
+  bool operator==(const S2oHardware& o) const {
+    return number == o.number && sensor == o.sensor && sensorPin == o.sensorPin && tamperPin == o.tamperPin && batteryPin == o.batteryPin &&
+           cell == o.cell;
+  }
+};
+const int S2O_HARDWARE_FIELDS = 9;
+const int S2O_HARDWARE_BODY = 1 + S2O_HARDWARE_FIELDS;
+const int S2O_HARDWARE_LEN = S2O_HARDWARE_BODY + S2O_SIG_LEN;
+const int S2O_HARDWARE_ASK_LEN = 1 + S2O_SIG_LEN;
+void s2oHardwareAsk(S2oKey key, const uint8_t nodeMac[6], uint8_t out[S2O_HARDWARE_ASK_LEN]);
+void s2oHardwareMessage(S2oKey key, const uint8_t nodeMac[6], const S2oHardware& hw, uint8_t out[S2O_HARDWARE_LEN]);
+// The settings in a hardware message without its signature, which is the caller's to check; false for one that is not,
+// or names a sensor or cell this code does not know.
+bool s2oReadHardware(const uint8_t* body, int len, S2oHardware& out);
+// The chips the nodes run on, as their firmware headers name them.
+const uint16_t S2O_CHIP_ESP32 = 0, S2O_CHIP_ESP32C3 = 5, S2O_CHIP_ESP32S3 = 9, S2O_CHIP_ESP32C6 = 13;
+// Whether a pin can wake this chip from deep sleep, as the sensor and the tamper switch must: GPIO 0 to 7 on an
+// ESP32-C6; 0 to 5 on an ESP32-C3, but not 2, which it reads as it starts; the RTC pins of a classic ESP32 but 0, its
+// BOOT button. Any pin below 49 on a chip not known here.
+bool s2oPinWakes(uint16_t chip, uint8_t pin);
+// Whether a pin can read the battery while Wi-Fi runs: an ADC1 pin.
+bool s2oPinReadsBattery(uint16_t chip, uint8_t pin);
+// Whether these settings can work on this chip: a sensor pin that wakes it, a tamper pin that does too or none, a
+// battery pin that reads or none, with a cell only with a pin, no pin used twice, and on a classic ESP32, which wakes
+// on all its pins the same way, a sensor whose output goes high when there is a tamper switch. why says what is not.
+bool s2oHardwareValid(const S2oHardware& hw, uint16_t chip, const char** why);
 
 // ---- node info, node to hub ----
 
@@ -106,9 +165,11 @@ struct S2oInfo {
   uint32_t refused = 0;
   char sensor[S2O_TEXT_MAX + 1] = "";
   char version[S2O_TEXT_MAX + 1] = "";
+  bool hasHardware = false;  // a node from before hardware settings says nothing of them
+  S2oHardware hardware;      // what it runs: at the end, after the texts
 };
 const int S2O_INFO_HEAD = 17;
-const int S2O_INFO_MAX = S2O_INFO_HEAD + 2 * (1 + S2O_TEXT_MAX) + S2O_SIG_LEN;
+const int S2O_INFO_MAX = S2O_INFO_HEAD + 2 * (1 + S2O_TEXT_MAX) + S2O_HARDWARE_FIELDS + S2O_SIG_LEN;
 // Copies text into a field, cut to S2O_TEXT_MAX, with anything not printable ASCII made '?', so the rest still arrives.
 void s2oSetText(char out[S2O_TEXT_MAX + 1], const char* text);
 int s2oInfoBody(const S2oInfo& info, uint8_t* out);

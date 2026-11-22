@@ -85,7 +85,13 @@ std::string CamWeb::treeJson() {
     j.num("reportEvery", node.everyS != 0, node.everyS).num("repeat", node.repeatS != 0, node.repeatS);
     time_t t = chip_->wallTime();
     uint32_t walk = any && t >= CAM_CLOCK_VALID_AFTER && table_.nodeOf(any).walkUntil > (uint32_t)t ? table_.nodeOf(any).walkUntil - (uint32_t)t : 0;
-    j.num("walkLeft", walk).array("sensors");
+    j.num("walkLeft", walk);
+    // Its hardware: as set here, and as the node says it runs it, with its chip, which decides the pins it can use.
+    const CamNodeInfo* info = any ? &table_.nodeOf(any).info : nullptr;
+    j.num("chip", info && info->chip != CAM_CHIP_UNKNOWN, info ? info->chip : 0);
+    j.str("hwSet", node.hwSet ? camHardwareText(node.hw) : std::string());
+    j.str("hwRuns", info && info->hasHardware ? camHardwareText(info->hardware) : std::string());
+    j.array("sensors");
     std::vector<CamFsEntry> inputs;
     storage_.list(s.name, inputs);
     for (const CamFsEntry& n : inputs) {

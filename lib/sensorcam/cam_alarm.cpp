@@ -495,6 +495,9 @@ CamForNode CamAlarm::forNode(int id) const {
   e.repeatS = (uint16_t)repeat;
   e.walkUntil = e.hubTime && node.walkUntil > e.hubTime ? node.walkUntil : 0;
   e.update = updateReady(id);
+  // Hardware set on the page that the node does not run yet. Only to a node that says what it runs: one from before
+  // hardware settings would not know to ask.
+  e.hardware = node.settings.hwSet && node.info.hasHardware && !(node.info.hardware == node.settings.hw);
   e.fresh = node.fresh;
   return e;
 }

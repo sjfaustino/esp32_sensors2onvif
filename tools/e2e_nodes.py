@@ -91,9 +91,9 @@ def pairing_tests():
     check("a paired node's report signed with the shared key is refused", node_row(2).get('refusal') == 'wrong signature', node_row(2))
     check('the Nodes and pairing page shows the node has its own key', node_row(1).get('paired') is True)
 
-    def info(every, saving, sensor, version, key=key, restart=1, restarts=0, response=0xFFFF, chip=13, refused=0):
+    def info(every, saving, sensor, version, key=key, restart=1, restarts=0, response=0xFFFF, chip=13, refused=0, hw=b''):
         body = (bytes([6]) + every.to_bytes(4, 'little') + bytes([saving, restart]) + restarts.to_bytes(2, 'little') + response.to_bytes(2, 'little')
-                + chip.to_bytes(2, 'little') + refused.to_bytes(4, 'little') + bytes([len(sensor)]) + sensor + bytes([len(version)]) + version)
+                + chip.to_bytes(2, 'little') + refused.to_bytes(4, 'little') + bytes([len(sensor)]) + sensor + bytes([len(version)]) + version + hw)
         return body + signed(key, body)
 
     def tree_node():
@@ -315,3 +315,35 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     check('nor is a node of another chip', confirmed(30)[21:22] == b'\x00')
     check('a node firmware can be deleted', api('POST', '/api/node-firmware/delete', 'chip=13')[0] == 200 and get_json('/api/espnow')['nodeFirmware'] == [])
     control('end-alerts')
+
+    # Hardware set on the Sensors page: the node fetches it once a confirmation says the hub has other settings for it.
+    def hw(number, sensor, sensor_pin, tamper_pin, battery_pin, cell):
+        return number.to_bytes(4, 'little') + bytes([sensor, sensor_pin, tamper_pin, battery_pin, cell])
+
+    say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', hw=hw(0, 3, 2, 255, 255, 0)))
+    check('the node says which hardware it runs', tree_node().get('hwRuns') == '0,3,2,255,255,0' and tree_node().get('chip') == 13, tree_node())
+    check('with nothing set on the hub, the confirmation asks nothing of it', confirmed(31)[21] & 4 == 0)
+    for bad, why in (('sensor=4&sensorPin=9&tamperPin=&batteryPin=&cell=0', b'cannot wake'), ('sensor=4&sensorPin=3&tamperPin=&batteryPin=1&cell=0', b'both'),
+                     ('sensor=4&sensorPin=3&tamperPin=3&batteryPin=&cell=0', b'twice'), ('sensor=9&sensorPin=3&tamperPin=&batteryPin=&cell=0', b'no such')):
+        code, reply = api('POST', f'/api/node-hardware?path={folder}', bad)
+        check(f'hardware that cannot work on this chip is refused, saying why: {bad}', code == 400 and why in reply, (code, reply[:90]))
+    check('saved hardware for the node', api('POST', f'/api/node-hardware?path={folder}', 'sensor=4&sensorPin=3&tamperPin=4&batteryPin=1&cell=1')[0] == 200)
+    check('the page shows it, numbered one past what the node runs', tree_node().get('hwSet') == '1,4,3,4,1,1', tree_node())
+    check('a tamper switch gets its input 2, so its alerts are taken', any(n['input'] == 2 for n in tree_node().get('sensors', [])), tree_node())
+    check('the next confirmation says the hub has other hardware for it', confirmed(32)[21] & 4 == 4)
+    asked = bytes([10])
+    control('all-sent')
+    control(f'radio-raw {mac} {(asked + signed(key, asked)).hex()}')
+    sent = control('all-sent')
+    answer = bytes.fromhex(sent.split(' ')[1]) if sent else b''
+    check('asked, the hub answers with it, signed for the node', answer[:1] == bytes([11]) and answer[1:10] == hw(1, 4, 3, 4, 1, 1)
+          and answer[10:] == signed(key, answer[:10]), answer.hex())
+    control('all-sent')
+    control(f'radio-raw {mac} {(asked + bytes(8)).hex()}')
+    check('an unsigned ask gets nothing', control('all-sent') == '')
+    say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', hw=hw(1, 4, 3, 4, 1, 1)))
+    check('once the node runs it, the page says so and the confirmation asks nothing more',
+          tree_node().get('hwRuns') == '1,4,3,4,1,1' and confirmed(33)[21] & 4 == 0, tree_node())
+    check('it is kept in about.txt', b'hw=1,4,3,4,1,1' in api('GET', f'/api/file?path={folder}/about.txt')[1])
+    say(info(7200, 0, b'RCWL-0516', b'3f2a1b0'))
+    check('a node from before hardware settings is never asked to fetch them', confirmed(34)[21] & 4 == 0 and tree_node().get('hwRuns') == '', tree_node())

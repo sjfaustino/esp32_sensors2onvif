@@ -174,6 +174,7 @@ class CamWeb {
   void postNetwork(const ApiRequest& r);
   void postNewkeys(const ApiRequest& r);
   void postNodeSettings(const ApiRequest& r);
+  void postNodeHardware(const ApiRequest& r);
   void postNvr(const ApiRequest& r);
   void postReboot(const ApiRequest& r);
   void postReset(const ApiRequest& r);

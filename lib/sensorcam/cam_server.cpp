@@ -123,6 +123,8 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
   try {
     if (len >= 1 && data[0] == CAM_FIRMWARE_ASK)
       nodes_.firmwareAsk(mac, data, len);
+    else if (len >= 1 && data[0] == S2O_HARDWARE_ASK)
+      nodes_.hardwareAsk(mac, data, len);
     else if (len >= 1 && data[0] == CAM_HELLO)
       nodes_.hello(mac, data, len, rssi);
     else

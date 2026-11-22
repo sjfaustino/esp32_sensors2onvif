@@ -48,6 +48,8 @@ CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len,
   info.refused = i.refused;
   info.sensor = i.sensor;
   info.version = i.version;
+  info.hasHardware = i.hasHardware;
+  info.hardware = i.hardware;
   out = info;
   return checkSignature(mac, d, len, key);
 }
@@ -81,6 +83,8 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
       info.sensor = value;
     else if (key == "version")
       info.version = value;
+    else if (key == "hw" && camParseHardware(value, info.hardware))
+      info.hasHardware = true;
     else
       return false;
   }
@@ -91,7 +95,42 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
 std::string camNodeInfoText(const CamNodeInfo& i) {
   return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nrestart=" + std::to_string(i.restart) +
          "\nrestarts=" + std::to_string(i.restarts) + "\nchip=" + std::to_string(i.chip) + "\nrefused=" + std::to_string(i.refused) +
-         "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n";
+         "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n" + (i.hasHardware ? "hw=" + camHardwareText(i.hardware) + "\n" : "");
+}
+
+std::string camHardwareText(const S2oHardware& hw) {
+  return std::to_string(hw.number) + "," + std::to_string(hw.sensor) + "," + std::to_string(hw.sensorPin) + "," + std::to_string(hw.tamperPin) + "," +
+         std::to_string(hw.batteryPin) + "," + std::to_string(hw.cell);
+}
+
+CamPacketCheck camCheckHardwareAsk(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key) {
+  if (len != S2O_HARDWARE_ASK_LEN || d[0] != S2O_HARDWARE_ASK) return CAM_PACKET_INVALID;
+  return checkSignature(mac, d, len, key);
+}
+
+void camHardwareMessage(const uint8_t mac[6], const S2oHardware& hw, const std::string& key, uint8_t out[S2O_HARDWARE_LEN]) {
+  s2oHardwareMessage(keyOf(key), mac, hw, out);
+}
+
+bool camParseHardware(const std::string& text, S2oHardware& out) {
+  uint32_t v[6];
+  size_t at = 0;
+  for (int i = 0; i < 6; i++) {
+    size_t comma = text.find(',', at);
+    if ((comma == std::string::npos) != (i == 5) || !camNumber(text.substr(at, comma == std::string::npos ? std::string::npos : comma - at), v[i]))
+      return false;
+    at = comma + 1;
+  }
+  if (v[1] < S2O_SENSOR_GENERIC_HIGH || v[1] >= S2O_SENSOR_KINDS || v[2] > 255 || v[3] > 255 || v[4] > 255 || v[5] >= S2O_CELL_KINDS) return false;
+  S2oHardware hw;
+  hw.number = v[0];
+  hw.sensor = (uint8_t)v[1];
+  hw.sensorPin = (uint8_t)v[2];
+  hw.tamperPin = (uint8_t)v[3];
+  hw.batteryPin = (uint8_t)v[4];
+  hw.cell = (uint8_t)v[5];
+  out = hw;
+  return true;
 }
 
 const char* camRestartName(uint8_t reason) {
@@ -288,6 +327,11 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
     if (line.empty()) continue;
     size_t eq = line.find('=');
     std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
+    if (key == "hw") {
+      if (!camParseHardware(value, s.hw)) return false;
+      s.hwSet = true;
+      continue;
+    }
     if (value.empty() || value.size() > 6) return false;
     for (char ch : value)
       if (ch < '0' || ch > '9') return false;
@@ -309,7 +353,8 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
 
 std::string camNodeSettingsText(const CamNodeSettings& s) {
   auto line = [](const char* key, uint32_t v) { return v ? std::string(key) + "=" + std::to_string(v) + "\n" : std::string(); };
-  return line("late", s.lateS) + line("silent", s.silentS) + line("every", s.everyS) + line("repeat", s.repeatS);
+  return line("late", s.lateS) + line("silent", s.silentS) + line("every", s.everyS) + line("repeat", s.repeatS) +
+         (s.hwSet ? "hw=" + camHardwareText(s.hw) + "\n" : std::string());
 }
 
 bool camQuiet(const CamSensorSettings& s, int minute) {

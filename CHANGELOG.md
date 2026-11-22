@@ -15,6 +15,13 @@ before that, a new minor version may change settings or the messages.
 - **Log out**, at the top of every page, makes the browser forget the hub password. The hub refuses its logout route
   always, and never counts it as a wrong password.
 
+### The nodes
+
+- Each node's hardware, its sensor and the pins of its sensor, a tamper switch and its battery, is set on the Sensors
+  page and fetched by the node, so one firmware serves every node of a chip. The hub and the node check the pins against
+  the node's chip. A node says what it runs in its info, and fetches other settings when a confirmation says the hub has
+  them (protocol: confirmation flag 4, messages 10 and 11, and the settings at the end of the node info).
+
 ### The pages
 
 - Each menu group has an icon, the tab shows the hub's shield, and a phone's "Add to home screen" gives the hub's name

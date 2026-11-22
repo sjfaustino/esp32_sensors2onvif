@@ -22,6 +22,7 @@ class CamNodes {
   // ESP-NOW messages from the nodes. From the task that calls the server's poll().
   void hello(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi);  // a node asking to pair, or for the hub's channel
   void firmwareAsk(const uint8_t mac[6], const uint8_t* data, int len);         // answered at once, part by part
+  void hardwareAsk(const uint8_t mac[6], const uint8_t* data, int len);         // answered at once with its settings
 
   // ---- pairing ----
   bool pairingReady() const { return pairingReady_; }  // the hub has a pairing key

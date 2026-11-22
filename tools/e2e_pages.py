@@ -278,6 +278,14 @@ def test_settings_pages(page):
     check('the page says why the hub refused unsigned firmware', wait_text(page, 'fwMsg', 'not signed', 20), page.text_content('#fwMsg'))
     check('and hides the progress again', not page.is_visible('#fwProg'))
 
+    # A node that has not said which hardware it runs cannot take settings from the hub, and the page says why.
+    page.goto(URL + '#sensors')
+    page.wait_for_selector('#tree summary:has-text("Hardware")')
+    page.click('#tree summary:has-text("Hardware")')
+    check("a node's Hardware says when its firmware is too old to take settings",
+          'from before hardware settings' in page.text_content('#tree details:has(summary:has-text("Hardware"))')
+          and page.is_disabled('#tree button:has-text("Save hardware")'))
+
     page.goto(URL + '#events')
     page.wait_for_selector('#evTable .chip')
     check('alerts are labelled in red', page.locator('#evTable .chip.bad').count() > 0)

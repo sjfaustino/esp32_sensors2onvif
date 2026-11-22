@@ -487,6 +487,13 @@ checks the signature again, and that the update is not an older release than its
 confirmation and fetches it over ESP-NOW (see [Firmware updates](protocol.md#firmware-updates)). A node saving its battery is not offered one,
 and a node whose update was undone is not offered that file again. The node's row shows the update's progress.
 
+**Hardware**, under each node on the Sensors page, says what the node's sensor is, and which pins its sensor, a tamper
+switch and its battery are on, with the kind of battery. One firmware then serves every node of a chip, and a node is set
+up without opening it: the node fetches the settings after its next report and restarts into them, and the section says
+once it runs them. Only the pins the node's chip can use are offered, and the hub and the node both check them. A tamper
+switch is the node's input 2, and gets its folder when it is set. A node whose firmware is from before hardware
+settings runs what it was built with, and the section says so.
+
 **Walk test**, under each node's Node settings on the Sensors page, makes that node blink its LED after each alert the hub
 confirms, for 10 minutes, by its signal: 3 blinks strong, 2 fair, 1 weak. It needs the hub's clock set. The node learns
 of it with the confirmation of its next alert, so the first blink comes with the first alert.
