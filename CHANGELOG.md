@@ -9,6 +9,9 @@ before that, a new minor version may change settings or the messages.
 
 - The hub refuses an update older than its own release, which may have faults since fixed. Each signed update carries
   its release number, signed with it; an older one goes on only over the board's cable.
+- Node firmware is signed too, with the project's key in a context of its own. The hub refuses an unsigned node file
+  when it is put on it, and a node with this signing checks every update again, and its release number, before it
+  runs it. The signature code is in `lib/s2o_proto`, which the node project shares.
 - **Log out**, at the top of every page, makes the browser forget the hub password. The hub refuses its logout route
   always, and never counts it as a wrong password.
 

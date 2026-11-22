@@ -22,6 +22,14 @@ def signed(image, release=4000, key_file='test/firmware-test-key.pem'):
     return sign_firmware.sign(image, key, release)
 
 
+def signed_node(image, release=0, key_file='test/firmware-test-key.pem'):
+    """A node's firmware signed with the test key, as the node project's (sign_firmware.py --node)."""
+    import sign_firmware
+    from cryptography.hazmat.primitives import serialization
+    with open(os.path.join(ROOT, key_file), 'rb') as f:
+        return sign_firmware.sign(image, serialization.load_pem_private_key(f.read(), password=None), release, node=True)
+
+
 def other_key_signed(image):
     """Signed with a key the hub does not know."""
     import sign_firmware

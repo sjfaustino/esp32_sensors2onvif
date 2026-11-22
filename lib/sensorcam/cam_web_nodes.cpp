@@ -11,6 +11,7 @@ void CamWeb::startNodeImage(HttpConn& c, size_t length) {
   c.firmwareActive = true;
   c.nodeImage = true;
   c.firmwareLeft = length;
+  nodeSig_.begin(length);
 }
 
 void CamWeb::dropNodeImage() {
@@ -27,6 +28,15 @@ void CamWeb::finishNodeImage(HttpConn& c, bool ok) {
   c.firmwareLeft = 0;
   c.answered = true;
   CamNodeImage image;
+  // Signed with the project's key, as a node's firmware: the nodes check it again, but one that would fail there is
+  // never offered to them.
+  uint8_t key[32];
+  bool signedOk = ok && s2oFirmwareKey(cfg_.firmwareKey, key) && nodeSig_.good(key, S2O_FW_NODE_CONTEXT);
+  if (ok && !signedOk) {
+    nodes_.images().finish(false, image);
+    c.out = jsonFail(400, "that node firmware is not signed for these nodes, so nothing was changed: use a signed firmware.bin of the node project");
+    return;
+  }
   switch (nodes_.images().finish(ok, image)) {
     case CamNodeImages::SAVED:
       c.out = jsonOk(jsonObject([&](CamJson& j) { j.flag("ok", true).str("chip", camChipName(image.chip)).str("version", image.version); }));

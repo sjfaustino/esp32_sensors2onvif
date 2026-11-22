@@ -55,6 +55,10 @@ STEADY = r"""() => {
 }"""
 
 
+# No animation, so every machine draws the page in the same place whatever its speed.
+STILL = '*, *::before, *::after { transition: none !important; animation: none !important; }'
+
+
 def steady(page):
     page.evaluate(STEADY)
 
@@ -106,6 +110,8 @@ def main():
                                        viewport={'width': 390, 'height': 760}, device_scale_factor=2).new_page()
             dark.goto(URL + '#overview')
             dark.wait_for_selector('#wizard', state='visible')
+            dark.add_style_tag(content=STILL)  # the menu's opening is not animated, so where it ends is where the page scrolls
+            dark.wait_for_timeout(300)
             dark.evaluate("document.getElementById('menu').scrollIntoView(false); scrollTo(0, document.getElementById('status').offsetTop - 60)")
             dark.wait_for_timeout(800)
             steady(dark)

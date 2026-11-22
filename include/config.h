@@ -12,7 +12,7 @@
 #endif
 
 // The public half of the key that signs firmware updates; the hub keeps no update sent over the network without its
-// signature (lib/sensorcam/cam_firmware_sig.h, tools/sign_firmware.py). A build signed with another key can name that
+// signature (lib/s2o_proto/s2o_fw_sig.h, tools/sign_firmware.py). A build signed with another key can name that
 // key's public half in secrets.h; a hub then takes updates signed only with that key, until it is flashed over its cable.
 #ifndef FIRMWARE_PUBLIC_KEY
 #define FIRMWARE_PUBLIC_KEY "6916f0b42782640b9938de592599bb604a38815633937c87529c425846687e68"

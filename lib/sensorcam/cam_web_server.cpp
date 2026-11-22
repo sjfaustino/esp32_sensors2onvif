@@ -411,7 +411,7 @@ void CamWeb::finishFirmware(HttpConn& c, bool ok) {
   }
   // The signature is checked before the update is kept: a firmware not signed with the project's key never runs.
   uint8_t key[32];
-  bool signedOk = ok && camFirmwareKey(cfg_.firmwareKey, key) && firmwareSig_.good(key);
+  bool signedOk = ok && s2oFirmwareKey(cfg_.firmwareKey, key) && firmwareSig_.good(key);
   // Nor one older than this, which may have a fault since fixed. Its number is signed with it, so it cannot be raised.
   bool current = signedOk && firmwareSig_.release() >= (int64_t)cfg_.firmwareRelease;
   bool done = current && chip_->firmwareEnd(true);
@@ -433,6 +433,7 @@ void CamWeb::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now)
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
   bool written = true;
   if (c.nodeImage) {
+    nodeSig_.take((const uint8_t*)data, take);  // the whole file is kept, signature and all, for the nodes to check
     written = !take || nodes_.images().write(data, take);
   } else {
     size_t image = firmwareSig_.take((const uint8_t*)data, take);  // the signature at the end is held back from flash
@@ -512,8 +513,8 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     // A refused firmware is read to its end before the reply, as the browser reports a reply that comes while it is
     // still sending as a bare network error, without the reason.
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
-    if (contentLength <= CAM_FW_TRAILER) return refuse(400, "that firmware is not signed for this hub, so nothing was changed", MAX_FIRMWARE);
-    if (firmwareOwner_ || !chip_->firmwareBegin(contentLength - CAM_FW_TRAILER))
+    if (contentLength <= S2O_FW_TRAILER) return refuse(400, "that firmware is not signed for this hub, so nothing was changed", MAX_FIRMWARE);
+    if (firmwareOwner_ || !chip_->firmwareBegin(contentLength - S2O_FW_TRAILER))
       return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;
     firmwareSig_.begin(contentLength);

@@ -482,7 +482,8 @@ long its last alert took to be confirmed, how long its battery will last, and wh
 
 **Node firmware** on the same page takes a node's `firmware.bin`, from the node project, one per kind of chip, kept in
 `nodes/` on LittleFS. The hub reads the version from the file and refuses anything that is not a node's firmware, the
-hub's own included. Each node of that chip that runs another version is told an update is ready with its next
+hub's own included, and any that is not signed with the project's key, as the node project's releases are. Each node
+checks the signature again, and that the update is not an older release than its own, before it runs it. Each node of that chip that runs another version is told an update is ready with its next
 confirmation and fetches it over ESP-NOW (see [Firmware updates](protocol.md#firmware-updates)). A node saving its battery is not offered one,
 and a node whose update was undone is not offered that file again. The node's row shows the update's progress.
 

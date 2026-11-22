@@ -8,7 +8,7 @@
 #include "cam_alarm.h"
 #include "cam_auth.h"
 #include "cam_config.h"
-#include "cam_firmware_sig.h"
+#include "s2o_fw_sig.h"
 #include "cam_json.h"
 #include "cam_mqtt_client.h"
 #include "cam_nodes.h"
@@ -245,7 +245,8 @@ class CamWeb {
   CamSchedule schedule_;        // the restart schedule, as the page shows it
   std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
   HttpConn* firmwareOwner_ = nullptr;
-  CamFirmwareSig firmwareSig_;                              // the signature on the update under way, checked before it is kept
+  S2oFirmwareSig firmwareSig_;                              // the signature on the update under way, checked before it is kept
+  S2oFirmwareSig nodeSig_;                                  // the same for a node's firmware file, before the nodes are offered it
   HttpConn* nodeImageOwner_ = nullptr;                      // the upload of a node firmware file under way
   HttpConn* uploading_ = nullptr;                           // the upload borrowing the picture buffer (CamVideo::lend)
   std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download

@@ -148,6 +148,14 @@ no longer has:
 
 The node asks for the next offset until it has the whole file, and asks again for anything that did not arrive.
 
+The file is the node's firmware as the node project signs it (`sign_firmware.py --node`; the format is in
+`lib/s2o_proto/s2o_fw_sig.h`): the image, its release number, and an Ed25519 signature with the project's key over a
+context of its own, `s2o nodefirm v1\n`, so the hub's firmware cannot pass for a node's. The hub refuses an unsigned
+file when it is put on it, and keeps the rest whole, signature and all. The node writes the image as it comes and holds
+the last 72 bytes back; it starts the update only when the signature is good and the release number is not lower than
+its own, and otherwise does not try that file again. A node from before signing writes those bytes after the image,
+where nothing reads them, so a signed file updates it too.
+
 ## Pairing a node
 
 A node can instead pair with the hub: it finds the hub by itself and gets a key of its own, which no one listening to the

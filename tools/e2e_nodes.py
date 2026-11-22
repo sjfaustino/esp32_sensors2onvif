@@ -252,13 +252,21 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     image[0], image[12], image[13] = 0xE9, 13, 0
     mark = b'sensors2onvif-node-version=4b5c6d7\0'
     image[1500:1500 + len(mark)] = mark
-    image = bytes(image)
-    check('a file that is not a node firmware is refused', api('PUT', '/api/node-firmware', b'\xe9' + bytes(2999))[0] == 400)
+    raw = bytes(image)
+    image = signed_node(raw)  # as the node project signs it: the hub keeps it whole, signature and all, for the nodes
+    check('a file that is not a node firmware is refused', api('PUT', '/api/node-firmware', signed_node(b'\xe9' + bytes(2999)))[0] == 400)
+    code, reply = api('PUT', '/api/node-firmware', raw)
+    check('a node firmware without a signature is refused', code == 400 and b'not signed' in reply, (code, reply[:80]))
+    code, reply = api('PUT', '/api/node-firmware', common.signed(raw))
+    check("one signed as the hub's own firmware is refused too", code == 400 and b'not signed' in reply, (code, reply[:80]))
+    changed = bytearray(image)
+    changed[1600] ^= 1
+    check('and one changed after signing', api('PUT', '/api/node-firmware', bytes(changed))[0] == 400)
     check('node firmware needs the web password', api('PUT', '/api/node-firmware', image, auth=False)[0] == 401)
     status_code, reply = api('PUT', '/api/node-firmware', image)
     check('a node firmware can be put on the hub', status_code == 200 and json.loads(reply) == {'ok': True, 'chip': 'ESP32-C6', 'version': '4b5c6d7'}, reply)
     listed = get_json('/api/espnow')['nodeFirmware']
-    check('the Nodes and pairing page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': 3000}], listed)
+    check('the Nodes and pairing page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': len(image)}], listed)
     control('end-alerts')
     body = confirmed(26)
     check('a node of that chip on another version is told an update is ready', body[21:22] == b'\x01', body.hex())
@@ -274,7 +282,7 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
 
     described = ask(0, 0xFFFFFFFF)
     number = int.from_bytes(described[0][1:5], 'little') if described else 0
-    check('asked, the hub describes the update: its number, size and version', len(described) == 1 and described[0][5:13] == (3000).to_bytes(4, 'little') + bytes([0xFF] * 4)
+    check('asked, the hub describes the update: its number, size and version', len(described) == 1 and described[0][5:13] == len(image).to_bytes(4, 'little') + bytes([0xFF] * 4)
           and described[0][13:-8] == b'4b5c6d7', described)
     fetched = b''
     while len(fetched) < len(image):

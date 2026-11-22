@@ -167,17 +167,17 @@ static void a_firmware_signature_is_checked_whole() {
   std::vector<uint8_t> sig =
       unhex("697f69c94828ac0023794e149840c27c331cc20bbbc646e24938981b480da87e101cfe0767dcd710d1a2ca519539eb2c83266e88f9c24e72baeef0c6a550e003");
   file.insert(file.end(), sig.begin(), sig.end());
-  file.insert(file.end(), CAM_FW_MAGIC, CAM_FW_MAGIC + 8);
+  file.insert(file.end(), S2O_FW_MAGIC, S2O_FW_MAGIC + 8);
   uint8_t key[32], other[32];
-  TEST_ASSERT_TRUE(camFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
-  TEST_ASSERT_TRUE(camFirmwareKey("3D4017C3E843895A92B70AA74D1B7EBC9C982CCF2EC4968CC0CD55F12AF4660C", other));
-  TEST_ASSERT_FALSE(camFirmwareKey("d75a98", other));
-  TEST_ASSERT_FALSE(camFirmwareKey(std::string(63, '0') + "g", other));
-  TEST_ASSERT_FALSE(camFirmwareKey("", other));
-  TEST_ASSERT_TRUE(camFirmwareKey("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", other));
+  TEST_ASSERT_TRUE(s2oFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
+  TEST_ASSERT_TRUE(s2oFirmwareKey("3D4017C3E843895A92B70AA74D1B7EBC9C982CCF2EC4968CC0CD55F12AF4660C", other));
+  TEST_ASSERT_FALSE(s2oFirmwareKey("d75a98", other));
+  TEST_ASSERT_FALSE(s2oFirmwareKey(std::string(63, '0') + "g", other));
+  TEST_ASSERT_FALSE(s2oFirmwareKey("", other));
+  TEST_ASSERT_TRUE(s2oFirmwareKey("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", other));
 
   auto run = [&](const std::vector<uint8_t>& f, size_t piece, const uint8_t* k, size_t total, size_t* image) {
-    CamFirmwareSig s;
+    S2oFirmwareSig s;
     if (!s.begin(total)) return false;
     size_t got = 0;
     for (size_t at = 0; at < f.size(); at += piece) got += s.take(f.data() + at, f.size() - at < piece ? f.size() - at : piece);
@@ -190,6 +190,12 @@ static void a_firmware_signature_is_checked_whole() {
     TEST_ASSERT_EQUAL(300, image);
     TEST_ASSERT_FALSE(run(file, piece, other, file.size(), nullptr));
   }
+  {  // the hub's own firmware never passes for a node's, nor the other way
+    S2oFirmwareSig s;
+    s.begin(file.size());
+    s.take(file.data(), file.size());
+    TEST_ASSERT_FALSE(s.good(key, S2O_FW_NODE_CONTEXT));
+  }
   for (size_t at : {0u, 150u, 299u, 300u, 363u, 364u, 371u}) {  // a byte changed in the image, signature or end mark
     std::vector<uint8_t> changed = file;
     changed[at] ^= 0x20;
@@ -201,8 +207,8 @@ static void a_firmware_signature_is_checked_whole() {
   TEST_ASSERT_FALSE(run(file, 50, key, file.size() - 1, nullptr));    // more bytes than said
   std::vector<uint8_t> unsigned_(file.begin(), file.begin() + 300);
   TEST_ASSERT_FALSE(run(unsigned_, 50, key, unsigned_.size(), nullptr));
-  CamFirmwareSig s;
-  TEST_ASSERT_FALSE(s.begin(CAM_FW_TRAILER));  // no room for an image
+  S2oFirmwareSig s;
+  TEST_ASSERT_FALSE(s.begin(S2O_FW_TRAILER));  // no room for an image
   TEST_ASSERT_FALSE(s.good(key));
   TEST_ASSERT_TRUE(s.begin(file.size()));  // and checked once only
   s.take(file.data(), file.size());
@@ -217,28 +223,28 @@ static void a_firmware_release_number_is_read_from_the_signed_part() {
   for (int i = 1; i < 300; i++) file.push_back((uint8_t)(i * 7));
   const uint8_t number[4] = {0xA2, 0x0F, 0, 0};  // 4002
   file.insert(file.end(), number, number + 4);
-  file.insert(file.end(), CAM_FW_RELEASE_MAGIC, CAM_FW_RELEASE_MAGIC + 8);
+  file.insert(file.end(), S2O_FW_RELEASE_MAGIC, S2O_FW_RELEASE_MAGIC + 8);
   std::vector<uint8_t> sig =
       unhex("d9b6ab324e750c168b569c6c42631bc0fa9dd79fc36449ad17de893a93162337f031b6c0b4d0ab360e5ec76ad7fbbf553ce11f9f13ac4d1a57fa1e5f5e8d5204");
   file.insert(file.end(), sig.begin(), sig.end());
-  file.insert(file.end(), CAM_FW_MAGIC, CAM_FW_MAGIC + 8);
+  file.insert(file.end(), S2O_FW_MAGIC, S2O_FW_MAGIC + 8);
   uint8_t key[32];
-  TEST_ASSERT_TRUE(camFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
+  TEST_ASSERT_TRUE(s2oFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
   for (size_t piece : {1u, 5u, 11u, 12u, 13u, 64u, 311u, 312u, 1000u}) {
-    CamFirmwareSig s;
+    S2oFirmwareSig s;
     TEST_ASSERT_TRUE(s.begin(file.size()));
     for (size_t at = 0; at < file.size(); at += piece) s.take(file.data() + at, file.size() - at < piece ? file.size() - at : piece);
     TEST_ASSERT_TRUE_MESSAGE(s.good(key), std::to_string(piece).c_str());
     TEST_ASSERT_EQUAL_INT64_MESSAGE(4002, s.release(), std::to_string(piece).c_str());
   }
-  CamFirmwareSig half;  // not all of it yet
+  S2oFirmwareSig half;  // not all of it yet
   half.begin(file.size());
   half.take(file.data(), 200);
   TEST_ASSERT_EQUAL_INT64(-1, half.release());
   std::vector<uint8_t> plain(1, 0xE9);  // the first signed format: no number
   for (int i = 1; i < 300; i++) plain.push_back((uint8_t)(i * 7));
-  plain.resize(plain.size() + CAM_FW_TRAILER);
-  CamFirmwareSig none;
+  plain.resize(plain.size() + S2O_FW_TRAILER);
+  S2oFirmwareSig none;
   none.begin(plain.size());
   none.take(plain.data(), plain.size());
   TEST_ASSERT_EQUAL_INT64(-1, none.release());

@@ -26,7 +26,7 @@ except (OSError, subprocess.SubprocessError):
 
 
 def release_number(tag):
-    """v1.2.3 as 1002003: the number a signed update carries, and below which the hub refuses one (cam_firmware_sig.h)."""
+    """v1.2.3 as 1002003: the number a signed update carries, and below which the hub refuses one (s2o_fw_sig.h)."""
     import re
     m = re.match(r'v(\d+)\.(\d+)\.(\d+)', tag or '')
     return int(m.group(1)) * 1000000 + int(m.group(2)) * 1000 + int(m.group(3)) if m else 0
@@ -41,7 +41,7 @@ except (OSError, subprocess.SubprocessError):
 text = ('// Written by tools/version.py on every build; not kept in git.\n'
         '#pragma once\n'
         f'#define FIRMWARE_VERSION "{version}"\n'
-        f'#define FIRMWARE_RELEASE {release_number(tag)}  // {tag or "no release tag"}; see cam_firmware_sig.h\n')
+        f'#define FIRMWARE_RELEASE {release_number(tag)}  // {tag or "no release tag"}; see s2o_fw_sig.h\n')
 path = os.path.join(root, 'include', 'version.h')
 try:
     with open(path, encoding='utf8') as f:

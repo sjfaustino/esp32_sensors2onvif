@@ -6,7 +6,7 @@
 #include <vector>
 #include "cam_auth.h"
 #include "cam_events.h"
-#include "cam_firmware_sig.h"
+#include "s2o_fw_sig.h"
 #include "cam_frames.h"
 #include "cam_mqtt.h"
 #include "cam_rtp.h"

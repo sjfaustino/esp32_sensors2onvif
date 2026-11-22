@@ -133,7 +133,7 @@ What a confirmation carries for the node comes from `forNode`, which reads only 
 ## The hub's firmware signature
 
 An upload to `/api/firmware` is the image as built, then 72 bytes: an Ed25519 signature and the mark `S2OSIG1\n`
-(`cam_firmware_sig.h`). `CamFirmwareSig` hashes the image with SHA-512 as it streams to flash and holds the last 72
+(`s2o_fw_sig.h`). `S2oFirmwareSig` hashes the image with SHA-512 as it streams to flash and holds the last 72
 bytes back, as they are known from the Content-Length; the update is given the image's size, so it ends on the image's
 last byte. Once all of it has arrived, the signature is checked over `s2o firmware v1\n` and that hash, with the public
 key in `CamConfig::firmwareKey`, and only then is the update kept; otherwise it is dropped and the running firmware
@@ -141,7 +141,7 @@ stays. Monocypher (`lib/monocypher`) does the Ed25519 and SHA-512.
 
 The signed part ends with the release number: 4 bytes, least significant first, and `S2OREL1\n`. The number is
 major × 1000000 + minor × 1000 + patch of the newest release tag the build comes from or follows, which
-`tools/version.py` writes into `version.h` as `FIRMWARE_RELEASE`. `CamFirmwareSig` keeps the last 12 bytes it hashed, and
+`tools/version.py` writes into `version.h` as `FIRMWARE_RELEASE`. `S2oFirmwareSig` keeps the last 12 bytes it hashed, and
 an update whose number is lower than the hub's own, or that has none, is refused once its signature is known to be
 good. A hub from before release numbers writes those 12 bytes after the image with the rest, so the next update reaches
 it too.
@@ -153,7 +153,9 @@ the image, where the bootloader does not read, so a signed file updates it too.
 
 ## Node firmware
 
-An upload to `/api/node-firmware` streams into `nodes/upload.bin`, as the hub's own update streams to flash, and is then
+An upload to `/api/node-firmware` is hashed as it streams, by a second `S2oFirmwareSig`, and refused unless it is signed
+as a node's firmware (`S2O_FW_NODE_CONTEXT`); the whole file is kept, signature and all, for the nodes to check again
+(see the protocol's Firmware updates). It streams into `nodes/upload.bin`, as the hub's own update streams to flash, and is then
 read through once by `camCheckNodeImage`: the ESP32 image's first byte and chip, the version after
 `sensors2onvif-node-version=`, and an FNV-1a hash of the whole file, which is the update's number. Its description,
 `nodes/<chip>.txt`, is written once it is renamed into place, so a start of the hub reads only the small files. A node's

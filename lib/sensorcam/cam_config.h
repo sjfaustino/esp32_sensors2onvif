@@ -227,7 +227,7 @@ struct CamConfig {
   int64_t disarmedUntil = 0;     // see camTimedDisarmOver; 0 for a disarm without an end
   uint32_t rearmMinutes = 0;     // how long a disarm from Home Assistant lasts; 0 until armed again
   std::string firmwareVersion;   // told to Home Assistant
-  std::string firmwareKey;       // the Ed25519 public key, as 64 hex digits, that signs updates (cam_firmware_sig.h)
+  std::string firmwareKey;       // the Ed25519 public key, as 64 hex digits, that signs updates (s2o_fw_sig.h)
   uint32_t firmwareRelease = 0;  // this firmware's release number; an update with a lower one is refused
   std::string nvrIp;             // only for the connection status on the NVR page; the hub never contacts the NVR
   uint16_t rtspPort = 8554;
