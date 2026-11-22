@@ -5,6 +5,11 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
+Update from 0.3.0: from this version the hub takes only signed firmware over the network, and its pages are redesigned.
+Settings, sensors and history are kept.
+
 ### Security
 
 - The hub takes only firmware signed with the project's key. Before, anyone with the hub password could put any firmware
@@ -14,6 +19,25 @@ before that, a new minor version may change settings or the messages.
   has GitHub's build attestation, so anyone can check a file was built from the tagged commit.
 - `docs/threat-model.md` lists who might attack the hub, from where, and what it does and cannot do about each.
 
+### The pages
+
+- The Overview opens with the alarm's state in large type and its colour, red for armed away, amber for armed home and
+  green for disarmed, with an icon and large buttons; the bar across the top of every page shows the hub's name and the
+  same state.
+- The pages ask in the page, never in the browser's own boxes, with a red button for what cannot be undone, and confirm
+  a change in a notice at the foot of the page. A change of mode can be undone from it.
+- The settings pages group their fields in cards, with the help under each field and the main button filled. A bar
+  at the foot says when changes are not saved, with Save and Discard, and leaving the page asks first.
+- A file is dropped on the page or chosen, and shows its name and size; the firmware upload shows its progress.
+  Restarting, new keys and a reset are together under Danger zone on Maintenance.
+- The Sensors page names each picture by what it is shown for, with a small preview of it or of what is shown in its
+  place, and each node by its sensors' names; the file names show only when asked for.
+- The Events page labels each event in the colour of what it is, shows 25 at a time, and leaves empty cells blank.
+- Lists show grey bars while they load, and an empty one says what to do, with a button that does it. The status line
+  leads to what it is about. The Overview no longer shows work dropped for lack of memory, which Device info has.
+- The menu's groups are Alarm, Sensors, Network, Recording and System, and the Overview groups what is happening now
+  and what the hub is connected to in two cards.
+
 ### Fixed
 
 - A stored file whose reading failed part way was taken as whole, cut short.
@@ -21,26 +45,8 @@ before that, a new minor version may change settings or the messages.
 ### The project
 
 - CI also runs CodeQL, clang-tidy's bug-finding checks and OpenSSF Scorecard, and measures how much of the library the
-  tests run. The GitHub Actions it uses are pinned to commits, and Dependabot proposes their updates.
-
-### Changed
-
-- The Overview opens with the alarm's state in large type and its colour, red for armed away, amber for armed home and
-  green for disarmed, with an icon and large buttons; the bar across the top of every page shows the hub's name and the
-  same state.
-- The pages ask in the page, never in the browser's own boxes, with a red button for what cannot be undone, and confirm
-  a change in a notice at the foot of the page. A change of mode can be undone from it.
-- The Sensors page names each picture by what it is shown for, with a small preview of it or of what is shown in its
-  place, and each node by its sensors' names; the file names show only when asked for.
-- The settings pages group their fields in cards, with the help under each field and the main button filled. A bar
-  at the foot says when changes are not saved, with Save and Discard, and leaving the page asks first.
-- A file is dropped on the page or chosen, and shows its name and size; the firmware upload shows its progress.
-  Restarting, new keys and a reset are together under Danger zone on Maintenance.
-- The Events page labels each event in the colour of what it is, shows 25 at a time, and leaves empty cells blank.
-- Lists show grey bars while they load, and an empty one says what to do, with a button that does it. The status line
-  leads to what it is about. The Overview no longer shows work dropped for lack of memory, which Device info has.
-- The menu's groups are Alarm, Sensors, Network, Recording and System, and the Overview groups what is happening now
-  and what the hub is connected to in two cards.
+  tests run: 93% of its lines. The GitHub Actions it uses are pinned to commits, and Dependabot proposes their updates.
+- The parser fuzzer also runs on Windows, with LLVM's libFuzzer: `tools/fuzz.ps1`.
 
 ## [0.3.0] - 2026-11-21
 
@@ -135,7 +141,8 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sjfaustino/esp32_sensors2onvif/releases/tag/v0.1.0
