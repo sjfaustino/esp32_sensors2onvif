@@ -90,7 +90,12 @@ const uint32_t CAM_MAX_NODE_IMAGE = 3 * 1024 * 1024;
 bool camCheckNodeImage(const std::function<bool(size_t, char*, size_t)>& read, size_t size, CamNodeImage& out);
 std::string camChipName(uint16_t chip);  // "ESP32-C6", or a number for one this hub does not name
 
-// Per-sensor settings, kept as settings.txt in the sensor's folder: "hold=SECONDS", "quiet=FROM-TO" and "zone=interior"
+// The files the hub keeps for its sensors and nodes are lines of "key=value". Calls line for each that is not empty, a
+// carriage return before its end dropped, with the key and what follows the first "=" (empty without one); false as soon
+// as line says so, for a key or value it does not take.
+bool camKeyLines(const std::string& text, const std::function<bool(const std::string& key, const std::string& value)>& line);
+
+// Per-sensor settings, kept in sensor.txt in the sensor's folder (cam_node_files.h): "hold=SECONDS", "quiet=FROM-TO" and "zone=interior"
 // lines, FROM and TO being minutes after local midnight. During quiet hours an alert is logged but not sent to the NVR,
 // and so is an interior sensor's while the hub is armed home.
 struct CamSensorSettings {
@@ -107,7 +112,7 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out);  /
 std::string camSensorSettingsText(const CamSensorSettings& s);
 bool camQuiet(const CamSensorSettings& s, int localMinute);  // localMinute -1, an unknown clock, is never quiet
 
-// Per-node settings, kept as settings.txt in the node's folder, as "late=SECONDS", "silent=SECONDS", "every=SECONDS"
+// Per-node settings, kept in node.txt in the node's folder, as "late=SECONDS", "silent=SECONDS", "every=SECONDS"
 // and "repeat=SECONDS" lines. An alert the node reports as having happened longer ago than late is a past event: it gets
 // the past-event picture and its own NVR record. A node not heard from for silent is reported silent, which may mean it
 // was disabled. every and repeat go to the node with each confirmation: how often it reports with nothing to report, and
@@ -129,7 +134,7 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out);  // fa
 std::string camNodeSettingsText(const CamNodeSettings& s);
 
 // What a node says about itself. It sends this with its regular reports, so the hub learns it again after any change; the
-// hub keeps it as about.txt in the node's folder. On the air: CAM_NODE_INFO, how often it reports in seconds (u32, 0 when
+// hub keeps it in node.txt in the node's folder. On the air: CAM_NODE_INFO, how often it reports in seconds (u32, 0 when
 // it does not say), flags (bit 0: saving its battery, so reporting less often), why it last restarted (CamNodeRestart),
 // how many times it has restarted (u16), how long its last alert took to be confirmed in milliseconds (u16, 0xFFFF for
 // none), its chip as in its firmware's header (u16, 0xFFFF unknown), the firmware update it refused because it was
@@ -159,13 +164,13 @@ struct CamNodeInfo {
   bool saving = false;
   uint8_t restart = CAM_RESTART_UNKNOWN;
   uint16_t restarts = 0;
-  uint16_t responseMs = CAM_RESPONSE_UNKNOWN;  // not kept in about.txt, as it changes with every alert
+  uint16_t responseMs = CAM_RESPONSE_UNKNOWN;  // not kept in node.txt, as it changes with every alert
   uint16_t chip = CAM_CHIP_UNKNOWN;
   uint32_t refused = 0;
   std::string sensor, version;
   bool hasHardware = false;  // what the node says it runs; a node from before hardware settings says nothing
   S2oHardware hardware;
-  // Everything about.txt keeps.
+  // Everything node.txt keeps of it.
   bool operator==(const CamNodeInfo& o) const {
     return everyS == o.everyS && saving == o.saving && restart == o.restart && restarts == o.restarts && chip == o.chip && refused == o.refused &&
            sensor == o.sensor && version == o.version && hasHardware == o.hasHardware && (!hasHardware || hardware == o.hardware);

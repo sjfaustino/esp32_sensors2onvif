@@ -56,14 +56,7 @@ CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len,
 
 bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
   CamNodeInfo info;
-  for (size_t at = 0; at < text.size();) {
-    size_t end = text.find('\n', at);
-    if (end == std::string::npos) end = text.size();
-    std::string line = text.substr(at, end - at);
-    at = end + 1;
-    if (line.empty()) continue;
-    size_t eq = line.find('=');
-    std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
+  bool ok = camKeyLines(text, [&](const std::string& key, const std::string& value) {
     if (!printable(value)) return false;
     uint32_t n = 0;
     bool number = camNumber(value, n);
@@ -87,9 +80,10 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
       info.hasHardware = true;
     else
       return false;
-  }
-  out = info;
-  return true;
+    return true;
+  });
+  if (ok) out = info;
+  return ok;
 }
 
 std::string camNodeInfoText(const CamNodeInfo& i) {
@@ -271,17 +265,23 @@ static bool smallNumber(const std::string& s, int& out) {  // digits only, up to
 
 static bool minuteOfDay(const std::string& s, int& out) { return smallNumber(s, out) && out < 1440; }
 
-bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
-  CamSensorSettings s;
+bool camKeyLines(const std::string& text, const std::function<bool(const std::string& key, const std::string& value)>& line) {
   for (size_t at = 0; at < text.size();) {
     size_t end = text.find('\n', at);
     if (end == std::string::npos) end = text.size();
-    std::string line = text.substr(at, end - at);
+    std::string one = text.substr(at, end - at);
     at = end + 1;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
-    size_t eq = line.find('=');
-    std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
+    if (!one.empty() && one.back() == '\r') one.pop_back();
+    if (one.empty()) continue;
+    size_t eq = one.find('=');
+    if (!line(one.substr(0, eq), eq == std::string::npos ? std::string() : one.substr(eq + 1))) return false;
+  }
+  return true;
+}
+
+bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
+  CamSensorSettings s;
+  bool ok = camKeyLines(text, [&](const std::string& key, const std::string& value) {
     size_t dash = value.find('-');
     int hold = 0;
     if (key == "hold" && smallNumber(value, hold) && hold >= 1 && (uint32_t)hold <= CAM_MAX_HOLD_S) {
@@ -295,9 +295,10 @@ bool camParseSensorSettings(const std::string& text, CamSensorSettings& out) {
     } else {
       return false;
     }
-  }
-  out = s;
-  return true;
+    return true;
+  });
+  if (ok) out = s;
+  return ok;
 }
 
 std::string camSensorSettingsText(const CamSensorSettings& s) {
@@ -318,20 +319,8 @@ bool camValidCamera(const std::string& s) {
 
 bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
   CamNodeSettings s;
-  for (size_t at = 0; at < text.size();) {
-    size_t end = text.find('\n', at);
-    if (end == std::string::npos) end = text.size();
-    std::string line = text.substr(at, end - at);
-    at = end + 1;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
-    size_t eq = line.find('=');
-    std::string key = line.substr(0, eq), value = eq == std::string::npos ? std::string() : line.substr(eq + 1);
-    if (key == "hw") {
-      if (!camParseHardware(value, s.hw)) return false;
-      s.hwSet = true;
-      continue;
-    }
+  bool ok = camKeyLines(text, [&](const std::string& key, const std::string& value) {
+    if (key == "hw") return s.hwSet = camParseHardware(value, s.hw);
     if (value.empty() || value.size() > 6) return false;
     for (char ch : value)
       if (ch < '0' || ch > '9') return false;
@@ -346,9 +335,10 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
       s.repeatS = n;
     else
       return false;
-  }
-  out = s;
-  return true;
+    return true;
+  });
+  if (ok) out = s;
+  return ok;
 }
 
 std::string camNodeSettingsText(const CamNodeSettings& s) {

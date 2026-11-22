@@ -257,7 +257,7 @@
       await add("plan.json");
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
-        if (s.late || s.silent || s.reportEvery || s.repeat) await add(s.mac + "/settings.txt"); // any of its settings
+        await add(s.mac + "/node.txt"); // its settings and hardware, and what it said; there is none until something is
         if (s.paired) await add(s.mac + "/pairing.txt");
         for (const n of s.sensors) {
           const base = s.mac + "/" + n.input;
@@ -266,9 +266,8 @@
             await add(base + "/" + f.name);
             if (f.preview) await add(base + "/" + f.name.replace(/\.h264$/, ".jpg"));
           }
-          if (n.name) await add(base + "/name.txt");
           await add(base + "/text.json");
-          if (n.hold || n.quiet || n.interior) await add(base + "/settings.txt");
+          await add(base + "/sensor.txt"); // its name and settings, if it has any
         }
       }
       const a = el("a", {

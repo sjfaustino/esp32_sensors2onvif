@@ -36,8 +36,8 @@ class CamSensorTable {
   struct Node {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
-    CamNodeSettings settings;  // from settings.txt in the node's folder
-    CamNodeInfo info;          // what the node last said about itself, from about.txt
+    CamNodeSettings settings;  // from node.txt in the node's folder
+    CamNodeInfo info;          // what the node last said about itself, from node.txt
     // From pairing.txt: its own key, which its messages must be signed with instead of the shared one.
     bool paired = false;
     std::string key;
@@ -59,8 +59,8 @@ class CamSensorTable {
     bool used = false;
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     uint8_t input = 0;
-    std::string name;            // from name.txt in the sensor's folder
-    CamSensorSettings settings;  // from settings.txt
+    std::string name;            // from sensor.txt in the sensor's folder
+    CamSensorSettings settings;  // from sensor.txt
     int node = 0;                // its node, from 1
   };
   struct UnknownSender {  // sent a valid report but has no folder, so its reports are ignored

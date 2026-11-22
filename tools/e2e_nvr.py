@@ -240,7 +240,8 @@ def test_esp_now_page():
 
         # Sensor names.
         label = 'Front "gate"'.encode()
-        check('a sensor can be named', api('PUT', f'/api/file?path={name(1)}/name.txt', label)[0] == 200)
+        check('a sensor can be named', api('POST', f'/api/sensor-settings?path={name(1)}', 'name=' + urllib.parse.quote(label))[0] == 200)
+        check('a name on two lines is refused', api('POST', f'/api/sensor-settings?path={name(1)}', 'name=a%0Ab')[0] == 400)
         check('the name is shown with the node', node_entry(radio())['name'] == label.decode(), node_entry(radio()))
         check('the name is on the Sensors page data', any(n.get('name') == label.decode() for s in get_json('/api/tree')['nodes'] for n in s['sensors']))
 
@@ -423,7 +424,7 @@ def test_node_past_event_time(s):
     node3 = SENSORS[3][0]
     check('a node can have its own past-event time', api('POST', f'/api/node-settings?path={node3}', 'late=300')[0] == 200)
     check('the Sensors page data shows it', [s for s in get_json('/api/tree')['nodes'] if s['mac'] == node3][0]['late'] == 300)
-    check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\n'))
+    check("it is kept in the node's folder", api('GET', f'/api/file?path={node3}/node.txt') == (200, b'late=300\n'))
     get(f'/sensor?{sid(3)}&age=100')
     wait_until(lambda: status()['active'] == [name(3)])
     check("an alert younger than the node\'s time is live", status()['active'] == [name(3)] and json.loads(get('/events')[1])[0]['delayed'] is False, json.loads(get('/events')[1])[0])
@@ -438,11 +439,16 @@ def test_node_past_event_time(s):
     clear(3)
     check('a bad past-event time is refused', api('POST', f'/api/node-settings?path={node3}', 'late=0')[0] == 400)
     check('a node can have its own silent time', api('POST', f'/api/node-settings?path={node3}', 'late=300&silent=600')[0] == 200
-          and api('GET', f'/api/file?path={node3}/settings.txt') == (200, b'late=300\nsilent=600\n'))
+          and api('GET', f'/api/file?path={node3}/node.txt') == (200, b'late=300\nsilent=600\n'))
     check('the Sensors page data shows it', [s for s in get_json('/api/tree')['nodes'] if s['mac'] == node3][0]['silent'] == 600)
     check('a silent time under a minute is refused', api('POST', f'/api/node-settings?path={node3}', 'silent=30')[0] == 400)
     check('settings for a node that does not exist are refused', api('POST', '/api/node-settings?path=02-00-00-00-00-77', 'late=60')[0] == 404)
-    check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
+    check('clearing the node settings removes the file', api('POST', f'/api/node-settings?path={node3}', '')[0] == 200 and api('GET', f'/api/file?path={node3}/node.txt')[0] == 404)
+    api('PUT', f'/api/file?path={node3}/settings.txt', b'late=120\n')  # as an older backup restores it
+    check("a node's settings.txt from an older backup is read", [s for s in get_json('/api/tree')['nodes'] if s['mac'] == node3][0]['late'] == 120)
+    check('and taken into node.txt, the old file removed', api('GET', f'/api/file?path={node3}/node.txt') == (200, b'late=120\n')
+          and api('GET', f'/api/file?path={node3}/settings.txt')[0] == 404)
+    api('POST', f'/api/node-settings?path={node3}', '')
     get(f'/sensor?{sid(3)}&age=100')
     wait_until(lambda: event_list()[0]['active'])
     check('without the setting, 100 seconds is a past event again', json.loads(get('/events')[1])[0]['delayed'] is True)
@@ -494,9 +500,9 @@ def test_sensor_limit():
     made = [api('POST', f'/api/mkdir?path={extra}/{i + 1}')[0] for i in range(free)]
     check('sensor folders up to the limit are accepted', set(made) <= {200}, made)
     check('a sensor folder beyond the limit is refused', api('POST', f'/api/mkdir?path={extra}/{free + 1}')[0] == 409)
-    check('a name for a sensor beyond the limit is refused', api('PUT', f'/api/file?path={extra}/{free + 1}/name.txt', b'x')[0] == 409)
+    check('a name for a sensor beyond the limit is refused', api('PUT', f'/api/file?path={extra}/{free + 1}/sensor.txt', b'name=x\n')[0] == 409)
     if free:
-        check('an existing sensor can still be changed at the limit', api('PUT', f'/api/file?path={extra}/1/name.txt', b'x')[0] == 200)
+        check('an existing sensor can still be changed at the limit', api('PUT', f'/api/file?path={extra}/1/sensor.txt', b'name=x\n')[0] == 200)
     api('DELETE', f'/api/file?path={extra}')
     check('the limit frees up when sensors are deleted', status()['sensors'] == 32 - free, status())
 

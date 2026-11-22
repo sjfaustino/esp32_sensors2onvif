@@ -1,6 +1,7 @@
 // The API's pages and files: the hub's page and the setup page, the Wi-Fi networks, the Sensors page's tree, the live
 // picture, and the files on storage.
 #include "cam_web_server.h"
+#include "cam_node_files.h"
 #include "cam_number.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -69,9 +70,7 @@ std::string CamWeb::treeJson() {
   for (const CamFsEntry& s : root) {
     if (!s.dir || camClassifyPath(s.name) != CAM_PATH_NODE) continue;
     if (!makeRoom(320)) return std::string();  // the longest node entry before its sensors
-    CamNodeSettings node;
-    std::string nodeText;
-    if (!storage_.readFile(s.name + "/settings.txt", nodeText, 256) || !camParseNodeSettings(nodeText, node)) node = CamNodeSettings();
+    CamNodeSettings node = camReadNodeFile(storage_, s.name).settings;
     uint8_t mac[6];
     camParseMac(s.name, mac);
     int any = table_.findNode(mac);

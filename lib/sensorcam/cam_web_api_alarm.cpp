@@ -10,6 +10,7 @@
 #include "cam_auth.h"
 #include "cam_frames.h"
 #include "cam_net.h"
+#include "cam_node_files.h"
 #include "cam_soap.h"
 #include "cam_web.h"
 #include "cam_server_internal.h"
@@ -29,10 +30,26 @@ void CamWeb::getEvents(const ApiRequest& r) {
   }
 }
 
-// A sensor's own settings.
+// A sensor's own settings, or its name alone (name, with no other field): each kept with the other in its sensor.txt.
 void CamWeb::postSensorSettings(const ApiRequest& r) {
   HttpConn& c = r.c;
   std::string path = queryParam(r.target, "path");
+  if (r.has("name") && !r.has("hold") && !r.has("zone") && !r.has("from")) {
+    std::string name = r.field("name");
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    CamSensorFile f = camReadSensorFile(storage_, path);
+    f.name = name;
+    if (!table_.slotForPath(path))
+      c.out = jsonFail(404, "no such sensor");
+    else if (!camValidName(name))
+      c.out = jsonFail(400, "the name must be up to 64 characters, on one line");
+    else {
+      bool ok = camWriteSensorFile(storage_, path, f);
+      alarm_.rescan();
+      c.out = saved(ok, "could not save the name; storage may be full");
+    }
+    return;
+  }
   std::string hold = r.field("hold"), from = r.field("from"), to = r.field("to"), zone = r.field("zone"), camera = r.field("camera");
   bool sensor = table_.slotForPath(path) != 0;
   CamSensorSettings s;
@@ -46,8 +63,9 @@ void CamWeb::postSensorSettings(const ApiRequest& r) {
     c.out = jsonFail(
         400, "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter");
   } else {
-    std::string file = path + "/settings.txt", clean = camSensorSettingsText(s);
-    bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
+    CamSensorFile f = camReadSensorFile(storage_, path);  // its name stays
+    f.settings = s;
+    bool ok = camWriteSensorFile(storage_, path, f);
     alarm_.rescan();
     c.out = saved(ok, "could not save the settings; storage may be full");
   }
@@ -68,8 +86,12 @@ void CamWeb::postNodeSettings(const ApiRequest& r) {
         400,
         "the past-event time must be 1 to 86400 seconds, the silent time 60 to 604800, the report time 60 to 86400, and the repeat time 1 to 60");
   } else {
-    std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
-    bool ok = clean.empty() ? !storage_.exists(file) || storage_.removeTree(file) : storage_.writeFile(file, clean.data(), clean.size());
+    // The hardware set on the page, and what the node said, stay: before, saving these lost the hardware.
+    CamNodeFile f = camReadNodeFile(storage_, path);
+    s.hwSet = f.settings.hwSet;
+    s.hw = f.settings.hw;
+    f.settings = s;
+    bool ok = camWriteNodeFile(storage_, path, f);
     alarm_.rescan();
     c.out = saved(ok, "could not save the setting; storage may be full");
   }
@@ -79,14 +101,14 @@ void CamWeb::postNodeSettings(const ApiRequest& r) {
 // here and what the node runs, so the node fetches it with its next confirmation. The other settings stay.
 void CamWeb::postNodeHardware(const ApiRequest& r) {
   HttpConn& c = r.c;
-  std::string path = queryParam(r.target, "path"), text;
+  std::string path = queryParam(r.target, "path");
   uint8_t mac[6];
   if (camClassifyPath(path) != CAM_PATH_NODE || !storage_.exists(path) || !camParseMac(path, mac)) {
     c.out = jsonFail(404, "no such node");
     return;
   }
-  CamNodeSettings s;
-  if (!storage_.readFile(path + "/settings.txt", text, 256) || !camParseNodeSettings(text, s)) s = CamNodeSettings();
+  CamNodeFile file = camReadNodeFile(storage_, path);
+  CamNodeSettings& s = file.settings;
   auto pin = [&](const char* key, uint8_t& out) {
     std::string v = r.field(key);
     uint8_t n = 0;
@@ -116,8 +138,7 @@ void CamWeb::postNodeHardware(const ApiRequest& r) {
     hw.number = (last > runs ? last : runs) + 1;
     s.hwSet = true;
     s.hw = hw;
-    std::string file = path + "/settings.txt", clean = camNodeSettingsText(s);
-    bool ok = storage_.writeFile(file, clean.data(), clean.size());
+    bool ok = camWriteNodeFile(storage_, path, file);
     // A tamper switch is the node's input 2. A node paired with only its sensor has no folder for it, and the hub would
     // refuse its alerts as from an unknown sensor.
     if (ok && hw.tamperPin != S2O_PIN_NONE) ok = storage_.makeDirs(path + "/2");

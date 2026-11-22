@@ -78,11 +78,13 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() == 1 && parts[0] == "plan.json") return CAM_PATH_TEXT;    // where each sensor is on it
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_NODE;
-  if (parts.size() == 2 && (parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt"))
+  // node.txt and sensor.txt; and the files they replaced, which a restore of an older backup may still write.
+  if (parts.size() == 2 &&
+      (parts[1] == "node.txt" || parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt"))
     return CAM_PATH_TEXT;  // the node's own settings, key, what it said of itself, and its battery
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
-  if (parts[2] == "text.json" || parts[2] == "name.txt" || parts[2] == "settings.txt") return CAM_PATH_TEXT;
+  if (parts[2] == "text.json" || parts[2] == "sensor.txt" || parts[2] == "name.txt" || parts[2] == "settings.txt") return CAM_PATH_TEXT;
   if (validPreviewFile(parts[2])) return CAM_PATH_PREVIEW;
   return validStateFile(parts[2]) ? CAM_PATH_FILE : CAM_PATH_INVALID;
 }

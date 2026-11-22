@@ -382,7 +382,7 @@ static void a_nodes_hardware_travels_and_is_checked() {
   bad.sensor = S2O_SENSOR_RCWL0516;
   TEST_ASSERT_TRUE(s2oHardwareValid(bad, S2O_CHIP_ESP32, nullptr));
 
-  // As the hub keeps it, in settings.txt and about.txt.
+  // As the hub keeps it, in node.txt.
   S2oHardware text;
   TEST_ASSERT_EQUAL_STRING("7,4,3,4,1,1", camHardwareText(hw).c_str());
   TEST_ASSERT_TRUE(camParseHardware("7,4,3,4,1,1", text) && text == hw);

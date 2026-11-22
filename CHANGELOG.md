@@ -18,6 +18,14 @@ before that, a new minor version may change settings or the messages.
   when it changes, and the status line not twice. Open on the Overview, a browser asks 12 times in 30 s, from 33; on Nodes
   and pairing 29, from 47.
 
+### Storage
+
+- Each node keeps one `node.txt`, its settings and what it last said, and each sensor one `sensor.txt`, its name and
+  settings, in place of four files; every file of lines is read by one reader. A backup or a folder with the old
+  `settings.txt`, `about.txt` or `name.txt` is taken in and the old files removed.
+- Saving a node's times on the Sensors page no longer loses the hardware set for it, and a full backup keeps the
+  camera of a sensor that has only that setting.
+
 ### The nodes
 
 - **Add a node**, on the Nodes and pairing page, takes a node through its setting up a step at a time, each ticked as

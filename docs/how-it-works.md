@@ -116,8 +116,15 @@ needs from the others goes through `CamAlarmOutside`, which the server answers. 
 node's key is read from its `pairing.txt` into its sensors' rows when the sensor table is rebuilt, so checking its reports
 picks the key by the sender and needs no memory, as before.
 
-A node's info (message 6) is read the same way, from its `about.txt`, into each of its sensors' rows. It arrives with
-every regular report but is written only when it differs, so flash is not worn. The silent check asks `silentMsFor`: the
+A node's info (message 6) is read the same way, from the `said.` lines of its `node.txt`, into each of its sensors' rows.
+It arrives with every regular report but is written only when it differs, so flash is not worn.
+
+Each node keeps one `node.txt`, its settings from the pages and what it last said, and each sensor one `sensor.txt`, its
+name and settings (`lib/sensorcam/cam_node_files.*`). Every such file, and `pairing.txt` and a picture set's description,
+is read line by line by one function, `camKeyLines`, and each part by its own parser, so a damaged line refuses the
+file rather than being half read. They used to be four files: `settings.txt` and `about.txt` in the node's folder, and
+`name.txt` and `settings.txt` in each sensor's. A folder that still has them, as after restoring an older backup, has
+them taken in when the hub next reads it, and removed. The silent check asks `silentMsFor`: the
 node's own setting, else a quarter over its report time, else the hub's 3 hours.
 
 A paired node's fresh number lives in its `Node` entry: the newest and the one before, so a confirmation lost on the

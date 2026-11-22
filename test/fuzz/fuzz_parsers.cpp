@@ -14,6 +14,7 @@
 #include "s2o_fw_sig.h"
 #include "cam_frames.h"
 #include "cam_mqtt.h"
+#include "cam_node_files.h"
 #include "cam_pairing.h"
 #include "cam_sensors.h"
 #include "cam_soap.h"
@@ -33,7 +34,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string text(in.begin(), in.end());
   S2oKey key{KEY, 32};
 
-  switch (pick % 29) {
+  switch (pick % 31) {
     // ---- the radio: messages from nodes, and on the node, from the hub ----
     case 0: {
       S2oReport r;
@@ -198,6 +199,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       uint8_t publicKey[32];
       s2oFirmwareKey(text.substr(2, 64), publicKey) || (memset(publicKey, 0, 32), true);
       s.good(publicKey);
+      break;
+    }
+    case 29: {  // a node's one file, its settings and what it said
+      CamNodeFile f;
+      if (camParseNodeFile(text, f)) camNodeFileText(f);
+      break;
+    }
+    case 30: {  // a sensor's one file, its name and settings
+      CamSensorFile f;
+      if (camParseSensorFile(text, f)) camSensorFileText(f);
       break;
     }
   }

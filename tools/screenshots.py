@@ -34,7 +34,7 @@ def fill_the_hub():
     """Sensors with names, a node heard over the radio, and some alerts in the history."""
     for n, label in NAMES.items():
         api('POST', f'/api/mkdir?path={name(n)}')
-        api('PUT', f'/api/file?path={name(n)}/name.txt', label.encode())
+        api('PUT', f'/api/file?path={name(n)}/sensor.txt', f'name={label}\n'.encode())
     api('POST', f'/api/sensor-settings?path={name(1)}', 'camera=Camera%201%2C%20porch')
     api('POST', '/api/nvr', f'ip={LOCAL}')  # the pretend NVR, so the hub can check what it recorded
     control('radio-known')

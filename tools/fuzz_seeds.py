@@ -40,6 +40,8 @@ seeds = {
     19: b'http://192.168.1.10:8123/api/webhook/hub', 20: b'YWRtaW46cGFzc3dvcmQx', 21: b'hub.lan, alarm.lan',
     22: wsse, 23: wsse, 24: mqtt, 25: b'net.hookwd=3', 26: b'AA-BB-CC-DD-EE-01',
     27: struct.pack('<IIII', 0x4B505431, 11, 0x50524F46, 1),
+    29: b'late=300\nhw=1,4,3,4,1,1\nsaid.every=3600\nsaid.chip=13\nsaid.version=1.0.0\nsaid.hw=1,4,3,4,1,1\n',
+    30: b'name=Front gate\nhold=30\nzone=interior\n',
 }
 # Also the present sealed form for parser 5: 12, the number, the report encrypted, and a 16-byte tag.
 extra = {'05b': (5, bytes([12]) + struct.pack('<I', 9) + report + bytes(16))}

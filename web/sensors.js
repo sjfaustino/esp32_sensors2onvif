@@ -780,7 +780,11 @@ function render(t) {
             el("button", {
               textContent: "Save name",
               onclick: () =>
-                act(() => call("PUT", "/api/file?path=" + base + "/name.txt", nameField.value), "Saved the name"),
+                act(
+                  () =>
+                    call("POST", "/api/sensor-settings?path=" + base, "name=" + encodeURIComponent(nameField.value)),
+                  "Saved the name",
+                ),
             }),
             el("span", { className: "grow" }),
             el("button", {

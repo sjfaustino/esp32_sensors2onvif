@@ -84,7 +84,7 @@ def mqtt_tests(sensor_alert, sensor_clear):
     api('POST', f'/api/mkdir?path={path}')
     added = wait_until(lambda: (broker.latest(gone_topic) or {}).get('payload'))
     check('a sensor added appears in Home Assistant', added)
-    api('PUT', f'/api/file?path={path}/name.txt', b'Back door')
+    api('POST', f'/api/sensor-settings?path={path}', 'name=Back%20door')
     renamed = wait_until(lambda: json.loads(broker.latest(gone_topic)['payload'] or b'{}').get('device', {}).get('name') == 'Back door')
     check('a sensor renamed is renamed in Home Assistant', renamed, broker.latest(gone_topic))
     told = len(broker.messages)

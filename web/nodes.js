@@ -239,9 +239,11 @@
                         cancel: "Skip",
                       });
                       if (where && where.trim())
-                        await call("PUT", "/api/file?path=" + n.mac + "/" + i + "/name.txt", where.trim()).catch(
-                          () => {},
-                        );
+                        await call(
+                          "POST",
+                          "/api/sensor-settings?path=" + n.mac + "/" + i,
+                          "name=" + encodeURIComponent(where.trim()),
+                        ).catch(() => {});
                     }
                     $("pairMsg").textContent = "Paired " + n.mac + ". It starts reporting once it hears the hub again.";
                     loadEsp();

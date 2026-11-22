@@ -83,7 +83,7 @@ report, gets no confirmation, and is sent once per node, not per input:
 | 9 | Optional: the hardware settings it runs, as in Hardware settings below. A node from before them leaves these out |
 | 8 | The signature, as a report's |
 
-Texts are printable ASCII. The Nodes and pairing page shows them, and the hub keeps them in the node's folder as `about.txt`, all
+Texts are printable ASCII. The Nodes and pairing page shows them, and the hub keeps them in the node's `node.txt`, each after `said.`, all
 but the alert time, which changes with every alert. A restart counted for a crash, the watchdog or a brownout is logged.
 **Report this node silent after** is then a quarter longer than the node's report time, and at least 10 minutes longer,
 and follows the node when that changes. Set on the Sensors page, it comes first. A node that never says uses 3 hours.

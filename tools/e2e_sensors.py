@@ -114,11 +114,14 @@ def test_per_sensor_settings():
     wait_until(lambda: event_list()[0]['kind'] == 3)  # logged, so the hub has decided
     check('an alert in quiet hours does not reach the NVR', path not in status()['active'])
     check('an alert in quiet hours is still logged', get_json('/api/events')[0]['kind'] == 3)
-    code, text = api('GET', f'/api/file?path={path}/settings.txt')
-    check("the settings are kept in the sensor's folder", code == 200 and text.startswith(b'quiet='), text)
-    check('clearing the settings removes the file', api('POST', f'/api/sensor-settings?path={path}', '')[0] == 200 and api('GET', f'/api/file?path={path}/settings.txt')[0] == 404)
+    code, text = api('GET', f'/api/file?path={path}/sensor.txt')
+    check("the settings are kept in the sensor's file, after its name", code == 200 and text.startswith(b'name=Front "gate"\nquiet='), text)
+    check('clearing the settings keeps its name', api('POST', f'/api/sensor-settings?path={path}', '')[0] == 200
+          and api('GET', f'/api/file?path={path}/sensor.txt') == (200, b'name=Front "gate"\n'))
     api('PUT', f'/api/file?path={path}/settings.txt', b'hold=3\n')
-    check('settings.txt restored as a file is read too', tree_entry()['hold'] == 3, tree_entry())
+    check('settings.txt from an older backup is read too', tree_entry()['hold'] == 3, tree_entry())
+    check('and taken into sensor.txt, the old file removed', api('GET', f'/api/file?path={path}/sensor.txt') == (200, b'name=Front "gate"\nhold=3\n')
+          and api('GET', f'/api/file?path={path}/settings.txt')[0] == 404)
     api('POST', f'/api/sensor-settings?path={path}', '')
     get(f'/sensor?{sid(1)}')
     wait_until(lambda: path in status()['active'])
@@ -227,7 +230,8 @@ def test_webhook_formats(path, received, heads, hooks, port):
     check('a sensor can name the camera that covers it', api('POST', f'/api/sensor-settings?path={path}', f'camera={camera}')[0] == 200)
     entry = [n for s in get_json('/api/tree')['nodes'] if s['mac'] == SENSORS[1][0] for n in s['sensors'] if n['input'] == SENSORS[1][1]][0]
     check('the Sensors page data shows the camera', entry['camera'] == 'Camera 3, gate', entry)
-    check("it is kept in the sensor's settings file", api('GET', f'/api/file?path={path}/settings.txt') == (200, b'camera=Camera 3, gate\n'))
+    kept = api('GET', f'/api/file?path={path}/sensor.txt')
+    check("it is kept in the sensor's file, with its name", kept == (200, b'name=Front "gate"\ncamera=Camera 3, gate\n'), kept)
     api('POST', '/api/webhook', f'url={hook_url}&format=json&alerts=1&problems=0')
     count = len(received)
     get(f'/sensor?{sid(1)}')

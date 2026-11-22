@@ -134,7 +134,7 @@ quiet hours in local time. During quiet hours that sensor's alerts are logged as
 NVR or to Notifications. Quiet hours need the clock to be set; until it is, alerts always go through. **Camera to look at**
 names the NVR camera that covers the sensor, such as "Camera 3, garden": its alert notifications end with "look at Camera
 3, garden", the JSON has it as `camera`, and the Events page shows it beside each alert, so you know which recording to
-watch. The settings are kept in `settings.txt` in the sensor's folder.
+watch. The settings are kept with its name in `sensor.txt` in the sensor's folder.
 
 The whole hub can be disarmed, on the Overview page or from Home Assistant. Disarmed, every alert is logged as "alert while
 disarmed" but is not sent to the NVR or to Notifications, and every page says so at the top. A late report of something
@@ -538,14 +538,16 @@ Pictures are stored on LittleFS, and the folders are also the list of known sens
 ```
 clear.h264                         optional replacement for the built-in "all clear"
 AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its MAC address
-AA-BB-CC-DD-EE-01/settings.txt     optional past-event, silent, report and repeat times for the node, set on the Sensors page
-AA-BB-CC-DD-EE-01/about.txt        what the node last said of itself (node info)
+AA-BB-CC-DD-EE-01/node.txt         the node's past-event, silent, report and repeat times and hardware, set on the Sensors
+                                   page, and what it last said of itself, each line after "said."
 AA-BB-CC-DD-EE-01/battery.txt      its battery readings, for the forecast
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
-AA-BB-CC-DD-EE-01/1/name.txt       optional name, set on the Sensors page
-AA-BB-CC-DD-EE-01/1/settings.txt   optional alert time, quiet hours, zone and camera, set on the Sensors page
+AA-BB-CC-DD-EE-01/1/sensor.txt     optional name, alert time, quiet hours, zone and camera, set on the Sensors page
 ```
+
+Older hubs kept these in `settings.txt`, `about.txt` and `name.txt`. Restoring a backup that has them still works: the
+hub takes them into `node.txt` and `sensor.txt` and removes them.
 
 The state files are `active`, `approaching`, `away`, `ltr` and `rtl`, each with a `-delayed` version such as
 `approaching-delayed.h264` for past events. `nodes/` holds the node firmware files. A missing picture falls back to `active.h264` or `active-delayed.h264`, and

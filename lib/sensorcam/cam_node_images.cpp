@@ -17,14 +17,7 @@ void CamNodeImages::load() {
     if (!storage_.readFile("nodes/" + e.name, text, 256)) continue;
     CamNodeImage image;
     bool numbersOk = true;
-    for (size_t at = 0; at < text.size();) {
-      size_t end = text.find('\n', at);
-      if (end == std::string::npos) end = text.size();
-      std::string line = text.substr(at, end - at);
-      at = end + 1;
-      size_t eq = line.find('=');
-      if (eq == std::string::npos) continue;
-      std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+    camKeyLines(text, [&](const std::string& key, const std::string& value) {  // other keys are left for later firmware
       if (key == "chip")
         numbersOk = numbersOk && camNumber(value, image.chip);
       else if (key == "version")
@@ -37,7 +30,8 @@ void CamNodeImages::load() {
         image.pilot = value;
       else if (key == "pilotRan")
         numbersOk = numbersOk && camNumber(value, image.pilotRan);
-    }
+      return true;
+    });
     if (!numbersOk || image.version.empty() || !image.number || storage_.fileSize(imagePath(image.chip)) != image.size || forChip(image.chip))
       continue;
     images_.push_back(image);

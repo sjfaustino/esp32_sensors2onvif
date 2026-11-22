@@ -1,6 +1,7 @@
 // CamSensorTable: the sensor and node rows, read from the folders on storage.
 #include "cam_sensor_table.h"
 #include <string.h>
+#include "cam_node_files.h"
 #include "cam_number.h"
 #include "cam_storage.h"
 
@@ -130,13 +131,10 @@ CamSensorTable::Changes CamSensorTable::rescan(uint32_t now) {
       continue;
     }
     std::string text;
-    CamNodeSettings settings;  // a damaged file means the defaults
-    if (!storage_.readFile(s.name + "/settings.txt", text, 256) || !camParseNodeSettings(text, settings)) settings = CamNodeSettings();
-    node->settings = settings;
-    CamNodeInfo info;  // likewise: a damaged file is as if the node had said nothing
-    if (!storage_.readFile(s.name + "/about.txt", text, 256) || !camParseNodeInfo(text, info)) info = CamNodeInfo();
-    info.responseMs = node->info.responseMs;  // only in memory
-    node->info = info;
+    CamNodeFile file = camReadNodeFile(storage_, s.name);  // a damaged file means the defaults, and nothing said
+    node->settings = file.settings;
+    file.info.responseMs = node->info.responseMs;  // only in memory
+    node->info = file.info;
     std::vector<CamBatteryPoint> battery;  // and a damaged battery log is no forecast
     if (!storage_.readFile(s.name + "/battery.txt", text, 8192) || !camParseBatteryLog(text, battery)) battery.clear();
     node->batteryAt = battery.empty() ? 0 : battery.back().t;
@@ -163,11 +161,9 @@ CamSensorTable::Changes CamSensorTable::rescan(uint32_t now) {
       }
       if (!id) continue;
       seen[id - 1] = true;
-      std::string folder = s.name + "/" + e.name, name;
-      slotOf(id).name = storage_.readFile(folder + "/name.txt", name, 64) ? name : std::string();
-      CamSensorSettings sensor;  // a damaged file means the defaults
-      if (!storage_.readFile(folder + "/settings.txt", text, 256) || !camParseSensorSettings(text, sensor)) sensor = CamSensorSettings();
-      slotOf(id).settings = sensor;
+      CamSensorFile sensor = camReadSensorFile(storage_, s.name + "/" + e.name);  // a damaged file means the defaults
+      slotOf(id).name = sensor.name;
+      slotOf(id).settings = sensor.settings;
       slotOf(id).node = index + 1;
     }
   }

@@ -197,7 +197,8 @@
       try {
         existed = (await call("GET", "/api/espnow")).nodes.some((n) => n.node + "/" + n.input == path);
         if (!existed) await call("POST", "/api/mkdir?path=" + path);
-        if (name.value.trim()) await call("PUT", "/api/file?path=" + path + "/name.txt", name.value.trim());
+        if (name.value.trim())
+          await call("POST", "/api/sensor-settings?path=" + path, "name=" + encodeURIComponent(name.value.trim()));
       } catch (e) {
         msg.className = "portMsg err";
         msg.textContent = e.message;

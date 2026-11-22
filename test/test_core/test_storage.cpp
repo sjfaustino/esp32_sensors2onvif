@@ -1,6 +1,7 @@
 // Storage paths, pictures, node firmware files, backups, and the event history kept on storage.
 #include <algorithm>
 #include "tests.h"
+#include "cam_node_files.h"
 
 static void classifies_storage_paths() {
   const char* mac = "AA-BB-CC-DD-EE-01";
@@ -179,6 +180,69 @@ static std::string tempFolder(const char* name) {
   CamStorage(path).removeTree("");
   CamStorage(path).makeDirs("");
   return path;
+}
+
+static void a_node_and_a_sensor_keep_one_file_each() {
+  CamNodeFile node;
+  TEST_ASSERT_TRUE(camParseNodeFile("late=300\nsaid.every=7200\nsaid.sensor=RCWL-0516\nsaid.version=3f2a1b0\n", node));
+  TEST_ASSERT_EQUAL(300, node.settings.lateS);
+  TEST_ASSERT_EQUAL(7200, node.info.everyS);
+  TEST_ASSERT_EQUAL_STRING("RCWL-0516", node.info.sensor.c_str());
+  CamNodeFile again;
+  TEST_ASSERT_TRUE(camParseNodeFile(camNodeFileText(node), again));
+  TEST_ASSERT_TRUE(again.info == node.info);
+  TEST_ASSERT_EQUAL(300, again.settings.lateS);
+  TEST_ASSERT_EQUAL_STRING("late=300\n", camNodeFileText(CamNodeFile{node.settings, CamNodeInfo()}).c_str());  // said nothing yet
+  TEST_ASSERT_EQUAL_STRING("", camNodeFileText(CamNodeFile()).c_str());
+  TEST_ASSERT_FALSE(camParseNodeFile("late=0\n", node));        // a page setting out of range
+  TEST_ASSERT_FALSE(camParseNodeFile("said.every=x\n", node));  // what the node said, damaged
+  TEST_ASSERT_FALSE(camParseNodeFile("name=Gate\n", node));     // a sensor's line
+  TEST_ASSERT_EQUAL(300, node.settings.lateS);                  // left as it was
+
+  CamSensorFile sensor;
+  TEST_ASSERT_TRUE(camParseSensorFile("name=Front \"gate\"\r\nhold=3\n", sensor));
+  TEST_ASSERT_EQUAL_STRING("Front \"gate\"", sensor.name.c_str());
+  TEST_ASSERT_EQUAL(3, sensor.settings.holdS);
+  TEST_ASSERT_EQUAL_STRING("name=Front \"gate\"\nhold=3\n", camSensorFileText(sensor).c_str());
+  TEST_ASSERT_EQUAL_STRING("", camSensorFileText(CamSensorFile()).c_str());
+  TEST_ASSERT_FALSE(camParseSensorFile(("name=" + std::string(65, 'x') + "\n").c_str(), sensor));
+  TEST_ASSERT_FALSE(camParseSensorFile("name=a\tb\n", sensor));  // a control character
+  TEST_ASSERT_FALSE(camParseSensorFile("late=300\n", sensor));   // a node's line
+  TEST_ASSERT_TRUE(camValidName(std::string(64, 'x')));
+  TEST_ASSERT_FALSE(camValidName("two\nlines"));
+}
+
+static void the_files_from_before_are_taken_in_once() {
+  std::string folder = tempFolder("cam_node_files_test");
+  CamStorage storage(folder);
+  storage.makeDirs("node/1");
+  storage.writeFile("node/settings.txt", "late=120\n", 9);
+  storage.writeFile("node/about.txt", "every=600\n", 10);
+  CamNodeFile node = camReadNodeFile(storage, "node");
+  TEST_ASSERT_EQUAL(120, node.settings.lateS);
+  TEST_ASSERT_EQUAL(600, node.info.everyS);
+  TEST_ASSERT_FALSE(storage.exists("node/settings.txt"));
+  TEST_ASSERT_FALSE(storage.exists("node/about.txt"));
+  std::string text;
+  TEST_ASSERT_TRUE(storage.readFile("node/node.txt", text, 1024));
+  TEST_ASSERT_TRUE(text.compare(0, 23, "late=120\nsaid.every=600") == 0);
+  TEST_ASSERT_EQUAL(120, camReadNodeFile(storage, "node").settings.lateS);  // read again, from node.txt alone
+
+  storage.writeFile("node/1/name.txt", "Gate\r\n", 6);
+  storage.writeFile("node/1/settings.txt", "hold=3\n", 7);
+  CamSensorFile sensor = camReadSensorFile(storage, "node/1");
+  TEST_ASSERT_EQUAL_STRING("Gate", sensor.name.c_str());
+  TEST_ASSERT_EQUAL(3, sensor.settings.holdS);
+  TEST_ASSERT_FALSE(storage.exists("node/1/name.txt"));
+  TEST_ASSERT_TRUE(storage.readFile("node/1/sensor.txt", text, 512));
+  TEST_ASSERT_EQUAL_STRING("name=Gate\nhold=3\n", text.c_str());
+
+  sensor = CamSensorFile();
+  TEST_ASSERT_TRUE(camWriteSensorFile(storage, "node/1", sensor));  // nothing set: no file
+  TEST_ASSERT_FALSE(storage.exists("node/1/sensor.txt"));
+  storage.writeFile("node/node.txt", "late=0\n", 7);  // damaged: the defaults
+  TEST_ASSERT_EQUAL(0, camReadNodeFile(storage, "node").settings.lateS);
+  storage.removeTree("");
 }
 
 static CamEvent sampleEvent(int n) {
@@ -448,4 +512,6 @@ void runStorageTests() {
   RUN_TEST(accepts_sps_differing_only_in_vui);
   RUN_TEST(builtin_pictures_are_valid);
   RUN_TEST(backup_values_follow_the_page_rules);
+  RUN_TEST(a_node_and_a_sensor_keep_one_file_each);
+  RUN_TEST(the_files_from_before_are_taken_in_once);
 }

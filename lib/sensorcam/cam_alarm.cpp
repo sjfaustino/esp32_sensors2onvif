@@ -1,5 +1,6 @@
 // CamAlarm: sensor reports, node health, what is saved before confirming, and the NVR delivery check.
 #include "cam_alarm.h"
+#include "cam_node_files.h"
 #include "cam_number.h"
 #include <ctype.h>
 #include <stddef.h>
@@ -569,8 +570,7 @@ void CamAlarm::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len
   if (f && f->pilot == camMacText(mac) && info.version == f->version && !f->pilotRan && t >= CAM_CLOCK_VALID_AFTER)
     images_.notePilotRan(info.chip, (uint32_t)t);
   if (info == old) return;
-  std::string text = camNodeInfoText(info);
-  storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());
+  camWriteNodeFile(storage_, camMacText(mac), CamNodeFile{node.settings, info});
   bool known = !old.version.empty();  // otherwise this is the first the hub hears, and its restarts are old news
   if (known && info.restarts != old.restarts && camRestartIsFault(info.restart)) {
     SensorReport r;
