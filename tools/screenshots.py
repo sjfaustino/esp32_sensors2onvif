@@ -14,6 +14,9 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 URL = f'http://{HOST}:{WEB}/'
 OUT = os.path.join(ROOT, 'docs', 'images')
 NAMES = {1: 'Front door', 2: 'Hall', 3: 'Kitchen window', 4: 'Garage', 5: 'Garden gate', 6: 'Back door'}
+# The same language and time zone on every computer, so the dates and times the pages show take the same room and the
+# pictures CI takes match those in docs/images (tools/compare_pictures.py).
+SAME_EVERYWHERE = {'locale': 'en-GB', 'timezone_id': 'UTC'}
 # The pages to take, with the element each must show first.
 PAGES = [
     ('overview', '#view-overview'),
@@ -41,10 +44,26 @@ def fill_the_hub():
         time.sleep(0.3)
 
 
+# Just before each picture, the dates and times the page shows, which are those of the test's own alerts and differ on
+# every run, are made the same fixed ones, so the pictures change only when a page does.
+STEADY = r"""() => {
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walk.nextNode()); )
+        n.nodeValue = n.nodeValue.replace(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g, '22/11/2026')
+            .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b/g, '2026-11-22 08:00:00')
+            .replace(/\b\d{1,2}:\d{2}:\d{2}\b/g, '08:00:00').replace(/\b\d{1,2}:\d{2}\b/g, '08:00');
+}"""
+
+
+def steady(page):
+    page.evaluate(STEADY)
+
+
 def take(page, view, ready, file):
     page.goto(URL + '#' + view)
     page.wait_for_selector(ready, state='visible')
     page.wait_for_timeout(800)  # the page fills its tables from the hub
+    steady(page)
     page.screenshot(path=os.path.join(OUT, file + '.png'))
     print('took', file)
 
@@ -61,7 +80,7 @@ def main():
             start_hub(blank)
             assert common.HUB.stdout.readline().strip() == 'ready'
             control('setup-on')
-            phone = browser.new_page(viewport={'width': 390, 'height': 760}, device_scale_factor=2)
+            phone = browser.new_page(viewport={'width': 390, 'height': 760}, device_scale_factor=2, **SAME_EVERYWHERE)
             phone.goto(URL + 'setup')
             phone.wait_for_selector('#hubpw', state='visible')
             phone.wait_for_timeout(500)
@@ -77,18 +96,19 @@ def main():
             inner = f'<ConsumerReference><Address>http://{LOCAL}:{nvr.port}/onvif_notify_server/</Address></ConsumerReference>'
             soap('Subscribe', '/onvif/device_service', inner)
             fill_the_hub()
-            context = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD},
+            context = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, **SAME_EVERYWHERE,
                                           viewport={'width': 1280, 'height': 820})
             page = context.new_page()
             for view, ready in PAGES:
                 take(page, view, ready, view.split(':')[0])
             # The Overview on a phone set to dark.
-            dark = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, color_scheme='dark',
+            dark = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, color_scheme='dark', **SAME_EVERYWHERE,
                                        viewport={'width': 390, 'height': 760}, device_scale_factor=2).new_page()
             dark.goto(URL + '#overview')
             dark.wait_for_selector('#wizard', state='visible')
             dark.evaluate("document.getElementById('menu').scrollIntoView(false); scrollTo(0, document.getElementById('status').offsetTop - 60)")
             dark.wait_for_timeout(800)
+            steady(dark)
             dark.screenshot(path=os.path.join(OUT, 'phone-dark.png'))
             print('took phone-dark')
         finally:
