@@ -8,3 +8,5 @@ extern const uint8_t CAM_WEB_PAGE[];
 extern const size_t CAM_WEB_PAGE_SIZE;
 extern const uint8_t CAM_SETUP_PAGE[];
 extern const size_t CAM_SETUP_PAGE_SIZE;
+extern const char CAM_WEB_PAGE_TAG[];  // each page's ETag, from its bytes, quoted
+extern const char CAM_SETUP_PAGE_TAG[];

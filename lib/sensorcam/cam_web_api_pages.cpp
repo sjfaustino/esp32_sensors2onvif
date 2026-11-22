@@ -127,7 +127,14 @@ std::string CamWeb::treeJson() {
   return out;
 }
 
-void CamWeb::getSetup(const ApiRequest& r) { sendBody(r.c, HTML_TYPE, (const char*)CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, PAGE_HEADERS); }
+void CamWeb::sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag) {
+  if (headerValue(r.headers, "if-none-match") == tag)
+    r.c.out = std::string("HTTP/1.1 304 Not Modified\r\nETag: ") + tag + "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
+  else
+    sendBody(r.c, HTML_TYPE, (const char*)page, len, std::string(PAGE_HEADERS) + "ETag: " + tag + "\r\n");
+}
+
+void CamWeb::getSetup(const ApiRequest& r) { sendPage(r, CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, CAM_SETUP_PAGE_TAG); }
 
 void CamWeb::getWifiScan(const ApiRequest& r) {
   r.c.out = jsonOk(jsonObject([&](CamJson& j) {
@@ -163,7 +170,7 @@ void CamWeb::getRoot(const ApiRequest& r) {
     getFiles(r);
 }
 
-void CamWeb::getFiles(const ApiRequest& r) { sendBody(r.c, HTML_TYPE, (const char*)CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, PAGE_HEADERS); }
+void CamWeb::getFiles(const ApiRequest& r) { sendPage(r, CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, CAM_WEB_PAGE_TAG); }
 
 void CamWeb::getTree(const ApiRequest& r) {
   HttpConn& c = r.c;
@@ -250,7 +257,10 @@ void CamWeb::apiFiles(const ApiRequest& r) {
   } else if (fileRoute && method == "GET" && (isFile || isText || isPreview)) {
     if (!sendFile(c, path, isText ? JSON_TYPE : isPreview ? "image/jpeg" : "video/h264")) c.out = jsonFail(404, "no such file");
   } else if (fileRoute && method == "PUT" && isText) {
-    if (bodyLen > (path == "plan.json" ? 2048u : 1024u)) {  // the plan holds a place for each of up to 32 sensors
+    // The plan holds a place for each of up to 32 sensors; a node's battery log, as the hub reads it, up to 8 KB, which a
+    // full backup carries and so must put back.
+    size_t most = path == "plan.json" ? 2048u : camEndsWith(path, "/battery.txt") ? 8192u : 1024u;
+    if (bodyLen > most) {
       c.out = jsonFail(413, "text is too long");
     } else {
       c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");

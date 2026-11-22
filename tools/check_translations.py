@@ -88,11 +88,22 @@ def page_phrases():
     return {f for f in found if f not in SAME and not CODE.match(f)}
 
 
+# Short English words that turn up in a phrase, and not in a class name, a selector or a code.
+COMMON = {'a', 'an', 'the', 'is', 'are', 'was', 'be', 'been', 'not', 'no', 'to', 'of', 'and', 'or', 'for', 'with', 'set',
+          'up', 'yet', 'on', 'off', 'at', 'in', 'it', 'its', 'this', 'that', 'by', 'from', 'has', 'have', 'will', 'can',
+          'cannot', 'must', 'still', 'again', 'none', 'all', 'every', 'each', 'your', 'you', 'here', 'now', 'saved',
+          'answer', 'sent', 'heard', 'left', 'more', 'less', 'first', 'last', 'never', 'only'}
+
+
 def looks_like_words(s):
-    if not re.search(r'[a-z]{3}', s) or re.search(r'^[#./]|[{}<>=]|^\w+:\/\/', s):
+    """Whether a script's string reads like English for the page: a capital and a space, three words, two ending a
+    sentence, or two with a common English word among them."""
+    if not re.search(r'[a-z]{2}', s) or re.search(r'^[#./]|[{}<>=]|^\w+:\/\/', s):
         return False
-    n = len(s.split())
-    return bool(re.match(r'^[A-Z][a-z]*\s', s) or n >= 3 or (n >= 2 and re.search(r'[.:?!]\s*$', s)))
+    words_in = s.split()
+    n = len(words_in)
+    common = any(w.lower().strip('.,:;?!()') in COMMON for w in words_in)
+    return bool(re.match(r'^[A-Z][a-z]*\s', s) or n >= 3 or (n >= 2 and (re.search(r'[.:?!]\s*$', s) or common)))
 
 
 def double_quoted(text):
@@ -129,14 +140,13 @@ def script_phrases():
         if not name.endswith('.js') or name in ('pt.js', 'sha256.js', 'encoder-worker.js', 'i18n.js'):
             continue
         text = double_quoted(open(os.path.join(WEB, name), encoding='utf-8').read())
+        inside = set()  # where each phrase given to tr(), trParts() or trCount() starts; any other string is looked at
         for m in re.finditer(r'\btr(?:Parts)?\(\s*' + STRING, text):
             used.add(unquote(m.group(1)))
-        for m in re.finditer(r'\btrCount\(\s*[^,]+,\s*' + STRING + r'\s*,\s*' + STRING, text):
-            used.add(unquote(m.group(1)))
-            used.add(unquote(m.group(2)))
-        inside = set()  # where the strings of tr() and trCount() are, so they are not taken for loose English
-        for m in re.finditer(r'\btr(?:Count|Parts)?\((?:[^()"]|' + STRING + r')*', text):
-            inside.update(range(m.start(), m.end()))
+            inside.add(m.start(1) - 1)
+        for m in re.finditer(r'\btrCount\(\s*[^,"]+,\s*' + STRING + r'\s*,\s*' + STRING, text):
+            used.update((unquote(m.group(1)), unquote(m.group(2))))
+            inside.update((m.start(1) - 1, m.start(2) - 1))
         for number, line in enumerate(text.split('\n'), 1):
             if '// not words' in line or line.strip().startswith('//'):
                 continue

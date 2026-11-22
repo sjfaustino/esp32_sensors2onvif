@@ -554,7 +554,10 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
   if (filePut && kind == CAM_PATH_INVALID) return refuse(400, "invalid path");
   bool borrowsFrame = kind == CAM_PATH_FILE || kind == CAM_PATH_CLEAR || kind == CAM_PATH_PREVIEW;
   // Only pictures may be large, and they arrive in a buffer reserved at boot, so nothing here asks for a picture-sized block.
-  if (isApi && !borrowsFrame && contentLength > (target == "/api/restore" ? 16384 : 2048)) return refuse(413, "request is too large");
+  // A node's battery log, which a full backup puts back, is up to 8 KB; it comes seldom, so that much heap is spared.
+  bool batteryLog = filePut && target.size() > 12 && target.compare(target.size() - 12, 12, "/battery.txt") == 0;
+  size_t most = target == "/api/restore" ? 16384 : batteryLog ? 8192 : 2048;
+  if (isApi && !borrowsFrame && contentLength > most) return refuse(413, "request is too large");
   if (borrowsFrame && !c.toFrameBuffer) {
     if (!authorized(c, headers)) return needLogin(CAM_MAX_FRAME);  // before taking the picture buffer, which changes what the NVR sees
     if (uploading_) return refuse(507, "the hub is busy with another upload; try again");

@@ -10,11 +10,31 @@ python tools/embed_web.py. The output is written only when it changes, so an unc
 not rebuild anything.
 """
 import gzip
+import hashlib
+import json
 import os
 import re
 import sys
 
 PAGES = [('index', 'CAM_WEB_PAGE'), ('setup', 'CAM_SETUP_PAGE')]
+
+
+def setup_words(folder):
+    """The Portuguese the setup page uses, out of all of web/pt.js: its own text, its script's, and the messages of the
+    hub's Wi-Fi setting, which it shows. It is served over the hub's open setup network, often to a phone, so it carries
+    those few dozen phrases, not the thousand of the other pages."""
+    root = os.path.dirname(os.path.abspath(folder))
+    sys.path.insert(0, os.path.join(root, 'tools'))  # PlatformIO runs this with no __file__
+    import check_translations
+    html = ' '.join(open(os.path.join(folder, 'setup.html'), encoding='utf-8').read().split())
+    script = open(os.path.join(folder, 'setup.js'), encoding='utf-8').read()
+    api = open(os.path.join(root, 'lib', 'sensorcam', 'cam_web_api_pages.cpp'), encoding='utf-8').read()
+    wifi = api[api.index('void CamWeb::postWifi'):]
+    wifi = wifi[:wifi.index('\n}\n')]
+    used = {k: v for k, v in check_translations.table().items()
+            if k in html or json.dumps(k, ensure_ascii=False) in script or f'"{k}"' in wifi}
+    return ('// The Portuguese of the setup page alone, picked from pt.js by tools/embed_web.py.\nconst PT = ' +
+            json.dumps(used, ensure_ascii=False, indent=0) + ';\n')
 
 
 def inline(folder, name):
@@ -24,6 +44,8 @@ def inline(folder, name):
             text = f.read()
         if not file.endswith('.html') and ('</style' in text.lower() or '</script' in text.lower()):
             sys.exit(f'web/{file}: a stylesheet or script cannot contain </style or </script')
+        if file == 'pt.js' and name == 'setup':
+            text = setup_words(folder)
         return text
 
     page = read(name + '.html')
@@ -46,6 +68,7 @@ def generate(root):
             out.append('  ' + ','.join(str(b) for b in packed[i:i + 24]) + ',')
         out.append('};')
         out.append(f'const size_t {var}_SIZE = sizeof({var});')
+        out.append(f'const char {var}_TAG[] = "\\"{hashlib.sha256(packed).hexdigest()[:16]}\\"";  // its ETag')
         out.append('')
         print(f'web/{name}.html: {len(packed)} bytes gzipped')
     text = '\n'.join(out)

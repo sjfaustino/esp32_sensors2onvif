@@ -87,6 +87,14 @@ def floor_plan(s):
     check('places for 32 sensors fit', len(places) > 1024 and api('PUT', '/api/file?path=plan.json', places)[0] == 200, len(places))
     check('more than 2 KB of places is refused', api('PUT', '/api/file?path=plan.json', 'x' * 2100)[0] == 413)
     check('a plan of another kind of file is refused', api('PUT', '/api/file?path=plan.png', jpeg)[0] == 400)
+    # A full backup puts a node's battery log back, which grows to 8 KB, past the 1 KB of the other text files.
+    folder = '02-00-00-00-7B-01'
+    api('POST', f'/api/mkdir?path={folder}')
+    log = ''.join(f'{1790000000 + i * 21600} {99 - i % 60}\n' for i in range(400))
+    check('a battery log of several KB is put back', len(log) > 4096 and api('PUT', f'/api/file?path={folder}/battery.txt', log)[0] == 200,
+          len(log))
+    check('but not one over 8 KB', api('PUT', f'/api/file?path={folder}/battery.txt', 'x' * 8300)[0] == 413)
+    api('DELETE', f'/api/file?path={folder}')
     check('the floor plan can be deleted', api('DELETE', '/api/file?path=plan.jpg')[0] == 200 and api('DELETE', '/api/file?path=plan.json')[0] == 200
           and api('GET', '/api/file?path=plan.jpg')[0] == 404)
 
@@ -114,6 +122,11 @@ def the_page(s):
     check('page is served', code == 200 and b'<title>Alarm hub</title>' in page, code)
     check('page is sent gzipped', common.last_encoding == 'gzip', common.last_encoding)
     check('a browser must check for a newer page', common.last_cache == 'no-cache', common.last_cache)
+    tag = common.last_etag
+    again = api('GET', '/', headers={'If-None-Match': tag or '"none"'})
+    check('and one that has it already is told so in a few bytes, not sent it again', tag and again[0] == 304 and not again[1],
+          (tag, again[0]))
+    check('one that has another is sent the page', api('GET', '/', headers={'If-None-Match': '"older"'})[0] == 200)
     if not DEVICE:
         # Another site pointing its own name at the hub is refused; the hub's own names are not.
         check("a page under another site\'s name is refused", raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)

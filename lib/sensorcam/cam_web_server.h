@@ -124,6 +124,9 @@ class CamWeb {
   bool authorized(const HttpConn& c, const std::string& headers);
   bool knownHost(const std::string& hostHeader) const;
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
+  // One of the built-in pages, with its tag, or 304 when the browser has that one already, so a page opened again
+  // costs the hub a few bytes, not the whole page from flash.
+  static void sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag);
   static void reply(HttpConn& c, int status, const char* type, std::string body, const std::string& extraHeaders = std::string());
   bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
   void shortOfMemory(HttpConn& c);

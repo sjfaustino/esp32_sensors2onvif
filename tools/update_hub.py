@@ -210,14 +210,20 @@ def main():
         fail(f'FAILED: the hub came back running {now_runs}, not {version}: it refused the new firmware or went back')
 
     print(f'-- {version} runs; watching it for {args.watch:g} minutes', flush=True)
-    start, last_uptime, proved = time.time(), -1, False
+    start, last_uptime, proved, answered = time.time(), -1, False, time.time()
     while True:
         time.sleep(10)
+        if time.time() - start > max(args.watch * 60, 600) + 300:
+            fail(f'FAILED: after {(time.time() - start) / 60:.0f} minutes the hub has still not proved the firmware')
         try:
             d = hub.device()
             uptime = hub.status()['uptime_s']
+            answered = time.time()
         except (OSError, ValueError, KeyError):
-            continue  # a moment's silence over Wi-Fi is no verdict
+            if time.time() - answered > 180:  # a moment's silence over Wi-Fi is no verdict; three minutes is
+                fail('FAILED: the hub stopped answering for 3 minutes. Check its power and its light; if the new firmware '
+                     'cannot start, it goes back to the previous one by itself')
+            continue
         if d.get('Firmware version') != version:
             fail(f'FAILED: the hub went back to {d.get("Firmware version")}: the new firmware failed its trial. '
                  f'Last restart: {d.get("Last restart", "not known")}')

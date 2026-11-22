@@ -10,12 +10,20 @@ before that, a new minor version may change settings or the messages.
 - The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
   for each device; the hub's messages are shown in the same language. `tools/check_translations.py`, run with the quick
   checks, keeps every phrase translated.
+- The pages carry an ETag, so a browser opening them again is told in a few bytes that it has them, instead of being
+  sent the whole 100 KB page from the hub's flash each time. The setup page carries only its own few dozen phrases of
+  Portuguese, keeping it at 5 KB over the hub's open setup network.
+- A full backup keeps each node's battery readings and its first hour's checks; the hub takes a battery log of up to
+  8 KB back.
 
 ### Tools
 
 - `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
   hub keeps it or says it went back; with `--release v0.6.0` it sends a published release, as CI built it. It refuses
   a commit CI has not passed, changes not committed, and a hub with an alert active.
+- `tools/update_hub.py` reports a hub that stops answering for 3 minutes while it watches, where it waited forever.
+- The translation check also finds English of two words with a common word among them, and English inside the values
+  given to `tr()`.
 - `tools/precheck.py` runs CI's quick checks, the code's style, settings and colours, in seconds, and the pre-push hook
   in `tools/hooks` runs it before each push. CI runs the same script.
 

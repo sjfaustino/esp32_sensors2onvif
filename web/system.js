@@ -468,6 +468,8 @@
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
         await add(s.mac + "/node.txt"); // its settings and hardware, and what it said; there is none until something is
+        await add(s.mac + "/battery.txt"); // its battery readings, for the forecast
+        await add(s.mac + "/checked.txt"); // when its first hour's checks passed
         for (const n of s.sensors) {
           const base = s.mac + "/" + n.input;
           files.push([base + "/.sensor", new Uint8Array(0)]);

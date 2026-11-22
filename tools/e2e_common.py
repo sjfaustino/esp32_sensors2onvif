@@ -87,15 +87,16 @@ def soap(action, path='/onvif/media', inner='', source=None):
 
 def body_of(r):
     """The reply's body, unzipped if the hub sent it gzipped, as it does the web pages. Notes how it came."""
-    global last_encoding, last_transfer, last_cache
+    global last_encoding, last_transfer, last_cache, last_etag
     last_encoding = r.getheader('Content-Encoding')
+    last_etag = r.getheader('ETag')
     last_cache = r.getheader('Cache-Control')
     last_transfer = r.getheader('Transfer-Encoding')
     data = r.read()
     return gzip.decompress(data) if last_encoding == 'gzip' else data
 
 
-last_encoding = last_transfer = None
+last_encoding = last_transfer = last_etag = None
 
 
 def get(path):
