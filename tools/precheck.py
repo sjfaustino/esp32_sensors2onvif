@@ -3,6 +3,7 @@ caught in seconds on this PC instead of minutes later on GitHub. CI runs this sc
 
     python tools/precheck.py          # every check; exits 1 if any fails
     python tools/precheck.py --fix    # formats the C++ and the pages' scripts and styles first
+    python hub/tools/precheck.py --root .   # in the node project: its C++ style, as CI checks it
 
 Run before each push by the hook in tools/hooks, once git is told to use it:
 
@@ -16,7 +17,12 @@ import shutil
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HUB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The project checked: the hub's, or, with --root, another that has the hub in it, such as the sensor node's, which runs
+# this from its hub/ folder and gets the checks that apply to it: the C++ style, as it has no pages.
+ROOT = HUB
+if '--root' in sys.argv:
+    ROOT = os.path.abspath(sys.argv[sys.argv.index('--root') + 1])
 CLANG_FORMAT = '19.1.7'
 PRETTIER = ['prettier@3.3.3', '--print-width', '120', '--end-of-line', 'lf']
 
@@ -73,7 +79,7 @@ def prettier(fix):
 
 
 def python_check(script):
-    return lambda fix: run([sys.executable, os.path.join('tools', script)])
+    return lambda fix: run([sys.executable, os.path.join(HUB, 'tools', script)])
 
 
 CHECKS = [
@@ -89,7 +95,8 @@ CHECKS = [
 def main():
     fix = '--fix' in sys.argv[1:]
     failed = []
-    for name, check in CHECKS:
+    pages = os.path.isdir(os.path.join(ROOT, 'web'))
+    for name, check in CHECKS if pages else CHECKS[:1]:
         print(f'-- {name}', flush=True)
         if not check(fix):
             failed.append(name)
