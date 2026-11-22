@@ -244,7 +244,9 @@
                           "/api/sensor-settings?path=" + n.mac + "/" + i,
                           "name=" + encodeURIComponent(where.trim()),
                         ).catch((e) =>
-                          notice("The name was not saved: " + e.message + ". Name it on the Sensors page.", { err: true }),
+                          notice("The name was not saved: " + e.message + ". Name it on the Sensors page.", {
+                            err: true,
+                          }),
                         );
                     }
                     $("pairMsg").textContent = "Paired " + n.mac + ". It starts reporting once it hears the hub again.";
