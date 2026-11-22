@@ -5,6 +5,11 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-22
+
+Update from 0.4.0: the hub then refuses older firmware, and node firmware that is not signed. Nodes take their sensor
+and pins from the Sensors page once they run the sensor node's 0.1.0; earlier nodes keep what they were built with.
+
 ### Security
 
 - The hub refuses an update older than its own release, which may have faults since fixed. Each signed update carries
@@ -170,7 +175,8 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.1.0...v0.2.0
