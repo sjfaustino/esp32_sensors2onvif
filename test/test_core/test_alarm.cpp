@@ -528,7 +528,7 @@ static void sealed_message_numbers_never_repeat_and_are_reserved_ahead() {
   TEST_ASSERT_EQUAL(0, (int)r.store.reserved.size());
   TEST_ASSERT_TRUE(r.alarm.testTakeSeal(n));
   TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + CAM_SEAL_BLOCK, n);  // the next block's first
-  TEST_ASSERT_EQUAL(1, (int)r.store.reserved.size());                                // reserved before it was used
+  TEST_ASSERT_EQUAL(1, (int)r.store.reserved.size());           // reserved before it was used
   TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + 2 * CAM_SEAL_BLOCK, r.store.reserved[0]);
 }
 

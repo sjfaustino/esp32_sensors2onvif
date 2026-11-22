@@ -255,7 +255,7 @@ void CamWeb::apiFiles(const ApiRequest& r) {
     } else {
       c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");
       bool note = camEndsWith(path, "/text.json") || camEndsWith(path, "/checked.txt");  // the page's own, which the alarm never reads
-      if (path.find('/') != std::string::npos && !note) alarm_.rescan();                  // a name or settings
+      if (path.find('/') != std::string::npos && !note) alarm_.rescan();                 // a name or settings
     }
   } else if (fileRoute && method == "PUT" && isFile) {
     CamNal nals[3];

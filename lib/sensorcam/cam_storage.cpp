@@ -79,9 +79,8 @@ CamPathKind camClassifyPath(const std::string& path) {
   if (parts.size() > 3 || !camParseMac(parts[0], mac)) return CAM_PATH_INVALID;
   if (parts.size() == 1) return CAM_PATH_NODE;
   // node.txt and sensor.txt; and the files they replaced, which a restore of an older backup may still write.
-  if (parts.size() == 2 &&
-      (parts[1] == "node.txt" || parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" || parts[1] == "battery.txt" ||
-       parts[1] == "checked.txt"))
+  if (parts.size() == 2 && (parts[1] == "node.txt" || parts[1] == "settings.txt" || parts[1] == "pairing.txt" || parts[1] == "about.txt" ||
+                            parts[1] == "battery.txt" || parts[1] == "checked.txt"))
     return CAM_PATH_TEXT;  // the node's own settings, key, what it said of itself, its battery, and when its first hour was checked
   if (!validSensorNumber(parts[1])) return CAM_PATH_INVALID;
   if (parts.size() == 2) return CAM_PATH_SENSOR;
