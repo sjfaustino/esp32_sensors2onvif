@@ -41,6 +41,11 @@ seeds = {
     22: wsse, 23: wsse, 24: mqtt, 25: b'net.hookwd=3', 26: b'AA-BB-CC-DD-EE-01',
     27: struct.pack('<IIII', 0x4B505431, 11, 0x50524F46, 1),
 }
+# Also the present sealed form for parser 5: 12, the number, the report encrypted, and a 16-byte tag.
+extra = {'05b': (5, bytes([12]) + struct.pack('<I', 9) + report + bytes(16))}
+for name, (n, body) in extra.items():
+    with open(os.path.join(out, f'seed{name}'), 'wb') as f:
+        f.write(bytes([n]) + body)
 for n, body in seeds.items():
     with open(os.path.join(out, f'seed{n:02d}'), 'wb') as f:
         f.write(bytes([n]) + body)

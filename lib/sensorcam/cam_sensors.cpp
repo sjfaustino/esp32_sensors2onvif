@@ -204,12 +204,12 @@ std::string camConfirmation(const uint8_t sensorMac[6], const SensorReport& r, c
   return std::string((const char*)out, sizeof(out));
 }
 
-int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out) {
-  return s2oSeal(keyOf(key), mac, number, inner, innerLen, fromHub, out);
+int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out, bool old) {
+  return old ? s2oSealOld(keyOf(key), mac, number, inner, innerLen, fromHub, out) : s2oSeal(keyOf(key), mac, number, inner, innerLen, fromHub, out);
 }
 
-int camOpenSealed(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax) {
-  int inner = s2oOpen(keyOf(key), mac, d, len, fromHub, out, outMax - CAM_SIGNATURE_LEN);
+int camOpenSealed(const uint8_t mac[6], const uint8_t* d, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax, bool* old) {
+  int inner = s2oOpen(keyOf(key), mac, d, len, fromHub, out, outMax - CAM_SIGNATURE_LEN, old);
   return inner > 0 ? s2oAddSignature(keyOf(key), mac, out, inner) : inner;
 }
 

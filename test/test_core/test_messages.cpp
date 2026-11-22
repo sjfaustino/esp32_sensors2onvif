@@ -151,20 +151,39 @@ static void sealed_messages_hide_what_they_say() {
   const uint8_t report[17] = {CAM_REPORT, 1, 1, 80, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   uint8_t sealed[64], opened[64];
   int len = camSeal(mac, 0x11223344, report, sizeof(report), key, false, sealed);
-  TEST_ASSERT_EQUAL(CAM_SEALED_EXTRA + 17 + CAM_SIGNATURE_LEN, len);
+  TEST_ASSERT_EQUAL(S2O_SEALED_HEAD + 17 + S2O_SEALED_TAG, len);
+  TEST_ASSERT_TRUE(len <= CAM_SEALED_EXTRA + 17 + CAM_SIGNATURE_LEN);  // what buffers make room for
   char hex[2 * 64 + 1] = "";
   for (int i = 0; i < len; i++) snprintf(hex + 2 * i, 3, "%02x", sealed[i]);
-  TEST_ASSERT_EQUAL_STRING("0744332211bd9133a3e584d49750a42c9ee767185a68f21fe3b7906fbb0b", hex);
-  int n = camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened));
+  // XChaCha20-Poly1305 as tools/s2o_seal.py makes it independently, with Python's cryptography package.
+  TEST_ASSERT_EQUAL_STRING("0c44332211be6ba9b4e4764adf46f216b69ab9d168074cf109632c16f5b856258f12b8b7ea56", hex);
+  bool old = true;
+  int n = camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened), &old);
+  TEST_ASSERT_FALSE(old);
   TEST_ASSERT_EQUAL(17 + CAM_SIGNATURE_LEN, n);
   SensorReport r;
   TEST_ASSERT_EQUAL(CAM_PACKET_SIGNED, camCheckPacket(mac, opened, n, key, r));  // reads as if it had been sent plain
   TEST_ASSERT_EQUAL(7, r.counter);
-  TEST_ASSERT_EQUAL(n, camOpenSealed(mac, sealed, len, key, true, opened, sizeof(opened)));
-  TEST_ASSERT_NOT_EQUAL(0, memcmp(opened, report, 17));  // read as from the hub, the stream differs
+  // Read as from the hub it is not genuine: the direction is part of the nonce, so a message cannot be sent back.
+  TEST_ASSERT_EQUAL(-1, camOpenSealed(mac, sealed, len, key, true, opened, sizeof(opened)));
   sealed[6] ^= 1;
   TEST_ASSERT_EQUAL(-1, camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened)));
   TEST_ASSERT_EQUAL(0, camOpenSealed(mac, report, sizeof(report), key, false, opened, sizeof(opened)));  // not sealed
+  sealed[6] ^= 1;
+  memcpy(sealed + 30, "\x01\x02", 2);  // the tag changed: not genuine
+  TEST_ASSERT_EQUAL(-1, camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened)));
+  const uint8_t otherMac[6] = {2, 0, 0, 0, 0, 0x56};
+  len = camSeal(mac, 0x11223344, report, sizeof(report), key, false, sealed);
+  TEST_ASSERT_EQUAL(-1, camOpenSealed(otherMac, sealed, len, key, false, opened, sizeof(opened)));  // another node's
+  // The form from before, which a node on older firmware sends: read, and answered in kind.
+  len = camSeal(mac, 0x11223344, report, sizeof(report), key, false, sealed, true);
+  TEST_ASSERT_EQUAL(S2O_SEALED_HEAD + 17 + CAM_SIGNATURE_LEN, len);
+  hex[0] = 0;
+  for (int i = 0; i < len; i++) snprintf(hex + 2 * i, 3, "%02x", sealed[i]);
+  TEST_ASSERT_EQUAL_STRING("0744332211bd9133a3e584d49750a42c9ee767185a68f21fe3b7906fbb0b", hex);
+  n = camOpenSealed(mac, sealed, len, key, false, opened, sizeof(opened), &old);
+  TEST_ASSERT_TRUE(old);
+  TEST_ASSERT_EQUAL(17 + CAM_SIGNATURE_LEN, n);
 }
 
 static void firmware_goes_in_signed_parts() {

@@ -1,4 +1,5 @@
 #include "s2o_messages.h"
+#include "monocypher.h"
 #include <stdio.h>
 #include <string.h>
 #include <initializer_list>
@@ -322,7 +323,9 @@ void s2oFingerprintLong(const uint8_t publicKey[S2O_X25519_LEN], char out[20]) {
 // ---- sealed messages ----
 
 static const char SEAL_LABEL[] = "sensors2onvif seal";
+static const char AEAD_LABEL[] = "sensors2onvif aead v1";
 
+// The old form's key stream: block i, 20 bytes, is HMAC-SHA1 keyed with the seal key over the direction, number and i.
 static void sealStream(S2oKey key, bool fromHub, uint32_t number, uint8_t* data, int len) {
   uint8_t sealKey[20];
   s2oHmacSha1(key.data, key.len, (const uint8_t*)SEAL_LABEL, sizeof(SEAL_LABEL) - 1, nullptr, 0, sealKey);
@@ -332,24 +335,55 @@ static void sealStream(S2oKey key, bool fromHub, uint32_t number, uint8_t* data,
     s2oHmacSha1(sealKey, sizeof(sealKey), in, sizeof(in), nullptr, 0, stream);
     for (int i = 0; i < 20 && block * 20 + i < len; i++) data[block * 20 + i] ^= stream[i];
   }
-  memset(sealKey, 0, sizeof(sealKey));
+  crypto_wipe(sealKey, sizeof(sealKey));
+}
+
+// The new form's key, nonce and associated data: the node's MAC address and the head.
+static void aeadInputs(S2oKey key, const uint8_t nodeMac[6], const uint8_t head[S2O_SEALED_HEAD], bool fromHub, uint8_t aeadKey[32],
+                       uint8_t nonce[24], uint8_t ad[6 + S2O_SEALED_HEAD]) {
+  crypto_blake2b_keyed(aeadKey, 32, key.data, key.len, (const uint8_t*)AEAD_LABEL, sizeof(AEAD_LABEL) - 1);
+  memset(nonce, 0, 24);
+  nonce[0] = fromHub ? 1 : 0;
+  memcpy(nonce + 1, head + 1, 4);
+  memcpy(ad, nodeMac, 6);
+  memcpy(ad + 6, head, S2O_SEALED_HEAD);
 }
 
 int s2oSeal(S2oKey key, const uint8_t nodeMac[6], uint32_t number, const uint8_t* inner, int innerLen, bool fromHub, uint8_t* out) {
-  out[0] = S2O_SEALED;
+  out[0] = S2O_SEALED_AEAD;
   put32(out + 1, number);
-  memcpy(out + S2O_SEALED_EXTRA, inner, innerLen);
-  sealStream(key, fromHub, number, out + S2O_SEALED_EXTRA, innerLen);
-  return s2oAddSignature(key, nodeMac, out, S2O_SEALED_EXTRA + innerLen);
+  uint8_t aeadKey[32], nonce[24], ad[6 + S2O_SEALED_HEAD];
+  aeadInputs(key, nodeMac, out, fromHub, aeadKey, nonce, ad);
+  crypto_aead_lock(out + S2O_SEALED_HEAD, out + S2O_SEALED_HEAD + innerLen, aeadKey, nonce, ad, sizeof(ad), inner, innerLen);
+  crypto_wipe(aeadKey, sizeof(aeadKey));
+  return S2O_SEALED_HEAD + innerLen + S2O_SEALED_TAG;
 }
 
-int s2oOpen(S2oKey key, const uint8_t nodeMac[6], const uint8_t* d, int len, bool fromHub, uint8_t* out, int outMax) {
-  int inner = len - S2O_SEALED_EXTRA - S2O_SIG_LEN;
-  if (len < 1 || d[0] != S2O_SEALED || inner < 1 || inner > S2O_SEALED_MAX_INNER || inner > outMax) return 0;
-  if (!s2oSignatureOk(key, nodeMac, d, len)) return -1;
-  memcpy(out, d + S2O_SEALED_EXTRA, inner);
-  sealStream(key, fromHub, get32(d + 1), out, inner);
-  return inner;
+int s2oSealOld(S2oKey key, const uint8_t nodeMac[6], uint32_t number, const uint8_t* inner, int innerLen, bool fromHub, uint8_t* out) {
+  out[0] = S2O_SEALED;
+  put32(out + 1, number);
+  memcpy(out + S2O_SEALED_HEAD, inner, innerLen);
+  sealStream(key, fromHub, number, out + S2O_SEALED_HEAD, innerLen);
+  return s2oAddSignature(key, nodeMac, out, S2O_SEALED_HEAD + innerLen);
+}
+
+int s2oOpen(S2oKey key, const uint8_t nodeMac[6], const uint8_t* d, int len, bool fromHub, uint8_t* out, int outMax, bool* old) {
+  if (len < 1 || (d[0] != S2O_SEALED_AEAD && d[0] != S2O_SEALED)) return 0;
+  bool isOld = d[0] == S2O_SEALED;
+  if (old) *old = isOld;
+  int inner = len - S2O_SEALED_HEAD - (isOld ? S2O_SIG_LEN : S2O_SEALED_TAG);
+  if (inner < 1 || inner > S2O_SEALED_MAX_INNER || inner > outMax) return 0;
+  if (isOld) {
+    if (!s2oSignatureOk(key, nodeMac, d, len)) return -1;
+    memcpy(out, d + S2O_SEALED_HEAD, inner);
+    sealStream(key, fromHub, get32(d + 1), out, inner);
+    return inner;
+  }
+  uint8_t aeadKey[32], nonce[24], ad[6 + S2O_SEALED_HEAD];
+  aeadInputs(key, nodeMac, d, fromHub, aeadKey, nonce, ad);
+  int bad = crypto_aead_unlock(out, d + S2O_SEALED_HEAD + inner, aeadKey, nonce, ad, sizeof(ad), d + S2O_SEALED_HEAD, inner);
+  crypto_wipe(aeadKey, sizeof(aeadKey));
+  return bad ? -1 : inner;
 }
 
 // ---- firmware updates ----

@@ -5,6 +5,13 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Security
+
+- Sealed messages between the hub and the nodes are XChaCha20-Poly1305 (Monocypher), with a 16-byte tag that also binds
+  the node's address and the direction, in place of a key stream and an 8-byte signature built from HMAC-SHA1. The hub
+  still reads the old form from nodes on older firmware, and answers each in the form it used. X25519, for pairing, is
+  Monocypher's too, in place of a port of TweetNaCl; keys made before still work.
+
 ### The nodes
 
 - **Add a node**, on the Nodes and pairing page, takes a node through its setting up a step at a time, each ticked as

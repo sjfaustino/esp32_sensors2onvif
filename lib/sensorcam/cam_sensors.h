@@ -43,14 +43,17 @@ void camConfirmationInto(const uint8_t sensorMac[6], const SensorReport& r, cons
                          uint8_t out[CAM_CONFIRMATION_LEN]);
 
 // A sealed message hides what a report says from anyone listening; see s2o_messages.h.
-const uint8_t CAM_SEALED = S2O_SEALED;
+const uint8_t CAM_SEALED = S2O_SEALED_AEAD, CAM_SEALED_OLD = S2O_SEALED;
 const int CAM_SEALED_EXTRA = S2O_SEALED_EXTRA;  // the type and the number
 const int CAM_SEALED_MAX_INNER = S2O_SEALED_MAX_INNER;
 // The message inside, with a signature made with key added, so it reads as if sent plain: its length, 0 for one that is
 // not a sealed message, or -1 for a wrong signature. mac is always the node's. Without using the heap.
-int camOpenSealed(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax);
-// The sealed form of inner, which has no signature: its length, CAM_SEALED_EXTRA + innerLen + CAM_SIGNATURE_LEN.
-int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out);
+int camOpenSealed(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, bool fromHub, uint8_t* out, int outMax,
+                  bool* old = nullptr);  // old: it came in the form from before (s2o_messages.h)
+// The sealed form of inner, which has no signature: its length, at most CAM_SEALED_EXTRA + innerLen + CAM_SIGNATURE_LEN.
+// old: in the form from before, for a node that still sends it.
+int camSeal(const uint8_t mac[6], uint32_t number, const uint8_t* inner, int innerLen, const std::string& key, bool fromHub, uint8_t* out,
+            bool old = false);
 
 // A node fetches a firmware update from the hub in parts; see s2o_messages.h.
 const uint8_t CAM_FIRMWARE_ASK = S2O_FIRMWARE_ASK, CAM_FIRMWARE_PART = S2O_FIRMWARE_PART;

@@ -46,7 +46,8 @@ class CamAlarm {
   void networkLost(uint32_t seconds);  // on rejoining Wi-Fi after being off it, without a restart
   void saveNow();                      // writes any events not yet saved; before a restart
   // A report, node info, or a sealed one of those, from ESP-NOW; anything else is left alone. From the task that calls tick().
-  void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed = false);
+  // sealed: how it came, inside a sealed message: CAM_SEALED, CAM_SEALED_OLD, or 0 as it is.
+  void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, uint8_t sealed = 0);
   // A report over HTTP, whose reply is its confirmation: 200 once it is on storage, 404 for no such sensor, 507 when it
   // could not be saved.
   int webReport(const uint8_t mac[6], uint8_t input, const SensorReport& r);

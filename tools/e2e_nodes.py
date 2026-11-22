@@ -134,24 +134,7 @@ def pairing_tests():
     api('DELETE', f'/api/file?path={folder}')
 
 
-def open_sealed(data, key, mac, from_hub):
-    """A sealed message, as docs/protocol.md describes it, opened: the message inside, or None for a wrong signature."""
-    if data[0] != 7 or hmac.new(key, bytes.fromhex(mac) + data[:-8], hashlib.sha1).digest()[:8] != data[-8:]:
-        return None
-    seal_key = hmac.new(key, b'sensors2onvif seal', hashlib.sha1).digest()
-    inner, stream = data[5:-8], b''
-    for block in range((len(inner) + 19) // 20):
-        stream += hmac.new(seal_key, bytes([1 if from_hub else 0]) + data[1:5] + bytes([block]), hashlib.sha1).digest()
-    return bytes(a ^ b for a, b in zip(inner, stream))
-
-
-def seal(inner, key, mac, number, from_hub=False):
-    seal_key = hmac.new(key, b'sensors2onvif seal', hashlib.sha1).digest()
-    stream = b''
-    for block in range((len(inner) + 19) // 20):
-        stream += hmac.new(seal_key, bytes([1 if from_hub else 0]) + number.to_bytes(4, 'little') + bytes([block]), hashlib.sha1).digest()
-    body = bytes([7]) + number.to_bytes(4, 'little') + bytes(a ^ b for a, b in zip(inner, stream))
-    return body + hmac.new(key, bytes.fromhex(mac) + body, hashlib.sha1).digest()[:8]
+from s2o_seal import open_sealed, seal, seal_old  # noqa: E402  (made here independently of the firmware)
 
 
 def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node):
@@ -210,6 +193,16 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     check('only a report or node info is taken sealed', say(seal(hello, key, mac, 4)) is None)
     say(seal(info(7200, 0, b'RCWL-0516', b'3f2a1b0', response=240)[:-8], key, mac, 5))
     check('sealed node info is read too, with how long the last alert took', node_row(1).get('responseMs') == 240, node_row(1))
+    check('a confirmation to a node sealing in the present form is in that form', answer and answer[1][:1] == bytes([12]), answer)
+    # A node on firmware from before the present form seals the old way: still heard, and answered the same way, so it
+    # can read the answer.
+    control('end-alerts')
+    answer = say(seal_old(report(1, 1021, key, fresh[0])[:-8], key, mac, 0xABCD0010))
+    body = (open_sealed(answer[1], key, mac, True) or b'') if answer else b''
+    check('a node sealing the old way is still heard, and answered the old way', answer and answer[1][:1] == bytes([7])
+          and body[:7] == bytes([3, 1, 1]) + (1021).to_bytes(4, 'little'), (answer, body))
+    if len(body) == 26:
+        fresh[0] = int.from_bytes(body[22:26], 'little')
 
     # Settings for the node, which reach it with each confirmation.
     check('the report and repeat times can be set for the node', api('POST', f'/api/node-settings?path={folder}', 'every=3600&repeat=30')[0] == 200)

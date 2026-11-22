@@ -1,7 +1,7 @@
 // Shared by the hub and the sensor nodes (esp32_sensor_node), so both speak the same messages from one source.
 // X25519 key agreement (RFC 7748), for pairing sensor nodes: the hub and a node each combine their own private key with
 // the other's public key and arrive at the same secret, which someone listening to the radio cannot work out.
-// After the public-domain TweetNaCl. It is slow, tens of milliseconds on an ESP32, and runs only when pairing.
+// Monocypher's (lib/monocypher). It runs only when pairing.
 #pragma once
 #include <stdint.h>
 

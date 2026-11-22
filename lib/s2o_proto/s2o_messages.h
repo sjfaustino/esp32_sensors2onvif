@@ -11,7 +11,7 @@
 #include "s2o_x25519.h"
 
 const uint8_t S2O_REPORT = 2, S2O_CONFIRMATION = 3, S2O_HELLO = 4, S2O_ANSWER = 5, S2O_INFO = 6, S2O_SEALED = 7, S2O_FIRMWARE_ASK = 8,
-              S2O_FIRMWARE_PART = 9, S2O_HARDWARE_ASK = 10, S2O_HARDWARE = 11;
+              S2O_FIRMWARE_PART = 9, S2O_HARDWARE_ASK = 10, S2O_HARDWARE = 11, S2O_SEALED_AEAD = 12;
 const int S2O_SIG_LEN = 8;
 const int S2O_NODE_KEY_LEN = 20;
 const uint32_t S2O_AGE_UNKNOWN = 0xFFFFFFFFu;
@@ -203,17 +203,27 @@ void s2oFingerprintLong(const uint8_t publicKey[S2O_X25519_LEN], char out[20]);
 
 // ---- sealed messages ----
 
-// 7, a number its sender never uses twice with one key, the message inside without its signature XORed with a key
-// stream, then the signature over all of that. Block i of the stream, 20 bytes, is HMAC-SHA1 keyed with the seal key
-// over the direction (0 to the hub, 1 from it), the number and i. The seal key is HMAC-SHA1, keyed with the signing key,
-// over "sensors2onvif seal".
-const int S2O_SEALED_EXTRA = 5;
+// What a paired node and the hub say to each other is sealed: no one listening can read it, nor change it unnoticed.
+// 12, a number its sender never uses twice with one key (u32), the message inside without its signature encrypted with
+// XChaCha20, then its 16-byte Poly1305 tag (Monocypher's crypto_aead_lock). The key is BLAKE2b, keyed with the signing
+// key, of "sensors2onvif aead v1"; the nonce the direction (0 to the hub, 1 from it) and the number, then zeros; and the
+// tag also covers the node's MAC address and the 5 bytes before the encrypted part, so a message cannot pass for
+// another node's.
+//
+// Before, sealed messages were 7, the number, the message XORed with a stream of HMAC-SHA1 blocks, and an 8-byte HMAC-SHA1
+// signature. A node on such firmware is still read, and answered as it wrote, by the hub until every node runs this.
+const int S2O_SEALED_HEAD = 5;  // the type and the number
+const int S2O_SEALED_TAG = 16;
+// What sealing adds to a message and its signature, at most: the head, and a tag 8 bytes longer than a signature.
+const int S2O_SEALED_EXTRA = S2O_SEALED_HEAD + S2O_SEALED_TAG - S2O_SIG_LEN;
 const int S2O_SEALED_MAX_INNER = 120;
-// Its length, S2O_SEALED_EXTRA + innerLen + S2O_SIG_LEN.
+// The sealed form of inner, which has no signature: its length, S2O_SEALED_HEAD + innerLen + S2O_SEALED_TAG.
 int s2oSeal(S2oKey key, const uint8_t nodeMac[6], uint32_t number, const uint8_t* inner, int innerLen, bool fromHub, uint8_t* out);
-// The message inside, without a signature, into out: its length, 0 for something that is not a sealed message or does
-// not fit, -1 for a wrong signature.
-int s2oOpen(S2oKey key, const uint8_t nodeMac[6], const uint8_t* data, int len, bool fromHub, uint8_t* out, int outMax);
+// The same in the old form, 7, for the hub to answer a node from before: S2O_SEALED_HEAD + innerLen + S2O_SIG_LEN.
+int s2oSealOld(S2oKey key, const uint8_t nodeMac[6], uint32_t number, const uint8_t* inner, int innerLen, bool fromHub, uint8_t* out);
+// The message inside, without a signature, into out, from either form: its length, 0 for something that is not a sealed
+// message or does not fit, -1 for one that is not genuine. old says which form it was.
+int s2oOpen(S2oKey key, const uint8_t nodeMac[6], const uint8_t* data, int len, bool fromHub, uint8_t* out, int outMax, bool* old = nullptr);
 
 // ---- firmware updates ----
 

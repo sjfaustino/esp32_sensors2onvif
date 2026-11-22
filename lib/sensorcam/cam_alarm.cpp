@@ -367,8 +367,8 @@ void CamAlarm::endAlerts() {
 }
 #endif
 
-void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, bool sealed) {
-  if (!sealed && len >= 1 && data[0] == CAM_SEALED) {
+void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, uint8_t sealed) {
+  if (!sealed && len >= 1 && (data[0] == CAM_SEALED || data[0] == CAM_SEALED_OLD)) {
     sealedPacket(mac, data, len, rssi);
     return;
   }
@@ -393,7 +393,7 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
   // not lose an alert.
   if (check == CAM_PACKET_BAD_SIGNATURE) return refuseSignature(id);
   noteSignal(id, rssi);
-  node->sealed = sealed;
+  node->sealed = sealed != 0;
   // A report recorded and played back would otherwise keep a stolen node looking alive. A paired node echoes the number
   // from the hub's last confirmation; one that does not is asked to prove it is there, with a new number. Nodes on the
   // shared key are taken at their word, as they have no such number.
@@ -415,7 +415,8 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
   }
   // Confirmed once it is on storage, so a power cut cannot lose an alert its sensor has stopped resending. Again for a
   // resend, whose sender evidently missed the first confirmation. poll() saves all that arrived together, then sends.
-  // A sealed report is confirmed sealed, as the confirmation repeats what it said.
+  // A sealed report is confirmed sealed, as the confirmation repeats what it said, and in the form it came in, so a node
+  // from before the present form can read it.
   if (confirmCount_ < MAX_CONFIRMATIONS) {
     uint8_t* slot = confirmations_[confirmCount_++];
     memcpy(slot, mac, 6);
@@ -424,7 +425,7 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
     if (sealed) {
       uint8_t body[CAM_CONFIRMATION_BODY];
       camConfirmationBody(r, extra, body);
-      slot[6] = (uint8_t)camSeal(mac, nextSeal(), body, sizeof(body), key, true, slot + 7);
+      slot[6] = (uint8_t)camSeal(mac, nextSeal(), body, sizeof(body), key, true, slot + 7, sealed == CAM_SEALED_OLD);
     } else {
       slot[6] = CAM_CONFIRMATION_LEN;
       camConfirmationInto(mac, r, extra, key, slot + 7);
@@ -469,10 +470,11 @@ void CamAlarm::sealedPacket(const uint8_t mac[6], const uint8_t* data, int len, 
   int id = table_.findNode(mac);
   if (!id) return;
   uint8_t inner[CAM_SEALED_MAX_INNER + CAM_SIGNATURE_LEN];
-  int n = camOpenSealed(mac, data, len, table_.keyFor(&table_.nodeOf(id)), false, inner, sizeof(inner));
+  bool old = false;
+  int n = camOpenSealed(mac, data, len, table_.keyFor(&table_.nodeOf(id)), false, inner, sizeof(inner), &old);
   if (n < 0) return refuseSignature(id);
   if (n == 0 || (inner[0] != CAM_REPORT && inner[0] != CAM_NODE_INFO)) return;
-  espNowReport(mac, inner, n, rssi, true);
+  espNowReport(mac, inner, n, rssi, old ? CAM_SEALED_OLD : CAM_SEALED);
 }
 
 // What a node gets with each confirmation: the hub's time, its settings from the page, a walk test, and whether a

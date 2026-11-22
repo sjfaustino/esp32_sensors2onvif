@@ -109,21 +109,27 @@ could read. Sealed, only the hub can. A node may seal any report or node info, a
 
 | Bytes | Field |
 |---|---|
-| 1 | `7`, sealed |
+| 1 | `12`, sealed |
 | 4 | A number the sender never uses twice with the same key; for a report, its event counter will do, as a resend is the same message again |
-| n | The message inside, without its signature, XORed with the key stream |
-| 8 | The signature over the **node's** MAC address followed by every byte above, keyed as the message inside would be |
+| n | The message inside, without its signature, encrypted with XChaCha20 |
+| 16 | Its Poly1305 tag |
 
-The seal key is HMAC-SHA1, keyed with the signing key (the node's own, or the ESP-NOW key as text), over the text
-`sensors2onvif seal`. Block i of the key stream, 20 bytes, is HMAC-SHA1 keyed with the seal key over the direction (`0`
-to the hub, `1` from it), the number (4 bytes) and i (1 byte). The hub opens it, checks the message inside as if it had
-come plain, and answers in kind; its own numbers start at random at each start. Sealing hides what a message says, not
-that it was sent: someone listening still sees a node send at other times than its regular reports.
+This is XChaCha20-Poly1305 (libsodium's `crypto_aead_xchacha20poly1305_ietf`, Monocypher's `crypto_aead_lock`). The key
+is BLAKE2b, keyed with the signing key (the node's own, or the ESP-NOW key as text), of the text `sensors2onvif aead v1`,
+32 bytes. The 24-byte nonce is the direction (`0` to the hub, `1` from it), the number, then zeros. The tag also covers,
+unencrypted, the **node's** MAC address followed by the 5 bytes of type and number, so a message cannot pass for
+another node's, nor for one going the other way. `tools/s2o_seal.py` makes and opens it independently of the firmware,
+and the tests check the two agree. The hub opens it, checks the message inside as if it had come plain, and answers in
+kind; its own numbers start at random at each start. Sealing hides what a message says, not that it was sent: someone
+listening still sees a node send at other times than its regular reports.
 
-ESP-NOW has encryption of its own, but only for a few peers at once (7 by default, 17 at most), and a hub
-has more nodes than that. So sealing is built from the same HMAC-SHA1 that signs, as a counter-mode key stream, and the
-signature covers the sealed bytes: encrypt, then sign.
+ESP-NOW has encryption of its own, but only for a few peers at once (7 by default, 17 at most), and a hub has more nodes
+than that, hence sealing of its own.
 
+Nodes on firmware before the sensor node's 0.2.0 seal the old way: `7`, the number, the message XORed with a key stream
+of HMAC-SHA1 blocks (keyed with HMAC-SHA1 of `sensors2onvif seal`, over the direction, the number and the block's
+index), and an 8-byte signature over it all. The hub still reads that form, and answers a node that uses it the same
+way, until every node runs the present one.
 ## Hardware settings
 
 What a node's sensor is, and where it, a tamper switch and a battery are wired, is set for each node on the Sensors page,

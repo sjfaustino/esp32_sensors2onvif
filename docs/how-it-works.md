@@ -112,8 +112,7 @@ needs from the others goes through `CamAlarmOutside`, which the server answers. 
 
 ## Pairing
 
-`lib/s2o_proto/s2o_x25519.cpp` is X25519 after TweetNaCl, checked against RFC 7748's vectors. It is slow, tens of
-milliseconds on the board, and runs only when the hub starts and when a node is approved; reports never use it. A paired
+`lib/s2o_proto/s2o_x25519.cpp` is Monocypher's X25519, checked against RFC 7748's vectors. It runs only when the hub starts and when a node is approved; reports never use it. A paired
 node's key is read from its `pairing.txt` into its sensors' rows when the sensor table is rebuilt, so checking its reports
 picks the key by the sender and needs no memory, as before.
 
@@ -125,9 +124,9 @@ A paired node's fresh number lives in its `Node` entry: the newest and the one b
 air costs nothing. It changes with every report that is not a resend, and is only in memory, so after a restart of the
 hub every node proves itself once.
 
-A sealed message (7) is opened with the key of the node it comes from, found by its MAC address alone, and the message
+A sealed message (12, or 7 from a node on older firmware) is opened with the key of the node it comes from, found by its MAC address alone, and the message
 inside gets a signature made with that key appended, so `espNowReport` checks it as if it had come plain; `sealed` then
-makes it seal the confirmation. All of it is on the stack, so a sealed alert is still confirmed with no memory left.
+makes it seal the confirmation, in the same form. All of it is on the stack, so a sealed alert is still confirmed with no memory left.
 What a confirmation carries for the node comes from `forNode`, which reads only the sensor table and the clock.
 
 ## The hub's firmware signature
