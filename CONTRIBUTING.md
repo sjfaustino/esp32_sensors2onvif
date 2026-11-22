@@ -27,6 +27,10 @@ python tools/e2e_pages.py     # the pages in a real browser: pip install playwri
 python tools/e2e_test.py node  # only the tests with "node" in their names; --list names them all
 pio run -e esp32_16mb         # the firmware for the board you have; CI builds the others
 pio run -e host -t compiledb  # then python tools/tidy.py: clang-tidy's checks, as .clang-tidy lists them
+python tools/precheck.py      # CI's quick checks: C++ and page style, settings and colours; --fix formats.
+                              # Run before each push once you have run: git config core.hooksPath tools/hooks
+python tools/update_hub.py HOST  # build, sign and send the firmware to a hub on the network, and watch that it
+                              # keeps it; refuses a commit CI has not passed, and while an alert is active
 python tools/compare_pictures.py  # after python tools/screenshots.py: whether a page changed without its pictures
                               # being committed again, as CI checks; pip install pillow
 python tools/coverage.py      # how much of the library the tests run: .pio/coverage/report/index.html;
@@ -47,7 +51,11 @@ sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS w
   end-to-end tests.
 - **The style is checked.** C++ with clang-format 19.1.7, using `.clang-format`. The page scripts and styles with
   `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`, and `node --check` on each
-  script. CI refuses either otherwise.
+  script. CI refuses either otherwise; `python tools/precheck.py` runs the same checks here, and the pre-push hook
+  in `tools/hooks` runs it before each push.
+- **A hub is updated only with a build CI has passed.** The PC tests cannot show the board's stack or timing, and CI
+  is the least a build must pass before it guards a home. `tools/update_hub.py` refuses anything else unless told
+  `--untested`, and watches the hub until it keeps the new firmware or says it went back.
 - **The documents follow the code.** `docs/user-guide.md` for what a user sees, with its pictures
   taken again by `python tools/screenshots.py` when a page changes, `docs/how-it-works.md` for how it works, and
   `docs/protocol.md` for the messages. Every time the hub waits for is in `lib/sensorcam/cam_timing.h`.

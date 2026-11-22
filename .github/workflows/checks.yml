@@ -31,15 +31,12 @@ jobs:
           pip install platformio cryptography
           choco install ffmpeg --no-progress -y
 
-      - name: Web page scripts
-        run: |
-          Get-ChildItem web/*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
-          npx --yes prettier@3.3.3 --print-width 120 --end-of-line lf --check web/*.js web/*.css
-
-      - name: C++ style
+      # The same quick checks as the pre-push hook: node --check and Prettier on the pages, clang-format on the C++,
+      # every setting loaded and saved, and every colour of the pages named.
+      - name: Style, settings and colours
         run: |
           pip install clang-format==19.1.7
-          clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.h' | Where-Object { $_ -notmatch '_data.cpp$|^lib/monocypher/' })
+          python tools/precheck.py
 
       # clang-tidy's bug-finding checks over the library and the PC build; .clang-tidy says which, and why not the rest.
       - name: Static analysis
@@ -47,12 +44,6 @@ jobs:
           pip install clang-tidy==23.1.4
           pio run -e host -t compiledb
           python tools/tidy.py
-
-      - name: Every setting is loaded and saved
-        run: python tools/check_settings.py
-
-      - name: Every colour of the pages is named, light and dark
-        run: python tools/check_colours.py
 
       - name: Unit tests
         run: pio test -e native

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs CI's quick checks before a push, so one CI would refuse for its style never leaves this PC.
+# Used once git is told: git config core.hooksPath tools/hooks. To push anyway: git push --no-verify.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+for python in py python3 python; do
+  if command -v "$python" >/dev/null 2>&1; then
+    exec "$python" tools/precheck.py
+  fi
+done
+echo "pre-push: no Python found to run tools/precheck.py" >&2
+exit 1

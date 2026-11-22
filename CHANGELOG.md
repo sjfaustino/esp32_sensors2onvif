@@ -5,6 +5,14 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Tools
+
+- `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
+  hub keeps it or says it went back. It refuses a commit CI has not passed, changes not committed, and a hub with an
+  alert active.
+- `tools/precheck.py` runs CI's quick checks, the code's style, settings and colours, in seconds, and the pre-push hook
+  in `tools/hooks` runs it before each push. CI runs the same script.
+
 ## [0.6.0] - 2026-11-22
 
 Update from 0.5.0 before updating any node to its 0.2.0, which seals its messages in a way only this hub reads; this hub

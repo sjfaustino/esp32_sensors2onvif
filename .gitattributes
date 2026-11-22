@@ -1,2 +1,3 @@
 # The web pages keep LF line endings on every machine, which the Prettier check on GitHub expects.
 web/* text eol=lf
+tools/hooks/* text eol=lf
