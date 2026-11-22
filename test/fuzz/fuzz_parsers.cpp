@@ -11,6 +11,7 @@
 #include "cam_auth.h"
 #include "cam_board_rules.h"
 #include "cam_events.h"
+#include "cam_firmware_sig.h"
 #include "cam_frames.h"
 #include "cam_mqtt.h"
 #include "cam_pairing.h"
@@ -32,7 +33,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string text(in.begin(), in.end());
   S2oKey key{KEY, 32};
 
-  switch (pick % 28) {
+  switch (pick % 29) {
     // ---- the radio: messages from nodes, and on the node, from the hub ----
     case 0: {
       S2oReport r;
@@ -185,6 +186,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         camReadKept(k, pick & 0x80);
         camRestartText(k.cause);
       }
+      break;
+    }
+    case 28: {  // a firmware update's signature, in pieces of the size the first byte gives, and a size said that may be wrong
+      if (in.size() < 2) break;
+      CamFirmwareSig s;
+      size_t said = in.size() - 2 + (in[1] & 3) - 1;  // one short, right, one over, or two over
+      size_t piece = in[0] % 97 + 1;
+      if (!s.begin(said)) break;
+      for (size_t at = 2; at < in.size(); at += piece) s.take(d + at, in.size() - at < piece ? in.size() - at : piece);
+      uint8_t publicKey[32];
+      camFirmwareKey(text.substr(2, 64), publicKey) || (memset(publicKey, 0, 32), true);
+      s.good(publicKey);
       break;
     }
   }

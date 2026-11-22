@@ -1,5 +1,5 @@
-# Runs the unit tests and the end-to-end test of the PC build, builds the firmware for every board, and fuzzes the
-# parsers, on each push.
+# Runs the unit tests and the end-to-end test of the PC build, checks the code with clang-tidy, builds the firmware for
+# every board, measures the tests' coverage, and fuzzes the parsers, on each push.
 # Windows, because the PC build links Winsock (-lws2_32 in platformio.ini).
 name: Checks
 
@@ -13,15 +13,15 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0  # tools/version.py names the firmware with git describe
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.12'
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
@@ -39,7 +39,14 @@ jobs:
       - name: C++ style
         run: |
           pip install clang-format==19.1.7
-          clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.h' | Where-Object { $_ -notmatch '_data.cpp$' })
+          clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.h' | Where-Object { $_ -notmatch '_data.cpp$|^lib/monocypher/' })
+
+      # clang-tidy's bug-finding checks over the library and the PC build; .clang-tidy says which, and why not the rest.
+      - name: Static analysis
+        run: |
+          pip install clang-tidy==23.1.4
+          pio run -e host -t compiledb
+          python tools/tidy.py
 
       - name: Every setting is loaded and saved
         run: python tools/check_settings.py
@@ -67,7 +74,7 @@ jobs:
         run: python tools/screenshots.py
 
       - name: Keep the pictures
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: page-pictures
           path: docs/images/*.png
@@ -76,12 +83,50 @@ jobs:
         run: pio run -e esp32_16mb -e esp32dev -e esp32s3
 
       - name: Keep the 16 MB firmware and its .elf
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: firmware-esp32_16mb
           path: |
             .pio/build/esp32_16mb/firmware.bin
             .pio/build/esp32_16mb/firmware.elf
+          retention-days: 30
+
+  # How much of the library the unit tests, the end-to-end test and the pages in a browser run, together: the totals
+  # per file with the run's summary, and the report line by line to download.
+  coverage:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO, gcovr, the browser and ffmpeg
+        run: |
+          pip install platformio cryptography gcovr==8.8 playwright==1.52.0
+          python -m playwright install chromium
+          choco install ffmpeg --no-progress -y
+
+      - name: Measure
+        run: |
+          python tools/coverage.py --pages
+          Get-Content .pio/coverage/summary.md | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: coverage-report
+          path: .pio/coverage/report/
           retention-days: 30
 
   # Every parser of what reaches the hub from outside, under libFuzzer with AddressSanitizer and UndefinedBehavior
@@ -90,9 +135,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: .pio/fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
@@ -103,7 +148,7 @@ jobs:
 
       - name: Keep what made it fail
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: fuzz-failure
           path: .pio/fuzz/crash-*

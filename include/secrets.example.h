@@ -1,6 +1,10 @@
 // Copy to include/secrets.h (ignored by git) and fill in.
 #pragma once
 
+// To update hubs over the network with your own builds: the public half of your signing key, from
+// python tools/sign_firmware.py --new-key. Leave it out to trust the project's key.
+// #define FIRMWARE_PUBLIC_KEY "<64 hex digits>"
+
 // The first network to try. A network chosen on the setup page replaces it. May be left empty.
 #define WIFI_SSID ""
 #define WIFI_PASSWORD ""

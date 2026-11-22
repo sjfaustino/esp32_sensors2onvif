@@ -297,8 +297,20 @@ def test_esp_now_page():
 
         # Firmware and backup.
         check('firmware update needs the web password', api('PUT', '/api/firmware', b'\xe9' * 100, auth=False)[0] == 401)
-        check('valid firmware is accepted', api('PUT', '/api/firmware', b'\xe9' + b'\x01' * 9000)[0] == 200)
-        check('other files are refused as firmware', api('PUT', '/api/firmware', b'not firmware' * 500)[0] == 400)
+        image = b'\xe9' + b'\x01' * 9000
+        check('signed firmware is accepted', api('PUT', '/api/firmware', signed(image))[0] == 200)
+        code, reply = api('PUT', '/api/firmware', image)
+        check('firmware without a signature is refused', code == 400 and b'not signed' in reply, (code, reply[:80]))
+        code, reply = api('PUT', '/api/firmware', other_key_signed(image))
+        check('firmware signed with another key is refused', code == 400 and b'not signed' in reply, (code, reply[:80]))
+        changed = bytearray(signed(image))
+        changed[5000] ^= 1
+        check('signed firmware changed afterwards is refused', api('PUT', '/api/firmware', bytes(changed))[0] == 400)
+        check('signed firmware with its last byte cut off is refused', api('PUT', '/api/firmware', signed(image)[:-1])[0] == 400)
+        check('a file shorter than a signature is refused', api('PUT', '/api/firmware', b'\xe9' * 50)[0] == 400)
+        code, reply = api('PUT', '/api/firmware', signed(b'not firmware' * 500))
+        check('other files are refused as firmware, signed or not', code == 400 and b'not valid firmware' in reply, (code, reply[:80]))
+        check('and the next signed firmware is still accepted', api('PUT', '/api/firmware', signed(image))[0] == 200)
         # During an upload the hub drops video and takes nothing new, so the update has the memory it needs.
         code, reply = test_firmware_upload_pauses_the_hub()
 

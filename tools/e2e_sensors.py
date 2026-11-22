@@ -490,7 +490,7 @@ def test_firmware_upload_pauses_the_hub():
     video.settimeout(3)
     upload = socket.create_connection((HOST, WEB), timeout=15)
     login = base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
-    image = b'\xe9' + b'\x01' * 19999
+    image = signed(b'\xe9' + b'\x01' * 19999)
     upload.sendall(f'PUT /api/firmware HTTP/1.1\r\nHost: {HOST}\r\nAuthorization: Basic {login}\r\nContent-Length: {len(image)}\r\n\r\n'.encode() + image[:2000])
     try:
         video_closed = video.recv(100) == b''

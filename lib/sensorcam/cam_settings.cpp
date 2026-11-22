@@ -19,7 +19,10 @@ bool parseIpv4(const std::string& s, uint32_t& out) {
   out = 0;
   size_t i = 0;
   for (int part = 0; part < 4; part++) {
-    if (part && (i >= s.size() || s[i++] != '.')) return false;
+    if (part) {
+      if (i >= s.size() || s[i] != '.') return false;
+      i++;
+    }
     int value = 0, digits = 0;
     while (i < s.size() && isdigit((unsigned char)s[i])) {
       value = value * 10 + (s[i++] - '0');
@@ -93,6 +96,7 @@ static bool zeroOrOne(const std::string& v) { return v == "0" || v == "1"; }
 static bool ssid(const std::string& v) { return v.size() <= 32; }
 static bool wifiPassword(const std::string& v) { return v.empty() || (v.size() >= 8 && v.size() <= 63); }
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization): built before anything runs; no memory then is no hub at all
 const CamSetting CAM_SETTINGS[] = {
     {"wifi", "ssid", 's', 0, 0, ssid},
     {"wifi", "password", 's', 0, 0, wifiPassword},

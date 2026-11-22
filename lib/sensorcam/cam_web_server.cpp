@@ -409,20 +409,31 @@ void CamWeb::finishFirmware(HttpConn& c, bool ok) {
     finishNodeImage(c, ok);
     return;
   }
-  bool done = ok && chip_->firmwareEnd(true);
-  if (!ok) chip_->firmwareEnd(false);
+  // The signature is checked before the update is kept: a firmware not signed with the project's key never runs.
+  uint8_t key[32];
+  bool signedOk = ok && camFirmwareKey(cfg_.firmwareKey, key) && firmwareSig_.good(key);
+  bool done = signedOk && chip_->firmwareEnd(true);
+  if (!signedOk) chip_->firmwareEnd(false);
   firmwareOwner_ = nullptr;
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
   c.drainFrom = millis_();
   c.firmwareLeft = 0;
-  c.out = done ? jsonOk(JSON_OK) : jsonFail(400, "that is not valid firmware for this hub, so nothing was changed");
+  c.out = done              ? jsonOk(JSON_OK)
+          : ok && !signedOk ? jsonFail(400, "that firmware is not signed for this hub, so nothing was changed")
+                            : jsonFail(400, "that is not valid firmware for this hub, so nothing was changed");
   c.answered = true;
 }
 
 void CamWeb::feedFirmware(HttpConn& c, const char* data, size_t n, uint32_t now) {
   size_t take = n < c.firmwareLeft ? n : c.firmwareLeft;
-  bool written = !take || (c.nodeImage ? nodes_.images().write(data, take) : chip_->firmwareWrite((const uint8_t*)data, take));
+  bool written = true;
+  if (c.nodeImage) {
+    written = !take || nodes_.images().write(data, take);
+  } else {
+    size_t image = firmwareSig_.take((const uint8_t*)data, take);  // the signature at the end is held back from flash
+    written = !image || chip_->firmwareWrite((const uint8_t*)data, image);
+  }
   c.firmwareLeft -= take;  // before finishing, so only the bytes still on their way are read and dropped
   if (!written) {
     finishFirmware(c, false);
@@ -497,9 +508,11 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     // A refused firmware is read to its end before the reply, as the browser reports a reply that comes while it is
     // still sending as a bare network error, without the reason.
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
-    if (firmwareOwner_ || !chip_->firmwareBegin(contentLength))
+    if (contentLength <= CAM_FW_TRAILER) return refuse(400, "that firmware is not signed for this hub, so nothing was changed", MAX_FIRMWARE);
+    if (firmwareOwner_ || !chip_->firmwareBegin(contentLength - CAM_FW_TRAILER))
       return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;
+    firmwareSig_.begin(contentLength);
     c.firmwareActive = true;
     // Video is what uses the network's memory most, and an update that runs out of it stops the hub. The NVR
     // reconnects after the restart that follows, or at once if the update fails.
@@ -618,7 +631,7 @@ static size_t chunkedPiece(const std::function<size_t(size_t, char*, size_t)>& s
   if (n < CHUNK) framed += "0\r\n\r\n";
   if (within >= framed.size()) return 0;
   size_t take = framed.size() - within < room ? framed.size() - within : room;
-  memcpy(out, framed.data() + within, take);
+  memcpy(out, framed.data() + within, take);  // NOLINT(bugprone-not-null-terminated-result): bytes for the socket, not a string
   return take;
 }
 
@@ -690,10 +703,9 @@ void CamWeb::serviceHttp(HttpConn& c, bool readable, bool writable, uint32_t now
       return;
     }
   }
-  if (!c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS)
-    closeHttp(c);
-  else if (c.discardLeft && now - c.drainFrom > drainMs_)
-    closeHttp(c);  // still trickling the body of a refused request
+  bool stalled = !c.pollWaiting && now - c.openedAt > CAM_HTTP_STALL_MS;
+  bool trickling = c.discardLeft && now - c.drainFrom > drainMs_;  // still sending the body of a refused request
+  if (stalled || trickling) closeHttp(c);
 }
 
 // ---- what the rest of the hub asks of the web side ----

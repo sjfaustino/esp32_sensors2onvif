@@ -19,6 +19,7 @@ file and that folder alongside the firmware.
 | [mDNS](https://github.com/espressif/esp-protocols/tree/master/components/mdns) | 1.11.3 | Apache-2.0 ([text](licenses/Apache-2.0.txt)) | Espressif Systems (Shanghai) Co., Ltd. |
 | [esp_littlefs](https://github.com/joltwallet/esp_littlefs) | 1.22.2 | MIT ([text](licenses/esp_littlefs-MIT.txt)) | Brian Pugh |
 | [littlefs](https://github.com/littlefs-project/littlefs), in esp_littlefs | | BSD-3-Clause ([text](licenses/littlefs-BSD-3-Clause.txt)) | The littlefs authors, Arm Limited |
+| [Monocypher](https://monocypher.org), in `lib/monocypher`: Ed25519 and SHA-512, which check a firmware update's signature | 4.0.2 | BSD-2-Clause or CC0-1.0 ([text](licenses/Monocypher-BSD-2-Clause-or-CC0.txt)) | Loup Vaillant and the Monocypher contributors |
 | [newlib](https://sourceware.org/newlib/), the C library | | BSD-style licences, each listed in [the text](licenses/newlib.txt) | Red Hat and others |
 | The GCC runtime libraries (libgcc, libstdc++) | | GPL-3.0 with the GCC Runtime Library Exception | Free Software Foundation |
 

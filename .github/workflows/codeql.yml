@@ -1,0 +1,61 @@
+# GitHub's CodeQL looks for security faults in the C++ of the library and the PC build, the pages' JavaScript, and these
+# workflows, on each push to the working branches, on pull requests and weekly. What it finds is under the Security tab.
+# The C++ is what the PC build compiles, which is all of lib/ (where everything from outside is read) and not the
+# board's own src/ files, which only build for the ESP32.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, initial-firmware]
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build-mode: manual
+            os: windows-latest  # the PC build links Winsock
+          - language: javascript-typescript
+            build-mode: none
+            os: ubuntu-latest
+          - language: actions
+            build-mode: none
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea  # v4.39.4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - if: matrix.build-mode == 'manual'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - if: matrix.build-mode == 'manual'
+        name: Build the PC version
+        run: |
+          pip install platformio
+          pio run -e host
+
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea  # v4.39.4
+        with:
+          category: /language:${{ matrix.language }}

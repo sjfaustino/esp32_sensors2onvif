@@ -19,6 +19,9 @@ python tools/e2e_test.py      # the end-to-end test, playing the NVR's part
 python tools/e2e_pages.py     # the pages in a real browser: pip install playwright==1.52.0, then
                               # python -m playwright install chromium
 pio run -e esp32_16mb         # the firmware for the board you have; CI builds the others
+pio run -e host -t compiledb  # then python tools/tidy.py: clang-tidy's checks, as .clang-tidy lists them
+python tools/coverage.py      # how much of the library the tests run: .pio/coverage/report/index.html;
+                              # pip install gcovr, and add --pages for the browser tests too
 sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS with clang, as CI runs them; on
                               # Windows: powershell -ExecutionPolicy Bypass -File tools\fuzz.ps1, after
                               # winget install LLVM.LLVM, with Visual Studio's C++ build tools
@@ -53,6 +56,15 @@ sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS w
 
 A release is a tag such as `v0.2.0` on `main`. Pushing the tag builds the firmware for every board and publishes it,
 with that version's part of [CHANGELOG.md](CHANGELOG.md) and the third-party notices.
+The update files are signed with the `FIRMWARE_SIGNING_KEY` secret, whose public half is `FIRMWARE_PUBLIC_KEY` in
+`include/config.h`, and the release lists their SHA-256, carries a software bill of materials made from
+THIRD_PARTY_NOTICES.md by `tools/sbom.py`, and has GitHub's build attestation.
+
+A hub takes an update over the network only when it is signed with the key it trusts, so a build of your own goes on
+over the USB cable (`pio run -e esp32_16mb -t upload`). To update your hubs over the network with your own builds, make a
+key with `python tools/sign_firmware.py --new-key`, put its public half in `secrets.h` as `FIRMWARE_PUBLIC_KEY`, flash
+that build over USB once, and sign each later build with `python tools/sign_firmware.py firmware.bin signed.bin`.
+
 A new release of the Arduino core or ESP-IDF, or a new library, needs its entry in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and its licence text in `licenses/`. Until 1.0.0, a new minor version may change settings or the
 messages; from 1.0.0, versions follow [semantic versioning](https://semver.org).

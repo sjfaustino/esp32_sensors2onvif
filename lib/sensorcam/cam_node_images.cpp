@@ -72,7 +72,7 @@ bool CamNodeImages::begin() {
 bool CamNodeImages::write(const char* data, size_t n) { return upload_ && fwrite(data, 1, n, upload_) == n; }
 
 void CamNodeImages::abandon() {
-  if (upload_) fclose(upload_);
+  if (upload_) (void)fclose(upload_);  // being thrown away
   upload_ = nullptr;
   storage_.removeTree(UPLOAD);
 }

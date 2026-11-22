@@ -22,13 +22,13 @@ if ($LASTEXITCODE) { throw 'fuzz_seeds.py failed' }
 
 # The library but its pages, as fuzz.sh builds it. test\fuzz\msvc holds the two POSIX headers cam_storage.cpp needs and
 # Microsoft's C library lacks. The STL's container annotations are off because the prebuilt libFuzzer was built without
-# them and the linker refuses the mix; AddressSanitizer still checks every access.
-$sources = Get-ChildItem lib\sensorcam\*.cpp, lib\s2o_proto\*.cpp | Where-Object Name -ne 'cam_web_pages.cpp' |
+# them and the linker refuses the mix; AddressSanitizer still checks every access. Monocypher, in C, builds as C++ here.
+$sources = Get-ChildItem lib\sensorcam\*.cpp, lib\s2o_proto\*.cpp, lib\monocypher\*.c | Where-Object Name -ne 'cam_web_pages.cpp' |
   ForEach-Object { $_.FullName }
 $flags = @('-std=gnu++17', '-g', '-O1', '-fsanitize=fuzzer,address,undefined', '-fno-sanitize-recover=undefined',
   '-D_DISABLE_STRING_ANNOTATION', '-D_DISABLE_VECTOR_ANNOTATION', '-D_CRT_SECURE_NO_WARNINGS',
   '-D_CRT_NONSTDC_NO_DEPRECATE', '-D_WINSOCK_DEPRECATED_NO_WARNINGS', '-Wno-deprecated-declarations', '-DCAM_TEST_HOOKS',
-  '-Itest\fuzz\msvc', '-Ilib\sensorcam', '-Ilib\s2o_proto', '-Iinclude')
+  '-Itest\fuzz\msvc', '-Ilib\sensorcam', '-Ilib\s2o_proto', '-Ilib\monocypher', '-Iinclude', '-Wno-deprecated')
 & $clang @flags test\fuzz\fuzz_parsers.cpp test\fuzz\pages_stub.cpp @sources -lws2_32 -o "$out\fuzz_parsers.exe"
 if ($LASTEXITCODE) { throw 'The fuzzer did not build' }
 

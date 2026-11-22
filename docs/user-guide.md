@@ -409,6 +409,9 @@ Keep the hub out of reach.
 restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
 A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
 30 minutes, that restart is skipped until the next time.
+The hub takes only firmware signed with the project's key, as each release's `.bin` is, so the hub password alone
+cannot put other firmware on it; anything else is refused and nothing changes. A firmware built by someone else can be
+put on over the board's USB cable, as a new hub is set up.
 A new firmware is kept only once it has done the hub's work: stayed on the network for a minute, started ESP-NOW, and,
 if the NVR was listening when the update began, got it listening again. If it crashes, stalls or loses the network
 first, the power fails meanwhile, or it has not managed within 10 minutes, the hub goes back to the previous firmware

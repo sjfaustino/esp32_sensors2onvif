@@ -248,16 +248,18 @@ bool CamStorage::readFile(const std::string& path, std::string& out, size_t maxB
   struct stat st;
   if (stat(full(path).c_str(), &st) == 0 && (size_t)st.st_size <= maxBytes) out.reserve(st.st_size);
   char buf[1024];
-  size_t n;
   bool ok = true;
-  while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+  while (true) {
+    size_t n = fread(buf, 1, sizeof(buf), f);
     if (out.size() + n > maxBytes) {
       ok = false;
       break;
     }
     out.append(buf, n);
+    if (n < sizeof(buf)) break;  // the end, or a failure, which ferror tells apart below
   }
-  fclose(f);
+  if (ferror(f)) ok = false;  // a read that failed part way is not the whole file
+  (void)fclose(f);            // only read: nothing to lose
   if (!ok) out.clear();
   return ok;
 }
@@ -297,11 +299,11 @@ bool CamStorage::writeWith(const std::string& path, const std::function<bool(FIL
   ok = fclose(f) == 0 && ok;
   if (ok) {
 #ifdef _WIN32
-    remove(target.c_str());  // Windows rename will not replace an existing file
+    (void)remove(target.c_str());  // Windows rename will not replace an existing file; the rename says if it worked
 #endif
     ok = rename(temp.c_str(), target.c_str()) == 0;
   }
-  if (!ok) remove(temp.c_str());
+  if (!ok) (void)remove(temp.c_str());  // a leftover temporary file is replaced next time
   return ok;
 }
 
@@ -331,12 +333,12 @@ bool CamStorage::readAt(const std::string& path, size_t offset, char* out, size_
   FILE* f = fopen(full(path).c_str(), "rb");
   if (!f) return false;
   bool ok = fseek(f, (long)offset, SEEK_SET) == 0 && fread(out, 1, len, f) == len;
-  fclose(f);
+  (void)fclose(f);  // only read: nothing to lose
   return ok;
 }
 
 bool CamStorage::renameFile(const std::string& from, const std::string& to) const {
-  remove(full(to).c_str());
+  (void)remove(full(to).c_str());  // there may be none; the rename says if it worked
   return rename(full(from).c_str(), full(to).c_str()) == 0;
 }
 

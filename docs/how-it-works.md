@@ -130,6 +130,20 @@ inside gets a signature made with that key appended, so `espNowReport` checks it
 makes it seal the confirmation. All of it is on the stack, so a sealed alert is still confirmed with no memory left.
 What a confirmation carries for the node comes from `forNode`, which reads only the sensor table and the clock.
 
+## The hub's firmware signature
+
+An upload to `/api/firmware` is the image as built, then 72 bytes: an Ed25519 signature and the mark `S2OSIG1\n`
+(`cam_firmware_sig.h`). `CamFirmwareSig` hashes the image with SHA-512 as it streams to flash and holds the last 72
+bytes back, as they are known from the Content-Length; the update is given the image's size, so it ends on the image's
+last byte. Once all of it has arrived, the signature is checked over `s2o firmware v1\n` and that hash, with the public
+key in `CamConfig::firmwareKey`, and only then is the update kept; otherwise it is dropped and the running firmware
+stays. Monocypher (`lib/monocypher`) does the Ed25519 and SHA-512.
+
+`tools/sign_firmware.py` signs. The release workflow uses the `FIRMWARE_SIGNING_KEY` secret and stops if its public half
+is not `FIRMWARE_PUBLIC_KEY` in `include/config.h`. The PC build trusts `test/firmware-test-key.pem` instead, which signs
+the end-to-end test's updates and is never used for real firmware. A hub from before signing writes the 72 bytes after
+the image, where the bootloader does not read, so a signed file updates it too.
+
 ## Node firmware
 
 An upload to `/api/node-firmware` streams into `nodes/upload.bin`, as the hub's own update streams to flash, and is then

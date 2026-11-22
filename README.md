@@ -5,6 +5,8 @@ camera. Add it to an NVR on any free channel. Each alert becomes a searchable mo
 names the sensor that fired. The firmware knows nothing about NVR channels.
 
 [![Checks](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/checks.yml)
+[![CodeQL](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/sjfaustino/esp32_sensors2onvif/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sjfaustino/esp32_sensors2onvif/badge)](https://scorecard.dev/viewer/?uri=github.com/sjfaustino/esp32_sensors2onvif)
 [![Release](https://img.shields.io/github/v/release/sjfaustino/esp32_sensors2onvif?include_prereleases)](https://github.com/sjfaustino/esp32_sensors2onvif/releases)
 
 ```mermaid
@@ -45,6 +47,7 @@ flowchart LR
   pairing nodes, HTTP sensors and the NVR.
 - [How it works](docs/how-it-works.md): for whoever changes the code.
 - [Protocol](docs/protocol.md): the ESP-NOW messages between the hub and its nodes.
+- [Threat model](docs/threat-model.md): who might try to defeat the hub, and what it does and cannot do about each.
 - [Sensor nodes](https://github.com/sjfaustino/esp32_sensor_node): their hardware and firmware.
 - [Changelog](CHANGELOG.md), [security policy](SECURITY.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 

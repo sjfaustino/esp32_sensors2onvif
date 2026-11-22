@@ -1,0 +1,10 @@
+# Proposes newer versions of the GitHub Actions the workflows use, which are pinned to commits, once a week.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

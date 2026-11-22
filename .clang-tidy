@@ -1,0 +1,28 @@
+---
+# Static analysis of the hub's library and its PC build: python tools/tidy.py runs it, as CI does on each push.
+# The bug-finding checks only, not style. Each one left out, and why:
+#   bugprone-easily-swappable-parameters    style: many functions take two numbers or two strings
+#   bugprone-signed-bitwise                 bytes are promoted to int before masking and shifting; every value is small
+#   bugprone-implicit-widening-of-multiplication-result
+#                                           sizes and offsets are small, and the board is 32-bit
+#   cert-err58-cpp, cert-int09-c            the same as throwing-static-initialization, and enum style
+#   clang-analyzer-optin.performance.Padding
+#                                           field order follows meaning; the few large tables are laid out by hand
+# cert-err33-c checks only the calls whose failure can lose data: a file written, closed or renamed.
+# A finding that is wrong in one place is marked there with NOLINT and the reason.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-signed-bitwise,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -cert-err58-cpp,
+  -cert-int09-c,
+  -clang-analyzer-optin.performance.Padding,
+CheckOptions:
+  cert-err33-c.CheckedFunctions: '::fclose;::fflush;::fwrite;::fputs;::fputc;::rename'
+HeaderFilterRegex: '(lib[/\\](sensorcam|s2o_proto)|src|include)[/\\]'
+WarningsAsErrors: '*'
+...

@@ -1,6 +1,6 @@
 # Publishes a release when a version is tagged on main, such as v0.2.0: the firmware for every board, named after the
 # version, and that version's part of CHANGELOG.md as the notes. Each firmware.bin is the file the hub's own page takes
-# under System Manager > Maintenance; each -full.bin sets up a blank board; each .elf reads a crash report from that build.
+# under System > Maintenance, signed with the FIRMWARE_SIGNING_KEY secret (tools/sign_firmware.py); each -full.bin sets up a blank\n# board; each .elf reads a crash report from that build. SHA256SUMS, the SBOM and GitHub's build attestations let anyone\n# check what they downloaded.
 name: Release
 
 on:
@@ -9,30 +9,58 @@ on:
 
 permissions:
   contents: write
+  id-token: write      # the build attestation's signing certificate
+  attestations: write
 
 jobs:
   release:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0  # tools/version.py names the firmware after the tag with git describe
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.12'
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
 
       - name: Install PlatformIO
-        run: pip install platformio
+        run: pip install platformio cryptography
 
       - name: Firmware for every board
         run: pio run -e esp32_16mb -e esp32dev -e esp32s3
+
+      # The update files are signed, and the key must be the one the firmware trusts, or no hub would take them.
+      - name: Sign the firmware and list what is released
+        shell: bash
+        env:
+          FIRMWARE_SIGNING_KEY: ${{ secrets.FIRMWARE_SIGNING_KEY }}
+        run: |
+          v="$GITHUB_REF_NAME"
+          grep -q "^## \[${v#v}\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for ${v#v}"; exit 1; }
+          [ -n "$FIRMWARE_SIGNING_KEY" ] || { echo "The FIRMWARE_SIGNING_KEY secret is not set"; exit 1; }
+          trusted=$(sed -n 's/^#define FIRMWARE_PUBLIC_KEY "\([0-9a-f]*\)"/\1/p' include/config.h)
+          [ "$(python tools/sign_firmware.py --public)" = "$trusted" ] || { echo "The signing key is not the one in include/config.h"; exit 1; }
+          mkdir out
+          for board in esp32_16mb esp32dev esp32s3; do
+            python tools/sign_firmware.py ".pio/build/$board/firmware.bin" "out/sensors2onvif-$v-$board.bin"
+            cp ".pio/build/$board/firmware.elf" "out/sensors2onvif-$v-$board.elf"
+            cp ".pio/build/$board/firmware.factory.bin" "out/sensors2onvif-$v-$board-full.bin"
+          done
+          python -m zipfile -c "out/sensors2onvif-$v-notices.zip" THIRD_PARTY_NOTICES.md LICENSE licenses/
+          python tools/sbom.py "$v" "out/sensors2onvif-$v.spdx.json"
+          (cd out && sha256sum * > SHA256SUMS)
+
+      - name: Attest where the files were built
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: 'out/*'
 
       - name: Publish the release
         shell: bash
@@ -40,21 +68,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v="$GITHUB_REF_NAME"
-          grep -q "^## \[${v#v}\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for ${v#v}"; exit 1; }
-          mkdir out
-          for board in esp32_16mb esp32dev esp32s3; do
-            cp ".pio/build/$board/firmware.bin" "out/sensors2onvif-$v-$board.bin"
-            cp ".pio/build/$board/firmware.elf" "out/sensors2onvif-$v-$board.elf"
-            cp ".pio/build/$board/firmware.factory.bin" "out/sensors2onvif-$v-$board-full.bin"
-          done
-          python -m zipfile -c "out/sensors2onvif-$v-notices.zip" THIRD_PARTY_NOTICES.md LICENSE licenses/
           awk -v head="## [${v#v}]" 'index($0, head) == 1 {on = 1; next} /^## / || /^\[[^]]*\]: / {on = 0} on' CHANGELOG.md > notes.md
           cat >> notes.md <<'EOF'
 
           ### Updating a hub
 
           Download the `.bin` for your board, the one without `-full`: `esp32_16mb` for an ESP32 with 16 MB of flash, `esp32dev` for one with 4 MB,
-          `esp32s3` for an ESP32-S3. On the hub's page, open System Manager > Maintenance, choose the file under Firmware
+          `esp32s3` for an ESP32-S3. On the hub's page, open System > Maintenance, choose the file under Firmware
           update and press Update firmware. The hub keeps the new firmware only once it has proved itself, and otherwise
           goes back to the one before. Its settings, sensors and history are kept.
 
@@ -65,6 +85,12 @@ jobs:
           `esptool.py write_flash 0x0 <file>`. The hub then opens a Wi-Fi network called `esp-alarmhub-setup`: join it,
           choose the hub password and your Wi-Fi network on the page that opens, and the hub joins that network. The
           README's Setup section goes on from there.
+
+          ### Checking the files
+
+          The update files are signed, and a hub takes no other. `SHA256SUMS` lists each file's SHA-256, and each was built by this
+          repository's release workflow from the tagged commit, which `gh attestation verify <file> --repo sjfaustino/esp32_sensors2onvif`
+          confirms. The `.spdx.json` file lists the software in the firmware.
 
           The firmware contains software by others under their own licences, listed in the `notices` file.
           EOF

@@ -291,7 +291,7 @@ bool camParseNodeSettings(const std::string& text, CamNodeSettings& out) {
     if (value.empty() || value.size() > 6) return false;
     for (char ch : value)
       if (ch < '0' || ch > '9') return false;
-    uint32_t n = (uint32_t)atol(value.c_str());
+    uint32_t n = (uint32_t)strtoul(value.c_str(), nullptr, 10);
     if (key == "late" && n >= 1 && n <= CAM_MAX_LATE_S)
       s.lateS = n;
     else if (key == "silent" && n >= CAM_MIN_SILENT_S && n <= CAM_MAX_SILENT_S)

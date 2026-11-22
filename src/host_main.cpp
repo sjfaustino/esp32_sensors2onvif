@@ -12,6 +12,10 @@
 #include <string>
 #include <thread>
 #include "cam_server.h"
+#ifdef HOST_COVERAGE
+extern "C" void __gcov_dump(void);
+extern "C" void __gcov_reset(void);
+#endif
 
 static const char ESPNOW_KEY[] = "test-espnow-key-0123456789";
 
@@ -89,7 +93,7 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
   } else if (command == "save-now") {  // what the board does before a planned restart
     hub.saveNow();
   } else if (command.compare(0, 12, "busy-alerts ") == 0) {  // how many alerts within an hour count as firing often
-    hub.alarm().setBusyAlerts(atoi(command.c_str() + 12));
+    hub.alarm().setBusyAlerts((int)strtol(command.c_str() + 12, nullptr, 10));
   } else if (command.compare(0, 11, "overdue-ms ") == 0) {  // how late a node's report is overdue; 0 for from its report time
     hub.alarm().setOverdueMs((uint32_t)strtoul(command.c_str() + 11, nullptr, 10));
   } else if (command == "minutes-fast") {  // a minute of a timed disarm lasts a second, so the test need not wait
@@ -140,7 +144,7 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
 
 // Commands arrive on another thread, so the hub itself is only ever used from the main loop.
 static std::mutex commandLock;
-static std::deque<std::string> commands;
+static std::deque<std::string> commands;  // NOLINT(bugprone-throwing-static-initialization): the test build only
 
 static void readCommands() {
   char line[256];
@@ -289,6 +293,8 @@ int main(int argc, char** argv) {
   cfg.sealStart = 0x5EA10000;
   storageFolder = argv[2];
   cfg.firmwareVersion = "test";
+  // The public half of test/firmware-test-key.pem, which signs the test's updates; never the release key.
+  cfg.firmwareKey = "dfc5cbdf9e1c75ed681052835e1c02e0bb2f93d37916b9b9b445764120d03407";
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   static TestChip chip;
@@ -300,10 +306,10 @@ int main(int argc, char** argv) {
   cfg.rtspPort = 18554;
   cfg.discoveryPort = 13702;
   cfg.serial = "0123456789ab";
-  cfg.holdMs = (uint32_t)atol(argv[1]);
+  cfg.holdMs = (uint32_t)strtoul(argv[1], nullptr, 10);
   cfg.fsRoot = argv[2];
   if (argc > 3) cfg.webPassword = argv[3];
-  if (argc > 4) cfg.silentMs = (uint32_t)atol(argv[4]);
+  if (argc > 4) cfg.silentMs = (uint32_t)strtoul(argv[4], nullptr, 10);
   SensorCamServer server(cfg, [] { return std::string("127.0.0.1"); }, nowMs);
   server.alarm().setBusyAlerts(100000);  // the tests fire sensors far more often than any real one; busy-alerts sets it
   if (!server.begin()) {
@@ -313,7 +319,7 @@ int main(int argc, char** argv) {
   server.networkUp();
   std::thread(readCommands).detach();
   printf("ready\n");
-  fflush(stdout);
+  (void)fflush(stdout);
   for (;;) {
     {
       HubCall call;
@@ -328,7 +334,17 @@ int main(int argc, char** argv) {
       std::string reply;
       bool known = control(server, command, reply);
       printf("%s %s%s\n", known ? "done" : "unknown", command.c_str(), reply.empty() ? "" : (": " + reply).c_str());
-      fflush(stdout);
+      (void)fflush(stdout);
     }
+#ifdef HOST_COVERAGE
+    // The test stops this program by killing it, which writes no coverage, so the counts are written every second
+    // instead, and started again from zero, so each write adds only what ran since (tools/coverage.py).
+    static uint32_t lastDump = nowMs();
+    if (nowMs() - lastDump >= 1000) {
+      lastDump = nowMs();
+      __gcov_dump();
+      __gcov_reset();
+    }
+#endif
   }
 }

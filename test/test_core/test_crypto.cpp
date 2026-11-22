@@ -134,7 +134,85 @@ static void the_long_fingerprint_starts_with_the_short_one() {
   TEST_ASSERT_EQUAL('-', longOne[14]);
 }
 
+static std::vector<uint8_t> unhex(const char* text) {
+  std::vector<uint8_t> out;
+  for (size_t i = 0; text[i] && text[i + 1]; i += 2) out.push_back((uint8_t)strtoul(std::string(text + i, 2).c_str(), nullptr, 16));
+  return out;
+}
+
+// SHA-512 against FIPS 180, and Ed25519 against RFC 8032's tests 1 and 2: the parts a firmware signature is checked with.
+static void ed25519_matches_rfc_8032() {
+  uint8_t hash[64];
+  crypto_sha512(hash, (const uint8_t*)"abc", 3);
+  TEST_ASSERT_EQUAL_STRING(
+      "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+      camHex(hash, 64).c_str());
+  std::vector<uint8_t> key = unhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+  std::vector<uint8_t> sig =
+      unhex("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+  TEST_ASSERT_EQUAL(0, crypto_ed25519_check(sig.data(), key.data(), nullptr, 0));
+  key = unhex("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+  sig = unhex("92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00");
+  uint8_t message = 0x72;
+  TEST_ASSERT_EQUAL(0, crypto_ed25519_check(sig.data(), key.data(), &message, 1));
+  message = 0x73;
+  TEST_ASSERT_NOT_EQUAL(0, crypto_ed25519_check(sig.data(), key.data(), &message, 1));
+}
+
+// A 300-byte image signed by tools/sign_firmware.py with RFC 8032's first key, taken in pieces of every size: the
+// image's bytes go to flash and the trailer does not, and only the whole, unchanged file with the right key is good.
+static void a_firmware_signature_is_checked_whole() {
+  std::vector<uint8_t> file(1, 0xE9);
+  for (int i = 1; i < 300; i++) file.push_back((uint8_t)(i * 7));
+  std::vector<uint8_t> sig =
+      unhex("697f69c94828ac0023794e149840c27c331cc20bbbc646e24938981b480da87e101cfe0767dcd710d1a2ca519539eb2c83266e88f9c24e72baeef0c6a550e003");
+  file.insert(file.end(), sig.begin(), sig.end());
+  file.insert(file.end(), CAM_FW_MAGIC, CAM_FW_MAGIC + 8);
+  uint8_t key[32], other[32];
+  TEST_ASSERT_TRUE(camFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
+  TEST_ASSERT_TRUE(camFirmwareKey("3D4017C3E843895A92B70AA74D1B7EBC9C982CCF2EC4968CC0CD55F12AF4660C", other));
+  TEST_ASSERT_FALSE(camFirmwareKey("d75a98", other));
+  TEST_ASSERT_FALSE(camFirmwareKey(std::string(63, '0') + "g", other));
+  TEST_ASSERT_FALSE(camFirmwareKey("", other));
+  TEST_ASSERT_TRUE(camFirmwareKey("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", other));
+
+  auto run = [&](const std::vector<uint8_t>& f, size_t piece, const uint8_t* k, size_t total, size_t* image) {
+    CamFirmwareSig s;
+    if (!s.begin(total)) return false;
+    size_t got = 0;
+    for (size_t at = 0; at < f.size(); at += piece) got += s.take(f.data() + at, f.size() - at < piece ? f.size() - at : piece);
+    if (image) *image = got;
+    return s.good(k);
+  };
+  for (size_t piece : {1u, 7u, 64u, 71u, 72u, 73u, 300u, 372u, 1000u}) {
+    size_t image = 0;
+    TEST_ASSERT_TRUE_MESSAGE(run(file, piece, key, file.size(), &image), std::to_string(piece).c_str());
+    TEST_ASSERT_EQUAL(300, image);
+    TEST_ASSERT_FALSE(run(file, piece, other, file.size(), nullptr));
+  }
+  for (size_t at : {0u, 150u, 299u, 300u, 363u, 364u, 371u}) {  // a byte changed in the image, signature or end mark
+    std::vector<uint8_t> changed = file;
+    changed[at] ^= 0x20;
+    TEST_ASSERT_FALSE_MESSAGE(run(changed, 50, key, file.size(), nullptr), std::to_string(at).c_str());
+  }
+  std::vector<uint8_t> shorter(file.begin(), file.end() - 1);
+  TEST_ASSERT_FALSE(run(shorter, 50, key, shorter.size(), nullptr));  // a byte missing
+  TEST_ASSERT_FALSE(run(shorter, 50, key, file.size(), nullptr));     // fewer bytes than said
+  TEST_ASSERT_FALSE(run(file, 50, key, file.size() - 1, nullptr));    // more bytes than said
+  std::vector<uint8_t> unsigned_(file.begin(), file.begin() + 300);
+  TEST_ASSERT_FALSE(run(unsigned_, 50, key, unsigned_.size(), nullptr));
+  CamFirmwareSig s;
+  TEST_ASSERT_FALSE(s.begin(CAM_FW_TRAILER));  // no room for an image
+  TEST_ASSERT_FALSE(s.good(key));
+  TEST_ASSERT_TRUE(s.begin(file.size()));  // and checked once only
+  s.take(file.data(), file.size());
+  TEST_ASSERT_TRUE(s.good(key));
+  TEST_ASSERT_FALSE(s.good(key));
+}
+
 void runCryptoTests() {
+  RUN_TEST(ed25519_matches_rfc_8032);
+  RUN_TEST(a_firmware_signature_is_checked_whole);
   RUN_TEST(the_long_fingerprint_starts_with_the_short_one);
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);

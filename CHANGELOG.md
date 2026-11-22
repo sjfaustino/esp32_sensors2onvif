@@ -5,6 +5,24 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Security
+
+- The hub takes only firmware signed with the project's key. Before, anyone with the hub password could put any firmware
+  on it over the network. Each release's update files are signed; a hub on 0.3.0 or earlier takes them too, and from
+  then on takes no other. A cable to the board still takes any firmware.
+- Each release lists the SHA-256 of its files in `SHA256SUMS`, carries a software bill of materials (`.spdx.json`), and
+  has GitHub's build attestation, so anyone can check a file was built from the tagged commit.
+- `docs/threat-model.md` lists who might attack the hub, from where, and what it does and cannot do about each.
+
+### Fixed
+
+- A stored file whose reading failed part way was taken as whole, cut short.
+
+### The project
+
+- CI also runs CodeQL, clang-tidy's bug-finding checks and OpenSSF Scorecard, and measures how much of the library the
+  tests run. The GitHub Actions it uses are pinned to commits, and Dependabot proposes their updates.
+
 ### Changed
 
 - The Overview opens with the alarm's state in large type and its colour, red for armed away, amber for armed home and

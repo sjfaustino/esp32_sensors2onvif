@@ -18,7 +18,7 @@ updated, with credit to you if you would like it.
 
 ## Supported versions
 
-Only the newest release gets security fixes. Hubs update from their own web page, under **System Manager >
+Only the newest release gets security fixes. Hubs update from their own web page, under **System >
 Maintenance**.
 
 ## Known limits
@@ -32,11 +32,25 @@ report:
 - Someone who records a node's message can play it back later. That makes a false alert, never a false all-clear; a
   paired node also cannot be kept looking alive that way.
 - Anyone who can publish to the MQTT broker can arm and disarm the hub through Home Assistant: give the broker a login.
-- Firmware is not signed. Anyone with the hub password can put any firmware on the hub, and through it on every node.
-  Keep the password to yourself; a stolen one should be changed at once.
+- The hub takes only firmware signed with the project's key, but the nodes' firmware it hands out is not signed: anyone
+  with the hub password can put any firmware on every node. Keep the password to yourself; a stolen one should be
+  changed at once. A signed firmware of an earlier release is also still taken.
 - A node without a screen cannot check the hub it pairs with, and takes the first that approves it: pair nodes where
   no other hub may be in range, as the user guide says.
 - A radio jammer can keep nodes from reaching the hub. The hub then reports them silent, and several going quiet
   together as one event, but cannot stop the jamming.
 
-How the hub keeps its promises, and where, is in [docs/how-it-works.md](docs/how-it-works.md).
+Who might attack the hub, from where, and what it does and cannot do about each, is in
+[docs/threat-model.md](docs/threat-model.md). How the hub keeps its promises, and where, is in
+[docs/how-it-works.md](docs/how-it-works.md).
+
+## Checking a release
+
+Each release's update files are signed, and a hub takes no other. Its `SHA256SUMS` file lists the SHA-256 of every file,
+and GitHub's build attestation shows a file was built by this repository's release workflow from the tagged commit:
+
+```sh
+gh attestation verify sensors2onvif-<version>-esp32_16mb.bin --repo sjfaustino/esp32_sensors2onvif
+```
+
+The release's `.spdx.json` file lists the software built into the firmware, with versions and licences.
