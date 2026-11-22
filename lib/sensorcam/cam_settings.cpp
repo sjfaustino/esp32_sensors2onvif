@@ -106,7 +106,8 @@ const CamSetting CAM_SETTINGS[] = {
     {"net", "web", 'u', 1, 65535, nullptr},
     {"net", "rtsp", 'u', 1, 65535, nullptr},
     {"net", "name", 's', 0, 0, [](const std::string& v) { return !v.empty() && validHubName(v); }},
-    {"net", "webpw", 's', 0, 0, [](const std::string& v) { return v.size() <= 63; }},  // empty in a backup from before it was required
+    // As the page requires; empty in a backup from before a password was required, which camBackupValueKept leaves out.
+    {"net", "webpw", 's', 0, 0, [](const std::string& v) { return v.empty() || (v.size() >= 8 && v.size() <= 63); }},
     {"net", "token", 's', 0, 0, validToken},
     {"net", "ipfor", 's', 0, 0, ssid},  // the network a fixed address is for
     {"net", "ip", 's', 0, 0, anyIpv4},
@@ -174,6 +175,10 @@ bool camSettingValid(const std::string& key, const std::string& value) {
 }
 
 bool camBackupValueValid(const std::string& key, const std::string& value) { return camSettingValid(key, value); }
+
+// An empty hub password, from a backup made before one was required, would leave the hub open: the hub keeps the one
+// it has instead.
+bool camBackupValueKept(const std::string& key, const std::string& value) { return !(key == "net.webpw" && value.empty()); }
 
 // A setting's number, for one kept as an int.
 bool settingInt(const char* key, const std::string& value, int& out) {

@@ -51,6 +51,17 @@ enum CamSetupKey {
 // The one from secrets.h when it has 8 characters or more, else the hub password.
 CamSetupKey camSetupKey(const std::string& compiled, const std::string& hubPassword, std::string& out);
 
+// A blank hub's setup network has no password, so anyone in range could set the hub up as their own before its owner
+// does. It opens only after someone presses the hub's button, and stays open CAM_OPEN_SETUP_MS after the last press,
+// and while someone is on it. A setup network with a password opens as ever. A board with no button opens it as ever.
+const uint32_t CAM_OPEN_SETUP_MS = 15 * 60 * 1000;
+struct CamSetupButton {
+  bool fitted = true;    // the board has a button for it
+  bool pressed = false;  // since the start
+  uint32_t pressedAt = 0;
+};
+bool camSetupMayOpen(CamSetupKey key, const CamSetupButton& b, uint32_t now, int stations);
+
 // ---- what is kept through a restart ----
 
 // Why the hub restarted itself. New causes go at the end, so a cause kept by the firmware before means the same.

@@ -7,6 +7,12 @@ before that, a new minor version may change settings or the messages.
 
 ### Security
 
+- Backups are sealed with a passphrase you choose (Argon2id, then XChaCha20-Poly1305), so the file holds no readable
+  password or key. The nodes' keys go only in the sealed settings, not in the full backup's files. A backup from before
+  still restores.
+- A restored hub password must be 8 to 63 characters, as on the page; a backup without one keeps the hub's.
+- A blank hub's setup network, which has no password, opens only for 15 minutes after the board's BOOT button is
+  pressed, so nobody in range can set the hub up as theirs first. `SETUP_BUTTON_PIN` -1 for a board without one.
 - A node's info carries the number from the hub's last confirmation, and once a node has sent it the hub ignores its
   info without it. Played back, a recording of a node saying it reports only every few hours could otherwise have
   given a thief that long before the node was missed. Needs node firmware newer than 0.1.0.

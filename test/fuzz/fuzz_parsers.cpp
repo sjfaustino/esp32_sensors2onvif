@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "cam_auth.h"
+#include "cam_backup.h"
 #include "cam_board_rules.h"
 #include "cam_events.h"
 #include "s2o_fw_sig.h"
@@ -34,7 +35,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string text(in.begin(), in.end());
   S2oKey key{KEY, 32};
 
-  switch (pick % 31) {
+  switch (pick % 32) {
     // ---- the radio: messages from nodes, and on the node, from the hub ----
     case 0: {
       S2oReport r;
@@ -209,6 +210,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     case 30: {  // a sensor's one file, its name and settings
       CamSensorFile f;
       if (camParseSensorFile(text, f)) camSensorFileText(f);
+      break;
+    }
+    case 31: {  // a sealed backup's first line; opening it runs Argon2, too slow to fuzz
+      uint32_t blocks = 0, passes = 0;
+      camBackupParams(text, blocks, passes);
       break;
     }
   }

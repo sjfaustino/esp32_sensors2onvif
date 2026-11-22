@@ -25,6 +25,7 @@ bool camSettingValid(const std::string& key, const std::string& value);
 // The same for a number, read into out when it is good.
 bool camSettingNumber(const std::string& key, const std::string& value, long long& out);
 bool camBackupValueValid(const std::string& key, const std::string& value);  // camSettingValid, for the backup
+bool camBackupValueKept(const std::string& key, const std::string& value);   // false for a valid value restore leaves alone
 bool camBackupKeyKnown(const std::string& key);
 // The table, to go through with a for loop.
 struct CamSettingList {

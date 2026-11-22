@@ -104,6 +104,14 @@ static void builtin_pictures_are_valid() {
 }
 
 static void backup_values_follow_the_page_rules() {
+  // The hub password as the page requires it; an empty one, from a backup from before, is read but not restored.
+  TEST_ASSERT_FALSE(camBackupValueValid("net.webpw", "seven77"));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.webpw", "eight888"));
+  TEST_ASSERT_FALSE(camBackupValueValid("net.webpw", std::string(64, 'x')));
+  TEST_ASSERT_TRUE(camBackupValueValid("net.webpw", ""));
+  TEST_ASSERT_FALSE(camBackupValueKept("net.webpw", ""));
+  TEST_ASSERT_TRUE(camBackupValueKept("net.webpw", "eight888"));
+  TEST_ASSERT_TRUE(camBackupValueKept("net.name", "hub"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.web", "80"));
   TEST_ASSERT_FALSE(camBackupValueValid("net.web", "0"));
   TEST_ASSERT_TRUE(camBackupValueValid("net.tzoff", "-180"));

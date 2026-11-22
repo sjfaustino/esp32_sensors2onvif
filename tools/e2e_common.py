@@ -139,9 +139,11 @@ def rtsp_describe(authorization=None):
     return s, int(data.split(' ')[1]), [l for l in data.split('\r\n') if l.startswith('WWW-Authenticate')]
 
 
-def api(method, path, body=None, auth=True, origin=None):
+def api(method, path, body=None, auth=True, origin=None, headers=None):
     """Returns (status, body bytes)."""
-    headers = {'Origin': origin} if origin else {}
+    headers = dict(headers or {})
+    if origin:
+        headers['Origin'] = origin
     if auth and PASSWORD:
         headers['Authorization'] = 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()
     c = http.client.HTTPConnection(HOST, WEB, timeout=15)

@@ -489,3 +489,18 @@ def a_recorded_node_info_is_ignored(s, node):
     check('the hub keeps that the node sends it, through a restart', b'\nsaid.fresh=1\n' in kept, kept)
     node.say(info(6 * 3600, 1, node.fresh))
     check('with the current number, a change is taken', node.row().get('every') == 6 * 3600 and node.row().get('saving') is True, node.row())
+
+
+@case(pc=True)
+@with_node
+def a_backup_keeps_node_keys_sealed(s, node):
+    """A paired node's key goes in the sealed settings backup, never in the clear, and comes back with it."""
+    kept = api('GET', f'/api/file?path={node.folder}/pairing.txt')[1]
+    key = kept.split(b'key=')[1].split(b'\n')[0] if b'key=' in kept else b'none'
+    code, sealed = api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')
+    check("the node's key is not readable in the backup", code == 200 and key not in sealed and node.folder.encode() not in sealed)
+    api('DELETE', f'/api/file?path={node.folder}/pairing.txt')
+    check('without its key, the node is no longer paired', node.tree().get('paired') is False, node.tree())
+    code, reply = api('POST', '/api/restore', sealed, headers={'X-Backup-Passphrase': urllib.parse.quote('correct horse battery')})
+    check('restored, its key comes back as it was', code == 200 and api('GET', f'/api/file?path={node.folder}/pairing.txt')[1] == kept, reply)
+    check('and the node is paired again, its reports taken', node.tree().get('paired') is True and node.confirmed()[:1] == bytes([3]), node.tree())

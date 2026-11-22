@@ -536,7 +536,7 @@ def a_live_alert_interrupts_a_past_event(s):
 
 @case(pc=True)
 def a_firmware_upload_pauses_the_hub(s):
-    """During an upload the hub drops video and takes nothing new, so the update has the memory it needs. And the backup."""
+    """During an upload the hub drops video and takes nothing new, so the update has the memory it needs."""
     video, code, _ = rtsp_describe()
     video.settimeout(3)
     upload = socket.create_connection((HOST, WEB), timeout=15)
@@ -567,9 +567,28 @@ def a_firmware_upload_pauses_the_hub(s):
         code, reply = type(e).__name__, b''
     control('firmware-allowed')
     check('a refused firmware of full size gets its reason, not a reset', code == 507 and b'could not start the update' in reply, (code, reply[:80]))
-    code, backup = api('GET', '/api/backup')
-    check('backup can be downloaded', code == 200 and backup.startswith(b'sensorcam-backup 1'), code)
-    check('backup needs the web password', api('GET', '/api/backup', auth=False)[0] == 401)
-    check('backup can be restored', api('POST', '/api/restore', backup)[0] == 200)
+
+
+@case(pc=True)
+def a_sealed_backup(s):
+    """The settings backup is sealed with a passphrase the owner chooses, so the file holds no readable secret, and opens
+    only with that passphrase. A plain backup from before still restores."""
+    phrase = {'X-Backup-Passphrase': urllib.parse.quote('correct horse battery')}
+    check('a backup needs a passphrase of 8 characters or more', api('POST', '/api/backup', 'passphrase=short')[0] == 400)
+    check('and the web password', api('POST', '/api/backup', 'passphrase=correct%20horse%20battery', auth=False)[0] == 401)
+    code, sealed = api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')
+    check('a sealed backup can be downloaded', code == 200 and sealed.startswith(b'sensorcam-backup sealed 1 '), sealed[:60])
+    check('with nothing in it readable', b'%68%75%62' not in sealed and b'net.' not in sealed, sealed[:80])
+    again = api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')[1]
+    check('and sealed afresh each time', again != sealed)
+    check('it cannot be downloaded unsealed any more', api('GET', '/api/backup')[0] != 200)
+    code, reply = api('POST', '/api/restore', sealed, headers={'X-Backup-Passphrase': 'wrong%20passphrase'})
+    check('a wrong passphrase is refused, saying so', code == 400 and b'passphrase is wrong' in reply, reply)
+    check('nor without one', api('POST', '/api/restore', sealed)[0] == 400)
+    changed = bytearray(sealed)
+    changed[-10] = ord('A') if changed[-10] != ord('A') else ord('B')
+    check('a sealed backup changed afterwards is refused', api('POST', '/api/restore', bytes(changed), headers=phrase)[0] == 400)
+    check('with its passphrase, it restores', api('POST', '/api/restore', sealed, headers=phrase)[0] == 200)
+    check('a plain backup from before still restores', api('POST', '/api/restore', b'sensorcam-backup 1\nnet.name=%68%75%62\n')[0] == 200)
     check('other files are refused as a backup', api('POST', '/api/restore', b'hello')[0] == 400)
-    check('restore needs the web password', api('POST', '/api/restore', backup, auth=False)[0] == 401)
+    check('restore needs the web password', api('POST', '/api/restore', sealed, auth=False, headers=phrase)[0] == 401)

@@ -326,8 +326,9 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
       if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
       value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
     }
-    if (!camBackupValueValid(std::string(found->space) + "." + found->key, value)) return false;
-    lines.push_back({found, value});
+    std::string name = std::string(found->space) + "." + found->key;
+    if (!camBackupValueValid(name, value)) return false;
+    if (camBackupValueKept(name, value)) lines.push_back({found, value});
   }
   return !lines.empty();
 }

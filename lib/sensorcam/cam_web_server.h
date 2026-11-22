@@ -111,6 +111,7 @@ class CamWeb {
     // A posted form's field, decoded, as every page sends its values through encodeURIComponent; "" when absent.
     std::string field(const char* name) const;
     bool has(const char* name) const;                                      // the form carries this field, even empty
+    std::string decodedHeader(const char* lowerName) const;                // a header the page sends URL-encoded, decoded
     std::string form() const { return "?" + std::string(body, bodyLen); }  // so queryParam can read a posted form
   };
 
@@ -147,7 +148,8 @@ class CamWeb {
   void apiFiles(const ApiRequest& r);  // /api/file and /api/mkdir, by method
   void getAlerts(const ApiRequest& r);
   void getArm(const ApiRequest& r);
-  void getBackup(const ApiRequest& r);
+  void postBackup(const ApiRequest& r);
+  std::string pairingLines() const;
   void getCrash(const ApiRequest& r);
   void getDevice(const ApiRequest& r);
   void getEspnow(const ApiRequest& r);

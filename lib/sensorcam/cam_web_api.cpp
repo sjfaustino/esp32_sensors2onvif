@@ -30,6 +30,8 @@ static std::string percentDecode(const std::string& s) {
 
 std::string CamWeb::ApiRequest::field(const char* name) const { return percentDecode(queryParam(form(), name)); }
 
+std::string CamWeb::ApiRequest::decodedHeader(const char* lowerName) const { return percentDecode(headerValue(headers, lowerName)); }
+
 bool CamWeb::ApiRequest::has(const char* name) const {
   std::string f = form(), key = std::string(name) + "=";
   return f.compare(1, key.size(), key) == 0 || f.find("&" + key) != std::string::npos;
@@ -76,7 +78,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"POST", "/api/newkeys", &CamWeb::postNewkeys, LOGIN},
       {"GET", "/api/alerts", &CamWeb::getAlerts, LOGIN},
       {"POST", "/api/alerts", &CamWeb::postAlerts, LOGIN},
-      {"GET", "/api/backup", &CamWeb::getBackup, LOGIN},
+      {"POST", "/api/backup", &CamWeb::postBackup, LOGIN},
       {"POST", "/api/restore", &CamWeb::postRestore, LOGIN},
       {"GET", "/api/nvr", &CamWeb::getNvr, LOGIN},
       {"POST", "/api/nvr", &CamWeb::postNvr, LOGIN},

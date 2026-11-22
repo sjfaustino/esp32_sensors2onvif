@@ -10,7 +10,8 @@
 #include "hub_restart.h"
 #include "hub_settings.h"
 
-static CamWifiPlan plan;  // which network to try, and when the setup network opens: cam_board_rules.h
+static CamWifiPlan plan;       // which network to try, and when the setup network opens: cam_board_rules.h
+static CamSetupButton button;  // a blank hub's open setup network waits for it: camSetupMayOpen
 static DNSServer dnsServer;
 static bool setupOpen = false;
 static bool usingStatic = false;
@@ -30,6 +31,11 @@ static void tryNetwork(int i) {
 }
 
 void wifiBegin() {
+#if SETUP_BUTTON_PIN >= 0
+  pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
+#else
+  button.fitted = false;
+#endif
   WiFi.persistent(false);  // the settings are kept in one place only, in hub_settings.cpp
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);          // power save loses multicast and adds latency
@@ -78,10 +84,32 @@ static void startSetupNetwork(const std::string& password) {
   }
 }
 
-// The setup network's password, from camSetupKey: open on a blank hub, whose setup page asks for a password first.
+// Pressed: a blank hub's setup network may open, for CAM_OPEN_SETUP_MS from the last press.
+static void watchButton(uint32_t now) {
+#if SETUP_BUTTON_PIN >= 0
+  if (digitalRead(SETUP_BUTTON_PIN) == LOW) {
+    if (!button.pressed) Serial.println("The button was pressed; a blank hub's setup network may open for 15 minutes.");
+    button.pressed = true;
+    button.pressedAt = now;
+  }
+#else
+  (void)now;
+#endif
+}
+
+// The setup network's password, from camSetupKey: open on a blank hub, whose setup page asks for a password first, and
+// then only after its button (camSetupMayOpen).
 static void openSetup() {
   std::string password;
-  if (setupOpen || camSetupKey(SETUP_AP_PASSWORD, settings.webPassword.c_str(), password) == CAM_SETUP_OFF) return;
+  CamSetupKey key = camSetupKey(SETUP_AP_PASSWORD, settings.webPassword.c_str(), password);
+  if (setupOpen || !camSetupMayOpen(key, button, millis(), 0)) {
+    static uint32_t toldAt = 0;
+    if (!setupOpen && key == CAM_SETUP_OPEN && (!toldAt || millis() - toldAt > 60000)) {
+      toldAt = millis();
+      Serial.println("Press the hub's BOOT button to open its setup network.");
+    }
+    return;
+  }
   WiFi.disconnect(false);
   WiFi.mode(WIFI_AP_STA);
   startSetupNetwork(password);
@@ -107,6 +135,17 @@ bool keepOnNetwork(bool connected, bool justLost) {
   p.haveBackup = settings.wifiSsid[1].length() > 0;
   p.setupOpen = setupOpen;
   p.setupStations = setupOpen ? WiFi.softAPgetStationNum() : 0;
+  watchButton(p.now);
+  // A blank hub's open setup network closes once its time is up and nobody is on it.
+  std::string password;
+  if (setupOpen && !camSetupMayOpen(camSetupKey(SETUP_AP_PASSWORD, settings.webPassword.c_str(), password), button, p.now, p.setupStations)) {
+    dnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    setupOpen = false;
+    p.setupOpen = false;
+    Serial.println("The setup network's 15 minutes are up; press the button to open it again.");
+  }
   int act = plan.step(p);
   if (act & CamWifiPlan::PROMOTE_BACKUP) promoteBackup();
   if (act & CamWifiPlan::CLOSE_SETUP) closeSetup();

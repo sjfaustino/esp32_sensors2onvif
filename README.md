@@ -34,7 +34,8 @@ flowchart LR
 
 1. Write the release's `-full.bin` for your board to the hub, as the
    [user guide](docs/user-guide.md#setting-up-a-hub) says.
-2. Join the hub's network, `esp-alarmhub-setup`, choose the hub password and your Wi-Fi network on the page that opens.
+2. Press the board's BOOT button, join the hub's network, `esp-alarmhub-setup`, and choose the hub password and your
+   Wi-Fi network on the page that opens.
 3. Open the hub's page, `http://esp-alarmhub.local`.
 4. Add the hub to the NVR as an ONVIF camera, by its address, on port 8899, with user `admin` and the hub password
    (see [Adding it to the NVR](docs/user-guide.md#adding-it-to-the-nvr)).

@@ -41,6 +41,12 @@
 #ifndef SETUP_AP_PASSWORD
 #define SETUP_AP_PASSWORD ""  // at least 8 characters; empty keeps the setup network off
 #endif
+// A blank hub's setup network has no password, so it opens only for 15 minutes after this button is pressed, as anyone
+// in range could otherwise set the hub up as their own. GPIO 0 is the BOOT button on ESP32 and ESP32-S3 boards; -1 for
+// a board without one, which then opens it as soon as it cannot join a network.
+#ifndef SETUP_BUTTON_PIN
+#define SETUP_BUTTON_PIN 0
+#endif
 
 // How long one sensor alert stays active. A new alert from the same sensor restarts it.
 #define SENSOR_HOLD_MS 10000

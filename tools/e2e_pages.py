@@ -171,6 +171,31 @@ def test_a_refused_alarm_switch_goes_back(page, dialogs):
     api('POST', '/api/alerts', 'alarm=0')
 
 
+def test_a_sealed_backup_from_the_page(page):
+    # The passphrase at the top of Backup and restore seals the backup; downloading asks for it twice.
+    page.goto(URL + '#maintenance')
+    page.wait_for_selector('#bkPass', state='visible')
+    page.fill('#bkPass', 'correct horse battery')
+    page.fill('#bkPass2', 'correct horse batterz')
+    page.click('#bkSave')
+    check('two passphrases that differ are refused on the page', wait_text(page, 'rsMsg', 'differ'), page.text_content('#rsMsg'))
+    page.fill('#bkPass2', 'correct horse battery')
+    with page.expect_download() as got:
+        page.click('#bkSave')
+    path = got.value.path()
+    data = open(path, 'rb').read()
+    check('the backup downloads sealed', data.startswith(b'sensorcam-backup sealed 1 '), data[:40])
+    page.set_input_files('#rsFile', path)
+    page.fill('#bkPass', 'wrong passphrase')
+    page.click('#rsSend')
+    answer(page)
+    check('restoring it with a wrong passphrase says so', wait_text(page, 'rsMsg', 'passphrase is wrong'), page.text_content('#rsMsg'))
+    page.fill('#bkPass', 'correct horse battery')
+    page.click('#rsSend')
+    answer(page)
+    check('with the right one, it restores', wait_text(page, 'rsMsg', 'Restored'), page.text_content('#rsMsg'))
+
+
 def open_alert_settings(page):
     """Opens the sensor's Alert settings, where its test alert button is; the page closes them when it redraws."""
     page.wait_for_selector('summary:has-text("Alert settings")')
@@ -325,6 +350,8 @@ def test_settings_pages(page):
     page.wait_for_selector('#guideSteps li')
     check('"Add a node" shows its steps', 'Let it pair' in page.text_content('#guideSteps'), page.text_content('#guideSteps'))
 
+    get(f'/sensor?{sid(1)}')  # an alert of its own to see there, whatever ran before
+    control('end-alerts')
     page.goto(URL + '#events')
     page.wait_for_selector('#evTable .chip')
     check('alerts are labelled in red', page.locator('#evTable .chip.bad').count() > 0)
@@ -609,6 +636,7 @@ def page_cases(nvr, storage):
         ('the_first_steps', on_page(test_the_first_steps)),
         ('notifications_page', on_page(test_notifications_page)),
         ('settings_pages', on_page(test_settings_pages)),
+        ('a_sealed_backup_from_the_page', on_page(test_a_sealed_backup_from_the_page)),
         ('a_sensor_camera', on_page(test_a_sensor_camera)),
         ('sensor_pictures', on_page(test_sensor_pictures)),
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),

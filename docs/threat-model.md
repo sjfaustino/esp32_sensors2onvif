@@ -40,6 +40,8 @@ meant to be reachable from outside, and nothing in it is built for that.
 | Putting back an older firmware, with faults since fixed | Each signed update carries its release number, signed with it, and the hub refuses one older than its own. |
 | A login left open in a browser | **Log out**, at the top of every page, makes the browser forget the hub password. |
 | A firmware that breaks the hub | A new firmware is kept only once it has stayed on the network, started ESP-NOW and got the NVR listening again; otherwise the hub goes back to the one before. |
+| Setting a new hub up as one's own before its owner does | A blank hub's setup network has no password, so it opens only for 15 minutes after the board's BOOT button is pressed, and only while someone holding the hub has pressed it. |
+| Reading the passwords and keys from a backup file | Backups are sealed with a passphrase the owner chooses: Argon2id, then XChaCha20-Poly1305. The nodes' keys are only in the sealed part. A restored hub password must meet the page's rules, and a backup without one leaves the hub's in place. |
 | Capturing the setup network's password | The setup network uses WPA3, so it cannot be guessed offline from a recording of someone joining. |
 | A crash from a malformed message | Every parser of what arrives from outside is fuzzed, with AddressSanitizer and UndefinedBehaviorSanitizer, on each push. |
 
@@ -64,6 +66,10 @@ These are limits of the design, or of the hardware, and the owner can lessen eac
     devices do not join, or at least use WPA3, where one device cannot read another's traffic.
   - Do not open the hub's pages from a device you do not trust, or over a network you do not control.
   - If the hub password may have been seen, change it on the HTTP page; it applies at once.
+- **A weak backup passphrase.** Whoever has a backup file can try passphrases on their own computer. Argon2id makes each
+  try slow, but a short or common passphrase still falls. Choose a few words nobody would guess.
+- **A board built without the setup button** (`SETUP_BUTTON_PIN` -1). Its setup network opens with no password as soon
+  as it cannot join a network, until a hub password is chosen. Set such a hub up as soon as it first starts.
 - **The MQTT broker.** Anything that can publish to it can arm and disarm the hub. Give the broker a login.
 - **Nodes on old firmware.** A node running firmware from before node signing takes any firmware its hub offers; once it
   runs a signed one, it checks every update after. One from before its info carried the hub's number can still have

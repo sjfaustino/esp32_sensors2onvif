@@ -8,6 +8,9 @@
 #include <string.h>
 #include <time.h>
 #include "cam_auth.h"
+#include "cam_backup.h"
+#include "cam_pairing.h"
+#include "monocypher.h"
 #include "cam_frames.h"
 #include "cam_net.h"
 #include "cam_soap.h"
@@ -242,14 +245,136 @@ void CamWeb::postAlerts(const ApiRequest& r) {
   c.out = saved(ok, "could not save the setting");
 }
 
-void CamWeb::getBackup(const ApiRequest& r) {
-  HttpConn& c = r.c;
-  reply(c, 200, "text/plain", store_->backupText(), "Cache-Control: no-store\r\n");  // its passwords are not kept in a cache
+// ---- the settings backup, sealed with a passphrase: see cam_backup.h ----
+
+static std::string hexOf(const uint8_t* d, size_t n) {
+  static const char DIGITS[] = "0123456789abcdef";
+  std::string out;
+  for (size_t i = 0; i < n; i++) {
+    out += DIGITS[d[i] >> 4];
+    out += DIGITS[d[i] & 15];
+  }
+  return out;
 }
 
+static bool hexInto(const std::string& text, uint8_t* out, size_t n) {
+  if (text.size() != 2 * n) return false;
+  for (size_t i = 0; i < n; i++) {
+    int value = 0;
+    for (int j = 0; j < 2; j++) {
+      char ch = text[2 * i + j];
+      int digit = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : -1;
+      if (digit < 0) return false;
+      value = value * 16 + digit;
+    }
+    out[i] = (uint8_t)value;
+  }
+  return true;
+}
+
+// Each paired node's key, from its pairing.txt, which a full backup leaves out so the key is only ever sealed.
+std::string CamWeb::pairingLines() const {
+  std::string out;
+  std::vector<CamFsEntry> folders;
+  if (!storage_.list("", folders)) return out;
+  for (const CamFsEntry& f : folders) {
+    std::string text;
+    uint8_t mac[6], pub[CAM_X25519_LEN], key[CAM_NODE_KEY_LEN];
+    if (!f.dir || !camParseMac(f.name, mac) || !storage_.readFile(f.name + "/pairing.txt", text, 512) || !camParsePairing(text, pub, key)) continue;
+    out += "pairing." + f.name + "=" + hexOf(pub, sizeof(pub)) + "," + hexOf(key, sizeof(key)) + "\n";
+    crypto_wipe(key, sizeof(key));
+  }
+  return out;
+}
+
+static void wipe(std::string& s) {
+  if (!s.empty()) crypto_wipe(&s[0], s.size());
+}
+
+void CamWeb::postBackup(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  std::string passphrase = r.field("passphrase");
+  if (!camValidPassphrase(passphrase)) {
+    c.out = jsonFail(400, "the passphrase must be 8 to 128 characters");
+    return;
+  }
+  uint8_t random[16 + 24];  // the salt, then the nonce
+  for (size_t i = 0; i < sizeof(random); i += 4) {
+    uint32_t x = 0;
+    if (!chip_->random32(x)) {
+      c.out = jsonFail(500, "this hub has no source of random numbers to seal a backup with");
+      return;
+    }
+    memcpy(random + i, &x, 4);
+  }
+  std::string plain = store_->backupText() + pairingLines();
+  if (!roomFor(CAM_BACKUP_BLOCKS * 1024 + 2 * plain.size() + 1024)) {
+    wipe(plain);
+    c.out = jsonFail(507, "the hub is short of memory; try again");
+    return;
+  }
+  std::vector<uint8_t> work(CAM_BACKUP_BLOCKS * 1024);
+  std::string sealed = camSealBackup(plain, passphrase, random, random + 16, work.data());
+  wipe(plain);
+  wipe(passphrase);
+  reply(c, 200, "text/plain", std::move(sealed), "Cache-Control: no-store\r\n");
+}
+
+// A sealed backup, with its passphrase in the X-Backup-Passphrase header, URL-encoded; or a plain one from before.
 void CamWeb::postRestore(const ApiRequest& r) {
   HttpConn& c = r.c;
-  c.out = store_->restoreText(std::string(r.body, r.bodyLen))
-              ? jsonOk(JSON_OK)
-              : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
+  std::string text(r.body, r.bodyLen), settings;
+  std::vector<std::pair<std::string, std::string>> pairings;  // each node's folder, and its pairing.txt
+  if (!camBackupIsSealed(text)) {
+    settings.swap(text);
+  } else {
+    std::string passphrase = r.decodedHeader("x-backup-passphrase"), plain;
+    uint32_t blocks = 0, passes = 0;
+    if (!camBackupParams(text, blocks, passes)) {
+      c.out = jsonFail(400, "could not restore that file: it is damaged");
+      return;
+    }
+    if (!roomFor(blocks * 1024 + 2 * text.size() + 1024)) {
+      c.out = jsonFail(507, "the hub is short of memory; try again");
+      return;
+    }
+    std::vector<uint8_t> work(blocks * 1024);
+    bool opened = camOpenBackup(text, passphrase, plain, work.data());
+    wipe(passphrase);
+    if (!opened) {
+      c.out = jsonFail(400, "could not open that backup: the passphrase is wrong, or the file is damaged");
+      return;
+    }
+    for (size_t at = 0; at < plain.size();) {
+      size_t end = plain.find('\n', at);
+      std::string line = plain.substr(at, (end == std::string::npos ? plain.size() : end) - at);
+      at = end == std::string::npos ? plain.size() : end + 1;
+      if (line.compare(0, 8, "pairing.") != 0) {
+        settings += line + "\n";
+        continue;
+      }
+      size_t eq = line.find('='), comma = line.find(',');
+      uint8_t mac[6], pub[CAM_X25519_LEN], key[CAM_NODE_KEY_LEN];
+      std::string folder = eq == std::string::npos ? "" : line.substr(8, eq - 8);
+      if (comma == std::string::npos || comma < eq || !camParseMac(folder, mac) || !hexInto(line.substr(eq + 1, comma - eq - 1), pub, sizeof(pub)) ||
+          !hexInto(line.substr(comma + 1), key, sizeof(key))) {
+        wipe(plain);
+        c.out = jsonFail(400, "could not restore that file: it is damaged");
+        return;
+      }
+      pairings.push_back({folder, camPairingText(pub, key)});
+      crypto_wipe(key, sizeof(key));
+      wipe(line);
+    }
+    wipe(plain);
+  }
+  // The settings first: a backup they are refused from changes nothing.
+  bool ok = store_->restoreText(settings);
+  wipe(settings);
+  for (size_t i = 0; ok && i < pairings.size(); i++) {
+    ok = storage_.writeFile(pairings[i].first + "/pairing.txt", pairings[i].second.data(), pairings[i].second.size());
+    wipe(pairings[i].second);
+  }
+  if (!pairings.empty()) alarm_.rescan();
+  c.out = ok ? jsonOk(JSON_OK) : jsonFail(400, "could not restore that file: it is damaged, or the hub's settings storage is full");
 }

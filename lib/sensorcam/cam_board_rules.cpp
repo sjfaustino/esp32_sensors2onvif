@@ -51,6 +51,12 @@ CamSetupKey camSetupKey(const std::string& compiled, const std::string& hubPassw
   return out.size() >= 8 ? CAM_SETUP_LOCKED : CAM_SETUP_OFF;
 }
 
+bool camSetupMayOpen(CamSetupKey key, const CamSetupButton& b, uint32_t now, int stations) {
+  if (key == CAM_SETUP_OFF) return false;
+  if (key != CAM_SETUP_OPEN || !b.fitted) return true;
+  return stations > 0 || (b.pressed && now - b.pressedAt < CAM_OPEN_SETUP_MS);
+}
+
 // ---- what is kept through a restart ----
 
 static_assert(sizeof(CamKept) == 16 && offsetof(CamKept, cause) == 4 && offsetof(CamKept, updateMark) == 8 && offsetof(CamKept, needNvr) == 12,

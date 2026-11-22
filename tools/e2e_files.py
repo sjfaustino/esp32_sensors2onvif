@@ -237,7 +237,8 @@ def headers_that_protect_the_pages(s):
               and r.getheader('Content-Security-Policy') == "frame-ancestors 'self'" and r.getheader('X-Content-Type-Options') == 'nosniff',
               (r.getheader('X-Frame-Options'), r.getheader('Content-Security-Policy')))
     c = http.client.HTTPConnection(HOST, WEB, timeout=5)
-    c.request('GET', '/api/backup', headers={'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {})
+    login = {'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {}
+    c.request('POST', '/api/backup', 'passphrase=correct%20horse', login)
     r = c.getresponse()
     r.read()
     c.close()

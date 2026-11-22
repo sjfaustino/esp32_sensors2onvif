@@ -234,9 +234,57 @@
       await new Promise((z) => setTimeout(z, 1000));
     }
   }
+  // A backup is sealed on the hub with the passphrase at the top of the card, so the file holds no readable password or
+  // key. Downloading asks for it twice, as a mistyped one would leave a backup nobody can open.
+  function passphrase(m, twice) {
+    const p = $("bkPass").value;
+    if (p.length < 8 || (twice && p != $("bkPass2").value)) {
+      m.className = "portMsg err";
+      m.textContent =
+        p.length < 8
+          ? "Type a passphrase of 8 characters or more, at the top of Backup and restore."
+          : "The two passphrases differ.";
+      return null;
+    }
+    return p;
+  }
+  async function sealedSettings(p) {
+    const r = await fetch("/api/backup", { method: "POST", body: "passphrase=" + encodeURIComponent(p) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "The hub could not send its settings.");
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  const restoreSettings = (body) =>
+    fetch("/api/restore", {
+      method: "POST",
+      body,
+      headers: { "X-Backup-Passphrase": encodeURIComponent($("bkPass").value) },
+    });
+  const isSealed = (text) => text.startsWith("sensorcam-backup sealed ");
+  function saveFile(data, name) {
+    const a = el("a", { href: URL.createObjectURL(new Blob([data])), download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  $("bkSave").onclick = async () => {
+    const m = $("rsMsg");
+    m.className = "portMsg";
+    const p = passphrase(m, true);
+    if (!p) return;
+    try {
+      saveFile(await sealedSettings(p), "hub-settings.txt");
+      m.textContent = "Saved, sealed with your passphrase. Keep the passphrase apart from the file.";
+    } catch (e) {
+      m.className = "portMsg err";
+      m.textContent = e.message;
+    }
+  };
   $("fbSave").onclick = async () => {
     const m = $("fbMsg");
     m.className = "portMsg";
+    const p = passphrase(m, true);
+    if (!p) return;
     try {
       const files = [],
         add = async (path) => {
@@ -246,9 +294,7 @@
           files.push([path, new Uint8Array(await r.arrayBuffer())]);
           m.textContent = "Collected " + files.length + " files";
         };
-      const b = await fetch("/api/backup");
-      if (!b.ok) throw new Error("The hub could not send its settings.");
-      files.push(["hub-settings.txt", new Uint8Array(await b.arrayBuffer())]);
+      files.push(["hub-settings.txt", await sealedSettings(p)]); // with each paired node's key, so pairing.txt stays out
       const t = await call("GET", "/api/tree");
       if (t.clear != null) await add("clear.h264");
       if (t.clearPreview) await add("clear.jpg");
@@ -258,7 +304,6 @@
       for (const s of t.nodes) {
         files.push([s.mac + "/.node", new Uint8Array(0)]);
         await add(s.mac + "/node.txt"); // its settings and hardware, and what it said; there is none until something is
-        if (s.paired) await add(s.mac + "/pairing.txt");
         for (const n of s.sensors) {
           const base = s.mac + "/" + n.input;
           files.push([base + "/.sensor", new Uint8Array(0)]);
@@ -270,16 +315,8 @@
           await add(base + "/sensor.txt"); // its name and settings, if it has any
         }
       }
-      const a = el("a", {
-        href: URL.createObjectURL(tarBuild(files)),
-        download: "hub-backup-" + new Date().toISOString().slice(0, 10) + ".tar",
-      });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      m.textContent =
-        "Saved " + files.length + " files. The file holds the WiFi and hub passwords, so keep it somewhere safe.";
+      saveFile(tarBuild(files), "hub-backup-" + new Date().toISOString().slice(0, 10) + ".tar");
+      m.textContent = "Saved " + files.length + " files, the settings and node keys sealed with your passphrase.";
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = e.message;
@@ -309,6 +346,7 @@
         else list.push([n, d]);
       }
       if (!settings) throw new Error("This is not a full backup from the hub.");
+      if (isSealed(new TextDecoder().decode(settings.slice(0, 40))) && !passphrase(m, false)) return;
       // Folders first. A new picture removes its thumbnail, so thumbnails go after pictures.
       const rank = (p) => (/\/\.(node|sensor)$/.test(p) ? 0 : p.endsWith(".h264") ? 1 : p.endsWith(".jpg") ? 2 : 3);
       list.sort((a, b) => rank(a[0]) - rank(b[0]));
@@ -330,9 +368,13 @@
         }
       }
       m.textContent = "Restoring the settings";
-      const r = await fetch("/api/restore", { method: "POST", body: settings });
+      const r = await restoreSettings(settings);
       if (!r.ok)
-        throw new Error("The sensors and pictures were restored, but the hub refused the settings in this backup.");
+        throw new Error(
+          "The sensors and pictures were restored, but not the settings: " +
+            ((await r.json().catch(() => ({}))).error || "the hub refused them") +
+            ".",
+        );
       m.textContent =
         "Restored " +
         (list.length - failed.length) +
@@ -417,7 +459,17 @@
       }))
     )
       return;
-    send(m, "/api/restore", await f.text(), "Restored. The hub is restarting.");
+    const text = await f.text();
+    if (isSealed(text) && !passphrase(m, false)) return;
+    try {
+      const r = await restoreSettings(text),
+        j = await r.json().catch(() => ({}));
+      m.className = r.ok ? "portMsg" : "portMsg err";
+      m.textContent = r.ok ? "Restored. The hub is restarting." : (j.error || "The hub refused this backup") + ".";
+    } catch (e) {
+      m.className = "portMsg err";
+      m.textContent = "The hub did not answer. Try again.";
+    }
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {
     if (view == "maintenance") loadSchedule();

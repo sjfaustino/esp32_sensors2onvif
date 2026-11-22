@@ -90,6 +90,23 @@ static void the_setup_network_password_is_the_compiled_one_or_the_hub_password_o
   TEST_ASSERT_EQUAL(CAM_SETUP_OFF, camSetupKey("", "seven77", out));               // never open for a hub that has a password
 }
 
+// A blank hub's open setup network only after its button, for a while, and while someone is on it; others as ever.
+static void a_blank_hubs_open_setup_network_waits_for_its_button() {
+  CamSetupButton b;
+  TEST_ASSERT_FALSE(camSetupMayOpen(CAM_SETUP_OPEN, b, 1000, 0));  // not pressed
+  TEST_ASSERT_TRUE(camSetupMayOpen(CAM_SETUP_LOCKED, b, 1000, 0));
+  TEST_ASSERT_FALSE(camSetupMayOpen(CAM_SETUP_OFF, b, 1000, 0));
+  b.pressed = true;
+  b.pressedAt = 0xFFFFF000u;  // pressed just before the millisecond clock wraps
+  TEST_ASSERT_TRUE(camSetupMayOpen(CAM_SETUP_OPEN, b, 0x1000, 0));
+  TEST_ASSERT_TRUE(camSetupMayOpen(CAM_SETUP_OPEN, b, 0xFFFFF000u + CAM_OPEN_SETUP_MS - 1, 0));
+  TEST_ASSERT_FALSE(camSetupMayOpen(CAM_SETUP_OPEN, b, 0xFFFFF000u + CAM_OPEN_SETUP_MS, 0));  // its time is up
+  TEST_ASSERT_TRUE(camSetupMayOpen(CAM_SETUP_OPEN, b, 0xFFFFF000u + CAM_OPEN_SETUP_MS, 1));   // but not while someone is on it
+  CamSetupButton none;
+  none.fitted = false;
+  TEST_ASSERT_TRUE(camSetupMayOpen(CAM_SETUP_OPEN, none, 1000, 0));  // a board without one opens it as ever
+}
+
 static void what_is_kept_through_a_restart_reads_back_only_when_this_layout_wrote_it() {
   CamKept k;
   memset(&k, 0xA5, sizeof(k));  // what a power cut leaves
@@ -157,4 +174,5 @@ void runBoardTests() {
   RUN_TEST(a_start_is_planned_only_after_the_hubs_own_restarts_that_someone_asked_for);
   RUN_TEST(the_time_zone_is_written_as_posix_wants_it);
   RUN_TEST(the_scheduled_restart_minute_is_its_day_and_minute_with_the_clock_set);
+  RUN_TEST(a_blank_hubs_open_setup_network_waits_for_its_button);
 }

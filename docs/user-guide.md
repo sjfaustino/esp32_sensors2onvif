@@ -16,15 +16,18 @@ messages between the hub and its nodes.
 2. Write it to the board at address 0 with [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge:
    connect, press **Erase Flash**, add the file at address `0x0`, and press **Program**. `esptool.py write_flash 0x0
    <file>` does the same from a PC.
-3. The hub opens its own Wi-Fi network, `esp-alarmhub-setup`. Join it from a phone or laptop, and the setup page opens
-   by itself, or browse to `http://192.168.4.1`.
+3. Press the board's **BOOT** button once. The hub then opens its own Wi-Fi network, `esp-alarmhub-setup`, for 15
+   minutes, and for as long as someone stays on it. Join it from a phone or laptop, and the setup page opens by itself,
+   or browse to `http://192.168.4.1`. If the 15 minutes run out, press the button again.
 4. Choose the hub password, then your Wi-Fi network and its password, and press **Save**. The hub restarts and joins
    that network.
 
 <img src="images/setup.png" alt="The setup page of a new hub, on a phone" width="300">
 
 The hub password guards its page, the NVR's login and, from then on, the setup network. Until one is chosen, the setup
-network is open, so set a new hub up as soon as it first starts.
+network has no password, so anyone in range could set the hub up as their own. That is why it waits for the button,
+which only someone holding the hub can press. A board without that button can be built with `SETUP_BUTTON_PIN` set to
+`-1` in `include/config.h`; its setup network then opens at once, so set it up as soon as it first starts.
 
 ### From source
 
@@ -58,7 +61,8 @@ the backup joins, it becomes the main network and the old main becomes the backu
 If neither works, or none is saved, the hub opens its own network, `esp-alarmhub-setup`, protected by the hub password.
 It uses WPA3, which phones from 2019 on and Windows 10 and macOS from that time on can join; an older device cannot.
 With WPA3, someone who records you joining cannot try passwords on their own computer, as they could with WPA2.
-A blank hub has no password yet, so its setup network is open until one is chosen.
+A blank hub has no password yet, so its setup network has none either, and opens only for 15 minutes after the board's
+**BOOT** button is pressed, as above.
 Join it from a phone or laptop and the setup page opens by itself, or browse to `http://192.168.4.1`. Choose a network, and
 whether it is the main or the backup. A new main network moves the previous main to the backup. Saved settings replace any
 in `secrets.h` and survive reflashing.
@@ -419,8 +423,8 @@ Keep the hub out of reach.
 ![Maintenance](images/maintenance.png)
 
 **Maintenance** schedules a restart, updates the firmware from a `firmware.bin` file, dropped on the page or chosen, with
-the upload's progress, downloads and restores a settings backup (which holds the passwords in plain text), and makes and
-restores a full backup. What stops the hub or cannot be undone is together at the foot, under **Danger zone**: restarting
+the upload's progress, downloads and restores a settings backup, and makes and restores a full backup, both sealed with a
+passphrase you choose. What stops the hub or cannot be undone is together at the foot, under **Danger zone**: restarting
 the hub now, making new keys, and resetting the settings; each asks first.
 A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
 30 minutes, that restart is skipped until the next time.
@@ -439,12 +443,20 @@ and the ESP-NOW key and token that sensors use.
 deleted and the start makes new ones, as on the first. Every sensor node must then be set up or paired again, so use it
 only if a key may have got out. A settings backup made before brings the old keys back if restored.
 
-A **full backup** is one `.tar` file with the settings, every picture and thumbnail, each sensor's name and alert settings, each node's settings, and the floor plan.
+A backup holds the Wi-Fi and hub passwords and the keys: the hub's pairing key, the ESP-NOW key and each paired node's
+own key. Anyone who could read them could pose as the hub to the nodes, or as a node to the hub. So the hub seals the
+settings with a **passphrase** you type at the top of **Backup and restore**, twice when downloading, as a mistyped one
+would leave a backup nobody can open. The file then holds nothing anyone can read without it. Restoring asks for the
+passphrase it was sealed with. Keep the passphrase apart from the file, for example in a password manager: without it,
+nobody can open the backup, you included. A few words are easier to keep than a jumble of symbols. The passphrase is
+stretched with Argon2id, so each guess costs time. A backup from before passphrases, which is not sealed, still
+restores. If it has no hub password in it, the hub keeps the one it has.
+
+A **full backup** is one `.tar` file with the settings, sealed as above, every picture and thumbnail, each sensor's name
+and alert settings, each node's settings, and the floor plan. The nodes' keys are only in the sealed settings.
 Your browser builds it one file at a time, so it works however many pictures there are. Restoring adds the nodes, sensors and
-pictures in it, replacing any with the same name and keeping others, then replaces the settings and restarts the hub. Like the
-settings backup, it holds the passwords in plain text, and the keys too: the hub's pairing key, the ESP-NOW key and, in a
-full backup, each paired node's own key. Anyone with one could pose as the hub to the nodes, or as a node to the hub, so
-keep backups as safe as the hub itself, and use **New keys** if one gets out.
+pictures in it, replacing any with the same name and keeping others, then replaces the settings, puts back the nodes'
+keys, and restarts the hub. Use **New keys** if a backup and its passphrase may both have got out.
 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive

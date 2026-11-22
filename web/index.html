@@ -166,14 +166,18 @@
 <div class="acts"><button id="fwSend" class="primary">Update firmware</button></div>
 <div class="portMsg" id="fwMsg"></div></section>
 <section class="card"><h2>Backup and restore</h2>
+<p class="note">A backup is sealed with a passphrase you choose, so the file holds no password or key anyone can read. Keep the passphrase apart from the file: without it, nobody can open the backup, you included.</p>
+<label class="netRow"><span>Passphrase</span><input id="bkPass" type="password" autocomplete="new-password" maxlength="128"></label>
+<label class="netRow"><span>Again, to download</span><input id="bkPass2" type="password" autocomplete="new-password" maxlength="128"></label>
+<p class="hint">8 characters or more. A few words are easier to keep than a jumble of symbols. Restoring a backup asks for the one it was sealed with.</p>
 <h3>Settings</h3>
-<p class="note">A small text file of the settings. It holds the Wi-Fi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
-<div class="acts"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a></div>
+<p class="note">A small file of the settings and each paired node's key. Pictures are not included.</p>
+<div class="acts"><button id="bkSave">Download backup</button></div>
 <label class="drop"><input id="rsFile" type="file" accept=".txt"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop a settings backup here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
 <div class="acts"><button id="rsSend" class="del">Restore settings</button></div>
 <div class="portMsg" id="rsMsg"></div>
 <h3>Full backup</h3>
-<p class="note">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
+<p class="note">The settings and node keys, sealed, with every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
 <div class="acts"><button id="fbSave">Download full backup</button></div>
 <label class="drop"><input id="fbFile" type="file" accept=".tar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop a full backup <code>.tar</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
 <div class="acts"><button id="fbLoad" class="del">Restore full backup</button></div>
