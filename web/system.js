@@ -234,8 +234,9 @@
       await new Promise((z) => setTimeout(z, 1000));
     }
   }
-  // A backup is sealed on the hub with the passphrase at the top of the card, so the file holds no readable password or
-  // key. Downloading asks for it twice, as a mistyped one would leave a backup nobody can open.
+  // A backup is sealed with a key worked out here from the passphrase at the top of the card, so the file holds no
+  // readable password or key, and the slow part runs in this browser, never on the hub, whose loop must keep taking
+  // alerts. Downloading asks for the passphrase twice, as a mistyped one would leave a backup nobody can open.
   function passphrase(m, twice) {
     const p = $("bkPass").value;
     if (p.length < 8 || (twice && p != $("bkPass2").value)) {
@@ -248,17 +249,164 @@
     }
     return p;
   }
-  async function sealedSettings(p) {
-    const r = await fetch("/api/backup", { method: "POST", body: "passphrase=" + encodeURIComponent(p) });
+  // PBKDF2-HMAC-SHA256, written out because a page served over plain HTTP gets none of the browser's own crypto.
+  const ROUNDS = 600000; // as OWASP advises; the hub's cam_backup.h
+  const K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
+    0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8,
+    0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+    0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+    0xc67178f2,
+  ]);
+  const IV = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  // One block: w holds its 16 words, and h the state, which this updates.
+  function compress(h, w) {
+    for (let i = 16; i < 64; i++) {
+      const x = w[i - 15],
+        y = w[i - 2];
+      const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3),
+        s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = h[0],
+      b = h[1],
+      c = h[2],
+      d = h[3],
+      e = h[4],
+      f = h[5],
+      g = h[6],
+      k = h[7];
+    for (let i = 0; i < 64; i++) {
+      const t1 =
+        (k +
+          (((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7))) +
+          ((e & f) ^ (~e & g)) +
+          K[i] +
+          w[i]) |
+        0;
+      const t2 =
+        ((((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))) +
+          ((a & b) ^ (a & c) ^ (b & c))) |
+        0;
+      k = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h[0] = (h[0] + a) | 0;
+    h[1] = (h[1] + b) | 0;
+    h[2] = (h[2] + c) | 0;
+    h[3] = (h[3] + d) | 0;
+    h[4] = (h[4] + e) | 0;
+    h[5] = (h[5] + f) | 0;
+    h[6] = (h[6] + g) | 0;
+    h[7] = (h[7] + k) | 0;
+  }
+  // SHA-256 of data, going on from state after before bytes, a whole number of blocks.
+  function sha(state, data, before) {
+    const h = Uint32Array.from(state),
+      w = new Uint32Array(64),
+      n = Math.ceil((data.length + 9) / 64) * 64,
+      m = new Uint8Array(n),
+      bits = (before + data.length) * 8;
+    m.set(data);
+    m[data.length] = 0x80;
+    m[n - 4] = bits >>> 24;
+    m[n - 3] = (bits >>> 16) & 255;
+    m[n - 2] = (bits >>> 8) & 255;
+    m[n - 1] = bits & 255;
+    for (let o = 0; o < n; o += 64) {
+      for (let i = 0; i < 16; i++)
+        w[i] = (m[o + 4 * i] << 24) | (m[o + 4 * i + 1] << 16) | (m[o + 4 * i + 2] << 8) | m[o + 4 * i + 3];
+      compress(h, w);
+    }
+    return h;
+  }
+  const bytesOf = (h) =>
+    new Uint8Array(Array.from(h).flatMap((v) => [v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]));
+  const hex = (b) => Array.from(b, (v) => v.toString(16).padStart(2, "0")).join("");
+  // The 32-byte key, with progress(fraction) now and then, giving the page time to show it.
+  async function backupKey(pass, salt, rounds, progress) {
+    let key = new TextEncoder().encode(pass);
+    if (key.length > 64) key = bytesOf(sha(IV, key, 0));
+    const padded = (x) => {
+      const b = new Uint8Array(64).fill(x);
+      key.forEach((v, i) => (b[i] ^= v));
+      return b;
+    };
+    const inner = blockState(padded(0x36)), // the states after the key's block, so each round hashes just its 32 bytes
+      outer = blockState(padded(0x5c));
+    const first = new Uint8Array(salt.length + 4);
+    first.set(salt);
+    first[salt.length + 3] = 1;
+    let u = sha(outer, bytesOf(sha(inner, first, 64)), 64);
+    const t = Uint32Array.from(u),
+      w = new Uint32Array(64),
+      hi = new Uint32Array(8),
+      ho = new Uint32Array(8);
+    for (let r = 1; r < rounds; r++) {
+      hi.set(inner);
+      for (let i = 0; i < 8; i++) w[i] = u[i];
+      w.fill(0, 8, 16);
+      w[8] = 0x80000000;
+      w[15] = 768; // the 64-byte key block and these 32 bytes, in bits
+      compress(hi, w);
+      ho.set(outer);
+      for (let i = 0; i < 8; i++) w[i] = hi[i];
+      w.fill(0, 8, 16);
+      w[8] = 0x80000000;
+      w[15] = 768;
+      compress(ho, w);
+      u = ho;
+      for (let i = 0; i < 8; i++) t[i] ^= ho[i];
+      if (r % 25000 == 0) {
+        if (progress) progress(r / rounds);
+        await new Promise((z) => setTimeout(z));
+      }
+    }
+    return bytesOf(t);
+  }
+  function blockState(block) {
+    const h = Uint32Array.from(IV),
+      w = new Uint32Array(64);
+    for (let i = 0; i < 16; i++)
+      w[i] = (block[4 * i] << 24) | (block[4 * i + 1] << 16) | (block[4 * i + 2] << 8) | block[4 * i + 3];
+    compress(h, w);
+    return h;
+  }
+  window.backupKey = backupKey; // for the page tests, which check it against known values
+  const sealing = (m) => (f) => (m.textContent = "Sealing with your passphrase: " + Math.round(f * 100) + "%");
+  async function sealedSettings(p, m) {
+    const salt = crypto.getRandomValues(new Uint8Array(16)),
+      key = await backupKey(p, salt, ROUNDS, sealing(m));
+    const r = await fetch("/api/backup", {
+      method: "POST",
+      body: "key=" + hex(key) + "&salt=" + hex(salt) + "&rounds=" + ROUNDS,
+    });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "The hub could not send its settings.");
     return new Uint8Array(await r.arrayBuffer());
   }
-  const restoreSettings = (body) =>
-    fetch("/api/restore", {
-      method: "POST",
-      body,
-      headers: { "X-Backup-Passphrase": encodeURIComponent($("bkPass").value) },
-    });
+  // A sealed backup names its rounds and salt on its first line; the key from them goes with it, a plain one alone.
+  async function restoreSettings(body, m) {
+    const text = typeof body == "string" ? body : new TextDecoder().decode(body.slice(0, 200)),
+      head = text.match(/^sensorcam-backup sealed 2 pbkdf2-sha256 (\d+) ([0-9a-f]{32})\n/),
+      headers = {};
+    if (isSealed(text)) {
+      if (!head || +head[1] > 10000000) throw new Error("This backup is damaged, or was made by a newer hub.");
+      const salt = new Uint8Array(head[2].match(/../g).map((x) => parseInt(x, 16)));
+      headers["X-Backup-Key"] = hex(await backupKey($("bkPass").value, salt, +head[1], sealing(m)));
+    }
+    return fetch("/api/restore", { method: "POST", body, headers });
+  }
   const isSealed = (text) => text.startsWith("sensorcam-backup sealed ");
   function saveFile(data, name) {
     const a = el("a", { href: URL.createObjectURL(new Blob([data])), download: name });
@@ -273,7 +421,7 @@
     const p = passphrase(m, true);
     if (!p) return;
     try {
-      saveFile(await sealedSettings(p), "hub-settings.txt");
+      saveFile(await sealedSettings(p, m), "hub-settings.txt");
       m.textContent = "Saved, sealed with your passphrase. Keep the passphrase apart from the file.";
     } catch (e) {
       m.className = "portMsg err";
@@ -294,7 +442,7 @@
           files.push([path, new Uint8Array(await r.arrayBuffer())]);
           m.textContent = "Collected " + files.length + " files";
         };
-      files.push(["hub-settings.txt", await sealedSettings(p)]); // with each paired node's key, so pairing.txt stays out
+      files.push(["hub-settings.txt", await sealedSettings(p, m)]); // with each paired node's key, so pairing.txt stays out
       const t = await call("GET", "/api/tree");
       if (t.clear != null) await add("clear.h264");
       if (t.clearPreview) await add("clear.jpg");
@@ -368,7 +516,7 @@
         }
       }
       m.textContent = "Restoring the settings";
-      const r = await restoreSettings(settings);
+      const r = await restoreSettings(settings, m);
       if (!r.ok)
         throw new Error(
           "The sensors and pictures were restored, but not the settings: " +
@@ -462,13 +610,13 @@
     const text = await f.text();
     if (isSealed(text) && !passphrase(m, false)) return;
     try {
-      const r = await restoreSettings(text),
+      const r = await restoreSettings(text, m),
         j = await r.json().catch(() => ({}));
       m.className = r.ok ? "portMsg" : "portMsg err";
       m.textContent = r.ok ? "Restored. The hub is restarting." : (j.error || "The hub refused this backup") + ".";
     } catch (e) {
       m.className = "portMsg err";
-      m.textContent = "The hub did not answer. Try again.";
+      m.textContent = e instanceof TypeError ? "The hub did not answer. Try again." : e.message; // fetch fails as a TypeError
     }
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {

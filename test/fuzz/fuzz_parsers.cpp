@@ -212,9 +212,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       if (camParseSensorFile(text, f)) camSensorFileText(f);
       break;
     }
-    case 31: {  // a sealed backup's first line; opening it runs Argon2, too slow to fuzz
-      uint32_t blocks = 0, passes = 0;
-      camBackupParams(text, blocks, passes);
+    case 31: {  // a sealed backup, opened with a key: refused, as the key is wrong, but read all the way
+      static const uint8_t key[CAM_BACKUP_KEY] = {0};
+      std::string plain;
+      camOpenBackup(text, key, plain);
       break;
     }
   }

@@ -449,7 +449,7 @@ settings with a **passphrase** you type at the top of **Backup and restore**, tw
 would leave a backup nobody can open. The file then holds nothing anyone can read without it. Restoring asks for the
 passphrase it was sealed with. Keep the passphrase apart from the file, for example in a password manager: without it,
 nobody can open the backup, you included. A few words are easier to keep than a jumble of symbols. The passphrase is
-stretched with Argon2id, so each guess costs time. A backup from before passphrases, which is not sealed, still
+stretched with 600,000 rounds of PBKDF2 in your browser, so each guess costs time; the hub only seals. A backup from before passphrases, which is not sealed, still
 restores. If it has no hub password in it, the hub keeps the one it has.
 
 A **full backup** is one `.tar` file with the settings, sealed as above, every picture and thumbnail, each sensor's name

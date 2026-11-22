@@ -571,24 +571,25 @@ def a_firmware_upload_pauses_the_hub(s):
 
 @case(pc=True)
 def a_sealed_backup(s):
-    """The settings backup is sealed with a passphrase the owner chooses, so the file holds no readable secret, and opens
-    only with that passphrase. A plain backup from before still restores."""
-    phrase = {'X-Backup-Passphrase': urllib.parse.quote('correct horse battery')}
-    check('a backup needs a passphrase of 8 characters or more', api('POST', '/api/backup', 'passphrase=short')[0] == 400)
-    check('and the web password', api('POST', '/api/backup', 'passphrase=correct%20horse%20battery', auth=False)[0] == 401)
-    code, sealed = api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')
-    check('a sealed backup can be downloaded', code == 200 and sealed.startswith(b'sensorcam-backup sealed 1 '), sealed[:60])
+    """The settings backup is sealed with a key the page works out from a passphrase, so the file holds no readable
+    secret, and opens only with that key. A plain backup from before still restores."""
+    check('a backup needs a key from the page', api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')[0] == 400)
+    check('with enough rounds behind it', sealed_backup(rounds=99999)[0] == 400)
+    check('and the web password', sealed_backup(auth=False)[0] == 401)
+    code, sealed = sealed_backup()
+    check('a sealed backup can be downloaded', code == 200 and sealed.startswith(b'sensorcam-backup sealed 2 pbkdf2-sha256 100000 '), sealed[:60])
     check('with nothing in it readable', b'%68%75%62' not in sealed and b'net.' not in sealed, sealed[:80])
-    again = api('POST', '/api/backup', 'passphrase=correct%20horse%20battery')[1]
-    check('and sealed afresh each time', again != sealed)
+    check('and sealed afresh each time', sealed_backup()[1] != sealed)
     check('it cannot be downloaded unsealed any more', api('GET', '/api/backup')[0] != 200)
-    code, reply = api('POST', '/api/restore', sealed, headers={'X-Backup-Passphrase': 'wrong%20passphrase'})
-    check('a wrong passphrase is refused, saying so', code == 400 and b'passphrase is wrong' in reply, reply)
-    check('nor without one', api('POST', '/api/restore', sealed)[0] == 400)
+    code, reply = api('POST', '/api/restore', sealed, headers=backup_key(sealed, 'wrong passphrase'))
+    check('a key from a wrong passphrase is refused, saying so', code == 400 and b'passphrase is wrong' in reply, reply)
+    check('nor without a key', api('POST', '/api/restore', sealed)[0] == 400)
     changed = bytearray(sealed)
     changed[-10] = ord('A') if changed[-10] != ord('A') else ord('B')
-    check('a sealed backup changed afterwards is refused', api('POST', '/api/restore', bytes(changed), headers=phrase)[0] == 400)
-    check('with its passphrase, it restores', api('POST', '/api/restore', sealed, headers=phrase)[0] == 200)
+    check('a sealed backup changed afterwards is refused', api('POST', '/api/restore', bytes(changed), headers=backup_key(sealed))[0] == 400)
+    fewer = sealed.replace(b' 100000 ', b' 100001 ', 1)
+    check('as is one whose rounds were changed', api('POST', '/api/restore', fewer, headers=backup_key(fewer))[0] == 400)
+    check('with its key, it restores', api('POST', '/api/restore', sealed, headers=backup_key(sealed))[0] == 200)
     check('a plain backup from before still restores', api('POST', '/api/restore', b'sensorcam-backup 1\nnet.name=%68%75%62\n')[0] == 200)
     check('other files are refused as a backup', api('POST', '/api/restore', b'hello')[0] == 400)
-    check('restore needs the web password', api('POST', '/api/restore', sealed, auth=False, headers=phrase)[0] == 401)
+    check('restore needs the web password', api('POST', '/api/restore', sealed, auth=False, headers=backup_key(sealed))[0] == 401)

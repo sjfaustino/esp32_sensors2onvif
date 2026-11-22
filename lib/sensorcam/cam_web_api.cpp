@@ -30,8 +30,6 @@ static std::string percentDecode(const std::string& s) {
 
 std::string CamWeb::ApiRequest::field(const char* name) const { return percentDecode(queryParam(form(), name)); }
 
-std::string CamWeb::ApiRequest::decodedHeader(const char* lowerName) const { return percentDecode(headerValue(headers, lowerName)); }
-
 bool CamWeb::ApiRequest::has(const char* name) const {
   std::string f = form(), key = std::string(name) + "=";
   return f.compare(1, key.size(), key) == 0 || f.find("&" + key) != std::string::npos;

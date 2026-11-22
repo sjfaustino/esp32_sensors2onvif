@@ -7,7 +7,7 @@ before that, a new minor version may change settings or the messages.
 
 ### Security
 
-- Backups are sealed with a passphrase you choose (Argon2id, then XChaCha20-Poly1305), so the file holds no readable
+- Backups are sealed with a passphrase you choose (600,000 rounds of PBKDF2-HMAC-SHA256, worked out by the browser, then XChaCha20-Poly1305 on the hub), so the file holds no readable
   password or key. The nodes' keys go only in the sealed settings, not in the full backup's files. A backup from before
   still restores.
 - A restored hub password must be 8 to 63 characters, as on the page; a backup without one keeps the hub's.

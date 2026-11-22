@@ -172,28 +172,38 @@ def test_a_refused_alarm_switch_goes_back(page, dialogs):
 
 
 def test_a_sealed_backup_from_the_page(page):
-    # The passphrase at the top of Backup and restore seals the backup; downloading asks for it twice.
+    # The passphrase at the top of Backup and restore seals the backup, with a key this page works out by PBKDF2; the
+    # hub never spends the time. Downloading asks for the passphrase twice.
     page.goto(URL + '#maintenance')
     page.wait_for_selector('#bkPass', state='visible')
+    derive = 'async ([p, s, n]) => Array.from(await window.backupKey(p, new TextEncoder().encode(s), n), (v) => v.toString(16).padStart(2, "0")).join("")'
+    got = page.evaluate(derive, ['password', 'salt', 4096])
+    check("the page's PBKDF2-HMAC-SHA256 gives the known answer", got == 'c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a', got)
+    long_pass = 'x' * 70  # longer than a block, so hashed first
+    started = time.time()
+    got = page.evaluate(derive, [long_pass, 'salty salt', 600000])
+    took = time.time() - started
+    want = hashlib.pbkdf2_hmac('sha256', long_pass.encode(), b'salty salt', 600000).hex()
+    check(f'and the same as Python at the full 600000 rounds, in {took:.1f} s', got == want, (got, want))
     page.fill('#bkPass', 'correct horse battery')
     page.fill('#bkPass2', 'correct horse batterz')
     page.click('#bkSave')
     check('two passphrases that differ are refused on the page', wait_text(page, 'rsMsg', 'differ'), page.text_content('#rsMsg'))
     page.fill('#bkPass2', 'correct horse battery')
-    with page.expect_download() as got:
+    with page.expect_download(timeout=60000) as got:
         page.click('#bkSave')
     path = got.value.path()
     data = open(path, 'rb').read()
-    check('the backup downloads sealed', data.startswith(b'sensorcam-backup sealed 1 '), data[:40])
+    check('the backup downloads sealed', data.startswith(b'sensorcam-backup sealed 2 pbkdf2-sha256 600000 '), data[:60])
     page.set_input_files('#rsFile', path)
     page.fill('#bkPass', 'wrong passphrase')
     page.click('#rsSend')
     answer(page)
-    check('restoring it with a wrong passphrase says so', wait_text(page, 'rsMsg', 'passphrase is wrong'), page.text_content('#rsMsg'))
+    check('restoring it with a wrong passphrase says so', wait_text(page, 'rsMsg', 'passphrase is wrong', timeout=60), page.text_content('#rsMsg'))
     page.fill('#bkPass', 'correct horse battery')
     page.click('#rsSend')
     answer(page)
-    check('with the right one, it restores', wait_text(page, 'rsMsg', 'Restored'), page.text_content('#rsMsg'))
+    check('with the right one, it restores', wait_text(page, 'rsMsg', 'Restored', timeout=60), page.text_content('#rsMsg'))
 
 
 def open_alert_settings(page):

@@ -1,27 +1,28 @@
 // A settings backup sealed with a passphrase the owner chooses, so the file holds no secret anyone can read: the Wi-Fi
 // and hub passwords, the keys, and each paired node's key. A file of text:
-//   "sensorcam-backup sealed 1 BLOCKS PASSES\n", then the base64 of salt (16 bytes), nonce (24), tag (16) and the sealed
-//   backup, then "\n"
-// The key is Argon2id of the passphrase and the salt, with BLOCKS KiB of memory and PASSES passes; the sealing is
-// XChaCha20-Poly1305 (Monocypher), with the first line as associated data, so its numbers cannot be changed.
-// Inside is the plain backup: the settings as the board writes them ("sensorcam-backup 1" and its lines), then a
-// "pairing.MAC=" line for each paired node, with its public key and its key in hex, as its pairing.txt holds them.
+//   "sensorcam-backup sealed 2 pbkdf2-sha256 ROUNDS SALT\n", SALT 16 bytes in hex, then the base64 of nonce (24 bytes),
+//   tag (16) and the sealed backup, then "\n"
+// The key is PBKDF2-HMAC-SHA256 of the passphrase and the salt, ROUNDS rounds, 32 bytes, worked out by the browser: so
+// the slow part never runs on the hub, whose loop must keep taking alerts, and it can be slower than the hub could afford.
+// The sealing is XChaCha20-Poly1305 (Monocypher), with the first line as associated data, so its numbers cannot be
+// changed. Inside is the plain backup: the settings as the board writes them ("sensorcam-backup 1" and its lines), then
+// a "pairing.MAC=" line for each paired node, with its public key and its key in hex, as its pairing.txt holds them.
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
 
-const uint32_t CAM_BACKUP_BLOCKS = 32;      // KiB: what an ESP32 can spare beside the video, for a moment
-const uint32_t CAM_BACKUP_PASSES = 48;      // passes over that memory, so each guess at the passphrase costs time
-const uint32_t CAM_BACKUP_MAX_BLOCKS = 64;  // what a file may ask for when opened
-const uint32_t CAM_BACKUP_MAX_PASSES = 400;
-const size_t CAM_PASSPHRASE_MIN = 8, CAM_PASSPHRASE_MAX = 128;
+const uint32_t CAM_BACKUP_ROUNDS = 600000;  // what the page uses, as OWASP advises for PBKDF2-HMAC-SHA256
+const uint32_t CAM_BACKUP_MIN_ROUNDS = 100000, CAM_BACKUP_MAX_ROUNDS = 10000000;
+const size_t CAM_BACKUP_KEY = 32, CAM_BACKUP_SALT = 16;
 
 bool camBackupIsSealed(const std::string& text);
-bool camValidPassphrase(const std::string& passphrase);
-// The memory and passes a sealed file names, within the limits above; false for a file that is not one.
-bool camBackupParams(const std::string& sealed, uint32_t& blocks, uint32_t& passes);
-// work holds CAM_BACKUP_BLOCKS KiB; salt and nonce are random, and fresh for each file.
-std::string camSealBackup(const std::string& plain, const std::string& passphrase, const uint8_t salt[16], const uint8_t nonce[24], void* work);
-// work holds the KiB camBackupParams said. False for a wrong passphrase or a damaged file, telling neither apart.
-bool camOpenBackup(const std::string& sealed, const std::string& passphrase, std::string& plain, void* work);
+// What the browser sends: the key and salt in hex, and the rounds; false for anything else.
+bool camBackupKeyFrom(const std::string& keyHex, uint8_t key[CAM_BACKUP_KEY]);
+bool camBackupSaltFrom(const std::string& saltHex, uint8_t salt[CAM_BACKUP_SALT]);
+bool camBackupRoundsValid(uint32_t rounds);
+// nonce is random, and fresh for each file.
+std::string camSealBackup(const std::string& plain, const uint8_t key[CAM_BACKUP_KEY], const uint8_t salt[CAM_BACKUP_SALT], uint32_t rounds,
+                          const uint8_t nonce[24]);
+// False for a wrong key or a damaged file, telling neither apart.
+bool camOpenBackup(const std::string& sealed, const uint8_t key[CAM_BACKUP_KEY], std::string& plain);

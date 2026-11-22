@@ -251,43 +251,43 @@ static void a_firmware_release_number_is_read_from_the_signed_part() {
   TEST_ASSERT_EQUAL_INT64(-1, none.release());
 }
 
-// A backup sealed with a passphrase: read back only with it, and refused whole when anything in it was changed.
-static void a_backup_opens_only_with_its_passphrase() {
-  std::vector<uint8_t> work(CAM_BACKUP_MAX_BLOCKS * 1024);
-  uint8_t salt[16], nonce[24];
-  for (int i = 0; i < 16; i++) salt[i] = (uint8_t)i;
+// A backup sealed with the key the page works out from a passphrase: read back only with it, and refused whole when anything in it was changed.
+static void a_backup_opens_only_with_its_key() {
+  uint8_t key[CAM_BACKUP_KEY], other[CAM_BACKUP_KEY], salt[CAM_BACKUP_SALT], nonce[24];
+  for (int i = 0; i < 32; i++) key[i] = (uint8_t)i, other[i] = (uint8_t)i;
+  other[31] ^= 1;
+  for (int i = 0; i < 16; i++) salt[i] = (uint8_t)(0xA0 + i);
   for (int i = 0; i < 24; i++) nonce[i] = (uint8_t)(100 + i);
   std::string plain = "sensorcam-backup 1\nnet.webpw=%73%65%63%72%65%74\npairing.AA-BB-CC-DD-EE-01=00,11\n";
-  std::string sealed = camSealBackup(plain, "correct horse", salt, nonce, work.data());
+  std::string sealed = camSealBackup(plain, key, salt, CAM_BACKUP_ROUNDS, nonce);
   TEST_ASSERT_TRUE(camBackupIsSealed(sealed));
-  TEST_ASSERT_TRUE(sealed.find("secret") == std::string::npos && sealed.find("%73") == std::string::npos);  // nothing readable
-  uint32_t blocks = 0, passes = 0;
-  TEST_ASSERT_TRUE(camBackupParams(sealed, blocks, passes));
-  TEST_ASSERT_EQUAL_UINT32(CAM_BACKUP_BLOCKS, blocks);
-  TEST_ASSERT_EQUAL_UINT32(CAM_BACKUP_PASSES, passes);
+  TEST_ASSERT_TRUE(sealed.find("sensorcam-backup sealed 2 pbkdf2-sha256 600000 a0a1a2a3a4a5a6a7a8a9aaabacadaeaf\n") == 0);
+  TEST_ASSERT_TRUE(sealed.find("%73") == std::string::npos && sealed.find("pairing") == std::string::npos);  // nothing readable
   std::string out;
-  TEST_ASSERT_TRUE(camOpenBackup(sealed, "correct horse", out, work.data()));
+  TEST_ASSERT_TRUE(camOpenBackup(sealed, key, out));
   TEST_ASSERT_TRUE(out == plain);
-  TEST_ASSERT_FALSE(camOpenBackup(sealed, "correct horsE", out, work.data()));  // one letter off
+  TEST_ASSERT_FALSE(camOpenBackup(sealed, other, out));  // one bit off
   std::string fewer = sealed;
-  fewer.replace(fewer.find(" 48\n"), 4, " 47\n");  // fewer passes asked for, to make guessing cheaper: the head is sealed too
-  TEST_ASSERT_FALSE(camOpenBackup(fewer, "correct horse", out, work.data()));
+  fewer.replace(fewer.find(" 600000 "), 8, " 100000 ");  // fewer rounds named, to make guessing cheaper: the head is sealed too
+  TEST_ASSERT_FALSE(camOpenBackup(fewer, key, out));
   std::string changed = sealed;
   changed[changed.size() - 5] = changed[changed.size() - 5] == 'A' ? 'B' : 'A';
-  TEST_ASSERT_FALSE(camOpenBackup(changed, "correct horse", out, work.data()));
-  TEST_ASSERT_FALSE(camOpenBackup(sealed.substr(0, sealed.size() / 2), "correct horse", out, work.data()));
-  // A file may not ask for more memory or passes than the hub allows, nor be read as one when it is plain.
-  TEST_ASSERT_FALSE(camBackupParams("sensorcam-backup sealed 1 4096 48\nAAAA\n", blocks, passes));
-  TEST_ASSERT_FALSE(camBackupParams("sensorcam-backup sealed 1 32 100000\nAAAA\n", blocks, passes));
-  TEST_ASSERT_FALSE(camBackupParams("sensorcam-backup sealed 1 32\nAAAA\n", blocks, passes));
+  TEST_ASSERT_FALSE(camOpenBackup(changed, key, out));
+  TEST_ASSERT_FALSE(camOpenBackup(sealed.substr(0, sealed.size() / 2), key, out));
   TEST_ASSERT_FALSE(camBackupIsSealed(plain));
-  TEST_ASSERT_FALSE(camValidPassphrase("seven77"));
-  TEST_ASSERT_TRUE(camValidPassphrase("eight888"));
-  TEST_ASSERT_FALSE(camValidPassphrase(std::string(129, 'x')));
+  // What the page sends: lower-case hex of the right length, and rounds within reason.
+  uint8_t k[CAM_BACKUP_KEY], s[CAM_BACKUP_SALT];
+  TEST_ASSERT_TRUE(camBackupKeyFrom(std::string(64, 'f'), k) && k[0] == 0xFF);
+  TEST_ASSERT_FALSE(camBackupKeyFrom(std::string(63, 'f'), k));
+  TEST_ASSERT_FALSE(camBackupKeyFrom(std::string(64, 'g'), k));
+  TEST_ASSERT_TRUE(camBackupSaltFrom("000102030405060708090a0b0c0d0e0f", s) && s[15] == 15);
+  TEST_ASSERT_FALSE(camBackupRoundsValid(99999));
+  TEST_ASSERT_TRUE(camBackupRoundsValid(CAM_BACKUP_ROUNDS));
+  TEST_ASSERT_FALSE(camBackupRoundsValid(10000001));
 }
 
 void runCryptoTests() {
-  RUN_TEST(a_backup_opens_only_with_its_passphrase);
+  RUN_TEST(a_backup_opens_only_with_its_key);
   RUN_TEST(a_firmware_release_number_is_read_from_the_signed_part);
   RUN_TEST(ed25519_matches_rfc_8032);
   RUN_TEST(a_firmware_signature_is_checked_whole);

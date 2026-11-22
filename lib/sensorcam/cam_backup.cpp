@@ -1,16 +1,30 @@
 #include "cam_backup.h"
+#include <stdio.h>
 #include <string.h>
 #include "cam_auth.h"
 #include "cam_number.h"
 #include "monocypher.h"
 
-static const char HEAD[] = "sensorcam-backup sealed 1 ";
+static const char HEAD[] = "sensorcam-backup sealed 2 pbkdf2-sha256 ";
 static const size_t HEAD_LEN = sizeof(HEAD) - 1;
-static const size_t SALT = 16, NONCE = 24, TAG = 16;
+static const size_t NONCE = 24, TAG = 16;
 
-bool camBackupIsSealed(const std::string& text) { return text.compare(0, HEAD_LEN, HEAD) == 0; }
+bool camBackupIsSealed(const std::string& text) { return text.compare(0, 24, "sensorcam-backup sealed ") == 0; }
 
-bool camValidPassphrase(const std::string& p) { return p.size() >= CAM_PASSPHRASE_MIN && p.size() <= CAM_PASSPHRASE_MAX; }
+static bool hexInto(const std::string& text, uint8_t* out, size_t n) {
+  if (text.size() != 2 * n) return false;
+  for (size_t i = 0; i < 2 * n; i++) {
+    char ch = text[i];
+    int digit = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : -1;
+    if (digit < 0) return false;
+    out[i / 2] = (uint8_t)(i % 2 ? out[i / 2] << 4 | digit : digit);
+  }
+  return true;
+}
+
+bool camBackupKeyFrom(const std::string& keyHex, uint8_t key[CAM_BACKUP_KEY]) { return hexInto(keyHex, key, CAM_BACKUP_KEY); }
+bool camBackupSaltFrom(const std::string& saltHex, uint8_t salt[CAM_BACKUP_SALT]) { return hexInto(saltHex, salt, CAM_BACKUP_SALT); }
+bool camBackupRoundsValid(uint32_t rounds) { return rounds >= CAM_BACKUP_MIN_ROUNDS && rounds <= CAM_BACKUP_MAX_ROUNDS; }
 
 static std::string base64(const uint8_t* d, size_t n) {
   static const char ABC[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -26,52 +40,28 @@ static std::string base64(const uint8_t* d, size_t n) {
   return out;
 }
 
-static void derive(uint8_t key[32], const std::string& passphrase, const uint8_t salt[SALT], uint32_t blocks, uint32_t passes, void* work) {
-  crypto_argon2_config config = {CRYPTO_ARGON2_ID, blocks, passes, 1};
-  crypto_argon2_inputs inputs = {(const uint8_t*)passphrase.data(), salt, (uint32_t)passphrase.size(), (uint32_t)SALT};
-  crypto_argon2(key, 32, work, config, inputs, crypto_argon2_no_extras);
-}
-
-bool camBackupParams(const std::string& sealed, uint32_t& blocks, uint32_t& passes) {
-  if (!camBackupIsSealed(sealed)) return false;
-  size_t end = sealed.find('\n');
-  if (end == std::string::npos) return false;
-  std::string numbers = sealed.substr(HEAD_LEN, end - HEAD_LEN);
-  size_t space = numbers.find(' ');
-  return space != std::string::npos && camNumberIn(numbers.substr(0, space), (uint32_t)8, CAM_BACKUP_MAX_BLOCKS, blocks) &&
-         camNumberIn(numbers.substr(space + 1), (uint32_t)1, CAM_BACKUP_MAX_PASSES, passes);
-}
-
-std::string camSealBackup(const std::string& plain, const std::string& passphrase, const uint8_t salt[SALT], const uint8_t nonce[NONCE], void* work) {
-  std::string head = HEAD + std::to_string(CAM_BACKUP_BLOCKS) + " " + std::to_string(CAM_BACKUP_PASSES) + "\n";
-  uint8_t key[32];
-  derive(key, passphrase, salt, CAM_BACKUP_BLOCKS, CAM_BACKUP_PASSES, work);
-  std::string body(SALT + NONCE + TAG + plain.size(), '\0');
+std::string camSealBackup(const std::string& plain, const uint8_t key[CAM_BACKUP_KEY], const uint8_t salt[CAM_BACKUP_SALT], uint32_t rounds,
+                          const uint8_t nonce[NONCE]) {
+  char saltHex[2 * CAM_BACKUP_SALT + 1];
+  for (size_t i = 0; i < CAM_BACKUP_SALT; i++) snprintf(saltHex + 2 * i, 3, "%02x", salt[i]);
+  std::string head = HEAD + std::to_string(rounds) + " " + saltHex + "\n";
+  std::string body(NONCE + TAG + plain.size(), '\0');
   uint8_t* b = (uint8_t*)&body[0];
-  memcpy(b, salt, SALT);
-  memcpy(b + SALT, nonce, NONCE);
-  crypto_aead_lock(b + SALT + NONCE + TAG, b + SALT + NONCE, key, nonce, (const uint8_t*)head.data(), head.size(), (const uint8_t*)plain.data(),
-                   plain.size());
-  crypto_wipe(key, sizeof(key));
+  memcpy(b, nonce, NONCE);
+  crypto_aead_lock(b + NONCE + TAG, b + NONCE, key, nonce, (const uint8_t*)head.data(), head.size(), (const uint8_t*)plain.data(), plain.size());
   return head + base64(b, body.size()) + "\n";
 }
 
-bool camOpenBackup(const std::string& sealed, const std::string& passphrase, std::string& plain, void* work) {
-  uint32_t blocks = 0, passes = 0;
-  if (!camBackupParams(sealed, blocks, passes)) return false;
+bool camOpenBackup(const std::string& sealed, const uint8_t key[CAM_BACKUP_KEY], std::string& plain) {
   size_t end = sealed.find('\n');
+  if (sealed.compare(0, HEAD_LEN, HEAD) != 0 || end == std::string::npos) return false;
   std::string head = sealed.substr(0, end + 1), rest = sealed.substr(end + 1);
   while (!rest.empty() && (rest.back() == '\n' || rest.back() == '\r')) rest.pop_back();
   std::string body = camBase64Decode(rest);
-  if (body.size() < SALT + NONCE + TAG) return false;
+  if (body.size() < NONCE + TAG) return false;
   const uint8_t* b = (const uint8_t*)body.data();
-  uint8_t key[32];
-  derive(key, passphrase, b, blocks, passes, work);
-  std::string out(body.size() - SALT - NONCE - TAG, '\0');
-  int bad = crypto_aead_unlock((uint8_t*)&out[0], b + SALT + NONCE, key, b + SALT, (const uint8_t*)head.data(), head.size(), b + SALT + NONCE + TAG,
-                               out.size());
-  crypto_wipe(key, sizeof(key));
-  if (bad) return false;
+  std::string out(body.size() - NONCE - TAG, '\0');
+  if (crypto_aead_unlock((uint8_t*)&out[0], b + NONCE, key, b, (const uint8_t*)head.data(), head.size(), b + NONCE + TAG, out.size())) return false;
   plain.swap(out);
   return true;
 }

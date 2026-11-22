@@ -598,3 +598,24 @@ def finish(failed):
     else:
         print('\nall passed')
     sys.exit(1 if failures else 0)
+
+
+# ---- sealed backups: the page works out the key from the passphrase, as these do with Python's own PBKDF2 ----
+
+PASSPHRASE = 'correct horse battery'
+
+
+def sealed_backup(passphrase=PASSPHRASE, rounds=100000, auth=True):
+    """A sealed settings backup, as the page asks for one. Returns (status, body). Fewer rounds than the page's, to be quick."""
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac('sha256', passphrase.encode(), salt, rounds)
+    return api('POST', '/api/backup', f'key={key.hex()}&salt={salt.hex()}&rounds={rounds}', auth=auth)
+
+
+def backup_key(sealed, passphrase=PASSPHRASE):
+    """The header that opens a sealed backup, with the key worked out from the rounds and salt on its first line."""
+    head = re.match(rb'sensorcam-backup sealed 2 pbkdf2-sha256 (\d+) ([0-9a-f]{32})\n', sealed)
+    if not head:
+        return {}
+    key = hashlib.pbkdf2_hmac('sha256', passphrase.encode(), bytes.fromhex(head.group(2).decode()), int(head.group(1)))
+    return {'X-Backup-Key': key.hex()}

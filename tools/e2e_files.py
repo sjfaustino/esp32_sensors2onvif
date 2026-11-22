@@ -238,7 +238,7 @@ def headers_that_protect_the_pages(s):
               (r.getheader('X-Frame-Options'), r.getheader('Content-Security-Policy')))
     c = http.client.HTTPConnection(HOST, WEB, timeout=5)
     login = {'Authorization': 'Basic ' + base64.b64encode(f'admin:{PASSWORD}'.encode()).decode()} if PASSWORD else {}
-    c.request('POST', '/api/backup', 'passphrase=correct%20horse', login)
+    c.request('POST', '/api/backup', f'key={"00" * 32}&salt={"00" * 16}&rounds=100000', login)
     r = c.getresponse()
     r.read()
     c.close()

@@ -291,14 +291,17 @@ static void wipe(std::string& s) {
   if (!s.empty()) crypto_wipe(&s[0], s.size());
 }
 
+// The key and salt come from the page, which works the key out from the passphrase: see cam_backup.h.
 void CamWeb::postBackup(const ApiRequest& r) {
   HttpConn& c = r.c;
-  std::string passphrase = r.field("passphrase");
-  if (!camValidPassphrase(passphrase)) {
-    c.out = jsonFail(400, "the passphrase must be 8 to 128 characters");
+  uint8_t key[CAM_BACKUP_KEY], salt[CAM_BACKUP_SALT];
+  uint32_t rounds = 0;
+  if (!camBackupKeyFrom(r.field("key"), key) || !camBackupSaltFrom(r.field("salt"), salt) || !camNumber(r.field("rounds"), rounds) ||
+      !camBackupRoundsValid(rounds)) {
+    c.out = jsonFail(400, "a backup is sealed with a key from the page; reload the page and try again");
     return;
   }
-  uint8_t random[16 + 24];  // the salt, then the nonce
+  uint8_t random[24];  // the nonce
   for (size_t i = 0; i < sizeof(random); i += 4) {
     uint32_t x = 0;
     if (!chip_->random32(x)) {
@@ -308,19 +311,14 @@ void CamWeb::postBackup(const ApiRequest& r) {
     memcpy(random + i, &x, 4);
   }
   std::string plain = store_->backupText() + pairingLines();
-  if (!roomFor(CAM_BACKUP_BLOCKS * 1024 + 2 * plain.size() + 1024)) {
-    wipe(plain);
-    c.out = jsonFail(507, "the hub is short of memory; try again");
-    return;
-  }
-  std::vector<uint8_t> work(CAM_BACKUP_BLOCKS * 1024);
-  std::string sealed = camSealBackup(plain, passphrase, random, random + 16, work.data());
+  std::string sealed = camSealBackup(plain, key, salt, rounds, random);
   wipe(plain);
-  wipe(passphrase);
+  crypto_wipe(key, sizeof(key));
   reply(c, 200, "text/plain", std::move(sealed), "Cache-Control: no-store\r\n");
 }
 
-// A sealed backup, with its passphrase in the X-Backup-Passphrase header, URL-encoded; or a plain one from before.
+// A sealed backup, with the key the page worked out from its passphrase in the X-Backup-Key header, in hex; or a plain
+// one from before.
 void CamWeb::postRestore(const ApiRequest& r) {
   HttpConn& c = r.c;
   std::string text(r.body, r.bodyLen), settings;
@@ -328,19 +326,10 @@ void CamWeb::postRestore(const ApiRequest& r) {
   if (!camBackupIsSealed(text)) {
     settings.swap(text);
   } else {
-    std::string passphrase = r.decodedHeader("x-backup-passphrase"), plain;
-    uint32_t blocks = 0, passes = 0;
-    if (!camBackupParams(text, blocks, passes)) {
-      c.out = jsonFail(400, "could not restore that file: it is damaged");
-      return;
-    }
-    if (!roomFor(blocks * 1024 + 2 * text.size() + 1024)) {
-      c.out = jsonFail(507, "the hub is short of memory; try again");
-      return;
-    }
-    std::vector<uint8_t> work(blocks * 1024);
-    bool opened = camOpenBackup(text, passphrase, plain, work.data());
-    wipe(passphrase);
+    std::string plain;
+    uint8_t key[CAM_BACKUP_KEY];
+    bool opened = camBackupKeyFrom(headerValue(r.headers, "x-backup-key"), key) && camOpenBackup(text, key, plain);
+    crypto_wipe(key, sizeof(key));
     if (!opened) {
       c.out = jsonFail(400, "could not open that backup: the passphrase is wrong, or the file is damaged");
       return;
