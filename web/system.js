@@ -183,6 +183,30 @@
       );
     } catch (e) {}
   }
+  // The hub's label: filled from what the hub says of itself, then printed alone (see .hubLabel in index.css).
+  $("labelPrint").onclick = async () => {
+    try {
+      const [i, p] = await Promise.all([call("GET", "/api/info"), call("GET", "/api/pairing").catch(() => ({}))]);
+      const at = i.webPort == 80 ? "" : ":" + i.webPort;
+      $("lbName").textContent = i.name.replace(/\.local$/, "");
+      $("lbPage").textContent = tr("Page: {address} or {name}", {
+        address: "http://" + i.ip + at + "/",
+        name: "http://" + i.name + at + "/",
+      });
+      $("lbSetup").textContent = tr(
+        "Setup network {network}: opens when the hub cannot join its Wi-Fi, with the hub password; on a hub with no settings, press its BOOT button first.",
+        { network: i.setupName },
+      );
+      $("lbFp").textContent = p.hub ? tr("Fingerprint for pairing nodes: {fingerprint}", { fingerprint: p.hub }) : "";
+      $("lbSerial").textContent = tr("Serial number {serial}", { serial: i.serial });
+      // A phone scans the address, as some do not find a name ending in .local.
+      $("lbQr").replaceChildren(qrCode.svg("http://" + i.ip + at + "/") || "");
+      $("hubLabel").hidden = false;
+      print();
+    } catch (e) {
+      notice(e.message, { err: true });
+    }
+  };
   // A full backup is a tar file made and read here, so the hub never holds more than one picture at a time.
   function tarHeader(name, size) {
     const h = new Uint8Array(512),

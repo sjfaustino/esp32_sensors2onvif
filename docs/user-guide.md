@@ -187,7 +187,8 @@ It leads to what it is about: the NVR page when the NVR is not listening, otherw
 steps left. Until everything is done, the Overview starts with **Getting started**: the next step left,
 what to do and why, and a button that goes there. The steps are a hub password of your own rather than one built into
 the firmware, the clock set, the NVR's address set and the NVR listening, a sensor heard, a test alert in the last
-month, notifications or Home Assistant, and a daily check. **Hide for now** puts them away; they stay listed under
+month, notifications or Home Assistant, a daily check, and a sealed backup from the last month with every paired node
+in it, which a node paired since asks for again. **Hide for now** puts them away; they stay listed under
 **Ready to protect?** at the foot of the Overview, with a link to put each right and one to show them a step at a time
 again. Both go once all are ticked, and come back if one slips.
 
@@ -261,9 +262,14 @@ whenever alerts or node problems are; the hub's own events are sent with node pr
 **Daily check at** sends one message a day at that local time, as event `daily check` from `"sensor":"hub"`: how many
 nodes were heard in the last day (`nodes`, `heard`), the sensors with a problem (`problems`), the day's alerts and how many
 did not reach the NVR (`alerts`, `notDelivered`; `allCounted` is false when more happened than the hub keeps in memory),
-whether the NVR is listening, how the hub is armed, and how long since the last test alert (`testAgo_s`). It shows the
-system works; if it stops arriving, the hub is off, cut off from the network, or its clock is not set. Leave the time
+whether the NVR is listening, how the hub is armed, and how long since the last test alert (`testAgo_s`). Once that is
+over a month, or none is known, it asks for a test alert from the Overview, so the reminder reaches the phone. It shows
+the system works; if it stops arriving, the hub is off, cut off from the network, or its clock is not set. Leave the time
 empty for none.
+
+**Language of the messages** words every notification, the daily check, the weekly summary and Home Assistant's
+`message` in English or in Portuguese (European). The event's name, such as `alert` or `daily check`, stays English
+in either, as automations match it.
 **Weekly summary** sends one message a week on that day and local time, as event `weekly summary`: the week's alerts and
 how many did not reach the NVR (`alerts`, `notDelivered`), the sensor that fired most (`busiest`, `busiestAlerts`),
 the alerts only logged while disarmed, armed home or in quiet hours (`held`), test alerts and problems reported
@@ -476,6 +482,9 @@ receives UTC, so these only change the time shown on the page and the scheduled 
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
 **Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
+**Print a label for the hub** prints a small label to stick on it: its page's address and name, its setup network and
+when that opens, the fingerprint nodes are paired against, and its serial number, so whoever finds the hub later knows
+what it is and how to reach it.
 The firmware version is the git commit it was built from, such as `c336d03`, or the tag on that commit; `-modified`
 means it was built with changes that were not committed.
 

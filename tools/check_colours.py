@@ -1,12 +1,12 @@
 """Checks that the pages' stylesheets name every colour by its role, as a variable set in their :root blocks, light and
 dark, so a colour added later cannot leave dark mode behind. A few colours read the same in both and may be written in
-place: the floor plan's spots, a sensor's week, the battery chart's line, and white text on a coloured button.
+place: the floor plan's spots, the label's QR code, a sensor's week, the battery chart's line, and white text on a coloured button.
 Run by CI; exits 1 with each colour written elsewhere."""
 
 import os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXED = re.compile(r'^(\.spot(\.\w+)?|table\.week td\.hit|svg\.chart \.line|button\.primary|@keyframes pulse|to)$')
+FIXED = re.compile(r'^(\.hubLabel svg\.qr|\.spot(\.\w+)?|table\.week td\.hit|svg\.chart \.line|button\.primary|@keyframes pulse|to)$')
 COLOUR = re.compile(r'#[0-9a-fA-F]{3,8}\b|\brgba?\(|(?<![\w-])(white|black|blue|red|green|gray|grey)(?![\w-])')
 
 problems = []

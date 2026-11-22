@@ -216,6 +216,20 @@
           "Once a day the hub sends one short message. If it stops arriving, the hub is off or cut off, and you know to look.",
         ),
       },
+      {
+        ok: r.backupAgo_s != null && r.backupAgo_s < 30 * 86400 && !r.pairedSinceBackup,
+        text:
+          r.backupAgo_s == null
+            ? tr("A sealed backup of the settings and the nodes' keys")
+            : r.pairedSinceBackup
+              ? tr("A new backup, as a node was paired since the last")
+              : tr("A backup in the last month (the last was {ago})", { ago: heardAgo(r.backupAgo_s) }),
+        view: "maintenance",
+        go: tr("Make a backup"),
+        help: tr(
+          "A sealed backup holds the settings and each paired node's key. Without one, a hub that fails or is taken means setting it up and pairing every node again. Keep the file and its passphrase apart, and make a new one after pairing a node.",
+        ),
+      },
     ];
   }
   // One line at the top of every page: protecting, something needs attention, or not protecting, and why.

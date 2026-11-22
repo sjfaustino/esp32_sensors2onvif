@@ -224,7 +224,19 @@ def webhook(s):
         time.sleep(0.5)  # time for a message to be wrongly sent
         check('node problems are not sent when turned off', len(hook.received) == 3, hook.received[3:])
         control('radio-known')
+        # The messages in Portuguese, when chosen: the words change, and the event's name, which automations match, does not.
+        check('a language other than en or pt is refused', api('POST', '/api/webhook', f'url={hook.url}&alerts=1&language=fr')[0] == 400)
+        check('Portuguese is saved', api('POST', '/api/webhook', f'url={hook.url}&alerts=1&language=pt')[0] == 200
+              and get_json('/api/webhook')['language'] == 'pt', get_json('/api/webhook'))
+        before = len(hook.received)
+        get(f'/sensor?{sid(1)}')
+        said = json.loads(hook.received[before][1]) if hook.wait_for(before + 1) else {}
+        check('an alert is then worded in Portuguese', said.get('message', '').endswith(': alerta') and said.get('event') == 'alert', said)
+        clear(1)
+        check('and the language is kept when not given', api('POST', '/api/webhook', f'url={hook.url}&alerts=1')[0] == 200
+              and get_json('/api/webhook')['language'] == 'pt')
     finally:
+        api('POST', '/api/webhook', 'url=&alerts=1&problems=1&language=en')
         hook.close()
 
 
@@ -579,6 +591,9 @@ def a_sealed_backup(s):
     code, sealed = sealed_backup()
     check('a sealed backup can be downloaded', code == 200 and sealed.startswith(b'sensorcam-backup sealed 2 pbkdf2-sha256 100000 '), sealed[:60])
     check('with nothing in it readable', b'%68%75%62' not in sealed and b'net.' not in sealed, sealed[:80])
+    ready = get_json('/api/overview')['ready']
+    check("and the Overview's checklist knows a backup was just made, with every paired node in it",
+          ready.get('backupAgo_s') is not None and ready['backupAgo_s'] < 60 and ready['pairedSinceBackup'] is False, ready)
     check('and sealed afresh each time', sealed_backup()[1] != sealed)
     check('it cannot be downloaded unsealed any more', api('GET', '/api/backup')[0] != 200)
     code, reply = api('POST', '/api/restore', sealed, headers=backup_key(sealed, 'wrong passphrase'))

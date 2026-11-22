@@ -190,6 +190,8 @@ def hub_phrases():
         text = open(os.path.join(LIB, name), encoding='utf-8').read()
         for m in re.finditer(r'jsonFail\(\s*\d+\s*,\s*' + STRING + r'\s*\)', text):
             found.add(unquote(m.group(1)))
+        for m in re.finditer(r'\bsaved\([^;]*?,\s*' + STRING + r'\s*\)', text):  # the message when saving fails
+            found.add(unquote(m.group(1)))
     for path, where, which in HUB_WORDS:
         text = open(os.path.join(ROOT, path), encoding='utf-8').read()
         parts = [m.group(0) for m in re.finditer(where, text, re.S)]

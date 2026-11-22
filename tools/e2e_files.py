@@ -141,6 +141,8 @@ def the_page(s):
         check('other addresses are not shut out', raw_get('/api/info', password=PASSWORD) == 200)
     check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES = ' in page and b'src="index.js"' not in page)
     check('page offers to show a picture', b'"Show it"' in page)
+    shown = re.findall(rb'<div class="view" id="(view-[a-z]+)"(?! hidden)', page)
+    check('every page starts hidden, so none shows before the scripts choose the one asked for', not shown, shown)
     check('page has the menu',all(t in page for t in [b'<span>Network</span>', b'<span>Sensors</span>', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
                                                   b'data-view="espnow"', b'data-view="events"', b'<span>System</span>', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'<span>Recording</span>', b'data-view="nvr"', b'data-view="live">Live video<']))
 

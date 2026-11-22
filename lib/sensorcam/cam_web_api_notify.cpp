@@ -1,6 +1,7 @@
 // The API's notification routes: the webhook, ntfy or Gotify, and Home Assistant's MQTT broker.
 #include "cam_web_server.h"
 #include "cam_number.h"
+#include "cam_text.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,10 +33,14 @@ void CamWeb::postWebhook(const ApiRequest& r) {
   if (w.token.empty() && r.field("forget") != "1") w.token = webhook_.settings().token;
   w.alerts = r.field("alerts") == "1";
   w.problems = r.field("problems") == "1";
+  std::string language = r.field("language");  // en or pt; left out keeps the one saved
+  w.language = language.empty() ? webhook_.settings().language : language == "pt" ? CAM_LANG_PT : CAM_LANG_EN;
   std::string daily = r.field("daily"), weekDay = r.field("weekday"), weekMinute = r.field("weekminute");
   HttpUrl u;
   bool urlOk = camSettingValid("net.hook", w.url) && (w.url.empty() || parseHttpUrl(w.url, u));
-  if (!format.empty() && format != "json" && format != "text" && format != "ntfy" && format != "gotify") {
+  if (!language.empty() && language != "en" && language != "pt") {
+    c.out = jsonFail(400, "the language must be en or pt");
+  } else if (!format.empty() && format != "json" && format != "text" && format != "ntfy" && format != "gotify") {
     c.out = jsonFail(400, "the format must be json, text, ntfy or gotify");
   } else if (!urlOk) {
     c.out = jsonFail(400, "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https");
@@ -63,7 +68,7 @@ void CamWeb::postWebhookTest(const ApiRequest& r) {
   if (webhook_.settings().url.empty()) {
     c.out = jsonFail(400, "save an address first");
   } else {
-    std::string message = "Test from " + cfg_.hostName;
+    std::string message = camText("Test from {0}", {cfg_.hostName});
     webhook_.queue("test", 3, message, jsonObject([&](CamJson& j) { j.str("event", "test").str("hub", cfg_.hostName).str("message", message); }));
     c.out = jsonOk(JSON_OK);
   }

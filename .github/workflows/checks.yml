@@ -60,7 +60,7 @@ jobs:
       # In a real browser: arming, disarming and the test alerts, on the pages, the hub and a pretend NVR.
       - name: The web pages in a browser
         run: |
-          pip install playwright==1.52.0
+          pip install playwright==1.52.0 segno==1.6.1
           python -m playwright install chromium
           python tools/e2e_pages.py
 

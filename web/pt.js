@@ -120,8 +120,8 @@ const PT = {
   None: "Nenhum",
   Notifications: "Notificações",
   "ONVIF port": "Porta ONVIF",
-  "One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock.":
-    "Uma mensagem por dia a esta hora local: os nós ouvidos, os problemas, os alertas do dia e se chegaram ao NVR, e o seu último alerta de teste. Se deixar de chegar, a central está desligada ou não consegue chegar ao endereço. Deixe vazio para nenhuma; precisa do relógio da central.",
+  "One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert, with a reminder to send one when the last is over a month old. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock.":
+    "Uma mensagem por dia a esta hora local: os nós ouvidos, os problemas, os alertas do dia e se chegaram ao NVR, e o seu último alerta de teste, com um lembrete para enviar um quando o último tiver mais de um mês. Se deixar de chegar, a central está desligada ou não consegue chegar ao endereço. Deixe vazio para nenhuma; precisa do relógio da central.",
   "Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.":
     "Abra isto no telemóvel e percorra a propriedade. Cada sensor que o vir aparece aqui, com a força do seu sinal e o tempo que a central levou a ouvi-lo, e a luz de cada nó pisca a verde, amarelo ou vermelho conforme o sinal. Os sensores ainda à espera no fim podem não cobrir por onde passou. O teste de passagem dura 10 minutos; entretanto os alertas continuam a chegar ao NVR.",
   "Or type its name": "Ou escreva o nome",
@@ -1329,4 +1329,53 @@ const PT = {
   "Allowed, as the hub logs in to the broker": "Permitido, porque a central entra no broker com um acesso",
   "Refused: give the broker a login, so not anyone on the network can disarm the hub":
     "Recusado: dê um acesso ao broker, para que não seja qualquer pessoa na rede a poder desarmar a central",
+  // the messages' language, under Notifications
+  "Language of the messages": "Idioma das mensagens",
+  "the language must be en or pt": "o idioma tem de ser en ou pt",
+  // the hub's messages when saving fails, and the details of two hub events
+  "could not create the folder": "não foi possível criar a pasta",
+  "could not delete the crash report": "não foi possível apagar o relatório de falha",
+  "could not delete the file": "não foi possível apagar o ficheiro",
+  "could not do that": "não foi possível fazer isso",
+  "could not save it; storage may be full": "não foi possível guardar; o armazenamento pode estar cheio",
+  "could not save the MQTT settings": "não foi possível guardar as definições de MQTT",
+  "could not save the NVR address": "não foi possível guardar o endereço do NVR",
+  "could not save the Wi-Fi settings": "não foi possível guardar as definições de Wi-Fi",
+  "could not save the address": "não foi possível guardar o endereço",
+  "could not save the name; storage may be full": "não foi possível guardar o nome; o armazenamento pode estar cheio",
+  "could not save the notification settings": "não foi possível guardar as definições das notificações",
+  "could not save the preview; storage may be full":
+    "não foi possível guardar a pré-visualização; o armazenamento pode estar cheio",
+  "could not save the schedule": "não foi possível guardar o horário",
+  "could not save the setting": "não foi possível guardar a definição",
+  "could not save the setting; storage may be full":
+    "não foi possível guardar a definição; o armazenamento pode estar cheio",
+  "could not save the settings; storage may be full":
+    "não foi possível guardar as definições; o armazenamento pode estar cheio",
+  "could not save the text; storage may be full": "não foi possível guardar o texto; o armazenamento pode estar cheio",
+  "could not save the time settings": "não foi possível guardar as definições de hora",
+  "the hub's clock is not set, or it is short of memory":
+    "o relógio da central não está acertado, ou tem pouca memória",
+  "{n} times in an hour": "{n} vezes numa hora",
+  "{n} nodes": "{n} nós",
+  // the Overview's backup step
+  "A sealed backup of the settings and the nodes' keys":
+    "Uma cópia de segurança selada das definições e das chaves dos nós",
+  "A new backup, as a node was paired since the last": "Uma cópia nova, porque um nó foi emparelhado depois da última",
+  "A backup in the last month (the last was {ago})": "Uma cópia no último mês (a última foi {ago})",
+  "Make a backup": "Fazer uma cópia",
+  "A sealed backup holds the settings and each paired node's key. Without one, a hub that fails or is taken means setting it up and pairing every node again. Keep the file and its passphrase apart, and make a new one after pairing a node.":
+    "Uma cópia selada guarda as definições e a chave de cada nó emparelhado. Sem ela, uma central que avarie ou seja levada obriga a configurá-la e a emparelhar todos os nós outra vez. Guarde o ficheiro e a frase-passe em sítios diferentes, e faça uma nova depois de emparelhar um nó.",
+  // the hub's label, on Device info
+  "The hub's label": "A etiqueta da central",
+  "A label to stick on the hub: where its page is, how its setup network opens, and the fingerprint a node is paired against. Whoever finds the hub later knows what it is and how to reach it.":
+    "Uma etiqueta para colar na central: onde está a sua página, como abre a rede de configuração, e a impressão digital com que se emparelha um nó. Quem encontrar a central mais tarde sabe o que é e como lhe chegar.",
+  "Print a label for the hub": "Imprimir uma etiqueta para a central",
+  "Alarm hub for ONVIF NVRs. Log in as admin with the hub password, kept elsewhere.":
+    "Central de alarme para NVR ONVIF. Entre como admin com a palavra-passe da central, guardada noutro sítio.",
+  "Page: {address} or {name}": "Página: {address} ou {name}",
+  "Setup network {network}: opens when the hub cannot join its Wi-Fi, with the hub password; on a hub with no settings, press its BOOT button first.":
+    "Rede de configuração {network}: abre quando a central não consegue entrar no seu Wi-Fi, com a palavra-passe da central; numa central sem definições, carregue primeiro no botão BOOT.",
+  "Fingerprint for pairing nodes: {fingerprint}": "Impressão digital para emparelhar nós: {fingerprint}",
+  "Serial number {serial}": "Número de série {serial}",
 };

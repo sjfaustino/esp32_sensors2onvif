@@ -149,7 +149,12 @@ std::string CamWeb::overviewJson(uint32_t now) {
     j.object("ready").flag("password", !webPassword_.empty() && !setupPassword).flag("clock", clockOk).flag("heard", heard);
     j.flag("notify", !webhook_.settings().url.empty() || !mqtt_.settings().host.empty())
         .flag("daily", !webhook_.settings().url.empty() && webhook_.settings().dailyMinute >= 0);
-    j.num("testAgo_s", testKnown, (long long)(t - lastTest)).end();
+    j.num("testAgo_s", testKnown, (long long)(t - lastTest));
+    // A sealed backup within the month, with every node paired since in it: a hub lost without one means pairing every
+    // node again.
+    bool backupKnown = clockOk && backupAt_ >= CAM_CLOCK_VALID_AFTER && backupAt_ <= (int64_t)t;
+    j.num("backupAgo_s", backupKnown, (long long)(t - backupAt_)).flag("pairedSinceBackup", pairedNodes() > backupPaired_);
+    j.end();
   });
 }
 

@@ -131,7 +131,10 @@ std::string CamWebhookSender::pageJson() {
   return jsonObject([&](CamJson& j) {
     static const char* const FORMATS[] = {"json", "text", "ntfy", "gotify"};
     j.str("url", w.url).str("format", FORMATS[w.format]).flag("token", !w.token.empty()).flag("alerts", w.alerts).flag("problems", w.problems);
-    j.num("daily", w.dailyMinute).num("weekday", w.weeklyDay).num("weekminute", w.weeklyMinute);
+    j.num("daily", w.dailyMinute)
+        .num("weekday", w.weeklyDay)
+        .num("weekminute", w.weeklyMinute)
+        .str("language", w.language == CAM_LANG_PT ? "pt" : "en");
     j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
     j.num("waiting", hooks_.count() + !post_.idle()).num("dropped", hooks_.dropped());
   });
@@ -163,7 +166,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
       const CamSensorTable::Health& h = table_.healthOf(id);
       if (!table_.slotOf(id).used) continue;
       const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
-      if (problem) d.problems.push_back((table_.slotOf(id).name.empty() ? table_.slotName(id) : table_.slotOf(id).name) + ": " + problem);
+      if (problem) d.problems.push_back((table_.slotOf(id).name.empty() ? table_.slotName(id) : table_.slotOf(id).name) + ": " + camText(problem));
     }
     d.allCounted = false;
     for (int n = 0; n < alarm_.log().count(); n++) {
@@ -177,6 +180,9 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
       d.notDelivered += e.kind == CAM_EVENT_NOT_DELIVERED;
     }
     if (alarm_.log().count() < CamEventLog::RECENT) d.allCounted = true;  // nothing has been dropped from memory yet
+    // The last test as the hub keeps it, too, which outlasts the events kept in memory, so a reminder is not sent early.
+    time_t kept = alarm_.lastTestAt();
+    if (kept >= CAM_CLOCK_VALID_AFTER && kept <= t && (d.testAgoS < 0 || (long long)(t - kept) < d.testAgoS)) d.testAgoS = (long long)(t - kept);
     std::string message = camDailyMessage(d);
     queue("daily check", 2, message, jsonObject([&](CamJson& j) {
             j.str("event", "daily check").str("sensor", "hub").str("name", "").str("time", iso(t)).str("hub", cfg_.hostName);
@@ -274,13 +280,14 @@ void CamWebhookSender::weeklyFinish(WeeklyWork& w, uint32_t now) {
   for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
     const CamSensorTable::Node& node = table_.nodeAt(n);
     if (node.used && node.daysLeft >= 0 && node.daysLeft < 30)
-      s.batteries.push_back(nodeLabel(table_, n) + ": about " + std::to_string(node.daysLeft) + (node.daysLeft == 1 ? " day" : " days"));
+      s.batteries.push_back(node.daysLeft == 1 ? camText("{0}: about {1} day", {nodeLabel(table_, n), "1"})
+                                               : camText("{0}: about {1} days", {nodeLabel(table_, n), std::to_string(node.daysLeft)}));
   }
   for (int id = 1; id <= alarm_.board().count(); id++) {
     const CamSensorTable::Health& h = table_.healthOf(id);
     if (!table_.slotOf(id).used) continue;
     const char* problem = h.silent ? "silent" : h.lowBattery ? "low battery" : h.weak ? "weak signal" : h.refused ? "messages refused" : nullptr;
-    if (problem) s.nowProblems.push_back((table_.slotOf(id).name.empty() ? table_.slotName(id) : table_.slotOf(id).name) + ": " + problem);
+    if (problem) s.nowProblems.push_back((table_.slotOf(id).name.empty() ? table_.slotName(id) : table_.slotOf(id).name) + ": " + camText(problem));
   }
   std::string message = camWeeklyMessage(s);
   queue("weekly summary", 2, message, jsonObject([&](CamJson& j) {

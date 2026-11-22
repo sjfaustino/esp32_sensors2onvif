@@ -134,10 +134,11 @@
 <label class="netRow" id="hookTokenRow"><span>Token</span><input id="hookToken" maxlength="64" autocapitalize="none" autocomplete="off" class="wide"></label>
 <label class="check hint" id="hookForgetRow" hidden><input id="hookForget" type="checkbox"> Forget the saved token</label></section>
 <section class="card" data-save="saveHook"><h2>What to send</h2>
+<label class="netRow"><span>Language of the messages</span><select id="hookLang"><option value="en">English</option><option value="pt">Português</option></select></label>
 <label class="check"><input id="hookAlerts" type="checkbox"> Alerts</label>
 <label class="check"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
 <label class="netRow"><span>Daily check at</span><input id="hookDaily" type="time"></label>
-<p class="hint">One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock.</p>
+<p class="hint">One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert, with a reminder to send one when the last is over a month old. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock.</p>
 <label class="netRow"><span>Weekly summary</span><select id="hookWeekDay"><option value="-1">None</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
 <label class="netRow"><span>at</span><input id="hookWeekTime" type="time" value="09:00"></label>
 <p class="hint">The week's alerts and whether they reached the NVR, the sensor that fired most, the problems, batteries forecast to run out within a month, and the last test alert.</p>
@@ -202,8 +203,11 @@
 <p class="hint">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p>
 <div class="acts"><button id="saveTime" class="primary">Save</button><button id="tmFromPc">Read from this PC</button></div>
 <div class="portMsg" id="tmMsg"></div></section></div>
-<div class="view" id="view-device" hidden><h1>Device info</h1><section class="card"><table class="info" id="devInfo"></table><p id="crashActs"></p></section></div>
-<div class="view" id="view-sensors">
+<div class="view" id="view-device" hidden><h1>Device info</h1><section class="card"><table class="info" id="devInfo"></table><p id="crashActs"></p></section>
+<section class="card"><h2>The hub's label</h2><p class="note">A label to stick on the hub: where its page is, how its setup network opens, and the fingerprint a node is paired against. Whoever finds the hub later knows what it is and how to reach it.</p>
+<div class="acts"><button id="labelPrint">Print a label for the hub</button></div>
+<div id="hubLabel" class="hubLabel" hidden><div id="lbQr"></div><b id="lbName"></b><div id="lbPage"></div><div id="lbSetup"></div><div id="lbFp"></div><div id="lbSerial"></div><div class="lbFoot">Alarm hub for ONVIF NVRs. Log in as admin with the hub password, kept elsewhere.</div></div></section></div>
+<div class="view" id="view-sensors" hidden>
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill"></div></div>
 <div id="msg"></div>
@@ -232,4 +236,5 @@
 <script src="node.js"></script>
 <script src="notify.js"></script>
 <script src="network.js"></script>
+<script src="qr.js"></script>
 <script src="system.js"></script></body></html>

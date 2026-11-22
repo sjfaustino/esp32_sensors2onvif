@@ -154,6 +154,7 @@ class HubStore : public CamStore {
   bool webhookSave(const CamWebhook& w) override { return storeWebhook(w); }
   bool armedSave(CamArmMode mode, int64_t until) override { return storeArmed(mode, until); }
   bool rearmSave(uint32_t minutes) override { return storeRearm(minutes); }
+  bool backupNoted(int64_t at, int paired) override { return storeBackupNoted(at, paired); }
   bool mqttSave(const CamMqtt& m) override { return storeMqtt(m); }
   bool nvrSave(const std::string& ip) override { return storeNvr(ip); }
   bool sealReserve(uint32_t next) override { return storeSealNext(next); }
@@ -174,6 +175,7 @@ static CamConfig makeConfig() {
   c.nvrIp = settings.nvrIp;
   if (settings.webPort != 80) c.setupAddress += ":" + std::to_string(settings.webPort);
   c.hostName = std::string(settings.hubName.c_str()) + ".local";
+  c.setupName = SETUP_AP_NAME;
   c.rtspPort = settings.rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
   c.sensorToken = settings.sensorToken.c_str();
@@ -193,6 +195,8 @@ static CamConfig makeConfig() {
   c.armMode = settings.armMode;
   c.disarmedUntil = settings.disarmedUntil;
   c.rearmMinutes = settings.rearmMinutes;
+  c.backupAt = settings.backupAt;
+  c.backupPaired = settings.backupPaired;
   c.firmwareVersion = FIRMWARE_VERSION;
   c.firmwareKey = FIRMWARE_PUBLIC_KEY;
   c.firmwareRelease = FIRMWARE_RELEASE;

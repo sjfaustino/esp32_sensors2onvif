@@ -18,6 +18,8 @@ struct HubSettings {
   CamArmMode armMode = CAM_ARMED_AWAY;  // not in backups, so restoring one never disarms the hub
   int64_t disarmedUntil = 0;            // a timed disarm's end: see camTimedDisarmOver
   uint16_t rearmMinutes = 0;            // how long a disarm from Home Assistant lasts; 0 until armed again
+  int64_t backupAt = 0;                 // when the last sealed backup was made; 0 for none
+  int backupPaired = 0;                 // how many nodes were paired then
   bool healthAlarm = false;
   // A fixed address belongs to one WiFi network, because the main and backup networks can use different address ranges.
   String staticFor, staticIp, staticMask, staticGateway, staticDns;
@@ -52,6 +54,7 @@ bool storeWebhook(const CamWebhook& w);
 bool storeMqtt(const CamMqtt& m);
 bool storeArmed(CamArmMode mode, int64_t until);
 bool storeRearm(uint32_t minutes);
+bool storeBackupNoted(int64_t at, int paired);
 bool resetSettings();
 bool forgetKeys();  // the sensor token, ESP-NOW key, pairing key and snapshot secret; loadSettings makes new ones  // erases everything except what
                     // the sensors need to keep reporting

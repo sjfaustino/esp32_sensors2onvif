@@ -1,6 +1,7 @@
 // Text for people: event names and notifications, durations, names cut to fit, and the JSON the pages read.
 #include "tests.h"
 #include "cam_number.h"
+#include "cam_text.h"
 
 // Numbers from outside are read whole and within range, never cut down to fit, so input 257 does not become input 1.
 static void numbers_are_read_whole_and_within_range() {
@@ -68,7 +69,7 @@ static void the_daily_check_says_what_matters() {
   d.nvrListening = true;
   TEST_ASSERT_EQUAL_STRING(
       "esp-alarmhub daily check: 3 of 3 nodes heard in the last day; no problems; 0 alerts in the last day; the NVR is listening; armed away; no "
-      "test alert recently",
+      "test alert in the last month: send one from the hub's Overview, to see that the NVR still records",
       camDailyMessage(d).c_str());
   d.heard = 2;
   d.problems = {"Gate: silent", "Shed: low battery"};
@@ -85,6 +86,59 @@ static void the_daily_check_says_what_matters() {
   d.notDelivered = 0;
   d.alerts = 4;
   TEST_ASSERT_TRUE(camDailyMessage(d).find("at least 4 alerts in the last day, all delivered to the NVR") != std::string::npos);
+  // Over a month since the last test alert, the daily check asks for one, so the reminder reaches the phone.
+  d.testAgoS = 31LL * 86400;
+  TEST_ASSERT_TRUE(camDailyMessage(d).find("last test alert 31 days 0 h ago, over a month: send one from the hub's Overview") != std::string::npos);
+  d.testAgoS = 29LL * 86400;
+  TEST_ASSERT_TRUE(camDailyMessage(d).find("over a month") == std::string::npos);
+}
+
+// Under Notifications the messages can be in Portuguese: whole sentences, each in its own word order, with the names,
+// numbers and times in them, and the events' names too.
+static void messages_can_be_in_portuguese() {
+  camSetTextLanguage(CAM_LANG_PT);
+  CamDailyCheck d;
+  d.hub = "central";
+  d.mode = "home";
+  d.nodes = 3;
+  d.heard = 2;
+  d.problems = {std::string("Portão: ") + camText("silent")};
+  d.alerts = 1;
+  d.nvrListening = true;
+  d.testAgoS = 3 * 86400;
+  TEST_ASSERT_EQUAL_STRING(
+      "central verificação diária: 2 de 3 nós ouvidos no último dia; problemas: Portão: em silêncio; 1 alerta no último dia, todos "
+      "entregues ao NVR; o NVR está a ouvir; armada em casa; último alerta de teste há 3 dias 0 h",
+      camDailyMessage(d).c_str());
+  TEST_ASSERT_EQUAL_STRING("Portão (X/1): alerta", camEventMessage(CAM_EVENT_REPORT, "Portão (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("central foi desarmada a partir de a página web, durante 1 h: os alertas ficam registados mas não são enviados ao NVR",
+                           camEventMessage(CAM_EVENT_DISARMED, "central", "the web page, for 1 h", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("central arrancou (ligação à corrente ou botão de reinício), depois de desligada até 2 h 0 min",
+                           camEventMessage(CAM_EVENT_HUB_STARTED, "central", "Power on or reset button", 7200, false).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "central: 3 nós deixaram de comunicar ao mesmo tempo. As baterias falham uma de cada vez, por isso algo pode estar a "
+      "bloquear o rádio, como um bloqueador",
+      camEventMessage(CAM_EVENT_JAMMING, "central", "3 nodes", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING("5 dias 2 h", camDurationText(5 * 86400 + 2 * 3600).c_str());
+  camSetTextLanguage(CAM_LANG_EN);
+  TEST_ASSERT_EQUAL_STRING("Gate (X/1): alert", camEventMessage(CAM_EVENT_REPORT, "Gate (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());
+}
+
+// Each phrase has the same {n} in both languages, and each event's name is in the table, so no message is half English.
+static void each_message_phrase_has_its_portuguese() {
+  for (size_t i = 0; i < camPhraseCount(); i++) {
+    std::string en = camPhraseEnglish(i), pt = camPhrasePortuguese(i);
+    for (char n = '0'; n <= '9'; n++) {
+      std::string mark = std::string("{") + n + "}";
+      TEST_ASSERT_EQUAL_MESSAGE(en.find(mark) != std::string::npos, pt.find(mark) != std::string::npos, en.c_str());
+    }
+  }
+  camSetTextLanguage(CAM_LANG_PT);
+  std::string missing;
+  for (const char* name : camEventNames())
+    if (strcmp(camText(name), name) == 0) missing += std::string(name) + "; ";
+  camSetTextLanguage(CAM_LANG_EN);  // before the check, so a failure leaves the other tests in English
+  TEST_ASSERT_EQUAL_STRING("", missing.c_str());
 }
 
 static void the_weekly_summary_says_what_matters() {
@@ -171,6 +225,8 @@ void runTextTests() {
   RUN_TEST(json_writer_escapes_any_text);
   RUN_TEST(long_names_are_cut_between_characters);
   RUN_TEST(the_daily_check_says_what_matters);
+  RUN_TEST(messages_can_be_in_portuguese);
+  RUN_TEST(each_message_phrase_has_its_portuguese);
   RUN_TEST(the_weekly_summary_says_what_matters);
   RUN_TEST(every_event_kind_has_its_own_name);
 }

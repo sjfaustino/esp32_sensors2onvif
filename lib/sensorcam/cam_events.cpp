@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "cam_soap.h"
+#include "cam_text.h"
 
 static const char LOG[] = "events.log";
 static const char LOG_OLD[] = "events-old.log";
@@ -52,87 +53,129 @@ std::vector<const char*> camEventNames() {
   return names;
 }
 
+// The leading number of a detail such as "3 nodes", or -1.
+static long long leadingNumber(const std::string& s) {
+  long long n = 0;
+  size_t i = 0;
+  while (i < s.size() && s[i] >= '0' && s[i] <= '9') n = n * 10 + (s[i++] - '0');
+  return i ? n : -1;
+}
+
+// Where an arm or a disarm came from, and for how long, as the hub keeps it: "the web page", or "the web page, for 1 h",
+// as camMinutesText says the time. In the message's language.
+static std::string fromText(const std::string& detail) {
+  size_t comma = detail.find(", for ");
+  if (comma == std::string::npos) return camText(detail.c_str());
+  std::string from = detail.substr(0, comma), time = detail.substr(comma + 6);
+  long long n = leadingNumber(time);
+  std::string unit = n < 0 ? std::string() : time.substr(std::to_string(n).size());
+  std::string said = unit == " min"                      ? camText("{0} min", {std::to_string(n)})
+                     : unit == " h"                      ? camText("{0} h", {std::to_string(n)})
+                     : unit == " day" || unit == " days" ? camCount(n, "{0} day", "{0} days")
+                                                         : time;
+  return camText("{0}, for {1}", {camText(from.c_str()), said});
+}
+
 std::string camEventMessage(uint8_t kind, const std::string& who, const std::string& detail, uint32_t offS, bool delayed) {
   bool known = offS != CAM_AGE_UNKNOWN;
   switch (kind) {
-    case CAM_EVENT_NOT_DELIVERED: return who + ": " + camEventName(kind, true, delayed) + ", because the NVR is not listening";
-    case CAM_EVENT_NVR_GONE: return "The NVR is not listening to " + who + ": alerts are not reaching it";
-    case CAM_EVENT_NVR_BACK: return "The NVR is listening to " + who + " again";
-    case CAM_EVENT_HUB_STARTED:
-      return who + " started (" + (detail.empty() ? std::string("unknown") : detail) + ")" +
-             (known ? ", after being off for up to " + camDurationText(offS) : "");
+    case CAM_EVENT_NOT_DELIVERED: return camText("{0}: {1}, because the NVR is not listening", {who, camText(camEventName(kind, true, delayed))});
+    case CAM_EVENT_NVR_GONE: return camText("The NVR is not listening to {0}: alerts are not reaching it", {who});
+    case CAM_EVENT_NVR_BACK: return camText("The NVR is listening to {0} again", {who});
+    case CAM_EVENT_HUB_STARTED: {
+      std::string why = detail.empty() ? camText("unknown") : camText(detail.c_str());
+      return known ? camText("{0} started ({1}), after being off for up to {2}", {who, why, camDurationText(offS)})
+                   : camText("{0} started ({1})", {who, why});
+    }
     case CAM_EVENT_NETWORK_LOST:
-      return who + " was off its Wi-Fi network for up to " + (known ? camDurationText(offS) : std::string("an unknown time")) +
-             "; alerts in that time reach the NVR as past events once it is back";
-    case CAM_EVENT_ARMED: return who + " was armed" + (detail.empty() ? std::string() : " from " + detail);
-    case CAM_EVENT_RESTART_LOOP: return who + " has restarted by itself " + detail + ": something keeps stopping it, so alerts may be missed";
+      return camText("{0} was off its Wi-Fi network for up to {1}; alerts in that time reach the NVR as past events once it is back",
+                     {who, known ? camDurationText(offS) : std::string(camText("an unknown time"))});
+    case CAM_EVENT_ARMED: return detail.empty() ? camText("{0} was armed", {who}) : camText("{0} was armed from {1}", {who, fromText(detail)});
+    case CAM_EVENT_RESTART_LOOP:
+      return camText("{0} has restarted by itself {1} times in an hour: something keeps stopping it, so alerts may be missed",
+                     {who, std::to_string(leadingNumber(detail))});
     case CAM_EVENT_NODE_FAULT:
-      return who + ": the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the Nodes and pairing page";
-    case CAM_EVENT_BATTERY_RUNNING_OUT: return who + ": the battery will run out within a week";
+      return camText("{0}: the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the Nodes and pairing page",
+                     {who});
+    case CAM_EVENT_BATTERY_RUNNING_OUT: return camText("{0}: the battery will run out within a week", {who});
     case CAM_EVENT_JAMMING:
-      return who + ": " + detail +
-             " stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a jammer";
+      return camText(
+          "{0}: {1} nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a "
+          "jammer",
+          {who, std::to_string(leadingNumber(detail))});
     case CAM_EVENT_BUSY_SENSOR:
-      return who + ": fired " + std::to_string(CAM_BUSY_ALERTS) +
-             " times within an hour. Every alert still goes to the NVR, but check the sensor's aim and wiring";
+      return camText("{0}: fired {1} times within an hour. Every alert still goes to the NVR, but check the sensor's aim and wiring",
+                     {who, std::to_string(CAM_BUSY_ALERTS)});
     case CAM_EVENT_ARMED_HOME:
-      return who + " was armed home" + (detail.empty() ? std::string() : " from " + detail) + ": interior sensors are logged but not sent to the NVR";
+      return detail.empty() ? camText("{0} was armed home: interior sensors are logged but not sent to the NVR", {who})
+                            : camText("{0} was armed home from {1}: interior sensors are logged but not sent to the NVR", {who, fromText(detail)});
     case CAM_EVENT_DISARMED:
-      return who + " was disarmed" + (detail.empty() ? std::string() : " from " + detail) + ": alerts are logged but not sent to the NVR";
-    default: return who + ": " + camEventName(kind, true, delayed);
+      return detail.empty() ? camText("{0} was disarmed: alerts are logged but not sent to the NVR", {who})
+                            : camText("{0} was disarmed from {1}: alerts are logged but not sent to the NVR", {who, fromText(detail)});
+    default: return camText("{0}: {1}", {who, camText(camEventName(kind, true, delayed))});
   }
 }
 
+static std::string joined(const std::vector<std::string>& items) {
+  std::string out;
+  for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+  return out;
+}
+
+static const char* modeText(const std::string& mode) {
+  return camText(mode == "disarmed" ? "disarmed" : mode == "home" ? "armed home" : "armed away");
+}
+
+// The last test alert, and a word to send one when it is over a month old, or none is known.
+static std::string testText(long long agoS, bool remind) {
+  if (agoS < 0)
+    return remind ? camText("no test alert in the last month: send one from the hub's Overview, to see that the NVR still records")
+                  : camText("no test alert this week");
+  if (remind && agoS > CAM_TEST_REMIND_AFTER_S)
+    return camText("last test alert {0} ago, over a month: send one from the hub's Overview, to see that the NVR still records",
+                   {camDurationText((uint32_t)agoS)});
+  return camText("last test alert {0} ago", {camDurationText((uint32_t)agoS)});
+}
+
 std::string camDailyMessage(const CamDailyCheck& d) {
-  std::string m = d.hub + " daily check: " + std::to_string(d.heard) + " of " + std::to_string(d.nodes) + " nodes heard in the last day";
-  if (d.problems.empty()) {
-    m += "; no problems";
-  } else {
-    m += "; problems: ";
-    for (size_t i = 0; i < d.problems.size(); i++) m += (i ? ", " : "") + d.problems[i];
-  }
-  m += "; " + std::string(d.allCounted ? "" : "at least ") + std::to_string(d.alerts) + (d.alerts == 1 ? " alert" : " alerts") + " in the last day";
+  std::string m = camText("{0} daily check: {1} of {2} nodes heard in the last day", {d.hub, std::to_string(d.heard), std::to_string(d.nodes)});
+  m += "; " + (d.problems.empty() ? std::string(camText("no problems")) : camText("problems: {0}", {joined(d.problems)}));
+  m += "; " + (d.allCounted ? camCount(d.alerts, "{0} alert in the last day", "{0} alerts in the last day")
+                            : camCount(d.alerts, "at least {0} alert in the last day", "at least {0} alerts in the last day"));
   if (d.notDelivered)
-    m += ", " + std::to_string(d.notDelivered) + " not delivered to the NVR";
+    m += ", " + camText("{0} not delivered to the NVR", {std::to_string(d.notDelivered)});
   else if (d.alerts)
-    m += ", all delivered to the NVR";
-  m += d.nvrListening ? "; the NVR is listening" : "; the NVR is NOT listening";
-  m += d.mode == "disarmed" ? "; disarmed" : "; armed " + d.mode;
-  m += d.testAgoS >= 0 ? "; last test alert " + camDurationText((uint32_t)d.testAgoS) + " ago" : "; no test alert recently";
+    m += std::string(", ") + camText("all delivered to the NVR");
+  m += std::string("; ") + camText(d.nvrListening ? "the NVR is listening" : "the NVR is NOT listening");
+  m += std::string("; ") + modeText(d.mode);
+  m += "; " + testText(d.testAgoS, true);
   return m;
 }
 
 std::string camWeeklyMessage(const CamWeeklySummary& w) {
-  std::string m = w.hub + " weekly summary: " + std::string(w.allCounted ? "" : "at least ") + std::to_string(w.alerts) +
-                  (w.alerts == 1 ? " alert" : " alerts") + " in the last 7 days";
+  std::string m = camText("{0} weekly summary", {w.hub}) + ": " +
+                  (w.allCounted ? camCount(w.alerts, "{0} alert in the last 7 days", "{0} alerts in the last 7 days")
+                                : camCount(w.alerts, "at least {0} alert in the last 7 days", "at least {0} alerts in the last 7 days"));
   if (w.notDelivered)
-    m += ", " + std::to_string(w.notDelivered) + " not delivered to the NVR";
+    m += ", " + camText("{0} not delivered to the NVR", {std::to_string(w.notDelivered)});
   else if (w.alerts)
-    m += ", all delivered to the NVR";
-  if (w.busiestAlerts) m += "; most from " + w.busiest + " (" + std::to_string(w.busiestAlerts) + ")";
-  if (w.held) m += "; " + std::to_string(w.held) + " more only logged, while disarmed, armed home or in quiet hours";
-  m += "; " + std::to_string(w.problems) + (w.problems == 1 ? " problem" : " problems") + " reported";
-  if (!w.batteries.empty()) {
-    m += "; batteries running low: ";
-    for (size_t i = 0; i < w.batteries.size(); i++) m += (i ? ", " : "") + w.batteries[i];
-  }
-  if (w.nowProblems.empty()) {
-    m += "; no problems now";
-  } else {
-    m += "; problems now: ";
-    for (size_t i = 0; i < w.nowProblems.size(); i++) m += (i ? ", " : "") + w.nowProblems[i];
-  }
-  m += w.nvrListening ? "; the NVR is listening" : "; the NVR is NOT listening";
-  m += w.mode == "disarmed" ? "; disarmed" : "; armed " + w.mode;
-  m += w.testAgoS >= 0 ? "; last test alert " + camDurationText((uint32_t)w.testAgoS) + " ago" : "; no test alert this week";
+    m += std::string(", ") + camText("all delivered to the NVR");
+  if (w.busiestAlerts) m += "; " + camText("most from {0} ({1})", {w.busiest, std::to_string(w.busiestAlerts)});
+  if (w.held) m += "; " + camText("{0} more only logged, while disarmed, armed home or in quiet hours", {std::to_string(w.held)});
+  m += "; " + camCount(w.problems, "{0} problem reported", "{0} problems reported");
+  if (!w.batteries.empty()) m += "; " + camText("batteries running low: {0}", {joined(w.batteries)});
+  m += "; " + (w.nowProblems.empty() ? std::string(camText("no problems now")) : camText("problems now: {0}", {joined(w.nowProblems)}));
+  m += std::string("; ") + camText(w.nvrListening ? "the NVR is listening" : "the NVR is NOT listening");
+  m += std::string("; ") + modeText(w.mode);
+  m += "; " + testText(w.testAgoS, false);
   return m;
 }
 
 std::string camDurationText(uint32_t seconds) {
   uint32_t m = (seconds + 59) / 60;
-  if (m < 60) return std::to_string(m) + " min";
-  if (m < 48 * 60) return std::to_string(m / 60) + " h " + std::to_string(m % 60) + " min";
-  return std::to_string(m / 1440) + " days " + std::to_string(m / 60 % 24) + " h";
+  if (m < 60) return camText("{0} min", {std::to_string(m)});
+  if (m < 48 * 60) return camText("{0} h {1} min", {std::to_string(m / 60), std::to_string(m % 60)});
+  return camText("{0} days {1} h", {std::to_string(m / 1440), std::to_string(m / 60 % 24)});
 }
 
 // ---- one record ----

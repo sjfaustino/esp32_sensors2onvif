@@ -222,7 +222,7 @@ def a_test_alert(s):
     ready = overview.get('ready', {})
     check("the overview's checklist knows the test alert just sent, the clock, the password and a sensor heard",
           ready.get('testAgo_s') is not None and ready['testAgo_s'] < 60 and ready['clock'] and ready['password'] == bool(PASSWORD)
-          and ready['heard'] and 'notify' in ready and 'daily' in ready, ready)
+          and ready['heard'] and 'notify' in ready and 'daily' in ready and 'pairedSinceBackup' in ready, ready)
     check('the overview needs the web password', api('GET', '/api/overview', auth=False)[0] == 401)
     clear(3)
 

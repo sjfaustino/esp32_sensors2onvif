@@ -137,7 +137,12 @@ void CamWeb::getInfo(const ApiRequest& r) {
     j.array("unsupported");
     for (const std::string& seen : unsupported_)
       if (!seen.empty()) j.str(seen);
-    j.end().str("token", cfg_.sensorToken).flag("onvifLogin", !onvifPassword_.empty()).str("ip", localIp_()).str("name", cfg_.hostName);
+    j.end()
+        .str("token", cfg_.sensorToken)
+        .flag("onvifLogin", !onvifPassword_.empty())
+        .str("ip", localIp_())
+        .str("name", cfg_.hostName)
+        .str("setupName", cfg_.setupName);
     j.num("onvifPort", cfg_.onvifPort)
         .num("webPort", cfg_.webPort)
         .num("rtspPort", cfg_.rtspPort)
@@ -314,7 +319,20 @@ void CamWeb::postBackup(const ApiRequest& r) {
   std::string sealed = camSealBackup(plain, key, salt, rounds, random);
   wipe(plain);
   crypto_wipe(key, sizeof(key));
+  // Noted, so the Overview can ask for a new backup once this one is a month old or a node is paired since. The hub
+  // cannot know the file was kept, only that it was sent.
+  time_t now = chip_->wallTime();
+  if (now >= CAM_CLOCK_VALID_AFTER && store_->backupNoted((int64_t)now, pairedNodes())) {
+    backupAt_ = now;
+    backupPaired_ = pairedNodes();
+  }
   reply(c, 200, "text/plain", std::move(sealed), "Cache-Control: no-store\r\n");
+}
+
+int CamWeb::pairedNodes() const {
+  int n = 0;
+  for (int i = 1; i <= CAM_MAX_SENSORS; i++) n += table_.nodeAt(i).used && table_.nodeAt(i).paired;
+  return n;
 }
 
 // A sealed backup, with the key the page worked out from its passphrase in the X-Backup-Key header, in hex; or a plain

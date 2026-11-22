@@ -148,6 +148,7 @@ const CamSetting CAM_SETTINGS[] = {
     {"net", "hooktk", 's', 0, 0, [](const std::string& v) { return v.empty() || validToken(v); }},
     {"net", "hookwd", 'i', -1, 6, nullptr},  // the weekly summary's day, 0 for Sunday; -1 for none
     {"net", "hookwm", 'i', 0, 1439, nullptr},
+    {"net", "hookln", 'i', 0, 1, nullptr},  // the messages' language: 0 English, 1 Portuguese
 };
 const size_t CAM_SETTING_COUNT = sizeof(CAM_SETTINGS) / sizeof(CAM_SETTINGS[0]);
 

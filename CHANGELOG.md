@@ -13,6 +13,15 @@ before that, a new minor version may change settings or the messages.
 
 ### The pages
 
+- Notifications can be in Portuguese: **Language of the messages**, under Notifications, words every alert, problem,
+  daily check and weekly summary, and Home Assistant's message. The event names stay English, for automations.
+- The daily check asks for a test alert once the last is over a month old, by the time the hub keeps, not only the
+  events in memory.
+- The Overview asks for a sealed backup when there is none from the last month, or a node was paired since.
+- Device info prints a label for the hub: a QR code of its page, its setup network, the fingerprint nodes are paired
+  against, and its serial number. The QR code is made in the page, and checked against segno module by module.
+- The hub's messages when saving fails are in Portuguese too, and the translation check now finds them.
+
 - The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
   for each device; the hub's messages are shown in the same language. `tools/check_translations.py`, run with the quick
   checks, keeps every phrase translated.

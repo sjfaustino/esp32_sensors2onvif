@@ -31,6 +31,8 @@ CamWeb::CamWeb(const CamWebParts& p)
       localIp_(p.localIp),
       millis_(p.millis),
       webPassword_(p.cfg.webPassword),
+      backupAt_(p.cfg.backupAt),
+      backupPaired_(p.cfg.backupPaired),
       extraHosts_(p.cfg.extraHosts),
       onvifPassword_(p.cfg.onvifPassword),
       schedule_(p.cfg.schedule) {

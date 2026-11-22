@@ -92,6 +92,7 @@ void loadSettings() {
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
     s.webhook.dailyMinute = p.getInt("hookdy", -1);
+    s.webhook.language = p.getInt("hookln", 0) == 1 ? 1 : 0;
     s.mqtt.host = p.getString("mqhost", "").c_str();
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
@@ -102,6 +103,8 @@ void loadSettings() {
     s.armMode = mode <= CAM_ARMED_HOME ? (CamArmMode)mode : CAM_ARMED_AWAY;
     s.disarmedUntil = s.armMode == CAM_DISARMED ? p.getLong64("armuntil", 0) : 0;
     s.rearmMinutes = p.getUShort("rearm", 0);
+    s.backupAt = p.getLong64("bkat", 0);
+    s.backupPaired = p.getInt("bkpr", 0);
     s.healthAlarm = p.getBool("hlth", false);
     s.nvrIp = p.getString("nvrip", "").c_str();
     s.timeNtp = p.getBool("ntp", true);
@@ -233,7 +236,8 @@ bool storeWebhook(const CamWebhook& w) {
   return withPrefs("net", [&w](Preferences& p) {
     return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.format == CAM_HOOK_TEXT) == 1 && p.putInt("hookfm", w.format) == 4 &&
            putText(p, "hooktk", w.token.c_str()) && p.putInt("hookwd", w.weeklyDay) == 4 && p.putInt("hookwm", w.weeklyMinute) == 4 &&
-           p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4;
+           p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4 &&
+           p.putInt("hookln", w.language) == 4;
   });
 }
 
@@ -251,6 +255,10 @@ bool storeArmed(CamArmMode mode, int64_t until) {
     return p.putLong64("armuntil", until) == 8 && p.putUChar("armmode", mode) == 1 && p.putBool("armhome", mode == CAM_ARMED_HOME) == 1 &&
            p.putBool("armed", mode != CAM_DISARMED) == 1;
   });
+}
+
+bool storeBackupNoted(int64_t at, int paired) {
+  return withPrefs("net", [at, paired](Preferences& p) { return p.putLong64("bkat", at) == 8 && p.putInt("bkpr", paired) == 4; });
 }
 
 bool storeRearm(uint32_t minutes) {

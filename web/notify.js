@@ -98,6 +98,7 @@
         $("hookToken").value = "";
         $("hookForget").checked = false;
         $("hookAlerts").checked = h.alerts;
+        $("hookLang").value = h.language || "en";
         $("hookProblems").checked = h.problems;
         $("hookDaily").value = h.daily >= 0 ? hhmm(h.daily) : "";
         $("hookWeekDay").value = String(h.weekday);
@@ -135,6 +136,8 @@
           ($("hookAlerts").checked ? 1 : 0) +
           "&problems=" +
           ($("hookProblems").checked ? 1 : 0) +
+          "&language=" +
+          $("hookLang").value +
           "&daily=" +
           dailyMinute($("hookDaily").value),
         tr("Saved."),

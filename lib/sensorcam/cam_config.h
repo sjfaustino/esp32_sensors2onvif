@@ -88,6 +88,7 @@ struct CamWebhook {
   int dailyMinute = -1;        // the daily check, in minutes after local midnight; -1 sends none
   int weeklyDay = -1;          // the weekly summary's day, 0 for Sunday to 6; -1 sends none
   int weeklyMinute = 9 * 60;   // and its time, in minutes after local midnight
+  int language = 0;            // of the messages: a CamLanguage (cam_text.h), English or Portuguese
 };
 
 // An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.
@@ -191,6 +192,7 @@ class CamStore {
   virtual bool webhookSave(const CamWebhook& w) { return false; }
   virtual bool armedSave(CamArmMode mode, int64_t until) { return false; }
   virtual bool rearmSave(uint32_t minutes) { return false; }
+  virtual bool backupNoted(int64_t at, int paired) { return false; }  // a sealed backup was made
   virtual bool mqttSave(const CamMqtt& m) { return false; }
   virtual bool nvrSave(const std::string& ip) { return false; }
   // The first number the next start may give a sealed message, kept in flash and never in a backup. Each number seals
@@ -207,14 +209,15 @@ struct CamConfig {
   CamRadio* radio = nullptr;
   CamStore* store = nullptr;
   std::string fsRoot = "/littlefs";
-  std::string webPassword;                   // when set, the file manager requires Basic auth as "admin"
-  std::string hostName;                      // the name shown in the web menu, such as esp-alarmhub.local
-  std::string setupAddress = "192.168.4.1";  // where visitors to the setup network are sent
-  uint16_t onvifPort = 8899;                 // ONVIF requests only
-  uint16_t webPort = 80;                     // the file manager, sensor input, status and events
-  uint16_t captivePort = 80;                 // answered only while the setup network is open, because phones probe it; 0 for none
-  std::string onvifPassword;                 // when set, ONVIF and RTSP need the user admin and this password
-  bool healthAlarm = false;                  // a silent node or low battery also raises an NVR alarm
+  std::string webPassword;                       // when set, the file manager requires Basic auth as "admin"
+  std::string hostName;                          // the name shown in the web menu, such as esp-alarmhub.local
+  std::string setupName = "esp-alarmhub-setup";  // its setup network's name, for the hub's label
+  std::string setupAddress = "192.168.4.1";      // where visitors to the setup network are sent
+  uint16_t onvifPort = 8899;                     // ONVIF requests only
+  uint16_t webPort = 80;                         // the file manager, sensor input, status and events
+  uint16_t captivePort = 80;                     // answered only while the setup network is open, because phones probe it; 0 for none
+  std::string onvifPassword;                     // when set, ONVIF and RTSP need the user admin and this password
+  bool healthAlarm = false;                      // a silent node or low battery also raises an NVR alarm
   CamSchedule schedule;
   std::string espNowKey;   // signs the ESP-NOW messages of nodes not paired
   std::string pairingKey;  // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
@@ -228,6 +231,8 @@ struct CamConfig {
   CamArmMode armMode = CAM_ARMED_AWAY;
   int64_t disarmedUntil = 0;     // see camTimedDisarmOver; 0 for a disarm without an end
   uint32_t rearmMinutes = 0;     // how long a disarm from Home Assistant lasts; 0 until armed again
+  int64_t backupAt = 0;          // when the last sealed backup was made, by the hub's clock; 0 for none known
+  int backupPaired = 0;          // and how many nodes were paired then, so one paired since asks for a new backup
   std::string firmwareVersion;   // told to Home Assistant
   std::string firmwareKey;       // the Ed25519 public key, as 64 hex digits, that signs updates (s2o_fw_sig.h)
   uint32_t firmwareRelease = 0;  // this firmware's release number; an update with a lower one is refused

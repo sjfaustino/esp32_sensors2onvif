@@ -425,6 +425,40 @@ def test_the_floor_plan_by_signal(page):
         api('DELETE', '/api/file?path=plan.json')
 
 
+def test_the_hubs_label(page):
+    """Device info prints a label for the hub, with its page's address, its setup network, its pairing fingerprint and
+    its serial number, and the printed page holds the label alone."""
+    page.goto(URL + '#device')
+    page.wait_for_selector('#labelPrint', state='visible')
+    page.evaluate('() => { window.printed = 0; window.print = () => window.printed++; }')  # a function, as one, so not called by itself
+    page.click('#labelPrint')
+    check('the label is printed', page_wait(page, lambda: page.evaluate('window.printed') == 1), page.text_content('#toast'))
+    label = page.text_content('#hubLabel')
+    info = get_json('/api/info')
+    check('with where the page is, the setup network and the serial number',
+          f"http://{info['ip']}" in label and info['setupName'] in label and info['serial'] in label, label)
+    check('and the fingerprint nodes are paired against', get_json('/api/pairing')['hub'] in label, label)
+    check('with a QR code of the page\'s address', page.locator('#lbQr svg.qr path').count() == 1)
+    # The QR codes, checked module by module against segno for each of their eight masks, and for the mask chosen.
+    import segno
+    import segno.encoder as enc
+    standard = enc.write_padding_bits  # segno pads a whole zero byte where the data already ends on a byte; the standard
+    enc.write_padding_bits = lambda buff, version, length: buff.extend([0] * ((8 - length % 8) % 8))  # pads only to it
+    try:
+        for text in [f"http://{info['ip']}:18080/", 'http://192.168.1.10/', 'http://esp-alarmhub.local/', 'x' * 100, 'ç€']:
+            mine = page.evaluate('([t]) => [qrCode.matrix(t), [0, 1, 2, 3, 4, 5, 6, 7].map((k) => qrCode.matrix(t, k))]', [text])
+            ref = segno.make(text, error='m', mode='byte', micro=False, boost_error=False)
+            same = all(mine[1][k] == [[bool(v) for v in row] for row in segno.make(text, error='m', mode='byte', mask=k, micro=False,
+                                                                                    boost_error=False).matrix] for k in range(8))
+            check(f'the QR code of {text[:24]!r} is the one segno makes, on every mask and the one chosen',
+                  same and mine[0] == [[bool(v) for v in row] for row in ref.matrix], text)
+    finally:
+        enc.write_padding_bits = standard
+    page.emulate_media(media='print')
+    check('printed, only the label shows', page.evaluate("getComputedStyle(document.querySelector('h1')).visibility") == 'hidden'
+          and page.evaluate("getComputedStyle(document.getElementById('lbName')).visibility") == 'visible')
+
+
 def test_quiet_when_hidden(browser):
     """A page left open in a tab that is not shown asks the hub nothing, and asks again once it is shown; and the
     Overview asks for no more than its summary between changes."""
@@ -752,6 +786,7 @@ def page_cases(nvr, storage):
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
         ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),
+        ('the_hubs_label', on_page(test_the_hubs_label)),
         ('every_page_opens', test_every_page_opens),
         ('dark_and_narrow', test_dark_and_narrow),
         ('the_pages_in_portuguese', test_the_pages_in_portuguese),

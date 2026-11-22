@@ -320,6 +320,51 @@ summary {
 .first.open::after {
   content: "\25B4";
 }
+/* The hub's label, on Device info: about 62 mm wide, and printed alone. */
+.hubLabel {
+  width: 62mm;
+  margin: 12px 0;
+  padding: 4mm;
+  border: 1px dashed var(--border-input);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.hubLabel b {
+  display: block;
+  font-size: 15px;
+}
+.hubLabel svg.qr {
+  float: right;
+  width: 22mm;
+  height: 22mm;
+  margin: 0 0 2mm 3mm;
+  fill: #000;
+  background: #fff;
+}
+.hubLabel #lbFp {
+  font-family: ui-monospace, monospace;
+  font-weight: bold;
+}
+.hubLabel .lbFoot {
+  margin-top: 4px;
+  color: var(--muted-text);
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .hubLabel,
+  .hubLabel * {
+    visibility: visible;
+  }
+  .hubLabel {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: 0;
+  }
+}
+
 /* The pages' language, for this device, at the foot of the menu. */
 .langPick {
   display: flex;

@@ -245,7 +245,10 @@ class CamWeb {
   uint32_t onvifRepeats_ = 0;
   void noteOnvifCode(const std::string& body);
   uint32_t drainMs_ = CAM_HTTP_DRAIN_MS;
-  std::string webPassword_;     // the pages need the user admin and this, when set
+  std::string webPassword_;  // the pages need the user admin and this, when set
+  int64_t backupAt_ = 0;     // the last sealed backup, as CamConfig::backupAt, and the nodes paired then
+  int backupPaired_ = 0;
+  int pairedNodes() const;
   std::string extraHosts_;      // other names the pages answer to; changed on the HTTP page without a restart
   std::string onvifPassword_;   // ONVIF needs the user admin and this, when set
   CamSchedule schedule_;        // the restart schedule, as the page shows it
