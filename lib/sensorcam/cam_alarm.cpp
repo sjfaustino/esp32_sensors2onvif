@@ -507,7 +507,10 @@ CamForNode CamAlarm::forNode(int id) const {
 bool CamAlarm::updateReady(int id) const {
   const CamNodeInfo& info = table_.nodeOf(id).info;
   const CamNodeImage* f = images_.forChip(info.chip);
-  return f && !info.version.empty() && info.version != f->version && info.refused != f->number && !info.saving;
+  if (!f || info.version.empty() || info.version == f->version || info.refused == f->number || info.saving) return false;
+  // Tried on one node first: the others wait until it has run it for a day, by the hub's clock.
+  time_t t = chip_->wallTime();
+  return f->passed(t >= CAM_CLOCK_VALID_AFTER ? (uint32_t)t : 0) || f->pilot == camMacText(table_.slotOf(id).mac);
 }
 
 // A reading every few hours goes to battery.txt in the node's folder, and from those comes how long the battery will last.
@@ -558,6 +561,11 @@ void CamAlarm::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len
   node.info = info;
   // Now running the image it was fetching: the update is over.
   if (node.updating && images_.forChip(info.chip) && images_.forChip(info.chip)->version == info.version) node.updating = false;
+  // The node a firmware is tried on first runs it now: its day starts.
+  const CamNodeImage* f = images_.forChip(info.chip);
+  time_t t = chip_->wallTime();
+  if (f && f->pilot == camMacText(mac) && info.version == f->version && !f->pilotRan && t >= CAM_CLOCK_VALID_AFTER)
+    images_.notePilotRan(info.chip, (uint32_t)t);
   if (info == old) return;
   std::string text = camNodeInfoText(info);
   storage_.writeFile(camMacText(mac) + "/about.txt", text.data(), text.size());

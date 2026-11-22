@@ -33,6 +33,10 @@ void CamNodeImages::load() {
         numbersOk = numbersOk && camNumber(value, image.number);
       else if (key == "size")
         numbersOk = numbersOk && camNumber(value, image.size);
+      else if (key == "pilot")
+        image.pilot = value;
+      else if (key == "pilotRan")
+        numbersOk = numbersOk && camNumber(value, image.pilotRan);
     }
     if (!numbersOk || image.version.empty() || !image.number || storage_.fileSize(imagePath(image.chip)) != image.size || forChip(image.chip))
       continue;
@@ -50,16 +54,44 @@ bool CamNodeImages::read(uint16_t chip, uint32_t offset, uint8_t* out, size_t le
   return storage_.readAt(imagePath(chip), offset, (char*)out, len);
 }
 
+bool CamNodeImages::describe(const CamNodeImage& image) const {
+  std::string text = "chip=" + std::to_string(image.chip) + "\nversion=" + image.version + "\nnumber=" + std::to_string(image.number) +
+                     "\nsize=" + std::to_string(image.size) + "\n";
+  if (!image.pilot.empty()) text += "pilot=" + image.pilot + "\npilotRan=" + std::to_string(image.pilotRan) + "\n";
+  return storage_.writeFile(describePath(image.chip), text.data(), text.size());
+}
+
+bool CamNodeImages::setPilot(uint16_t chip, const std::string& folder) {
+  for (CamNodeImage& i : images_)
+    if (i.chip == chip) {
+      i.pilot = folder;
+      i.pilotRan = 0;
+      return describe(i);
+    }
+  return false;
+}
+
+void CamNodeImages::notePilotRan(uint16_t chip, uint32_t now) const {
+  for (CamNodeImage& i : images_)
+    if (i.chip == chip && !i.pilot.empty() && !i.pilotRan) {
+      i.pilotRan = now;
+      describe(i);  // if it cannot be kept, the day starts again after a restart: later, never sooner
+    }
+}
+
 bool CamNodeImages::remove(uint16_t chip) {
   bool ok = storage_.removeTree(describePath(chip)) && storage_.removeTree(imagePath(chip));
   load();
   return ok;
 }
 
-void CamNodeImages::json(CamJson& j) const {
+void CamNodeImages::json(CamJson& j, uint32_t now) const {
   j.array("nodeFirmware");
-  for (const CamNodeImage& i : images_)
-    j.object().num("chip", i.chip).str("name", camChipName(i.chip)).str("version", i.version).num("size", i.size).end();
+  for (const CamNodeImage& i : images_) {
+    uint32_t left = i.pilotRan && now < i.pilotRan + CAM_PILOT_S ? i.pilotRan + CAM_PILOT_S - now : 0;
+    j.object().num("chip", i.chip).str("name", camChipName(i.chip)).str("version", i.version).num("size", i.size);
+    j.str("pilot", i.pilot).flag("pilotRuns", i.pilotRan != 0).num("pilotLeft", !i.pilot.empty() && i.pilotRan, left).end();
+  }
   j.end();
 }
 
@@ -91,12 +123,10 @@ CamNodeImages::Result CamNodeImages::finish(bool complete, CamNodeImage& image) 
     storage_.removeTree(UPLOAD);
     return NOT_AN_IMAGE;
   }
-  std::string text = "chip=" + std::to_string(image.chip) + "\nversion=" + image.version + "\nnumber=" + std::to_string(image.number) +
-                     "\nsize=" + std::to_string(image.size) + "\n";
   // The old description is removed before the file is replaced, and the new one written after: a power cut between
   // leaves a file with no description, which is ignored, never a file described as another.
   storage_.removeTree(describePath(image.chip));
-  bool saved = storage_.renameFile(UPLOAD, imagePath(image.chip)) && storage_.writeFile(describePath(image.chip), text.data(), text.size());
+  bool saved = storage_.renameFile(UPLOAD, imagePath(image.chip)) && describe(image);  // a new file goes to every node unless a pilot is chosen
   load();
   return saved ? SAVED : NOT_SAVED;
 }

@@ -480,12 +480,23 @@ senders** until the hub restarts or they are added; a sender with the wrong key 
 A node that sends node info also shows its sensor's kind, its firmware and chip, how often and why it last restarted, how
 long its last alert took to be confirmed, how long its battery will last, and whether its last report was sealed.
 
+**Add a node**, at the top of the Nodes and pairing page, takes a node through its setting up a step at a time:
+flashing it, letting it pair, approving it, choosing its sensor and pins, naming its sensors, putting it on the floor
+plan, and walking past it. Each step is ticked as the hub sees it done, for the node chosen there, or for a new one.
+
+Each node's address, on the Nodes and pairing page, and its name on the Sensors page, open the node's own page: its
+board and firmware, the hardware it runs, its battery over time, its signal and restarts, each of its sensors with when
+it fired over the last week, and its latest events.
+
 **Node firmware** on the same page takes a node's `firmware.bin`, from the node project, one per kind of chip, kept in
 `nodes/` on LittleFS. The hub reads the version from the file and refuses anything that is not a node's firmware, the
 hub's own included, and any that is not signed with the project's key, as the node project's releases are. Each node
 checks the signature again, and that the update is not an older release than its own, before it runs it. Each node of that chip that runs another version is told an update is ready with its next
 confirmation and fetches it over ESP-NOW (see [Firmware updates](protocol.md#firmware-updates)). A node saving its battery is not offered one,
-and a node whose update was undone is not offered that file again. The node's row shows the update's progress.
+and a node whose update was undone is not offered that file again. The node's row shows the update's progress. Each
+file says how many nodes of its chip run it, and can be tried on one node first: the others are offered it only once
+that node has run it for a day, by the hub's clock, and never if that node had it undone, so a bad update cannot take
+every node out at once.
 
 **Hardware**, under each node on the Sensors page, says what the node's sensor is, and which pins its sensor, a tamper
 switch and its battery are on, with the kind of battery. One firmware then serves every node of a chip, and a node is set

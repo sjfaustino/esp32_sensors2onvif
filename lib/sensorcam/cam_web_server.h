@@ -143,6 +143,7 @@ class CamWeb {
   void getFiles(const ApiRequest& r);
   void getRoot(const ApiRequest& r);
   void postNodeFirmwareDelete(const ApiRequest& r);
+  void postNodeFirmwarePilot(const ApiRequest& r);
   void apiFiles(const ApiRequest& r);  // /api/file and /api/mkdir, by method
   void getAlerts(const ApiRequest& r);
   void getArm(const ApiRequest& r);

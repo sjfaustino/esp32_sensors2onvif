@@ -38,12 +38,12 @@
   // Seven rows, today last, of 24 hours each, shaded by how many alerts there were, from this sensor's history over the
   // last 8 days, which covers 7 local days wherever the browser is. The hub sends one download at a time, so a busy one
   // is asked again a few times.
-  async function drawWeek(key) {
-    const box = $("snWeek");
+  // box: where to draw it; still: whether the page that asked is still open, so a late answer draws nothing.
+  async function drawWeek(key, box = $("snWeek"), still = () => shown == key) {
     box.replaceChildren(el("p", { className: "note", textContent: "Reading the history..." }));
     let text,
       why = "";
-    for (let i = 0; i < 5 && text == null && shown == key; i++) {
+    for (let i = 0; i < 5 && text == null && still(); i++) {
       try {
         const r = await fetch("/api/events.csv?sensor=" + key + "&days=8");
         if (r.ok) text = await r.text();
@@ -52,7 +52,7 @@
       } catch (e) {}
       if (text == null) await new Promise((done) => setTimeout(done, 3000));
     }
-    if (shown != key) return; // another sensor's page was opened meanwhile
+    if (!still()) return; // another page was opened meanwhile
     if (text == null) {
       box.replaceChildren(
         el("p", { className: "note", textContent: "Could not read the history" + (why ? ": " + why : ".") }),
@@ -118,8 +118,7 @@
   }
 
   // Its readings from battery.txt, one every 6 hours, as a line over time.
-  async function drawBattery(node) {
-    const box = $("snBattery");
+  async function drawBattery(node, box = $("snBattery")) {
     let points = [];
     try {
       const r = await fetch("/api/file?path=" + node + "/battery.txt");
@@ -226,6 +225,7 @@
     }
   };
 
+  window.sensorCharts = { drawWeek, drawBattery }; // a node's page draws them too; window.hub comes later, from index.js
   (window.viewHooks = window.viewHooks || []).push((view, arg) => {
     clearInterval(timer);
     if (view != "sensor") return;

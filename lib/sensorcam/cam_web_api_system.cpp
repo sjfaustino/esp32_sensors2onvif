@@ -66,7 +66,8 @@ std::string CamWeb::espNowJson() {
     j.str("update", update).end();
   }
   j.end();
-  nodes_.images().json(j);
+  time_t wall = chip_->wallTime();
+  nodes_.images().json(j, wall >= CAM_CLOCK_VALID_AFTER ? (uint32_t)wall : 0);
   j.array("unknown");
   for (const UnknownSender& u : table_.unknown()) {
     if (!u.used || table_.findSlot(u.mac, u.input)) continue;  // added since it was last heard

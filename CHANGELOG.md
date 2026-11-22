@@ -5,6 +5,15 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### The nodes
+
+- **Add a node**, on the Nodes and pairing page, takes a node through its setting up a step at a time, each ticked as
+  the hub sees it done.
+- Each node has a page of its own: its board, firmware and hardware, its battery over time, its signal and restarts,
+  each sensor's week, and its events.
+- A node firmware can be tried on one node first; the others get it a day after that node runs it, and never if it
+  had it undone. Each file says how many nodes of its chip run it.
+
 ## [0.5.0] - 2026-11-22
 
 Update from 0.4.0: the hub then refuses older firmware, and node firmware that is not signed. Nodes take their sensor

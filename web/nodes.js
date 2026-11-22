@@ -43,7 +43,7 @@
             null,
             ...[
               sensorLink(n.node + "/" + n.input, n.name || "(no name)"),
-              n.node,
+              el("a", { href: "#node:" + n.node, textContent: n.node }),
               n.input,
               STATES[n.state] +
                 (n.state == "silent" ? " (no report for " + Math.round(n.silentAfter / 60) + " minutes)" : ""),
@@ -73,33 +73,90 @@
           el("button", { className: "primary", textContent: "Allow pairing", onclick: () => $("pairOpen").click() }),
           el("button", { textContent: "Add a sensor", onclick: () => $("addSensor").click() }),
         );
-      $("nfList").replaceChildren(
-        ...(j.nodeFirmware.length
-          ? [headRow(["Chip", "Version", "Size", ""])]
-          : [el("tr", null, el("td", { textContent: "None on the hub." }))]),
-        ...j.nodeFirmware.map((f) =>
-          el(
-            "tr",
-            null,
-            ...[f.name, f.version, Math.round(f.size / 1024) + " KB"].map((v) => el("td", { textContent: v })),
-            el(
-              "td",
-              null,
-              el("button", {
-                textContent: "Delete",
-                onclick: async () => {
+      // Each file: how many nodes of its chip run it, and whether it is tried on one node first. Redrawn only when that
+      // changes, so a choice being made is not cut short by the refresh.
+      const nodesOf = (f) => {
+        const seen = new Map();
+        for (const n of j.nodes) if (n.chip == f.name && !seen.has(n.node)) seen.set(n.node, n);
+        return [...seen.values()];
+      };
+      const nameOf = (mac) =>
+        j.nodes
+          .filter((n) => n.node == mac)
+          .map((n) => n.name)
+          .filter(Boolean)
+          .join(", ") || mac;
+      const rollout = (f, nodes) => {
+        const on = nodes.filter((n) => n.version == f.version).length;
+        const counted = on + " of " + nodes.length + " nodes run it";
+        if (!f.pilot) return counted + ". Offered to every node of this chip.";
+        const pilot = nodes.find((n) => n.node == f.pilot) || {};
+        return (
+          counted +
+          ". " +
+          (pilot.update == "update undone"
+            ? nameOf(f.pilot) + " had it undone, so it is not offered to the others."
+            : !f.pilotRuns
+              ? "Tried on " + nameOf(f.pilot) + " first; the others get it a day after it runs it."
+              : f.pilotLeft
+                ? nameOf(f.pilot) + " runs it; the others get it in " + Math.ceil(f.pilotLeft / 3600) + " h."
+                : nameOf(f.pilot) + " ran it for a day, so the others get it too.")
+        );
+      };
+      const key = JSON.stringify([j.nodeFirmware, j.nodes.map((n) => [n.node, n.chip, n.version, n.update, n.name])]);
+      if ($("nfList").dataset.key != key) {
+        $("nfList").dataset.key = key;
+        $("nfList").replaceChildren(
+          ...(j.nodeFirmware.length
+            ? [headRow(["Chip", "Version", "Size", "Nodes", "Try it first on", ""])]
+            : [el("tr", null, el("td", { textContent: "None on the hub." }))]),
+          ...j.nodeFirmware.map((f) => {
+            const nodes = nodesOf(f);
+            const pilot = el(
+              "select",
+              {
+                ariaLabel: "The node to try it on first",
+                onchange: async () => {
                   try {
-                    await call("POST", "/api/node-firmware/delete", "chip=" + f.chip);
+                    await call("POST", "/api/node-firmware/pilot", "chip=" + f.chip + "&mac=" + pilot.value);
+                    notice(pilot.value ? "It is tried on " + nameOf(pilot.value) + " first" : "Offered to every node");
                     loadEsp();
                   } catch (e) {
                     $("nfMsg").textContent = e.message;
                   }
                 },
-              }),
-            ),
-          ),
-        ),
-      );
+              },
+              el("option", { value: "", textContent: "No node: every node at once" }),
+              ...nodes.map((n) =>
+                el("option", { value: n.node, textContent: nameOf(n.node), selected: n.node == f.pilot }),
+              ),
+            );
+            return el(
+              "tr",
+              null,
+              ...[f.name, f.version, Math.round(f.size / 1024) + " KB", rollout(f, nodes)].map((v) =>
+                el("td", { textContent: v }),
+              ),
+              el("td", null, pilot),
+              el(
+                "td",
+                null,
+                el("button", {
+                  textContent: "Delete",
+                  onclick: async () => {
+                    try {
+                      await call("POST", "/api/node-firmware/delete", "chip=" + f.chip);
+                      loadEsp();
+                    } catch (e) {
+                      $("nfMsg").textContent = e.message;
+                    }
+                  },
+                }),
+              ),
+            );
+          }),
+        );
+      }
       $("espUnknown").replaceChildren(
         ...(j.unknown.length ? [headRow(["Node", "Sensor", "Last heard", "Signal", "Messages", ""])] : []),
         ...j.unknown.map((n) =>

@@ -58,6 +58,22 @@ void CamWeb::postNodeFirmwareDelete(const ApiRequest& r) {
     c.out = saved(nodes_.images().remove(n), "could not delete the file");
 }
 
+// The node a chip's firmware is tried on first (mac, a node folder of that chip), or none, for every node at once.
+void CamWeb::postNodeFirmwarePilot(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  uint16_t chip = 0;
+  std::string folder = r.field("mac");
+  uint8_t mac[6];
+  int id = 0;
+  if (!folder.empty() && camParseMac(folder, mac)) id = table_.findNode(mac);
+  if (!camNumber(r.field("chip"), chip) || !nodes_.images().forChip(chip))
+    c.out = jsonFail(404, "there is no firmware for that chip");
+  else if (!folder.empty() && (!id || table_.nodeOf(id).info.chip != chip))
+    c.out = jsonFail(400, "that is not a node of this chip");
+  else
+    c.out = saved(nodes_.images().setPilot(chip, id ? camMacText(mac) : std::string()), "could not save it; storage may be full");
+}
+
 void CamWeb::getPairing(const ApiRequest& r) {
   HttpConn& c = r.c;
   uint32_t now = millis_();

@@ -982,6 +982,14 @@ button.danger {
   font-family: inherit;
   font-size: 18px;
 }
+.nodeName a,
+.nodeName a:visited {
+  color: inherit;
+  text-decoration: none;
+}
+.nodeName a:hover {
+  text-decoration: underline;
+}
 .mac {
   font-family: ui-monospace, monospace;
   font-size: 12px;
@@ -1544,4 +1552,34 @@ main:focus {
   .top .logout {
     margin: 0;
   }
+}
+
+/* "Add a node": the steps of setting a node up, each ticked once the hub sees it done. */
+.guideSteps {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.guideStep {
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.guideStep:first-child {
+  border-top: 0;
+}
+.guideHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.guideStep.done .guideHead b {
+  color: var(--muted-text);
+  font-weight: 600;
+}
+.guideStep .note {
+  margin: 4px 0 0;
+}
+.guideStep .acts {
+  margin-top: 8px;
 }

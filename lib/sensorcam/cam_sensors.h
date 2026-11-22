@@ -71,10 +71,16 @@ int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uin
 // A node firmware file put on the hub: an ESP32 app image, with its chip in the header and its version after the text
 // CAM_NODE_IMAGE_MARK, as the node's firmware has it. Its number is the FNV-1a hash of the whole file, never 0.
 const char* const CAM_NODE_IMAGE_MARK = S2O_NODE_IMAGE_MARK;
+const uint32_t CAM_PILOT_S = 86400;  // a day
 struct CamNodeImage {
   uint16_t chip = 0;
   std::string version;
   uint32_t number = 0, size = 0;
+  // Tried on one node first: offered to the others only once that node has run it for CAM_PILOT_S, on the hub's clock,
+  // so a bad update cannot take every node out at once. pilot is its folder, empty for every node at once.
+  std::string pilot;
+  uint32_t pilotRan = 0;  // when the hub first heard the pilot run it; 0 not yet
+  bool passed(uint32_t now) const { return pilot.empty() || (pilotRan && now >= pilotRan + CAM_PILOT_S); }
 };
 const uint32_t CAM_MAX_NODE_IMAGE = 3 * 1024 * 1024;
 // read(offset, out, len) reads exactly len bytes of the file. False for a file that is not a node's firmware.

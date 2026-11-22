@@ -714,7 +714,11 @@ function render(t) {
         el(
           "div",
           null,
-          el("h2", { className: "nodeName", textContent: names.length ? names.join(", ") : "Node " + s.mac }),
+          el(
+            "h2",
+            { className: "nodeName" },
+            el("a", { href: "#node:" + s.mac, textContent: names.length ? names.join(", ") : "Node " + s.mac }),
+          ),
           names.length ? el("div", { className: "mac", textContent: s.mac }) : "",
         ),
         el(

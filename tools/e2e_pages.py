@@ -286,6 +286,19 @@ def test_settings_pages(page):
           'from before hardware settings' in page.text_content('#tree details:has(summary:has-text("Hardware"))')
           and page.is_disabled('#tree button:has-text("Save hardware")'))
 
+    # A node's own page, from its name on the Sensors page.
+    page.click('#tree .nodeName a')
+    page.wait_for_selector('#ndFacts tr')
+    node = SENSOR.split('/')[0]
+    check("a node's name on the Sensors page opens its own page", page.evaluate('location.hash') == '#node:' + node
+          and node in page.text_content('#ndFacts'), page.evaluate('location.hash'))
+    check('which shows each of its sensors', page.locator('#ndSensors section').count() >= 1)
+
+    # "Add a node" on the Nodes and pairing page, with the first steps for a new node.
+    page.goto(URL + '#espnow')
+    page.wait_for_selector('#guideSteps li')
+    check('"Add a node" shows its steps', 'Let it pair' in page.text_content('#guideSteps'), page.text_content('#guideSteps'))
+
     page.goto(URL + '#events')
     page.wait_for_selector('#evTable .chip')
     check('alerts are labelled in red', page.locator('#evTable .chip.bad').count() > 0)

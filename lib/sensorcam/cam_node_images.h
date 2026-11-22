@@ -18,7 +18,12 @@ class CamNodeImages {
   // Exactly len bytes of the chip's file from offset.
   bool read(uint16_t chip, uint32_t offset, uint8_t* out, size_t len) const;
   bool remove(uint16_t chip);
-  void json(CamJson& j) const;  // "nodeFirmware": [{chip, name, version, size}]
+  // Tries the chip's file on the node with this folder first, or offers it to every node at once for an empty one.
+  bool setPilot(uint16_t chip, const std::string& folder);
+  // The pilot runs it now: kept with the description, so a restart of the hub does not start the day again. Const, as
+  // the alarm, which only reads the files otherwise, hears the node say so.
+  void notePilotRan(uint16_t chip, uint32_t now) const;
+  void json(CamJson& j, uint32_t now) const;  // "nodeFirmware": [{chip, name, version, size, pilot, pilotLeft}]
 
   // An upload, streamed to a file beside the others as it arrives, then checked whole.
   enum Result { SAVED, NOT_AN_IMAGE, NOT_SAVED };
@@ -30,6 +35,7 @@ class CamNodeImages {
 
  private:
   const CamStorage& storage_;
-  std::vector<CamNodeImage> images_;
+  mutable std::vector<CamNodeImage> images_;  // mutable for notePilotRan alone
+  bool describe(const CamNodeImage& image) const;
   FILE* upload_ = nullptr;
 };

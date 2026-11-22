@@ -376,7 +376,20 @@ static void a_nodes_hardware_travels_and_is_checked() {
   TEST_ASSERT_EQUAL_STRING("every=600\nhw=7,4,3,4,1,1\n", camNodeSettingsText(s).c_str());
 }
 
+// A node firmware tried on one node first reaches the others only a day after that node runs it.
+static void a_node_firmware_tried_first_waits_a_day_for_the_others() {
+  CamNodeImage f;
+  TEST_ASSERT_TRUE(f.passed(0));  // no pilot: every node at once
+  f.pilot = "02-00-00-00-00-55";
+  TEST_ASSERT_FALSE(f.passed(1800000000));  // the pilot has not run it yet
+  f.pilotRan = 1800000000;
+  TEST_ASSERT_FALSE(f.passed(1800000000 + CAM_PILOT_S - 1));
+  TEST_ASSERT_TRUE(f.passed(1800000000 + CAM_PILOT_S));
+  TEST_ASSERT_FALSE(f.passed(0));  // without the hub's clock, never sooner
+}
+
 void runMessagesTests() {
+  RUN_TEST(a_node_firmware_tried_first_waits_a_day_for_the_others);
   RUN_TEST(a_nodes_hardware_travels_and_is_checked);
   RUN_TEST(parsers_survive_any_input);
   RUN_TEST(confirmation_is_signed_for_that_sensor);

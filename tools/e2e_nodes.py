@@ -266,7 +266,8 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     status_code, reply = api('PUT', '/api/node-firmware', image)
     check('a node firmware can be put on the hub', status_code == 200 and json.loads(reply) == {'ok': True, 'chip': 'ESP32-C6', 'version': '4b5c6d7'}, reply)
     listed = get_json('/api/espnow')['nodeFirmware']
-    check('the Nodes and pairing page lists it', listed == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': len(image)}], listed)
+    check('the Nodes and pairing page lists it', [{k: f[k] for k in ('chip', 'name', 'version', 'size', 'pilot')} for f in listed]
+          == [{'chip': 13, 'name': 'ESP32-C6', 'version': '4b5c6d7', 'size': len(image), 'pilot': ''}], listed)
     control('end-alerts')
     body = confirmed(26)
     check('a node of that chip on another version is told an update is ready', body[21:22] == b'\x01', body.hex())
@@ -299,8 +300,17 @@ def node_tests(mac, folder, key, say, signed, report, info, node_row, tree_node)
     control('all-sent')
     control(f'radio-raw {mac} {(forged_ask + bytes(8)).hex()}')
     check('an unsigned ask gets nothing', control('all-sent') == '')
+    # Tried on one node first: this one, the pilot, still gets it; a node not of that chip cannot be the pilot.
+    check('a node firmware can be tried on one node first', api('POST', '/api/node-firmware/pilot', f'chip=13&mac={folder}')[0] == 200)
+    check('only on a node of its chip', api('POST', '/api/node-firmware/pilot', 'chip=13&mac=02-00-00-00-00-01')[0] == 400)
+    firmware = get_json('/api/espnow')['nodeFirmware'][0]
+    check('the page shows which, and that it has not run it yet', firmware['pilot'] == folder and not firmware['pilotRuns'], firmware)
     say(info(7200, 0, b'RCWL-0516', b'4b5c6d7'))
     check('once the node runs it, the update is over', node_row(1).get('update') == '', node_row(1))
+    firmware = get_json('/api/espnow')['nodeFirmware'][0]
+    check("the pilot runs it, so the others' day starts", firmware['pilotRuns'] and 86000 < firmware.get('pilotLeft', 0) <= 86400, firmware)
+    check('every node at once again', api('POST', '/api/node-firmware/pilot', 'chip=13&mac=')[0] == 200
+          and get_json('/api/espnow')['nodeFirmware'][0]['pilot'] == '')
     control('end-alerts')
     check('and no longer offered', confirmed(27)[21:22] == b'\x00')
     say(info(7200, 0, b'RCWL-0516', b'3f2a1b0', refused=number))

@@ -105,6 +105,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"POST", "/api/pairing/approve", &CamWeb::pairingDecide, LOGIN},
       {"POST", "/api/pairing/reject", &CamWeb::pairingDecide, LOGIN},
       {"POST", "/api/node-firmware/delete", &CamWeb::postNodeFirmwareDelete, LOGIN},
+      {"POST", "/api/node-firmware/pilot", &CamWeb::postNodeFirmwarePilot, LOGIN},
       {"*", "/api/file", &CamWeb::apiFiles, LOGIN},
       {"*", "/api/mkdir", &CamWeb::apiFiles, LOGIN},
   };
