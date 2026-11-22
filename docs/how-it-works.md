@@ -189,3 +189,10 @@ out by Prettier, and the checks on GitHub refuse them otherwise; after an edit, 
 `npx prettier@3.3.3 --print-width 120 --end-of-line lf --write web/*.js web/*.css`. Leave the HTML out: Prettier would
 rewrite the `<link>` and `<script src>` lines that `embed_web.py` looks for. A style belongs in `index.css` under a class
 named for what it is for, not in a `style` attribute.
+
+A settings page puts each part in a `<section class="card">`, a field in a `label.netRow` with its help in a `p.hint`
+under it, and the part's buttons in a `div.acts`, the Save button with `class="primary"`. A part marked
+`data-save="<its Save button's id>"` is watched by `index.js`: an edit in it shows the bar saying the changes are not
+saved, leaving the page asks first, and a successful `hub.send` from a message inside it marks it saved. A file input
+goes in a `label.drop` with a `.dropFile` for its name. A `table.info` or `table.list` that is empty when its page opens
+shows grey bars until it is filled, and `hub.empty` puts in what to show when there is nothing.

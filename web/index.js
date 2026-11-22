@@ -30,12 +30,81 @@
         return false;
       }
       if (done) m.textContent = typeof done == "function" ? done(j) : done;
+      const form = m.closest && m.closest("[data-save]");
+      if (form) markClean(form.dataset.save);
       return j || true;
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = failed || "The hub did not answer. Try again.";
       return false;
     }
+  }
+  // A part of a settings page, marked data-save with its Save button's id, has changes not saved once someone edits it:
+  // a bar at the foot of the page then offers to save or discard them, and leaving the page asks first. A successful
+  // send from inside the part (see send) marks it saved.
+  let dirty = null;
+  function showUnsaved() {
+    $("unsaved").hidden = !dirty;
+    document.body.classList.toggle("dirty", !!dirty);
+  }
+  function markDirty(field) {
+    const form = field.closest("[data-save]");
+    if (!form) return;
+    dirty = form.dataset.save;
+    showUnsaved();
+  }
+  function markClean(key) {
+    if (key && key != dirty) return;
+    dirty = null;
+    showUnsaved();
+  }
+  // The page's own scripts set values without these events, so any that comes is someone's edit.
+  const edited = (e) => {
+    if (e.target.closest && e.target.type != "file") markDirty(e.target);
+  };
+  document.addEventListener("input", edited);
+  document.addEventListener("change", edited);
+  // A loading table shows grey bars until its rows arrive; whatever fills it replaces them.
+  function skeleton(t) {
+    const cells = t.classList.contains("info") ? 2 : 1;
+    for (let i = 0; i < 3; i++)
+      t.append(el("tr", { className: "skel" }, ...Array.from({ length: cells }, () => el("td", null, el("span")))));
+  }
+  // A place with nothing in it yet: what is missing, what to do, and buttons that do it.
+  function empty(target, title, text, ...actions) {
+    target.replaceChildren(
+      el(
+        "div",
+        { className: "empty" },
+        el("b", { textContent: title }),
+        text,
+        actions.length ? el("div", { className: "acts" }, ...actions) : "",
+      ),
+    );
+  }
+  const size = (n) => (n < 1024 * 1024 ? Math.round(n / 1024) + " KB" : (n / 1024 / 1024).toFixed(1) + " MB");
+  // A file input inside a drop zone takes a file dropped on it too, and shows the chosen file's name and size.
+  for (const d of document.querySelectorAll(".drop")) {
+    const input = d.querySelector("input"),
+      name = d.querySelector(".dropFile");
+    const chosen = () => {
+      const f = input.files[0];
+      d.classList.toggle("has", !!f);
+      name.textContent = f ? f.name + ", " + size(f.size) : "";
+    };
+    input.addEventListener("change", chosen);
+    d.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      d.classList.add("over");
+    });
+    d.addEventListener("dragleave", () => d.classList.remove("over"));
+    d.addEventListener("drop", (e) => {
+      e.preventDefault();
+      d.classList.remove("over");
+      if (!e.dataTransfer.files.length) return;
+      input.files = e.dataTransfer.files;
+      chosen();
+    });
   }
   // A label for a state at a glance. kind: ok, warn, bad or none (not set up).
   const chip = (text, kind) => el("span", { className: "chip " + kind, textContent: text });
@@ -138,6 +207,8 @@
     showMode(o.mode);
     const s = $("status");
     s.className = "status " + (bad.length ? "bad" : attention.length ? "attention" : "ok");
+    s.href = bad.length ? "#nvr" : "#overview"; // where to put it right; on the Overview, see the click below
+    s.dataset.steps = todo ? "1" : "";
     s.textContent = bad.length
       ? "Not protecting: " + bad.concat(attention).join("; ")
       : attention.length
@@ -193,7 +264,11 @@
       view = "overview"; // a broken address, such as one cut short
     }
     if (!$("view-" + view)) view = "overview";
+    shown = view;
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id != "view-" + view));
+    $("view-" + view)
+      .querySelectorAll("table.info:empty, table.list:empty")
+      .forEach(skeleton);
     items.forEach((i) => {
       const on = i.dataset.view == view;
       i.classList.toggle("active", on);
@@ -223,6 +298,9 @@
     showStatus,
     loadStatus,
     repeat,
+    empty,
+    size,
+    markDirty,
   };
   firsts.forEach(
     (f) =>
@@ -238,7 +316,44 @@
         location.hash = i.dataset.view;
       }),
   );
-  addEventListener("hashchange", () => show(location.hash.slice(1)));
+  // Leaving a page with changes not saved asks first; staying puts the address back. Within one page nothing is asked.
+  let shown = "";
+  const viewOf = (hash) => hash.split(":")[0] || "overview";
+  addEventListener("hashchange", async () => {
+    const to = location.hash.slice(1);
+    if (dirty && viewOf(to) != shown) {
+      history.replaceState(null, "", "#" + shown); // fires no hashchange
+      if (
+        !(await ask("The changes on this page are not saved.", {
+          title: "Leave without saving?",
+          ok: "Leave",
+          cancel: "Stay",
+        }))
+      )
+        return;
+      markClean();
+      location.hash = to;
+      return;
+    }
+    show(to);
+  });
+  addEventListener("beforeunload", (e) => {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  $("unsavedSave").onclick = () => $(dirty).click();
+  $("unsavedDiscard").onclick = () => {
+    markClean();
+    show(location.hash.slice(1)); // each page's script loads its values again
+  };
+  // On the Overview, the status line about setup steps leads to them.
+  $("status").onclick = (e) => {
+    if (shown != "overview" || !$("status").dataset.steps) return;
+    e.preventDefault();
+    const steps = $("wizard").hidden ? $("ovReadyBox") : $("wizard");
+    steps.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   addEventListener("DOMContentLoaded", () => show(location.hash.slice(1))); // once every page's script has run
   // A hub without a password asks for one on every page until it has one.
   $("saveNeedPw").onclick = async () => {

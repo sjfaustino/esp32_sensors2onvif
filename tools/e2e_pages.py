@@ -242,6 +242,48 @@ def test_notifications_page(page):
     api('POST', '/api/webhook', 'url=&alerts=1&problems=1&forget=1')
 
 
+def test_settings_pages(page):
+    """A settings page holds its changes until they are saved or discarded, and asks before they are left behind; a file
+    is chosen in a drop zone; the events have coloured labels."""
+    page.goto(URL + '#ha')
+    page.wait_for_selector('#mqUser', state='visible')
+    page.wait_for_timeout(300)
+    check('a page with nothing changed has no unsaved bar', not page.is_visible('#unsaved'))
+    page.fill('#mqUser', 'someone')
+    check('a change shows the unsaved bar', page_wait(page, lambda: page.is_visible('#unsaved')))
+    page.evaluate("location.hash = 'overview'")
+    words = answer(page, False)
+    check('leaving asks first, and Stay keeps the page and the change',
+          'not saved' in words and page.is_visible('#view-ha') and page.input_value('#mqUser') == 'someone', words)
+    page.click('#unsavedDiscard')
+    check('Discard puts back what the hub has', page_wait(page, lambda: page.input_value('#mqUser') == '' and not page.is_visible('#unsaved')),
+          page.input_value('#mqUser'))
+    page.fill('#mqUser', 'someone')
+    page.evaluate("location.hash = 'overview'")
+    answer(page, True)
+    check('Leave goes on, and forgets the change', page_wait(page, lambda: page.is_visible('#view-overview') and not page.is_visible('#unsaved')))
+
+    page.goto(URL + '#maintenance')
+    page.wait_for_selector('#rbTime', state='visible')
+    page.wait_for_timeout(300)
+    page.fill('#rbTime', '03:15')
+    page.click('#unsavedSave')
+    check("the bar's Save saves that part", page_wait(page, lambda: get_json('/api/schedule')['minute'] == 3 * 60 + 15), get_json('/api/schedule'))
+    check('and the bar goes', page_wait(page, lambda: not page.is_visible('#unsaved')))
+    page.set_input_files('#fwFile', files=[{'name': 'firmware.bin', 'mimeType': 'application/octet-stream', 'buffer': b'\xe9' + b'\x01' * 30000}])
+    check('a chosen file shows with its size', 'firmware.bin, 29 KB' in page.text_content('#view-maintenance .drop'),
+          page.text_content('#view-maintenance .drop'))
+    page.click('#fwSend')
+    answer(page, True)
+    check('the page says why the hub refused unsigned firmware', wait_text(page, 'fwMsg', 'not signed', 20), page.text_content('#fwMsg'))
+    check('and hides the progress again', not page.is_visible('#fwProg'))
+
+    page.goto(URL + '#events')
+    page.wait_for_selector('#evTable .chip')
+    check('alerts are labelled in red', page.locator('#evTable .chip.bad').count() > 0)
+    check('times are words, with the date on hover', page.get_attribute('#evTable tr:nth-child(2) td:first-child', 'title') not in (None, ''))
+
+
 def test_a_sensor_camera(page):
     page.goto(URL + '#sensors')
     open_alert_settings(page)
@@ -421,7 +463,7 @@ def main():
                 dialogs = Dialogs(page)
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
                              lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
-                             lambda: test_a_sensor_camera(page), lambda: test_sensor_pictures(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
+                             lambda: test_settings_pages(page), lambda: test_a_sensor_camera(page), lambda: test_sensor_pictures(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
                              lambda: test_dark_and_narrow(browser)):
                     try:
                         test()

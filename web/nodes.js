@@ -63,7 +63,16 @@
           ),
         ),
       );
-      $("espEmpty").textContent = j.nodes.length ? "" : "No sensor nodes yet. Add one under Sensors > Sensors.";
+      if (j.nodes.length) $("espEmpty").replaceChildren();
+      else if (!$("espEmpty").childElementCount)
+        // refreshed every 3 s; the buttons stay put
+        window.hub.empty(
+          $("espEmpty"),
+          "No sensor nodes yet",
+          "Allow pairing and start a node in pairing mode, or add a device that calls a web address.",
+          el("button", { className: "primary", textContent: "Allow pairing", onclick: () => $("pairOpen").click() }),
+          el("button", { textContent: "Add a sensor", onclick: () => $("addSensor").click() }),
+        );
       $("nfList").replaceChildren(
         ...(j.nodeFirmware.length
           ? [headRow(["Chip", "Version", "Size", ""])]

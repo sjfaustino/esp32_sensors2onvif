@@ -32,6 +32,13 @@ before that, a new minor version may change settings or the messages.
   a change in a notice at the foot of the page. A change of mode can be undone from it.
 - The Sensors page names each picture by what it is shown for, with a small preview of it or of what is shown in its
   place, and each node by its sensors' names; the file names show only when asked for.
+- The settings pages group their fields in cards, with the help under each field and the main button filled. A bar
+  at the foot says when changes are not saved, with Save and Discard, and leaving the page asks first.
+- A file is dropped on the page or chosen, and shows its name and size; the firmware upload shows its progress.
+  Restarting, new keys and a reset are together under Danger zone on Maintenance.
+- The Events page labels each event in the colour of what it is, shows 25 at a time, and leaves empty cells blank.
+- Lists show grey bars while they load, and an empty one says what to do, with a button that does it. The status line
+  leads to what it is about. The Overview no longer shows work dropped for lack of memory, which Device info has.
 - The menu's groups are Alarm, Sensors, Network, Recording and System, and the Overview groups what is happening now
   and what the hub is connected to in two cards.
 

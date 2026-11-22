@@ -592,7 +592,12 @@ function render(t) {
   const tree = $("tree");
   tree.textContent = "";
   if (!t.nodes.length)
-    tree.append(el("p", { className: "missing", textContent: "No nodes yet. Add one by its MAC address." }));
+    window.hub.empty(
+      tree,
+      "No nodes yet",
+      "Pair a node, which adds its sensors for you, or add one by its MAC address above.",
+      el("a", { className: "btn", href: "#espnow", textContent: "Pair a node" }),
+    );
   for (const s of t.nodes) {
     const num = el("input", { type: "text", placeholder: "sensor no.", size: 9, ariaLabel: "Sensor number" });
     // A node has no name of its own, so it goes by its sensors' names, with its address below.

@@ -70,7 +70,10 @@ to the setup network. Networks can also be changed at any time from **Network > 
 
 ![The Events page](images/events.png)
 
-**Alarm > Events** lists the last 64 events, kept across restarts. **Download the full history (CSV)** gives
+**Alarm > Events** lists the last 64 events, kept across restarts, 25 at a time with **Show more** for the rest. Each
+event's label has the colour of what it is: red an alert, amber a problem, green the NVR listening again, the arm modes
+in their own colours, grey the rest. The time says how long ago; hovering over it shows the date. Choosing a sensor or a
+kind of event shows only those; tapping an event says what it means. **Download the full history (CSV)** gives
 about the last 5400, in UTC. A download cut short, by a restart or a dropped connection, shows as failed in the browser,
 so a complete file is the whole history. `/api/events.csv?sensor=AA-BB-CC-DD-EE-01/1&days=7` gives one sensor's events
 over the last days, as each sensor's page uses; either part can be left out. The hub sends one download at a time and
@@ -157,10 +160,16 @@ change it below. The mode's own button is filled in. A change is confirmed in a 
 running and any sensor that is silent, on a low battery, on a weak signal or having messages refused, and the last
 alert, and **Connections** whether the NVR is listening and how the notifications and Home Assistant are set up.
 
+The settings pages group their fields in cards, each with its help under the field and its **Save** at its foot. Once
+something in a card is changed, a bar at the foot of the page says the changes are not saved, with **Save** and
+**Discard**; going to another page meanwhile asks first. Lists show grey bars while they load, and an empty one says what
+to do, with a button that does it.
+
 The bar across the top of every page shows the hub's name and the alarm's state in the same colours, and links to the
 Overview. A line below it sums the hub up: green when all is well, yellow when something needs attention (disarmed, a
 sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
-It links to the Overview. Until everything is done, the Overview starts with **Getting started**: the next step left,
+It leads to what it is about: the NVR page when the NVR is not listening, otherwise the Overview, where it shows the setup
+steps left. Until everything is done, the Overview starts with **Getting started**: the next step left,
 what to do and why, and a button that goes there. The steps are a hub password of your own rather than one built into
 the firmware, the clock set, the NVR's address set and the NVR listening, a sensor heard, a test alert in the last
 month, notifications or Home Assistant, and a daily check. **Hide for now** puts them away; they stay listed under
@@ -405,8 +414,10 @@ Keep the hub out of reach.
 
 ![Maintenance](images/maintenance.png)
 
-**Maintenance** schedules a restart, restarts the hub now, updates the firmware from a `firmware.bin` file, downloads and
-restores a settings backup (which holds the passwords in plain text), makes and restores a full backup, and resets the settings.
+**Maintenance** schedules a restart, updates the firmware from a `firmware.bin` file, dropped on the page or chosen, with
+the upload's progress, downloads and restores a settings backup (which holds the passwords in plain text), and makes and
+restores a full backup. What stops the hub or cannot be undone is together at the foot, under **Danger zone**: restarting
+the hub now, making new keys, and resetting the settings; each asks first.
 A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
 30 minutes, that restart is skipped until the next time.
 The hub takes only firmware signed with the project's key, as each release's `.bin` is, so the hub password alone

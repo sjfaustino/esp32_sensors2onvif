@@ -1,6 +1,6 @@
 // The Events page, with what each event means, and the walk test.
 (() => {
-  const { ago, headRow, heardAgo, sensorLink, signal, repeat } = window.hub;
+  const { ago, headRow, heardAgo, sensorLink, signal, repeat, chip, empty } = window.hub;
   // What each event means and what to do about it, for the Events page and each sensor's own page.
   const EXPLAIN = {
     0: [
@@ -177,7 +177,33 @@
   // Filtered here, from the list the hub sends, so the hub builds nothing more for it.
   const ALERT_KINDS = [0, 3, 5, 10, 13, 15],
     PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20];
-  let events = [];
+  // Each event's label in the colour of what it is: red an alert, amber a problem, green the NVR back, the arm modes in
+  // their own colours, grey the rest.
+  function kindChip(e, what) {
+    const k = e.kind,
+      kind =
+        k == 0
+          ? e.active
+            ? "bad"
+            : "none"
+          : k == 15
+            ? "bad"
+            : k == 7
+              ? "ok"
+              : k == 11
+                ? "away"
+                : k == 12
+                  ? "disarmed"
+                  : k == 14
+                    ? "home"
+                    : PROBLEM_KINDS.includes(k)
+                      ? "warn"
+                      : "none";
+    return chip(what, kind);
+  }
+  const PAGE = 25; // events shown at first, and added by Show more
+  let events = [],
+    showing = PAGE;
   async function loadEvents() {
     try {
       events = await call("GET", "/api/events");
@@ -211,7 +237,7 @@
     {
       $("evTable").replaceChildren(
         ...(list.length ? [headRow(["Time", "Sensor", "Event", "Details", "Battery"])] : []),
-        ...list.map((e) => {
+        ...list.slice(0, showing).map((e) => {
           const when = e.happened || e.received,
             what = e.event.charAt(0).toUpperCase() + e.event.slice(1); // the hub names every event
           const off = e.off_s != null ? "off for up to " + duration(e.off_s) : "";
@@ -233,9 +259,8 @@
               title: when ? new Date(when).toLocaleString() : "",
             }),
             el("td", null, e.sensor == "hub" ? "Hub" : sensorLink(e.sensor, e.name || e.sensor)),
-            ...[what, details || "-", e.battery == null ? "-" : e.battery + "%"].map((v) =>
-              el("td", { textContent: v }),
-            ),
+            el("td", null, kindChip(e, what)),
+            ...[details, e.battery == null ? "" : e.battery + "%"].map((v) => el("td", { textContent: v })),
           );
           row.onclick = () => {
             const next = row.nextElementSibling;
@@ -245,17 +270,38 @@
           return row;
         }),
       );
-      $("evNone").textContent = list.length
-        ? ""
-        : events.length
-          ? "None of these among the latest 64 events."
-          : "No events yet.";
+      const more = list.length - showing;
+      $("evMore").hidden = more <= 0;
+      $("evMore").textContent = "Show " + Math.min(more, PAGE) + " more";
+      if (list.length) $("evNone").replaceChildren();
+      else if (events.length)
+        empty(
+          $("evNone"),
+          "None of these",
+          "Nothing of this kind among the latest 64 events. The CSV has the whole history.",
+        );
+      else
+        empty(
+          $("evNone"),
+          "No events yet",
+          "Alerts, problems and the hub's own events show here as they happen.",
+          el("a", { className: "btn", href: "#overview", textContent: "Send a test alert from the Overview" }),
+        );
     }
   }
-  $("evSensor").onchange = showEvents;
-  $("evKind").onchange = showEvents;
+  const refilter = () => {
+    showing = PAGE;
+    showEvents();
+  };
+  $("evSensor").onchange = refilter;
+  $("evKind").onchange = refilter;
+  $("evMore").onclick = () => {
+    showing += PAGE;
+    showEvents();
+  };
   (window.viewHooks = window.viewHooks || []).push((view) => {
     if (view == "events") {
+      showing = PAGE;
       loadEvents();
       repeat(loadEvents, 3000);
     }

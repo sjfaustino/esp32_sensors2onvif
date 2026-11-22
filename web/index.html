@@ -35,14 +35,14 @@
 <p class="testRow" id="testRow"><button id="testAll">Test everything</button> <span class="note flush">a test alert along the whole path, checked step by step</span></p>
 <section id="ovReadyBox" class="card" hidden><h2 class="sec">Ready to protect?</h2><p class="note">What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips. <a href="#overview" id="wizBack">Show the steps one at a time</a></p><ul class="ready" id="ovReady"></ul></section></div>
 <div class="view" id="view-walk" hidden><h1>Walk test</h1>
-<p class="note">Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.</p>
-<div class="portForm"><button id="walkStart">Start on every node</button> <button id="walkStop">Stop</button></div>
-<div class="portMsg" id="walkMsg"></div><div id="walkPlan"></div><table id="walkList"></table></div>
+<section class="card"><p class="note">Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile.</p>
+<div class="acts"><button id="walkStart" class="primary">Start on every node</button><button id="walkStop">Stop</button></div>
+<div class="portMsg" id="walkMsg"></div></section><div id="walkPlan"></div><table id="walkList" class="list"></table></div>
 <div class="view" id="view-plan" hidden><h1>Floor plan</h1>
-<p class="note">A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too.</p>
-<div class="portForm"><button id="planUpload">Choose a picture</button> <button id="planDelete" class="del">Delete the plan</button></div>
-<div class="portForm"><select id="planSensor"></select> <button id="planRemove">Take it off the plan</button></div>
-<div class="portMsg" id="planMsg"></div><p class="note" id="planHint"></p><div id="planBox"></div></div>
+<section class="card"><p class="note">A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too.</p>
+<div class="acts"><button id="planUpload" class="primary">Choose a picture</button><button id="planDelete" class="del">Delete the plan</button></div>
+<div class="acts"><select id="planSensor" aria-label="A sensor on the plan"></select><button id="planRemove">Take it off the plan</button></div>
+<div class="portMsg" id="planMsg"></div></section><p class="note" id="planHint"></p><div id="planBox"></div></div>
 <div class="view" id="view-sensor" hidden><h1 id="snTitle">Sensor</h1>
 <p class="portForm"><button id="snTest">Send a test alert</button> <a href="#sensors">Alert settings and pictures</a></p><div class="portMsg" id="snMsg"></div>
 <table class="info" id="snFacts"></table>
@@ -50,6 +50,8 @@
 <h2 class="sub">Battery</h2><div id="snBattery"></div>
 <h2 class="sub">Its latest events</h2><ul class="explained" id="snEvents"></ul></div>
 <div class="view" id="view-network" hidden><h1>Network</h1>
+<section class="card" data-save="saveNet"><h2>Address</h2>
+<p class="note">Where the hub is on your network. DHCP lets the router choose; a fixed address stays the same, so the NVR always finds the hub.</p>
 <label class="netRow"><span>Connection</span><input id="netType" disabled></label>
 <label class="netRow"><span>IP mode</span><select id="netMode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
 <label class="netRow"><span>IP address</span><input id="netIp" maxlength="15" inputmode="decimal"></label>
@@ -57,102 +59,132 @@
 <label class="netRow"><span>Gateway</span><input id="netGw" maxlength="15" inputmode="decimal"></label>
 <label class="netRow"><span>DNS server</span><input id="netDns" maxlength="15" inputmode="decimal"></label>
 <label class="netRow"><span>MAC address</span><input id="netMac" disabled></label>
-<div class="portForm"><button id="saveNet">Save</button></div>
-<div class="portMsg" id="netMsg"></div></div>
+<div class="acts"><button id="saveNet" class="primary">Save</button></div>
+<div class="portMsg" id="netMsg"></div></section></div>
 <div class="view" id="view-wifi" hidden><h1>Wi-Fi</h1><iframe id="netFrame" title="Wi-Fi settings"></iframe></div>
-<div class="view" id="view-onvif" hidden><h1>ONVIF</h1><div class="portForm"><label>Port <input id="onvifPort" type="number" min="1" max="65535"></label> <button id="saveOnvif">Save</button></div><div class="portMsg" id="onvifMsg"></div><table class="info" id="onvifInfo"></table></div>
+<div class="view" id="view-onvif" hidden><h1>ONVIF</h1>
+<section class="card" data-save="saveOnvif"><h2>Port</h2>
+<label class="netRow"><span>ONVIF port</span><input id="onvifPort" type="number" min="1" max="65535"></label>
+<p class="hint">The NVR's channel for the hub uses this port. A new port restarts the hub, and the NVR loses the camera until its channel has the new one.</p>
+<div class="acts"><button id="saveOnvif" class="primary">Save</button></div><div class="portMsg" id="onvifMsg"></div></section>
+<section class="card"><h2>Status</h2><table class="info" id="onvifInfo"></table></section></div>
 <div class="view" id="view-http" hidden><h1>HTTP</h1>
-<div class="portForm"><label>Port <input id="webPort" type="number" min="1" max="65535"></label></div>
-<div class="portForm"><label>Name <input id="hubName" type="text" maxlength="63" autocapitalize="none"></label> .local</div>
-<div class="portForm"><label>Other names <input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box"></label></div>
-<p class="note">The hub answers only to its address, its name, and the other names here, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
-<div class="portForm" id="pwRow"><label>Password (user admin) <input id="webPw" type="password" maxlength="63" autocomplete="new-password"></label></div>
-<div class="portForm"><button id="saveWeb">Save</button></div>
-<div class="portMsg" id="webMsg"></div><table class="info" id="httpInfo"></table></div>
-<div class="view" id="view-rtsp" hidden><h1>RTSP</h1><div class="portForm"><label>Port <input id="rtspPort" type="number" min="1" max="65535"></label> <button id="saveRtsp">Save</button></div><div class="portMsg" id="rtspMsg"></div><table class="info" id="rtspInfo"></table></div>
-<div class="view" id="view-espnow" hidden><h1>Nodes and pairing</h1><p class="note">The sensor nodes, which talk to the hub over ESP-NOW, a radio link of their own beside Wi-Fi.</p><table class="info" id="espInfo"></table>
-<label class="portForm spaced"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
-<p class="portForm"><button id="addSensor">Add a sensor</button> <span class="note">a node, or a device that calls a web address</span></p>
-<h2 class="sub">Pairing</h2>
-<p class="note">A node that supports pairing finds the hub by itself and gets a key of its own, so it never needs the ESP-NOW key above. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
-<div class="portForm"><button id="pairOpen">Allow new nodes to pair for 2 minutes</button> <span id="pairState"></span></div>
-<table id="pairWaiting"></table><div class="portMsg" id="pairMsg"></div>
-<h2 class="sub">Sensor nodes</h2><table id="espNodes"></table><div class="portMsg" id="espEmpty"></div>
-<h2 class="sub">Node firmware</h2>
-<p class="note">Put a node's new <code>firmware.bin</code> here, from the node project, one for each kind of chip. Each node of that chip running another version fetches it by itself after its next report, unless it is saving its battery; one whose update fails goes back to what it had, and does not try that file again. A node watches nothing while it updates, for a minute or so, and stops to report if its sensor fires.</p>
-<div class="portForm"><input id="nfFile" type="file" accept=".bin"> <button id="nfSend">Put on the hub</button></div>
-<table id="nfList"></table><div class="portMsg" id="nfMsg"></div>
-<h2 class="sub">Unknown senders</h2><table id="espUnknown"></table><div class="portMsg" id="espNone"></div></div>
+<section class="card" data-save="saveWeb"><h2>The hub's pages</h2>
+<label class="netRow"><span>Port</span><input id="webPort" type="number" min="1" max="65535"></label>
+<label class="netRow"><span>Name</span><input id="hubName" type="text" maxlength="63" autocapitalize="none"><span class="suffix">.local</span></label>
+<label class="netRow"><span>Other names</span><input id="hubHosts" type="text" maxlength="200" autocapitalize="none" placeholder="esp-alarmhub.fritz.box" class="wide"></label>
+<p class="hint">The hub answers only to its address, its name, and these names, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser.</p>
+<label class="netRow" id="pwRow"><span>Password (user admin)</span><input id="webPw" type="password" maxlength="63" autocomplete="new-password"></label>
+<p class="hint">Also the NVR's login for this camera. A new port or name restarts the hub; a new password or other names apply at once.</p>
+<div class="acts"><button id="saveWeb" class="primary">Save</button></div>
+<div class="portMsg" id="webMsg"></div></section>
+<section class="card"><h2>Addresses</h2><table class="info" id="httpInfo"></table></section></div>
+<div class="view" id="view-rtsp" hidden><h1>RTSP</h1>
+<section class="card" data-save="saveRtsp"><h2>Port</h2>
+<label class="netRow"><span>RTSP port</span><input id="rtspPort" type="number" min="1" max="65535"></label>
+<p class="hint">The video's port, for the NVR and for viewers such as VLC. A new port restarts the hub.</p>
+<div class="acts"><button id="saveRtsp" class="primary">Save</button></div><div class="portMsg" id="rtspMsg"></div></section>
+<section class="card"><h2>Status</h2><table class="info" id="rtspInfo"></table></section></div>
+<div class="view" id="view-espnow" hidden><h1>Nodes and pairing</h1>
+<section class="card"><h2>ESP-NOW</h2><p class="note">The sensor nodes talk to the hub over ESP-NOW, a radio link of their own beside Wi-Fi.</p><table class="info" id="espInfo"></table>
+<label class="check"><input id="espAlarm" type="checkbox"> Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together</label>
+<div class="acts"><button id="addSensor">Add a sensor</button><span class="note">a node, or a device that calls a web address</span></div></section>
+<section class="card"><h2>Pairing</h2>
+<p class="note">A node that supports pairing finds the hub by itself and gets a key of its own. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you.</p>
+<div class="acts"><button id="pairOpen" class="primary">Allow new nodes to pair for 2 minutes</button><span id="pairState"></span></div>
+<table id="pairWaiting" class="list"></table><div class="portMsg" id="pairMsg"></div></section>
+<section class="card"><h2>Sensor nodes</h2><table id="espNodes" class="list"></table><div class="portMsg" id="espEmpty"></div></section>
+<section class="card"><h2>Node firmware</h2>
+<p class="note">A node's new <code>firmware.bin</code>, from the node project, one for each kind of chip. Each node of that chip running another version fetches it by itself after its next report, unless it is saving its battery; one whose update fails goes back to what it had, and does not try that file again. A node watches nothing while it updates, for a minute or so, and stops to report if its sensor fires.</p>
+<label class="drop"><input id="nfFile" type="file" accept=".bin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop a node's <code>firmware.bin</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
+<div class="acts"><button id="nfSend" class="primary">Put on the hub</button></div>
+<div class="portMsg" id="nfMsg"></div><table id="nfList" class="list"></table></section>
+<section class="card"><h2>Unknown senders</h2><table id="espUnknown" class="list"></table><div class="portMsg" id="espNone"></div></section></div>
 <div class="view" id="view-nvr" hidden><h1>NVR</h1>
+<section class="card" data-save="saveNvr"><h2>The NVR</h2>
 <label class="netRow"><span>IP address</span><input id="nvrIp" maxlength="15" inputmode="decimal"></label>
-<div class="portForm"><button id="saveNvr">Save</button></div>
-<div class="portMsg" id="nvrMsg"></div><table class="info" id="nvrInfo"></table></div>
-<div class="view" id="view-live" hidden><h1>Live video</h1><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" class="liveImg off"><div class="portMsg" id="liveFile"></div></div>
-<div class="view" id="view-events" hidden><h1>Events</h1><p class="portForm"><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></p><p class="portForm">Show <select id="evSensor"><option value="">every sensor and the hub</option></select> <select id="evKind"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select></p>
-<table id="evTable"></table><div class="portMsg" id="evNone"></div></div>
+<p class="hint">With it, the hub checks that the NVR listens and records each alert, and plays again any alert it missed.</p>
+<div class="acts"><button id="saveNvr" class="primary">Save</button></div>
+<div class="portMsg" id="nvrMsg"></div></section>
+<section class="card"><h2>Status</h2><table class="info" id="nvrInfo"></table></section></div>
+<div class="view" id="view-live" hidden><h1>Live video</h1><section class="card"><div class="portMsg" id="liveMsg"></div><img id="liveImg" alt="The picture the hub is sending" class="liveImg off"><div class="portMsg" id="liveFile"></div></section></div>
+<div class="view" id="view-events" hidden><h1>Events</h1>
+<div class="filters"><span>Show</span><select id="evSensor" aria-label="Which sensor"><option value="">every sensor and the hub</option></select><select id="evKind" aria-label="Which events"><option value="">every event</option><option value="alerts">alerts</option><option value="problems">problems</option><option value="hub">the hub's own</option></select><span class="grow"></span><a class="btn" href="/api/events.csv" download="hub-events.csv">Download the full history (CSV)</a></div>
+<table id="evTable" class="list"></table><div id="evNone"></div><p class="more"><button id="evMore" hidden>Show more</button></p></div>
 <div class="view" id="view-notify" hidden><h1>Notifications</h1>
-<p class="note">The hub can send each alert to a server on your network: an ntfy or Gotify server, which passes it on to your phone, a Home Assistant webhook, or Node-RED. Use http:// and an IP address; https and names are not supported, so services on the internet need a server on your network in between.</p>
+<section class="card" data-save="saveHook"><h2>Where to send</h2>
+<p class="note">An ntfy or Gotify server on your network passes each message on to your phone; a Home Assistant webhook or Node-RED can act on it. Use http:// and an IP address: https and names are not supported, so a service on the internet needs a server on your network in between.</p>
 <label class="netRow"><span>Send to</span><select id="hookFormat"><option value="ntfy">ntfy</option><option value="gotify">Gotify</option><option value="json">Home Assistant, Node-RED or other (JSON)</option><option value="text">Other (plain text)</option></select></label>
-<p class="note" id="hookHelp"></p>
-<label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200"></label>
-<label class="netRow" id="hookTokenRow"><span>Token</span><input id="hookToken" maxlength="64" autocapitalize="none" autocomplete="off"></label>
-<label class="portForm block" id="hookForgetRow" hidden><input id="hookForget" type="checkbox"> Forget the saved token</label>
-<label class="portForm block"><input id="hookAlerts" type="checkbox"> Alerts</label>
-<label class="portForm block"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
+<label class="netRow"><span>Address</span><input id="hookUrl" maxlength="200" class="wide"></label>
+<p class="hint" id="hookHelp"></p>
+<label class="netRow" id="hookTokenRow"><span>Token</span><input id="hookToken" maxlength="64" autocapitalize="none" autocomplete="off" class="wide"></label>
+<label class="check hint" id="hookForgetRow" hidden><input id="hookForget" type="checkbox"> Forget the saved token</label></section>
+<section class="card" data-save="saveHook"><h2>What to send</h2>
+<label class="check"><input id="hookAlerts" type="checkbox"> Alerts</label>
+<label class="check"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
 <label class="netRow"><span>Daily check at</span><input id="hookDaily" type="time"></label>
-<p class="note">Once a day, at this local time, one message: how many nodes were heard, any problems, the day's alerts and whether they reached the NVR, and when you last sent a test alert. If it stops arriving, the hub is off or cannot reach this address. Leave it empty for none; it needs the hub's clock.</p>
+<p class="hint">One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock.</p>
 <label class="netRow"><span>Weekly summary</span><select id="hookWeekDay"><option value="-1">None</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
 <label class="netRow"><span>at</span><input id="hookWeekTime" type="time" value="09:00"></label>
-<p class="note">Once a week: the week's alerts and whether they reached the NVR, the sensor that fired most, the problems reported, batteries forecast to run out within a month, and the last test alert.</p>
-<div class="portForm"><button id="saveHook">Save</button> <button id="testHook">Send a test</button> <button id="weeklyHook">Send the weekly summary now</button></div>
-<div class="portMsg" id="hookMsg"></div><table class="info" id="hookInfo"></table></div>
+<p class="hint">The week's alerts and whether they reached the NVR, the sensor that fired most, the problems, batteries forecast to run out within a month, and the last test alert.</p>
+<div class="acts"><button id="saveHook" class="primary">Save</button><button id="testHook">Send a test</button><button id="weeklyHook">Send the weekly summary now</button></div>
+<div class="portMsg" id="hookMsg"></div></section>
+<section class="card"><h2>Status</h2><table class="info" id="hookInfo"></table></section></div>
 <div class="view" id="view-ha" hidden><h1>Home Assistant</h1>
+<section class="card" data-save="saveMq"><h2>MQTT broker</h2>
 <p class="note">The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network.</p>
 <label class="netRow"><span>Broker address</span><input id="mqHost" maxlength="15" inputmode="decimal" placeholder="192.168.1.10"></label>
+<p class="hint">Leave it empty to turn MQTT off.</p>
 <label class="netRow"><span>Port</span><input id="mqPort" type="number" min="1" max="65535" placeholder="1883"></label>
 <label class="netRow"><span>User</span><input id="mqUser" maxlength="64" autocapitalize="none" autocomplete="off"></label>
 <label class="netRow"><span>Password</span><input id="mqPw" type="password" maxlength="64" autocomplete="new-password"></label>
-<p class="note">Leave the address empty to turn MQTT off. A password left blank keeps the saved one. The connection is not encrypted, as with the hub's other connections.</p>
-<div class="portForm"><button id="saveMq">Save</button></div>
-<div class="portMsg" id="mqMsg"></div><table class="info" id="mqInfo"></table></div>
+<p class="hint">Left blank, the saved one is kept. Give the broker a login: anything that can publish to it can arm and disarm the hub. The connection is not encrypted, as with the hub's other connections.</p>
+<div class="acts"><button id="saveMq" class="primary">Save</button></div>
+<div class="portMsg" id="mqMsg"></div></section>
+<section class="card"><h2>Connection</h2><table class="info" id="mqInfo"></table></section></div>
 <div class="view" id="view-maintenance" hidden><h1>Maintenance</h1>
-<h2 class="plain">Scheduled restart</h2>
+<section class="card" data-save="saveRb"><h2>Scheduled restart</h2>
 <label class="netRow"><span>Enabled</span><input id="rbOn" type="checkbox" class="box"></label>
 <label class="netRow"><span>Day</span><select id="rbDay"><option value="-1">Every day</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
 <label class="netRow"><span>Time</span><input id="rbTime" type="time"></label>
-<p class="note">The restart waits while an alert is on, and is skipped until the next time if the alert lasts over 30 minutes.</p>
-<div class="portForm"><button id="saveRb">Save</button></div><div class="portMsg" id="rbMsg"></div>
-<h2 class="sub">Restart now</h2>
-<div class="portForm"><button id="rebootNow">Restart the hub</button></div>
-<h2 class="sub">Firmware update</h2>
-<p class="note">Choose the <code>.bin</code> for this board from a release, the one without <code>-full</code>. The hub takes only firmware signed for it, and keeps what it has if the file is anything else.</p>
-<div class="portForm"><input id="fwFile" type="file" accept=".bin"> <button id="fwSend">Update firmware</button></div>
-<div class="portMsg" id="fwMsg"></div>
-<h2 class="sub">Backup and restore</h2>
-<p class="note">The backup file holds the WiFi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
-<div class="portForm"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a> <input id="rsFile" type="file" accept=".txt"> <button id="rsSend">Restore</button></div>
+<p class="hint">The restart waits while an alert is on, and is skipped until the next time if the alert lasts over 30 minutes.</p>
+<div class="acts"><button id="saveRb" class="primary">Save</button></div><div class="portMsg" id="rbMsg"></div></section>
+<section class="card"><h2>Firmware update</h2>
+<p class="note">Use the <code>.bin</code> for this board from a release, the one without <code>-full</code>. The hub takes only firmware signed for it, and keeps what it has if the file is anything else. The video stops until it has restarted, about a minute.</p>
+<label class="drop"><input id="fwFile" type="file" accept=".bin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop the firmware <code>.bin</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
+<div class="progress" id="fwProg" hidden><div class="bar"><div id="fwBar"></div></div><span id="fwPct"></span></div>
+<div class="acts"><button id="fwSend" class="primary">Update firmware</button></div>
+<div class="portMsg" id="fwMsg"></div></section>
+<section class="card"><h2>Backup and restore</h2>
+<h3>Settings</h3>
+<p class="note">A small text file of the settings. It holds the Wi-Fi and hub passwords in plain text, so keep it somewhere safe. Pictures are not included.</p>
+<div class="acts"><a class="btn" href="/api/backup" download="hub-settings.txt">Download backup</a></div>
+<label class="drop"><input id="rsFile" type="file" accept=".txt"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop a settings backup here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
+<div class="acts"><button id="rsSend" class="del">Restore settings</button></div>
 <div class="portMsg" id="rsMsg"></div>
-<h2 class="sub">Full backup</h2>
+<h3>Full backup</h3>
 <p class="note">The settings, every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub.</p>
-<div class="portForm"><button id="fbSave">Download full backup</button> <input id="fbFile" type="file" accept=".tar"> <button id="fbLoad">Restore full backup</button></div>
-<div class="portMsg" id="fbMsg"></div>
-<h2 class="sub">New keys</h2>
-<p class="note">Makes a new ESP-NOW key, pairing key, sensor token and snapshot address, then restarts. Every sensor node must then be set up or paired again, HTTP sensors need the new token, and ONVIF clients the new snapshot address. Use it if a key may have got out.</p>
-<div class="portForm"><button id="newKeys" class="del">Make new keys</button></div>
-<h2 class="sub">Reset settings</h2>
-<p class="note">Erases the saved WiFi networks, ports, name, web password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p>
-<div class="portForm"><button id="resetAll" class="del">Reset settings</button></div><div class="portMsg" id="sysMsg"></div></div>
+<div class="acts"><button id="fbSave">Download full backup</button></div>
+<label class="drop"><input id="fbFile" type="file" accept=".tar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop a full backup <code>.tar</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
+<div class="acts"><button id="fbLoad" class="del">Restore full backup</button></div>
+<div class="portMsg" id="fbMsg"></div></section>
+<section class="card danger"><h2>Danger zone</h2>
+<div class="dangerRow"><div><b>Restart the hub</b><p>The video stops, and the NVR records nothing, until it has started again.</p></div><button id="rebootNow" class="del">Restart the hub</button></div>
+<div class="dangerRow"><div><b>Make new keys</b><p>A new ESP-NOW key, pairing key, sensor token and snapshot address, then a restart. Every node must be set up or paired again, HTTP sensors need the new token, and ONVIF clients the new snapshot address. Use it if a key may have got out.</p></div><button id="newKeys" class="del">Make new keys</button></div>
+<div class="dangerRow"><div><b>Reset the settings</b><p>Erases the saved Wi-Fi networks, ports, name, hub password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept.</p></div><button id="resetAll" class="del">Reset settings</button></div>
+<div class="portMsg" id="sysMsg"></div></section></div>
 <div class="view" id="view-time" hidden><h1>Time</h1>
+<section class="card" data-save="saveTime"><h2>The hub's clock</h2>
 <label class="netRow"><span>Current time</span><input id="tmNow" disabled></label>
 <label class="netRow"><span>Timezone</span><select id="tmZone"></select></label>
 <label class="netRow"><span>Daylight saving</span><select id="tmDst"><option value="0">None</option><option value="1">Europe</option><option value="2">United States</option></select></label>
 <label class="netRow"><span>Set time by</span><select id="tmMode"><option value="ntp">NTP server</option><option value="manual">Manual</option></select></label>
 <label class="netRow"><span>NTP server</span><input id="tmServer" maxlength="63" autocapitalize="none"></label>
 <label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
-<div class="portForm"><button id="tmFromPc">Read from this PC</button> <button id="saveTime">Save</button></div>
-<div class="portMsg" id="tmMsg"></div>
-<p class="note flush">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p></div>
-<div class="view" id="view-device" hidden><h1>Device info</h1><table class="info" id="devInfo"></table><p id="crashActs"></p></div>
+<p class="hint">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p>
+<div class="acts"><button id="saveTime" class="primary">Save</button><button id="tmFromPc">Read from this PC</button></div>
+<div class="portMsg" id="tmMsg"></div></section></div>
+<div class="view" id="view-device" hidden><h1>Device info</h1><section class="card"><table class="info" id="devInfo"></table><p id="crashActs"></p></section></div>
 <div class="view" id="view-sensors">
 <h1>Sensors</h1>
 <div id="usage"></div><div class="bar"><div id="fill"></div></div>
@@ -163,6 +195,7 @@
 <p class="portForm"><button id="makeThumbs">Create missing thumbnails</button></p>
 <label class="namesToggle"><input id="showNames" type="checkbox"> Show the file names, as the file manager and downloads use them</label>
 </div></main></div>
+<div id="unsaved" class="unsaved" role="region" aria-label="Changes not saved" hidden><span>Changes not saved</span><button id="unsavedDiscard">Discard</button><button id="unsavedSave" class="primary">Save</button></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <script type="text/plain" id="encoder-worker" src="encoder-worker.js"></script>
 <script src="sha256.js"></script>

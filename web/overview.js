@@ -165,7 +165,6 @@
               (o.last.received ? ", " + new Date(o.last.received).toLocaleString() : "")
             : "None in the history",
         ],
-        ["Work dropped for lack of memory", String(o.dropped)],
       ]);
       fill("ovInfo", [
         [

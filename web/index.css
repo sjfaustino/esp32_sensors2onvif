@@ -56,6 +56,11 @@
   --toast-err: #f6aea9;
   --backdrop: rgba(20, 24, 28, 0.45); /* behind a question */
   --shadow: rgba(0, 0, 0, 0.22);
+  --hover-bg: #f3f5f7; /* a button or row under the pointer */
+  --accent-hover: #2f5cb5; /* the main button under the pointer */
+  --drop-bg: #f1f5fd; /* a file dragged over its drop zone */
+  --unsaved-bg: #1b1f24; /* the bar saying a page has changes not saved */
+  --unsaved-text: #fff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -111,6 +116,11 @@
     --toast-err: #b3261e;
     --backdrop: rgba(0, 0, 0, 0.6);
     --shadow: rgba(0, 0, 0, 0.5);
+    --hover-bg: #22272d;
+    --accent-hover: #4a7de0;
+    --drop-bg: #18243a;
+    --unsaved-bg: #e3e6ea;
+    --unsaved-text: #16191d;
   }
 }
 a {
@@ -1125,5 +1135,354 @@ th.left {
     display: block;
     font-size: 11px;
     color: var(--muted-text);
+  }
+}
+
+/* Fields and buttons alike on every page, with a ring that shows where the keyboard is. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+select {
+  font: inherit;
+  padding: 5px 9px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  box-sizing: border-box;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):disabled,
+select:disabled {
+  background: var(--line-soft);
+  color: var(--muted-text);
+}
+button:hover,
+.btn:hover {
+  background: var(--hover-bg);
+}
+button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+button.danger:hover {
+  background: var(--away-text);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The settings pages: each part in a card, a field to a row with its label, the help under the field in small grey type,
+   and the part's buttons at its foot, the main one filled. */
+.view > .card {
+  padding: 16px 20px;
+  margin: 0 0 16px;
+}
+.card > h2 {
+  font-family: inherit;
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+.card h3 {
+  font-size: 14px;
+  margin: 16px 0 2px;
+}
+.card .note {
+  color: var(--muted-text);
+  margin-bottom: 10px;
+}
+.view > .card .netRow {
+  margin: 10px 0 0;
+}
+.netRow span {
+  width: 11em;
+  flex: none;
+}
+.netRow input,
+.netRow select {
+  width: 18em;
+  max-width: 100%;
+}
+.netRow input.wide {
+  width: 26em;
+}
+.netRow input.box {
+  width: auto;
+}
+.netRow .suffix {
+  width: auto;
+  color: var(--muted-text);
+}
+.hint {
+  margin: 4px 0 0 calc(11 * 15px + 8px); /* under the field: the label's 11em of the page's 15px, and the gap */
+  font-size: 13px;
+  color: var(--muted-text);
+  max-width: 30rem;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.check input {
+  margin: 3px 0 0;
+}
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 16px 0 0;
+}
+.view > .card button,
+.view > .card .btn,
+.filters .btn {
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin: 0;
+}
+.acts .note {
+  margin: 0;
+}
+.view > .card .portMsg {
+  margin: 8px 0 0;
+}
+.view > .card .portMsg:empty {
+  display: none;
+}
+.view > .card table {
+  margin-top: 4px;
+}
+
+/* A file chosen by dropping it or by a click, with its name and size once chosen, and an upload's progress. */
+.drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 10px 0 0;
+  border: 1.5px dashed var(--border-input);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.drop:hover,
+.drop.over {
+  border-color: var(--accent);
+  background: var(--drop-bg);
+}
+.drop.has {
+  border-style: solid;
+}
+.drop:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.drop input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.drop svg {
+  stroke: var(--muted-text);
+  flex: none;
+}
+.dropText {
+  display: block;
+  font-size: 14px;
+}
+.dropText u {
+  color: var(--link);
+}
+.dropFile {
+  display: block;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+.progress .bar {
+  flex: 1;
+  margin: 0;
+}
+
+/* What cannot be undone, or stops the hub, together at the foot of Maintenance. */
+.card.danger {
+  border-color: var(--danger-border);
+}
+.card.danger > h2 {
+  color: var(--danger);
+}
+.dangerRow {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.card.danger > h2 + .dangerRow {
+  border-top: 0;
+}
+.dangerRow p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+.view > .card .dangerRow button {
+  flex: none;
+}
+
+/* The bar at the foot of the page while a part has changes not saved. */
+.unsaved {
+  position: fixed;
+  left: 240px;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 20px;
+  background: var(--unsaved-bg);
+  color: var(--unsaved-text);
+  box-shadow: 0 -4px 16px var(--shadow);
+  z-index: 8;
+  font-size: 14px;
+}
+.unsaved span {
+  flex: 1;
+}
+.unsaved button {
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 6px;
+}
+.unsaved #unsavedDiscard {
+  background: none;
+  color: inherit;
+  border-color: var(--muted);
+}
+body.dirty main {
+  padding-bottom: 72px;
+}
+body.dirty .toast {
+  bottom: 72px;
+}
+
+/* Lists such as the events: a light header, roomy rows, and the time in ordinary type. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+table.list th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+table.list td {
+  padding: 8px 12px 8px 0;
+  vertical-align: middle;
+}
+table.list td:first-child {
+  font-family: inherit;
+  word-break: normal;
+  white-space: nowrap;
+  color: var(--muted-text);
+}
+.view > .card table.list {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+table.list tr.explains:hover td {
+  background: var(--hover-bg);
+}
+td a,
+td a:visited {
+  color: var(--link);
+  text-decoration: none;
+}
+td a:hover {
+  text-decoration: underline;
+}
+.more {
+  margin: 10px 0 0;
+}
+
+/* The status line at the top leads to what it is about. */
+a.status:hover {
+  text-decoration: underline;
+}
+a.status::after {
+  content: " \203A";
+}
+
+/* While a table loads, grey bars in its place; and a page with nothing yet says what to do. */
+tr.skel td span {
+  display: block;
+  height: 12px;
+  margin: 4px 0;
+  border-radius: 4px;
+  background: var(--line);
+  animation: skel 1s ease-in-out infinite alternate;
+}
+@keyframes skel {
+  to {
+    opacity: 0.4;
+  }
+}
+.empty {
+  text-align: center;
+  padding: 24px 16px;
+  margin: 8px 0 0;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted-text);
+  font-size: 14px;
+}
+.empty b {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.empty .acts {
+  justify-content: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .hint {
+    margin-left: 0;
+  }
+  .netRow span {
+    width: 100%;
+  }
+  .dangerRow {
+    flex-wrap: wrap;
+  }
+  .unsaved {
+    left: 0;
+    padding: 10px 12px;
+  }
+  .view > .card {
+    padding: 14px;
   }
 }

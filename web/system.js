@@ -58,6 +58,7 @@
     const m = $("tmMsg");
     m.className = "portMsg";
     m.textContent = "Read from this PC. Press Save to set the hub to this time.";
+    window.hub.markDirty($("saveTime"));
   };
   $("saveTime").onclick = async () => {
     const m = $("tmMsg"),
@@ -363,18 +364,43 @@
       }))
     )
       return;
-    m.textContent = "Uploading. Keep this page open.";
-    if (
-      await send(
-        m,
-        "/api/firmware",
-        f,
-        "Done. The hub is restarting.",
-        "PUT",
-        "The upload failed. The hub keeps its current firmware.",
-      )
-    )
+    // Sent with XMLHttpRequest, which, unlike fetch, tells how much of the upload has gone.
+    const bar = $("fwBar"),
+      pct = $("fwPct");
+    const shown = (part) => {
+      bar.style.width = Math.round(part * 100) + "%";
+      pct.textContent =
+        part < 1 ? "Uploading: " + Math.round(part * 100) + "%. Keep this page open." : "Checking the signature";
+    };
+    $("fwProg").hidden = false;
+    $("fwSend").disabled = true;
+    m.textContent = "";
+    shown(0);
+    const result = await new Promise((done) => {
+      const x = new XMLHttpRequest();
+      x.open("PUT", "/api/firmware");
+      x.upload.onprogress = (e) => e.lengthComputable && shown(e.loaded / e.total);
+      x.onload = () => {
+        let j = {};
+        try {
+          j = JSON.parse(x.responseText);
+        } catch (e) {}
+        done({ ok: x.status >= 200 && x.status < 300, error: j.error });
+      };
+      x.onerror = () => done({ ok: false });
+      x.send(f);
+    });
+    $("fwProg").hidden = true;
+    $("fwSend").disabled = false;
+    if (result.ok) {
+      m.textContent = "Done. The hub is restarting; this page reloads when it is back.";
       setTimeout(() => location.reload(), 25000);
+    } else {
+      m.className = "portMsg err";
+      m.textContent = result.error
+        ? result.error.charAt(0).toUpperCase() + result.error.slice(1) + "."
+        : "The upload failed. The hub keeps its current firmware.";
+    }
   };
   $("rsSend").onclick = async () => {
     const m = $("rsMsg"),
