@@ -28,6 +28,8 @@ meant to be reachable from outside, and nothing in it is built for that.
 | Threat | Defence |
 | --- | --- |
 | Faking a node's all-clear, or keeping a stolen node looking alive | Each paired node has its own key, from an X25519 exchange checked by fingerprint. Messages are signed and sealed; a replay can only make a false alert, never an all-clear, and cannot stand in for a node's reports. |
+| Playing back a node's info, to make the hub wait hours before missing a stolen node | A paired node's info carries the number from the hub's last confirmation, which changes with each report. Once a node has sent it, the hub ignores that node's info without it or with an old one, and remembers this through a restart. |
+| Reading sealed messages, or forging them, from two sealed with one number | Each sealed message has a number of its own, never used twice under a key: the node and the hub reserve numbers in flash before using them. A hub that cannot save its reservation sends its confirmations signed instead of sealed until it can. |
 | Pairing a rogue node in a real one's place | Approval names the fingerprint that was checked; a hello with another key while pairing is open does not replace it. |
 | Silencing a node | A node quiet for longer than its time is reported silent, and several going quiet together as one event. |
 | Keeping the NVR out, to stop its recording | The NVR always gets a connection, in place of the oldest that is not its own; a refused body is read for at most a minute; a video connection that is not playing is closed. |
@@ -54,10 +56,18 @@ These are limits of the design, or of the hardware, and the owner can lessen eac
 - **Someone holding the hub.** Passwords and keys are on its flash unencrypted, and its USB port takes any firmware.
   Put the hub where an intruder will not reach it before being recorded.
 - **Someone watching the home network.** HTTP, ONVIF, RTSP and MQTT are not encrypted, as is usual between local
-  devices, so the hub password can be read from the traffic. Keep the hub on a network only trusted devices join.
+  devices. The pages send the hub password with every request, readable by anyone who sees the traffic, and that one
+  password is also the ONVIF and RTSP login and can disarm the hub. On a WPA2 network with one shared password, any
+  device that knows it can read the others' traffic once it sees them join. TLS does not fit in the hub's memory
+  beside the video, so this is accepted, and the owner lessens it:
+  - Put the hub and the NVR on a network of their own, such as a separate Wi-Fi name or VLAN that guests and other
+    devices do not join, or at least use WPA3, where one device cannot read another's traffic.
+  - Do not open the hub's pages from a device you do not trust, or over a network you do not control.
+  - If the hub password may have been seen, change it on the HTTP page; it applies at once.
 - **The MQTT broker.** Anything that can publish to it can arm and disarm the hub. Give the broker a login.
 - **Nodes on old firmware.** A node running firmware from before node signing takes any firmware its hub offers; once it
-  runs a signed one, it checks every update after.
+  runs a signed one, it checks every update after. One from before its info carried the hub's number can still have
+  its info played back, until it runs firmware that sends the number.
 - **The signing key.** Whoever has it, and the hub password, can put any firmware on any hub. If it is lost, each hub
   takes a firmware with a new key only over its USB cable.
 - **A node with no screen pairing.** It cannot check the hub it pairs with, and takes the first that approves it. Pair

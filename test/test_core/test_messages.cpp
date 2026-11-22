@@ -347,6 +347,22 @@ static void a_nodes_hardware_travels_and_is_checked() {
   TEST_ASSERT_TRUE(s2oReadInfo(body, with, read));
   TEST_ASSERT_TRUE(read.hasHardware && read.hardware == hw);
   TEST_ASSERT_FALSE(s2oReadInfo(body, with - 1, read));  // cut short
+  TEST_ASSERT_FALSE(read.hasFresh);
+  // And the hub's number after it, which a recording cannot have: read back, and kept by the hub as "this node sends it".
+  info.hasFresh = true;
+  info.fresh = 0xA1B2C3D4u;
+  int fresh = s2oInfoBody(info, body);
+  TEST_ASSERT_EQUAL(with + 4, fresh);
+  TEST_ASSERT_TRUE(s2oReadInfo(body, fresh, read));
+  TEST_ASSERT_TRUE(read.hasHardware && read.hasFresh && read.fresh == 0xA1B2C3D4u);
+  TEST_ASSERT_FALSE(s2oReadInfo(body, fresh - 1, read));
+  info.hasHardware = false;  // only with the hardware: alone, it is not sent
+  TEST_ASSERT_EQUAL(plain, s2oInfoBody(info, body));
+  CamNodeInfo kept, keptBack;
+  kept.version = "v0.2.0";
+  kept.sendsFresh = true;
+  TEST_ASSERT_TRUE(camParseNodeInfo(camNodeInfoText(kept), keptBack));
+  TEST_ASSERT_TRUE(keptBack.sendsFresh && keptBack == kept);
 
   // The confirmation's flag.
   S2oReport r;

@@ -134,14 +134,12 @@ bool storeSettings(const CamSettings& s) {
 }
 
 // Not in CAM_SETTINGS, so never in a backup: restoring one would take the numbers back to ones used before.
-uint32_t takeSealStart(uint32_t block) {
-  uint32_t start = esp_random();  // a hub from before this: as random as it always was. A settings reset keeps it.
-  withPrefs("seal", [&](Preferences& p) {
+bool takeSealStart(uint32_t block, uint32_t& start) {
+  start = esp_random();  // a hub from before this: as random as it always was. A settings reset keeps it.
+  return withPrefs("seal", [&](Preferences& p) {
     if (p.isKey("next")) start = p.getUInt("next", start);
-    p.putUInt("next", start + block);  // before any is used, so a power cut cannot hand them out again
-    return true;
+    return p.putUInt("next", start + block) == 4;  // before any is used, so a power cut cannot hand them out again
   });
-  return start;
 }
 
 bool storeSealNext(uint32_t next) {

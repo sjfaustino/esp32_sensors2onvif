@@ -50,6 +50,8 @@ CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* d, int len,
   info.version = i.version;
   info.hasHardware = i.hasHardware;
   info.hardware = i.hardware;
+  info.hasFresh = i.hasFresh;
+  info.fresh = i.fresh;
   out = info;
   return checkSignature(mac, d, len, key);
 }
@@ -78,6 +80,8 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
       info.version = value;
     else if (key == "hw" && camParseHardware(value, info.hardware))
       info.hasHardware = true;
+    else if (key == "fresh" && value == "1")
+      info.sendsFresh = true;
     else
       return false;
     return true;
@@ -89,7 +93,8 @@ bool camParseNodeInfo(const std::string& text, CamNodeInfo& out) {
 std::string camNodeInfoText(const CamNodeInfo& i) {
   return "every=" + std::to_string(i.everyS) + "\nsaving=" + (i.saving ? "1" : "0") + "\nrestart=" + std::to_string(i.restart) +
          "\nrestarts=" + std::to_string(i.restarts) + "\nchip=" + std::to_string(i.chip) + "\nrefused=" + std::to_string(i.refused) +
-         "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n" + (i.hasHardware ? "hw=" + camHardwareText(i.hardware) + "\n" : "");
+         "\nsensor=" + i.sensor + "\nversion=" + i.version + "\n" + (i.hasHardware ? "hw=" + camHardwareText(i.hardware) + "\n" : "") +
+         (i.sendsFresh ? "fresh=1\n" : "");
 }
 
 std::string camHardwareText(const S2oHardware& hw) {

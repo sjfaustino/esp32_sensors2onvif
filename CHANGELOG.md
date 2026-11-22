@@ -7,6 +7,14 @@ before that, a new minor version may change settings or the messages.
 
 ### Security
 
+- A node's info carries the number from the hub's last confirmation, and once a node has sent it the hub ignores its
+  info without it. Played back, a recording of a node saying it reports only every few hours could otherwise have
+  given a thief that long before the node was missed. Needs node firmware newer than 0.1.0.
+- A sealed message is never sealed with a number used before. The node sealed an alert it was still resending with
+  the alert's own number, while what it said changed, and the hub went on sealing when it could not save its
+  reserved numbers; it now sends signed confirmations until it can. Fresh numbers come from the chip's random source.
+- The threat model says what someone watching the home network can read, and what to do about it.
+
 - Sealed messages between the hub and the nodes are XChaCha20-Poly1305 (Monocypher), with a 16-byte tag that also binds
   the node's address and the direction, in place of a key stream and an 8-byte signature built from HMAC-SHA1. The hub
   still reads the old form from nodes on older firmware, and answers each in the form it used. X25519, for pairing, is
@@ -14,6 +22,8 @@ before that, a new minor version may change settings or the messages.
 
 ### The pages
 
+- The switch that makes node problems raise the alarm, and a name given while pairing, say so when the hub refuses
+  them; the switch goes back to what the hub has.
 - The pages ask the hub far less: nothing while the tab is hidden, the Overview its summary every 3 s and the rest only
   when it changes, and the status line not twice. Open on the Overview, a browser asks 12 times in 30 s, from 33; on Nodes
   and pairing 29, from 47.

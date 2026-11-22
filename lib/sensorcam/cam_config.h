@@ -146,6 +146,7 @@ class CamChip {
   virtual bool crashDelete() { return false; }
   virtual bool maintenance(const std::string& action) { return false; }  // "reboot", "reset" or "newkeys"; restarts shortly after replying
   virtual void deviceRows(CamJson& j) {}                                 // ["label","value"] arrays for the Device Info page
+  virtual bool random32(uint32_t& out) { return false; }                 // a number from the chip's random source; false where there is none
   virtual bool tellsHealth() { return false; }                           // health() has figures, for Home Assistant's diagnostic sensors
   virtual void health(CamHealth& h) {}
   virtual time_t wallTime() { return time(nullptr); }  // seconds since 1970 UTC; before the clock is set, a small number
@@ -241,6 +242,7 @@ struct CamConfig {
   bool startPlanned = false;   // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
   uint32_t sealStart = 0;      // the first number of the hub's sealed messages: where the last start's left off, see sealReserve
+  bool sealStartKept = true;   // false when the start could not save the block it reserved: nothing is sealed until one is
   std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
   bool watchNvr = true;        // log and send alerts the NVR was not listening for
 };

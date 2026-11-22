@@ -107,6 +107,10 @@ class HubChip : public CamChip {
   bool tellsHealth() override { return true; }
   void health(CamHealth& h) override { hubHealth(h); }
   int localMinute() override { return ::localMinute(); }
+  bool random32(uint32_t& out) override {
+    out = esp_random();  // truly random while Wi-Fi runs, as it does from the start
+    return true;
+  }
   int localWeekday() override { return ::localWeekday(); }
   void timeInfo(CamJson& j) override { ::timeInfo(j); }
   bool timeSave(const CamTime& t) override { return saveTime(t); }
@@ -181,7 +185,7 @@ static CamConfig makeConfig() {
   c.startReason = lastRestartText();
   c.startPlanned = startWasPlanned();
   c.snapshotSecret = settings.snapshotKey.c_str();
-  c.sealStart = takeSealStart(CAM_SEAL_BLOCK);
+  c.sealStartKept = takeSealStart(CAM_SEAL_BLOCK, c.sealStart);
   c.extraHosts = settings.extraHosts.c_str();
   c.webhook = settings.webhook;
   c.setupPasswordHash = strlen(SETUP_AP_PASSWORD) ? camSha1(SETUP_AP_PASSWORD) : std::string();

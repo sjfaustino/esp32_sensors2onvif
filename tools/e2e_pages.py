@@ -150,6 +150,27 @@ def test_a_refused_change_shows_the_truth(page, dialogs):
     page.unroute('**/api/arm')
 
 
+def test_a_refused_alarm_switch_goes_back(page, dialogs):
+    # The switch that makes node problems raise the alarm: refused, it must show what the hub has, and say why.
+    def refuse(route):
+        if route.request.method == 'POST':
+            route.fulfill(status=507, content_type='application/json', body='{"ok":false,"error":"could not save the setting"}')
+        else:
+            route.continue_()
+
+    api('POST', '/api/alerts', 'alarm=0')
+    page.goto(URL + '#espnow')
+    page.wait_for_selector('#espAlarm', state='visible')
+    page.route('**/api/alerts', refuse)
+    page.click('#espAlarm')
+    check('a refused alarm switch says why', notice(page, 'could not save') and 'err' in page.get_attribute('#toast', 'class'), page.text_content('#toast'))
+    check('and goes back to what the hub has', not page.is_checked('#espAlarm') and get_json('/api/alerts')['alarm'] is False)
+    page.unroute('**/api/alerts')
+    page.click('#espAlarm')
+    check('accepted, it says so', notice(page, 'now raise the alarm') and page.is_checked('#espAlarm') and get_json('/api/alerts')['alarm'] is True)
+    api('POST', '/api/alerts', 'alarm=0')
+
+
 def open_alert_settings(page):
     """Opens the sensor's Alert settings, where its test alert button is; the page closes them when it redraws."""
     page.wait_for_selector('summary:has-text("Alert settings")')
@@ -584,6 +605,7 @@ def page_cases(nvr, storage):
         ('arming', on_page(test_arming, 'dialogs')),
         ('a_refused_change_shows_the_truth', on_page(test_a_refused_change_shows_the_truth, 'dialogs')),
         ('alerts', on_page(test_alerts, 'dialogs', nvr)),
+        ('a_refused_alarm_switch_goes_back', on_page(test_a_refused_alarm_switch_goes_back, 'dialogs')),
         ('the_first_steps', on_page(test_the_first_steps)),
         ('notifications_page', on_page(test_notifications_page)),
         ('settings_pages', on_page(test_settings_pages)),

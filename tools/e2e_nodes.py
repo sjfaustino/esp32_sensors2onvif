@@ -463,3 +463,29 @@ def node_hardware(s, node):
     check('saving the node\'s other settings keeps its hardware', node.tree().get('hwSet') == '1,4,3,4,1,1', node.tree())
     node.say(node.info())
     check('a node from before hardware settings is never asked to fetch them', node.confirmed()[21] & 4 == 0 and node.tree().get('hwRuns') == '', node.tree())
+
+
+@case(pc=True)
+@with_node
+def a_recorded_node_info_is_ignored(s, node):
+    """Info played back later could tell the hub the node reports only every few hours, buying a thief that long. Once a
+    node sends the hub's number in its info, info without it, or with an old one, is ignored."""
+    runs = hardware(0, 3, 2, 255, 255, 0)
+
+    def info(every, saving, fresh):
+        return node.info(every, saving, hw=runs + fresh.to_bytes(4, 'little'))
+
+    node.confirmed()  # the node has the hub's number
+    node.say(info(7200, 0, node.fresh))
+    check("info with the hub's current number is taken", node.row().get('every') == 7200, node.row())
+    recorded = info(6 * 3600, 1, node.fresh)  # what a thief records
+    node.confirmed()
+    node.confirmed()  # the number moves on with each report
+    node.say(recorded)
+    check('played back later, it is ignored', node.row().get('every') == 7200 and node.row().get('saving') is False, node.row())
+    node.say(node.info(6 * 3600, 1, hw=runs))
+    check('and so is info without the number, from a node that has sent it', node.row().get('every') == 7200, node.row())
+    kept = api('GET', f'/api/file?path={node.folder}/node.txt')[1]
+    check('the hub keeps that the node sends it, through a restart', b'\nsaid.fresh=1\n' in kept, kept)
+    node.say(info(6 * 3600, 1, node.fresh))
+    check('with the current number, a change is taken', node.row().get('every') == 6 * 3600 and node.row().get('saving') is True, node.row())

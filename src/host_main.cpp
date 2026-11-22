@@ -9,6 +9,7 @@
 #include <deque>
 #include <mutex>
 #include <new>
+#include <random>
 #include <string>
 #include <thread>
 #include "cam_server.h"
@@ -169,6 +170,11 @@ static std::string storageFolder;
 
 class TestChip : public CamChip {
  public:
+  bool random32(uint32_t& out) override {
+    static std::random_device source;
+    out = source();
+    return true;
+  }
   bool storageUsage(uint32_t& used, uint32_t& total) override {  // what is really stored, of a pretend storage size
     std::function<uint32_t(const CamStorage&, const std::string&)> sum = [&](const CamStorage& s, const std::string& path) {
       std::vector<CamFsEntry> items;

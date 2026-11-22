@@ -127,7 +127,7 @@ class CamAlarm {
   uint32_t freshNumber();
 #ifdef CAM_TEST_HOOKS
  public:
-  uint32_t testNextSeal() { return nextSeal(); }  // for the unit tests
+  bool testTakeSeal(uint32_t& n) { return takeSeal(n); }  // for the unit tests
 
  private:
 #endif
@@ -153,7 +153,9 @@ class CamAlarm {
   int confirmCount_ = 0;
   uint32_t sealNumber_ = 0;    // for the hub's sealed messages; see CamStore::sealReserve
   uint32_t sealReserved_ = 0;  // the first not reserved yet
-  uint32_t nextSeal();
+  bool sealKept_ = true;       // the numbers up to sealReserved_ are saved as reserved
+  uint32_t freshCount_ = 0;    // mixed into fresh numbers where the chip has no random source
+  bool takeSeal(uint32_t& number);
 
   std::vector<CamDeliveryWatch::Missed> notGot_;  // reserved at the start, so checking deliveries never asks for memory
   bool waitingDirty_ = false;                     // the alerts waiting for an NVR record changed since they were saved

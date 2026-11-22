@@ -217,6 +217,10 @@ int s2oInfoBody(const S2oInfo& info, uint8_t* out) {
   len += putText(out + len, info.sensor);
   len += putText(out + len, info.version);
   if (info.hasHardware) len += putHardware(out + len, info.hardware);
+  if (info.hasHardware && info.hasFresh) {
+    put32(out + len, info.fresh);
+    len += 4;
+  }
   return len;
 }
 
@@ -241,10 +245,16 @@ bool s2oReadInfo(const uint8_t* d, int len, S2oInfo& out) {
     text[d[at]] = 0;
     at += 1 + d[at];
   }
-  if (at + S2O_HARDWARE_FIELDS == len) {  // a node that says its hardware; one from before says nothing more
+  // A node that says its hardware, and perhaps the hub's number after it; one from before says nothing more.
+  if (at + S2O_HARDWARE_FIELDS == len || at + S2O_HARDWARE_FIELDS + 4 == len) {
     if (!getHardware(d + at, info.hardware)) return false;
     info.hasHardware = true;
     at += S2O_HARDWARE_FIELDS;
+    if (at + 4 == len) {
+      info.hasFresh = true;
+      info.fresh = get32(d + at);
+      at += 4;
+    }
   }
   if (at != len) return false;
   out = info;

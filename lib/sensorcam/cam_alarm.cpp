@@ -32,6 +32,7 @@ CamAlarm::CamAlarm(const CamConfig& cfg, CamChip& chip, CamRadio& radio, CamStor
       log_(storage),
       sealNumber_(cfg.sealStart),
       sealReserved_(cfg.sealStart + CAM_SEAL_BLOCK),
+      sealKept_(cfg.sealStartKept),
       armMode_(cfg.armMode),
       disarmedUntil_(cfg.disarmedUntil),
       healthAlarm_(cfg.healthAlarm),
@@ -430,10 +431,13 @@ void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, 
     memcpy(slot, mac, 6);
     CamForNode extra = forNode(id);
     extra.prove = node->paired && !present;
-    if (sealed) {
+    // Without a number saved as reserved, the confirmation goes signed instead, which every node takes too: it shows
+    // what the report said, but a number used twice would show far more.
+    uint32_t number = 0;
+    if (sealed && takeSeal(number)) {
       uint8_t body[CAM_CONFIRMATION_BODY];
       camConfirmationBody(r, extra, body);
-      slot[6] = (uint8_t)camSeal(mac, nextSeal(), body, sizeof(body), key, true, slot + 7, sealed == CAM_SEALED_OLD);
+      slot[6] = (uint8_t)camSeal(mac, number, body, sizeof(body), key, true, slot + 7, sealed == CAM_SEALED_OLD);
     } else {
       slot[6] = CAM_CONFIRMATION_LEN;
       camConfirmationInto(mac, r, extra, key, slot + 7);
@@ -464,9 +468,12 @@ void CamAlarm::refuseSignature(int id) {
   table_.healthOf(id).refusal = "wrong signature";
 }
 
-// Random numbers without a source of them on every build: the hub's seal numbers, which start at random, mixed.
+// From the chip's random source. Where there is none, as in the unit tests, a count and the time, mixed: not secret,
+// but never the same twice in a row, which is what proves a report is not a recording.
 uint32_t CamAlarm::freshNumber() {
-  uint32_t x = nextSeal() * 2654435761u ^ millis_() ^ 0x9E3779B9u;
+  uint32_t x;
+  if (chip_->random32(x) && x) return x;
+  x = ++freshCount_ * 2654435761u ^ millis_() ^ 0x9E3779B9u;
   x ^= x >> 16;
   x *= 0x85EBCA6Bu;
   x ^= x >> 13;
@@ -566,6 +573,14 @@ void CamAlarm::nodeInfoPacket(const uint8_t mac[6], const uint8_t* data, int len
   CamPacketCheck check = camCheckNodeInfo(mac, data, len, table_.keyFor(&node), info);
   if (check == CAM_PACKET_INVALID) return;
   if (check == CAM_PACKET_BAD_SIGNATURE) return refuseSignature(id);
+  // Played back later, info could tell the hub the node reports only every few hours, buying a thief that long before
+  // the node is missed. A paired node's info carries the number from the hub's last confirmation, which changes with
+  // each report; once a node has sent it, info without it, or with an old one, is a recording and ignored.
+  if (node.paired) {
+    bool current = info.hasFresh && info.fresh && (info.fresh == node.fresh || info.fresh == node.freshBefore);
+    if (info.hasFresh ? !current : node.info.sendsFresh) return;
+  }
+  info.sendsFresh = node.info.sendsFresh || (node.paired && info.hasFresh);
   CamNodeInfo old = node.info;
   if (info.responseMs == CAM_RESPONSE_UNKNOWN) info.responseMs = old.responseMs;
   node.info = info;
@@ -674,12 +689,19 @@ void CamAlarm::rescan() {
   outside_.sensorsRescanned(c.listChanged);  // a sensor or a name changed, so Home Assistant is told again
 }
 
-// The next number for a sealed message. Reaching the end of the block reserved, the next block is reserved first; should
-// that fail to save, sealing goes on, as a confirmation the node waits for matters more than the secrecy of one.
-uint32_t CamAlarm::nextSeal() {
-  if (sealNumber_ == sealReserved_) {
-    sealReserved_ += CAM_SEAL_BLOCK;
-    store_->sealReserve(sealReserved_);
+// The next number for a sealed message, which seals one message for good: used twice under a node's key, it would show
+// both messages and let others be forged. So a number is used only once the block it is in is saved as reserved, and a
+// start goes on after the last block saved. When a block cannot be saved, there is no number: the caller sends the
+// message signed instead, and each later message tries the save again.
+bool CamAlarm::takeSeal(uint32_t& number) {
+  if (!sealKept_ || sealNumber_ == sealReserved_) {
+    if (!store_->sealReserve(sealNumber_ + CAM_SEAL_BLOCK)) {
+      sealKept_ = false;
+      return false;
+    }
+    sealReserved_ = sealNumber_ + CAM_SEAL_BLOCK;
+    sealKept_ = true;
   }
-  return sealNumber_++;
+  number = sealNumber_++;
+  return true;
 }

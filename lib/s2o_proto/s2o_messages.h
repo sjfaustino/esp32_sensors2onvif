@@ -167,9 +167,13 @@ struct S2oInfo {
   char version[S2O_TEXT_MAX + 1] = "";
   bool hasHardware = false;  // a node from before hardware settings says nothing of them
   S2oHardware hardware;      // what it runs: at the end, after the texts
+  // The number from the hub's last confirmation, after the hardware, so a recording of the info cannot be played back
+  // later. Only with the hardware; a node from before says neither.
+  bool hasFresh = false;
+  uint32_t fresh = 0;
 };
 const int S2O_INFO_HEAD = 17;
-const int S2O_INFO_MAX = S2O_INFO_HEAD + 2 * (1 + S2O_TEXT_MAX) + S2O_HARDWARE_FIELDS + S2O_SIG_LEN;
+const int S2O_INFO_MAX = S2O_INFO_HEAD + 2 * (1 + S2O_TEXT_MAX) + S2O_HARDWARE_FIELDS + 4 + S2O_SIG_LEN;
 // Copies text into a field, cut to S2O_TEXT_MAX, with anything not printable ASCII made '?', so the rest still arrives.
 void s2oSetText(char out[S2O_TEXT_MAX + 1], const char* text);
 int s2oInfoBody(const S2oInfo& info, uint8_t* out);

@@ -81,12 +81,20 @@ report, gets no confirmation, and is sent once per node, not per input:
 | 1 + n | The length, 0 to 24, then the text of its sensor's kind, such as `RCWL-0516` |
 | 1 + n | The same for its firmware version |
 | 9 | Optional: the hardware settings it runs, as in Hardware settings below. A node from before them leaves these out |
+| 4 | Optional, only after the hardware settings: the number from the hub's last confirmation, as a report carries it |
 | 8 | The signature, as a report's |
 
 Texts are printable ASCII. The Nodes and pairing page shows them, and the hub keeps them in the node's `node.txt`, each after `said.`, all
 but the alert time, which changes with every alert. A restart counted for a crash, the watchdog or a brownout is logged.
 **Report this node silent after** is then a quarter longer than the node's report time, and at least 10 minutes longer,
-and follows the node when that changes. Set on the Sensors page, it comes first. A node that never says uses 3 hours.
+and follows the node when that changes.
+
+Played back later, a recording of a node's info could tell the hub the node reports only every few hours, giving a
+thief that long before the node is missed. So a paired node puts the number from the hub's last confirmation in its
+info, as in its reports. That number changes with each report. Once a node has sent it, the hub ignores that node's
+info without it or with an old one. The hub keeps that the node sends it in `node.txt` (`said.fresh=1`), so a
+restart of the hub does not make an old recording count again. A node on firmware from before keeps working as
+it did. Set on the Sensors page, it comes first. A node that never says uses 3 hours.
 Its report time and repeat time can also be set there, under **Node settings**; they reach the node with its next
 confirmation, and the node then says its new report time, so the silent time follows.
 

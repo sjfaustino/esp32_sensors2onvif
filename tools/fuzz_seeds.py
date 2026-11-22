@@ -44,7 +44,9 @@ seeds = {
     30: b'name=Front gate\nhold=30\nzone=interior\n',
 }
 # Also the present sealed form for parser 5: 12, the number, the report encrypted, and a 16-byte tag.
-extra = {'05b': (5, bytes([12]) + struct.pack('<I', 9) + report + bytes(16))}
+extra = {'05b': (5, bytes([12]) + struct.pack('<I', 9) + report + bytes(16)),
+         # Node info with its hardware and the hub's number after it.
+         '01b': (1, info + bytes([1, 0, 0, 0, 4, 3, 4, 1, 1]) + struct.pack('<I', 0xA1B2C3D4))}
 for name, (n, body) in extra.items():
     with open(os.path.join(out, f'seed{name}'), 'wb') as f:
         f.write(bytes([n]) + body)

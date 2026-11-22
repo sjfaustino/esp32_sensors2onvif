@@ -170,10 +170,14 @@ struct CamNodeInfo {
   std::string sensor, version;
   bool hasHardware = false;  // what the node says it runs; a node from before hardware settings says nothing
   S2oHardware hardware;
+  bool hasFresh = false;  // the hub's number, in this message only; not kept
+  uint32_t fresh = 0;
+  bool sendsFresh = false;  // kept: once a node has sent the number, info without it is a recording
   // Everything node.txt keeps of it.
   bool operator==(const CamNodeInfo& o) const {
     return everyS == o.everyS && saving == o.saving && restart == o.restart && restarts == o.restarts && chip == o.chip && refused == o.refused &&
-           sensor == o.sensor && version == o.version && hasHardware == o.hasHardware && (!hasHardware || hardware == o.hardware);
+           sensor == o.sensor && version == o.version && hasHardware == o.hasHardware && (!hasHardware || hardware == o.hardware) &&
+           sendsFresh == o.sendsFresh;
   }
 };
 CamPacketCheck camCheckNodeInfo(const uint8_t mac[6], const uint8_t* data, int len, const std::string& key, CamNodeInfo& out);

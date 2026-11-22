@@ -243,7 +243,9 @@
                           "POST",
                           "/api/sensor-settings?path=" + n.mac + "/" + i,
                           "name=" + encodeURIComponent(where.trim()),
-                        ).catch(() => {});
+                        ).catch((e) =>
+                          notice("The name was not saved: " + e.message + ". Name it on the Sensors page.", { err: true }),
+                        );
                     }
                     $("pairMsg").textContent = "Paired " + n.mac + ". It starts reporting once it hears the hub again.";
                     loadEsp();
@@ -290,8 +292,16 @@
       espTimer = setInterval(() => document.hidden || loadEsp(), 3000);
     }
   }
+  // Refused, the switch goes back to what the hub has, and says why: it must never show an alarm the hub will not raise.
   $("espAlarm").onchange = (e) => {
-    call("POST", "/api/alerts", "alarm=" + (e.target.checked ? 1 : 0)).catch(() => {});
+    const box = e.target,
+      on = box.checked;
+    call("POST", "/api/alerts", "alarm=" + (on ? 1 : 0))
+      .then(() => notice(on ? "Node problems now raise the alarm" : "Node problems no longer raise the alarm"))
+      .catch((err) => {
+        box.checked = !on;
+        notice("Not changed: " + err.message, { err: true });
+      });
   };
   $("nfSend").onclick = async () => {
     const m = $("nfMsg"),

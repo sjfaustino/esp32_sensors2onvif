@@ -38,9 +38,10 @@ struct Store : CamStore {
     return true;
   }
   std::vector<uint32_t> reserved;
+  bool saves = true;  // false: flash refuses the reservation
   bool sealReserve(uint32_t next) override {
-    reserved.push_back(next);
-    return true;
+    if (saves) reserved.push_back(next);
+    return saves;
   }
 };
 
@@ -520,19 +521,40 @@ static void sealed_message_numbers_never_repeat_and_are_reserved_ahead() {
   CamConfig cfg;
   cfg.sealStart = 0xFFFF0000u;  // near the top, so the numbers also wrap round on the way
   Rig r("cam_alarm_seal", cfg);
-  uint32_t expect = cfg.sealStart;
+  uint32_t expect = cfg.sealStart, n = 0;
   for (uint32_t i = 0; i < CAM_SEAL_BLOCK; i++) {  // the block this start reserved: nothing more to reserve
-    uint32_t n = r.alarm.testNextSeal();
-    if (n != expect++) TEST_FAIL_MESSAGE("a number out of turn");
+    if (!r.alarm.testTakeSeal(n) || n != expect++) TEST_FAIL_MESSAGE("a number out of turn");
   }
   TEST_ASSERT_EQUAL(0, (int)r.store.reserved.size());
-  TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + CAM_SEAL_BLOCK, r.alarm.testNextSeal());  // the next block's first
+  TEST_ASSERT_TRUE(r.alarm.testTakeSeal(n));
+  TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + CAM_SEAL_BLOCK, n);  // the next block's first
   TEST_ASSERT_EQUAL(1, (int)r.store.reserved.size());                                // reserved before it was used
   TEST_ASSERT_EQUAL_UINT32(cfg.sealStart + 2 * CAM_SEAL_BLOCK, r.store.reserved[0]);
 }
 
+// A block flash will not save gives no numbers: messages go signed until a save works, and the numbers then go on from
+// where they stopped, never from a block the flash does not hold as reserved.
+static void no_sealed_message_without_a_number_saved_as_reserved() {
+  CamConfig cfg;
+  cfg.sealStart = 1000;
+  cfg.sealStartKept = false;  // the start could not save its block
+  Rig r("cam_alarm_seal_unsaved", cfg);
+  uint32_t n = 0;
+  r.store.saves = false;
+  TEST_ASSERT_FALSE(r.alarm.testTakeSeal(n));
+  TEST_ASSERT_FALSE(r.alarm.testTakeSeal(n));
+  r.store.saves = true;
+  TEST_ASSERT_TRUE(r.alarm.testTakeSeal(n));
+  TEST_ASSERT_EQUAL_UINT32(1000, n);
+  TEST_ASSERT_EQUAL_UINT32(1000 + CAM_SEAL_BLOCK, r.store.reserved.back());
+  for (uint32_t i = 1; i < CAM_SEAL_BLOCK; i++) r.alarm.testTakeSeal(n);  // to the end of that block
+  r.store.saves = false;
+  TEST_ASSERT_FALSE(r.alarm.testTakeSeal(n));  // the next block not saved: no number past the last saved
+}
+
 void runAlarmTests() {
   RUN_TEST(sealed_message_numbers_never_repeat_and_are_reserved_ahead);
+  RUN_TEST(no_sealed_message_without_a_number_saved_as_reserved);
   RUN_TEST(an_alert_from_a_known_sensor_is_raised_logged_and_sent);
   RUN_TEST(an_alert_lasts_its_hold_even_when_the_sensor_clears_at_once);
   RUN_TEST(disarmed_an_alert_is_logged_but_not_raised);
