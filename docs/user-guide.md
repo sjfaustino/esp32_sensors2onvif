@@ -279,7 +279,8 @@ time; up to 8 wait, and the page shows how the last one went.
 **Sensors > Home Assistant** connects the hub to an MQTT broker, and Home Assistant then finds the hub and each
 sensor by itself. In Home Assistant, install the Mosquitto broker add-on and the MQTT integration, make a Home Assistant
 user for the hub, and enter the broker's IP address, that user and its password here. The hub has no name lookup, so the
-address must be an IP address, and the connection is not encrypted.
+address must be an IP address, and the connection is not encrypted. Without a user, the hub takes no disarm from Home
+Assistant: a broker anyone can use would let anything on the network disarm it. Arming and test alerts still work.
 
 Home Assistant then shows:
 

@@ -152,7 +152,7 @@
 <label class="netRow"><span>Port</span><input id="mqPort" type="number" min="1" max="65535" placeholder="1883"></label>
 <label class="netRow"><span>User</span><input id="mqUser" maxlength="64" autocapitalize="none" autocomplete="off"></label>
 <label class="netRow"><span>Password</span><input id="mqPw" type="password" maxlength="64" autocomplete="new-password"></label>
-<p class="hint">Left blank, the saved one is kept. Give the broker a login: anything that can publish to it can arm and disarm the hub. The connection is not encrypted, as with the hub's other connections.</p>
+<p class="hint">Left blank, the saved one is kept. Give the broker a login: without one, the hub takes no disarm from Home Assistant, as anything on the network could send it. The connection is not encrypted, as with the hub's other connections.</p>
 <div class="acts"><button id="saveMq" class="primary">Save</button></div>
 <div class="portMsg" id="mqMsg"></div></section>
 <section class="card"><h2>Connection</h2><table class="info" id="mqInfo"></table></section></div>

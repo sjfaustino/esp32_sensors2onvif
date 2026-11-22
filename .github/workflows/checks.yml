@@ -26,6 +26,10 @@ jobs:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
 
+      # The platform is fetched by URL; this refuses one that is not, byte for byte, the one recorded.
+      - name: The build platform is the one recorded
+        run: python tools/check_platform.py
+
       - name: Install PlatformIO and ffmpeg
         run: |
           pip install platformio cryptography

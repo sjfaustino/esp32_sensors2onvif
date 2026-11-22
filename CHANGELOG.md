@@ -5,6 +5,12 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Security
+
+- The hub takes a disarm from Home Assistant only when it logs in to the MQTT broker with a user. A broker that lets
+  anyone in, as Mosquitto can, let anyone on the network disarm the hub; arming and test alerts are still taken. The
+  Home Assistant page says which applies.
+
 ### The pages
 
 - The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
@@ -18,6 +24,8 @@ before that, a new minor version may change settings or the messages.
 
 ### Tools
 
+- `tools/check_platform.py` checks, in CI and before a release is built, that the PlatformIO platform fetched by URL
+  is byte for byte the one recorded, and with it the versions and addresses of the compiler and framework it installs.
 - `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
   hub keeps it or says it went back; with `--release v0.6.0` it sends a published release, as CI built it. It refuses
   a commit CI has not passed, changes not committed, and a hub with an alert active.

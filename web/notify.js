@@ -19,6 +19,12 @@
         [tr("Events waiting to send"), m.waiting],
         [tr("Events lost, too many waiting"), m.lost],
         [tr("Topics"), m.topic + "/…"],
+        [
+          tr("Disarming from Home Assistant"),
+          m.user
+            ? tr("Allowed, as the hub logs in to the broker")
+            : tr("Refused: give the broker a login, so not anyone on the network can disarm the hub"),
+        ],
         [tr("In Home Assistant"), tr("the device {hub}, and one device per sensor", { hub: m.hub })],
       ]);
     } catch (e) {}

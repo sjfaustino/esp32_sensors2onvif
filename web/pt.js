@@ -94,8 +94,8 @@ const PT = {
   "Its latest events": "Os seus últimos eventos",
   "Its sensors, and when they fired over the last 7 days": "Os seus sensores, e quando dispararam nos últimos 7 dias",
   "Leave it empty to turn MQTT off.": "Deixe vazio para desligar o MQTT.",
-  "Left blank, the saved one is kept. Give the broker a login: anything that can publish to it can arm and disarm the hub. The connection is not encrypted, as with the hub's other connections.":
-    "Em branco, mantém-se a guardada. Dê um acesso ao broker: tudo o que lá consiga publicar consegue armar e desarmar a central. A ligação não é cifrada, como as outras ligações da central.",
+  "Left blank, the saved one is kept. Give the broker a login: without one, the hub takes no disarm from Home Assistant, as anything on the network could send it. The connection is not encrypted, as with the hub's other connections.":
+    "Em branco, mantém-se a guardada. Dê um acesso ao broker: sem ele, a central não aceita desarmes do Home Assistant, porque qualquer coisa na rede os poderia enviar. A ligação não é cifrada, como as outras ligações da central.",
   "Live video": "Vídeo em direto",
   "Log out": "Sair",
   "Looking for networks...": "À procura de redes...",
@@ -1324,4 +1324,9 @@ const PT = {
   "{n} cores at {m} MHz": "{n} núcleos a {m} MHz",
   "{n} KB since the start, checked each second": "{n} KB desde o arranque, verificado a cada segundo",
   "{model} revision {n}": "{model} revisão {n}",
+  // notify.js, whether Home Assistant may disarm
+  "Disarming from Home Assistant": "Desarmar a partir do Home Assistant",
+  "Allowed, as the hub logs in to the broker": "Permitido, porque a central entra no broker com um acesso",
+  "Refused: give the broker a login, so not anyone on the network can disarm the hub":
+    "Recusado: dê um acesso ao broker, para que não seja qualquer pessoa na rede a poder desarmar a central",
 };

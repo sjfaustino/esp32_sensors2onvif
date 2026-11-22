@@ -114,6 +114,15 @@ def home_assistant(s):
     broker.send(f'{base}/armed/set', b'DISARM', retained=True)
     time.sleep(0.5)  # time for the hub to wrongly obey it
     check('a retained command, repeated by the broker, is ignored', get_json('/api/arm')['armed'] is True)
+    # Without a login to the broker, anyone on the network could send the disarm: the hub does not take it then.
+    api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=&password=')
+    wait_until(lambda: mqtt_page()['state'] == 'connected' and len(broker.connects) >= 2 and not broker.connects[-1].get('user'))
+    broker.send(f'{base}/armed/set', b'DISARM')
+    time.sleep(0.5)  # time for the hub to wrongly obey it
+    check('without a login to the broker, a disarm from it is refused', get_json('/api/arm')['armed'] is True)
+    check('and the page can say why, as it is told there is no login', mqtt_page().get('user') == '', mqtt_page())
+    api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=hub&password=' + urllib.parse.quote('s3cret pw'))
+    wait_until(lambda: mqtt_page()['state'] == 'connected' and broker.connects[-1].get('user') == 'hub')
     api('POST', '/api/arm/rearm', 'minutes=60')
     broker.send(f'{base}/armed/set', b'DISARM')
     off = poll(lambda: get_json('/api/arm'), lambda a: a['armed'] is False)

@@ -76,6 +76,10 @@ sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS w
 
 ## Releases
 
+The PlatformIO platform is fetched by URL, so its SHA-256 is recorded in `tools/check_platform.py`, which CI and the
+release job run before building: a replaced file stops them. Updating the platform means its new URL in
+`platformio.ini` and its new SHA-256 there, together.
+
 A release is a tag such as `v0.2.0` on `main`. Pushing the tag builds the firmware for every board and publishes it,
 with that version's part of [CHANGELOG.md](CHANGELOG.md) and the third-party notices.
 The update files are signed with the `FIRMWARE_SIGNING_KEY` secret, whose public half is `FIRMWARE_PUBLIC_KEY` in
