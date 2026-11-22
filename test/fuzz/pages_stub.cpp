@@ -5,3 +5,5 @@ const uint8_t CAM_WEB_PAGE[] = {0};
 const size_t CAM_WEB_PAGE_SIZE = 0;
 const uint8_t CAM_SETUP_PAGE[] = {0};
 const size_t CAM_SETUP_PAGE_SIZE = 0;
+const char CAM_WEB_PAGE_TAG[] = "\"fuzz\"";
+const char CAM_SETUP_PAGE_TAG[] = "\"fuzz\"";
