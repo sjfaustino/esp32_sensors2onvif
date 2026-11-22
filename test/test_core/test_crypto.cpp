@@ -210,7 +210,42 @@ static void a_firmware_signature_is_checked_whole() {
   TEST_ASSERT_FALSE(s.good(key));
 }
 
+// The same image with release number 4002 at the end of its signed part: read back whatever pieces it comes in, and
+// none from a file without one.
+static void a_firmware_release_number_is_read_from_the_signed_part() {
+  std::vector<uint8_t> file(1, 0xE9);
+  for (int i = 1; i < 300; i++) file.push_back((uint8_t)(i * 7));
+  const uint8_t number[4] = {0xA2, 0x0F, 0, 0};  // 4002
+  file.insert(file.end(), number, number + 4);
+  file.insert(file.end(), CAM_FW_RELEASE_MAGIC, CAM_FW_RELEASE_MAGIC + 8);
+  std::vector<uint8_t> sig =
+      unhex("d9b6ab324e750c168b569c6c42631bc0fa9dd79fc36449ad17de893a93162337f031b6c0b4d0ab360e5ec76ad7fbbf553ce11f9f13ac4d1a57fa1e5f5e8d5204");
+  file.insert(file.end(), sig.begin(), sig.end());
+  file.insert(file.end(), CAM_FW_MAGIC, CAM_FW_MAGIC + 8);
+  uint8_t key[32];
+  TEST_ASSERT_TRUE(camFirmwareKey("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", key));
+  for (size_t piece : {1u, 5u, 11u, 12u, 13u, 64u, 311u, 312u, 1000u}) {
+    CamFirmwareSig s;
+    TEST_ASSERT_TRUE(s.begin(file.size()));
+    for (size_t at = 0; at < file.size(); at += piece) s.take(file.data() + at, file.size() - at < piece ? file.size() - at : piece);
+    TEST_ASSERT_TRUE_MESSAGE(s.good(key), std::to_string(piece).c_str());
+    TEST_ASSERT_EQUAL_INT64_MESSAGE(4002, s.release(), std::to_string(piece).c_str());
+  }
+  CamFirmwareSig half;  // not all of it yet
+  half.begin(file.size());
+  half.take(file.data(), 200);
+  TEST_ASSERT_EQUAL_INT64(-1, half.release());
+  std::vector<uint8_t> plain(1, 0xE9);  // the first signed format: no number
+  for (int i = 1; i < 300; i++) plain.push_back((uint8_t)(i * 7));
+  plain.resize(plain.size() + CAM_FW_TRAILER);
+  CamFirmwareSig none;
+  none.begin(plain.size());
+  none.take(plain.data(), plain.size());
+  TEST_ASSERT_EQUAL_INT64(-1, none.release());
+}
+
 void runCryptoTests() {
+  RUN_TEST(a_firmware_release_number_is_read_from_the_signed_part);
   RUN_TEST(ed25519_matches_rfc_8032);
   RUN_TEST(a_firmware_signature_is_checked_whole);
   RUN_TEST(the_long_fingerprint_starts_with_the_short_one);

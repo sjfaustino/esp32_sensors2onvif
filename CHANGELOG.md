@@ -5,6 +5,25 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Security
+
+- The hub refuses an update older than its own release, which may have faults since fixed. Each signed update carries
+  its release number, signed with it; an older one goes on only over the board's cable.
+- **Log out**, at the top of every page, makes the browser forget the hub password. The hub refuses its logout route
+  always, and never counts it as a wrong password.
+
+### The pages
+
+- Each menu group has an icon, the tab shows the hub's shield, and a phone's "Add to home screen" gives the hub's name
+  and the shield.
+- Every page works from the keyboard: the menu is made of buttons and links, a skip link leads past it, and the
+  keyboard's place is ringed. The browser tests check every page, light and dark, with axe-core.
+
+### The project
+
+- CI compares the pictures of the pages it takes with those in `docs/images`, and fails when a page changed without
+  them (`tools/compare_pictures.py`).
+
 ## [0.4.0] - 2026-11-22
 
 Update from 0.3.0: from this version the hub takes only signed firmware over the network, and its pages are redesigned.

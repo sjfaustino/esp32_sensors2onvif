@@ -284,6 +284,49 @@ def test_settings_pages(page):
     check('times are words, with the date on hover', page.get_attribute('#evTable tr:nth-child(2) td:first-child', 'title') not in (None, ''))
 
 
+AXE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js'
+AXE_SHA256 = 'b511cd9dec01c76f4b2ad1723b66b6db37d4c2eb4ed199076e1829d9ee7b75e3'
+
+
+def axe_source():
+    """axe-core, the accessibility checker, downloaded once into .pio and checked against its known hash."""
+    import urllib.request
+    path = os.path.join(ROOT, '.pio', 'axe-core-4.10.2.min.js')
+    if not os.path.exists(path):
+        data = urllib.request.urlopen(AXE_URL, timeout=60).read()
+        if hashlib.sha256(data).hexdigest() != AXE_SHA256:
+            raise RuntimeError('axe-core did not match its hash')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(data)
+    with open(path, encoding='utf-8') as f:
+        return f.read()
+
+
+def test_accessibility(browser, dark=False):
+    """Every page, light and dark, without what axe-core counts as a serious or critical fault: missing labels and
+    names, too little contrast, broken landmarks, controls that cannot be reached."""
+    source = axe_source()
+    page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD},
+                               color_scheme='dark' if dark else 'light').new_page()
+    try:
+        page.goto(URL + '#overview')
+        page.wait_for_selector('#view-overview', state='visible')
+        page.add_script_tag(content=source)
+        views = page.eval_on_selector_all('.item', 'items => items.map(i => i.dataset.view)')
+        for view in views:
+            page.evaluate(f"location.hash = '{view}'")
+            page.wait_for_timeout(900)  # the page fills its tables from the hub
+            faults = page.evaluate("""async () => {
+                const r = await axe.run(document, { iframes: false, resultTypes: ['violations'] });
+                return r.violations.filter(v => v.impact == 'serious' || v.impact == 'critical')
+                    .map(v => v.id + ': ' + v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', '));
+            }""")
+            check(f"{view}{' (dark)' if dark else ''}: no serious accessibility faults", not faults, faults)
+    finally:
+        page.context.close()
+
+
 def test_a_sensor_camera(page):
     page.goto(URL + '#sensors')
     open_alert_settings(page)
@@ -464,7 +507,8 @@ def main():
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
                              lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
                              lambda: test_settings_pages(page), lambda: test_a_sensor_camera(page), lambda: test_sensor_pictures(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
-                             lambda: test_dark_and_narrow(browser)):
+                             lambda: test_dark_and_narrow(browser), lambda: test_accessibility(browser),
+                             lambda: test_accessibility(browser, dark=True)):
                     try:
                         test()
                     except Exception as e:  # a control that never appeared: a failure, and the rest still run

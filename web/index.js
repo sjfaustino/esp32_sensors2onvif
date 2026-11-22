@@ -251,6 +251,7 @@
   }
   function expand(f, on) {
     f.classList.toggle("open", on);
+    f.setAttribute("aria-expanded", on);
     f.nextElementSibling.classList.toggle("show", on);
   }
   // A hash such as "sensor:AA-BB-CC-DD-EE-01/1" opens a page for one thing; the part after the colon goes to its file.
@@ -310,12 +311,11 @@
         expand(f, on);
       }),
   );
-  items.forEach(
-    (i) =>
-      (i.onclick = () => {
-        location.hash = i.dataset.view;
-      }),
-  );
+  // The skip link at the very top takes the keyboard past the menu to the page.
+  $("skip").onclick = (e) => {
+    e.preventDefault();
+    $("main").focus();
+  };
   // Leaving a page with changes not saved asks first; staying puts the address back. Within one page nothing is asked.
   let shown = "";
   const viewOf = (hash) => hash.split(":")[0] || "overview";
@@ -354,6 +354,62 @@
     const steps = $("wizard").hidden ? $("ovReadyBox") : $("wizard");
     steps.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+  // The shield as the tab's icon, and a manifest, so "Add to home screen" gives the hub's name and the shield. It is all
+  // made here, as the hub serves no other files: the icon from this SVG, the phone's PNG sizes drawn from it on a canvas.
+  // Its colours are the icon's own, the same in light and dark.
+  const ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#b3261e"/>' +
+    '<path d="M32 12l16 6v12c0 10-7 16-16 18-9-2-16-8-16-18V18z" fill="none" stroke="#fff" stroke-width="4.5" stroke-linejoin="round"/></svg>';
+  function appIcon(name) {
+    const svg = "data:image/svg+xml," + encodeURIComponent(ICON),
+      link = (rel, href, type) => document.head.append(el("link", Object.assign({ rel, href }, type ? { type } : {})));
+    link("icon", svg, "image/svg+xml");
+    const img = new Image();
+    img.onload = () => {
+      const png = (size) => {
+        const c = el("canvas", { width: size, height: size });
+        c.getContext("2d").drawImage(img, 0, 0, size, size);
+        return c.toDataURL("image/png");
+      };
+      link("apple-touch-icon", png(180));
+      const manifest = {
+        name: name + ": alarm hub",
+        short_name: name,
+        start_url: location.origin + "/",
+        scope: location.origin + "/",
+        display: "standalone",
+        theme_color: "#b3261e",
+        icons: [192, 512].map((s) => ({ src: png(s), sizes: s + "x" + s, type: "image/png" })),
+      };
+      link(
+        "manifest",
+        URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" })),
+      );
+    };
+    img.src = svg;
+  }
+  // A browser keeps the login it was given for as long as it is open. Asking the hub's logout route with a made-up login,
+  // which the hub always refuses without counting it as a wrong password, makes the browser keep that one instead, so
+  // the next page asks for the hub's login again.
+  $("logout").onclick = async () => {
+    if (!(await ask("This browser will ask for the hub password again.", { title: "Log out?", ok: "Log out" }))) return;
+    markClean();
+    await new Promise((done) => {
+      const x = new XMLHttpRequest();
+      x.open("GET", "/api/logout", true, "logout", "logout");
+      x.onloadend = done;
+      x.send();
+    });
+    document.body.replaceChildren(
+      el(
+        "main",
+        { className: "loggedOut" },
+        el("h1", { textContent: "Logged out" }),
+        el("p", { textContent: "The hub's pages ask for the user admin and the hub password again." }),
+        el("a", { className: "btn", href: "/", textContent: "Log in again" }),
+      ),
+    );
+  };
   addEventListener("DOMContentLoaded", () => show(location.hash.slice(1))); // once every page's script has run
   // A hub without a password asks for one on every page until it has one.
   $("saveNeedPw").onclick = async () => {
@@ -384,7 +440,8 @@
         const name = i.name.replace(/\.local$/, "");
         document.title = name + ": alarm hub";
         $("hubTitle").textContent = name;
-      }
+        appIcon(name);
+      } else appIcon("Alarm hub");
       $("armWarn").hidden = i.armed !== false;
     })
     .catch(() => {});

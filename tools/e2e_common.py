@@ -9,19 +9,24 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXE = os.environ.get('E2E_EXE') or os.path.join(ROOT, '.pio', 'build', 'host', 'program.exe')  # tools/coverage.py names its own
 
 
-def signed(image, key_file='test/firmware-test-key.pem'):
-    """The image signed for the PC build, which takes updates signed with the test key (tools/sign_firmware.py)."""
+def signed(image, release=4000, key_file='test/firmware-test-key.pem'):
+    """The image signed for the PC build, which takes updates signed with the test key from release 0.4.0 (4000) on
+    (tools/sign_firmware.py). release=None signs it as before release numbers."""
     import sign_firmware
     from cryptography.hazmat.primitives import serialization
     with open(os.path.join(ROOT, key_file), 'rb') as f:
-        return sign_firmware.sign(image, serialization.load_pem_private_key(f.read(), password=None))
+        key = serialization.load_pem_private_key(f.read(), password=None)
+    if release is None:  # the first signed format, without a release number
+        import hashlib
+        return image + key.sign(sign_firmware.CONTEXT + hashlib.sha512(image).digest()) + sign_firmware.MAGIC
+    return sign_firmware.sign(image, key, release)
 
 
 def other_key_signed(image):
     """Signed with a key the hub does not know."""
     import sign_firmware
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    return sign_firmware.sign(image, Ed25519PrivateKey.generate())
+    return sign_firmware.sign(image, Ed25519PrivateKey.generate(), 4000)
 DEVICE = os.environ.get('E2E_DEVICE')
 HOST = DEVICE or '127.0.0.1'
 LOCAL = os.environ.get('E2E_LOCAL_IP', '127.0.0.1')

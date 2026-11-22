@@ -34,7 +34,7 @@ report:
 - Anyone who can publish to the MQTT broker can arm and disarm the hub through Home Assistant: give the broker a login.
 - The hub takes only firmware signed with the project's key, but the nodes' firmware it hands out is not signed: anyone
   with the hub password can put any firmware on every node. Keep the password to yourself; a stolen one should be
-  changed at once. A signed firmware of an earlier release is also still taken.
+  changed at once.
 - A node without a screen cannot check the hub it pairs with, and takes the first that approves it: pair nodes where
   no other hub may be in range, as the user guide says.
 - A radio jammer can keep nodes from reaching the hub. The hub then reports them silent, and several going quiet

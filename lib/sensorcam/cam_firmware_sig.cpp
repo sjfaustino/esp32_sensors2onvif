@@ -6,8 +6,14 @@ bool CamFirmwareSig::begin(size_t total) {
   started_ = total > CAM_FW_TRAILER;
   imageLeft_ = started_ ? total - CAM_FW_TRAILER : 0;
   trailerGot_ = 0;
+  tailGot_ = 0;
   crypto_sha512_init(&hash_);
   return started_;
+}
+
+int64_t CamFirmwareSig::release() const {
+  if (imageLeft_ || tailGot_ < CAM_FW_RELEASE_LEN || memcmp(tail_ + 4, CAM_FW_RELEASE_MAGIC, 8) != 0) return -1;
+  return (int64_t)tail_[0] | (int64_t)tail_[1] << 8 | (int64_t)tail_[2] << 16 | (int64_t)tail_[3] << 24;
 }
 
 size_t CamFirmwareSig::take(const uint8_t* data, size_t n) {
@@ -15,6 +21,16 @@ size_t CamFirmwareSig::take(const uint8_t* data, size_t n) {
   size_t image = n < imageLeft_ ? n : imageLeft_;
   if (image) crypto_sha512_update(&hash_, data, image);
   imageLeft_ -= image;
+  // The last CAM_FW_RELEASE_LEN bytes hashed so far, oldest first.
+  if (image >= CAM_FW_RELEASE_LEN) {
+    memcpy(tail_, data + image - CAM_FW_RELEASE_LEN, CAM_FW_RELEASE_LEN);
+    tailGot_ = CAM_FW_RELEASE_LEN;
+  } else if (image) {
+    size_t keep = tailGot_ + image > CAM_FW_RELEASE_LEN ? CAM_FW_RELEASE_LEN - image : tailGot_;
+    memmove(tail_, tail_ + tailGot_ - keep, keep);
+    memcpy(tail_ + keep, data, image);
+    tailGot_ = keep + image;
+  }
   size_t rest = n - image;
   size_t room = CAM_FW_TRAILER - trailerGot_;
   if (rest > room) {  // more than the size given at the start: never good

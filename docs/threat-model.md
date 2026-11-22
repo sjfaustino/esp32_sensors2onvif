@@ -34,6 +34,8 @@ meant to be reachable from outside, and nothing in it is built for that.
 | Guessing the hub password | Ten wrong guesses from one address lock it out for a minute, then longer, up to 15 minutes; logins take the same time right or wrong. |
 | A web page using the owner's logged-in browser | Requests from another site, another host name (DNS rebinding) or in a frame from another site are refused. |
 | Putting other firmware on the hub over the network | The hub keeps only firmware signed with the project's Ed25519 key; the signature is checked before the update is kept. The key is kept off the hub and out of the repository. |
+| Putting back an older firmware, with faults since fixed | Each signed update carries its release number, signed with it, and the hub refuses one older than its own. |
+| A login left open in a browser | **Log out**, at the top of every page, makes the browser forget the hub password. |
 | A firmware that breaks the hub | A new firmware is kept only once it has stayed on the network, started ESP-NOW and got the NVR listening again; otherwise the hub goes back to the one before. |
 | Capturing the setup network's password | The setup network uses WPA3, so it cannot be guessed offline from a recording of someone joining. |
 | A crash from a malformed message | Every parser of what arrives from outside is fuzzed, with AddressSanitizer and UndefinedBehaviorSanitizer, on each push. |
@@ -55,8 +57,6 @@ These are limits of the design, or of the hardware, and the owner can lessen eac
 - **The MQTT broker.** Anything that can publish to it can arm and disarm the hub. Give the broker a login.
 - **Node firmware.** The hub hands out node firmware without a signature check of its own, so anyone with the hub
   password can put any firmware on every node.
-- **Going back to an older signed firmware.** A signed firmware of an earlier release is still taken, with whatever
-  that release's faults were.
 - **The signing key.** Whoever has it, and the hub password, can put any firmware on any hub. If it is lost, each hub
   takes a firmware with a new key only over its USB cable.
 - **A node with no screen pairing.** It cannot check the hub it pairs with, and takes the first that approves it. Pair

@@ -24,9 +24,24 @@ try:
 except (OSError, subprocess.SubprocessError):
     version = 'unknown'
 
+
+def release_number(tag):
+    """v1.2.3 as 1002003: the number a signed update carries, and below which the hub refuses one (cam_firmware_sig.h)."""
+    import re
+    m = re.match(r'v(\d+)\.(\d+)\.(\d+)', tag or '')
+    return int(m.group(1)) * 1000000 + int(m.group(2)) * 1000 + int(m.group(3)) if m else 0
+
+
+try:  # the release this build comes from or follows: the newest release tag before it
+    tag = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*'], cwd=root,
+                         capture_output=True, text=True, timeout=20).stdout.strip()
+except (OSError, subprocess.SubprocessError):
+    tag = ''
+
 text = ('// Written by tools/version.py on every build; not kept in git.\n'
         '#pragma once\n'
-        f'#define FIRMWARE_VERSION "{version}"\n')
+        f'#define FIRMWARE_VERSION "{version}"\n'
+        f'#define FIRMWARE_RELEASE {release_number(tag)}  // {tag or "no release tag"}; see cam_firmware_sig.h\n')
 path = os.path.join(root, 'include', 'version.h')
 try:
     with open(path, encoding='utf8') as f:

@@ -295,6 +295,7 @@ int main(int argc, char** argv) {
   cfg.firmwareVersion = "test";
   // The public half of test/firmware-test-key.pem, which signs the test's updates; never the release key.
   cfg.firmwareKey = "dfc5cbdf9e1c75ed681052835e1c02e0bb2f93d37916b9b9b445764120d03407";
+  cfg.firmwareRelease = 4000;  // as if release 0.4.0; the test sends older and newer ones
   cfg.hostName = "hub.local";
   cfg.setupAddress = "127.0.0.1:18080";
   static TestChip chip;

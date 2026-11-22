@@ -296,9 +296,22 @@ summary {
   padding: 10px 20px;
   cursor: pointer;
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
   align-items: center;
   font-size: 16px;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+.first span {
+  flex: 1;
+}
+.first svg {
+  stroke: var(--menu-mark);
+  flex: none;
 }
 .first::after {
   content: "\25BE";
@@ -310,21 +323,31 @@ summary {
 .subs {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s;
+  visibility: hidden; /* so a closed group's pages are not reached with the keyboard */
+  transition:
+    max-height 0.3s,
+    visibility 0.3s;
 }
 .subs.show {
   max-height: 300px;
+  visibility: visible;
 }
 .item {
   position: relative;
-  padding: 5px 5px 5px 36px;
+  display: block;
+  padding: 5px 5px 5px 48px;
   font-size: 14px;
   cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+}
+.item:visited {
+  color: inherit;
 }
 .item::before {
   content: "\2022";
   position: absolute;
-  left: 24px;
+  left: 34px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--menu-mark);
@@ -1484,5 +1507,41 @@ tr.skel td span {
   }
   .view > .card {
     padding: 14px;
+  }
+}
+
+/* The link that takes the keyboard past the menu, seen only when it has the keyboard; logging out, and after it. */
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 20;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+}
+.skip:focus {
+  top: 8px;
+}
+main:focus {
+  outline: none;
+}
+.top .logout {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+.loggedOut {
+  max-width: 420px;
+  margin: 15vh auto 0;
+  text-align: center;
+}
+.loggedOut p {
+  color: var(--muted-text);
+}
+@media (max-width: 640px) {
+  .top .logout {
+    margin: 0;
   }
 }

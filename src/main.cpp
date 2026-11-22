@@ -191,6 +191,7 @@ static CamConfig makeConfig() {
   c.rearmMinutes = settings.rearmMinutes;
   c.firmwareVersion = FIRMWARE_VERSION;
   c.firmwareKey = FIRMWARE_PUBLIC_KEY;
+  c.firmwareRelease = FIRMWARE_RELEASE;
   c.serial = macSerial();
   return c;
 }

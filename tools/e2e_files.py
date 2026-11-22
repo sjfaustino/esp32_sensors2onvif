@@ -129,8 +129,8 @@ def file_manager_tests(files, hub_files_free):
         check('other addresses are not shut out', raw_get('/api/info', password=PASSWORD) == 200)
     check('page has its stylesheet and script inside it', b'<style>' in page and b'const STATES = ' in page and b'src="index.js"' not in page)
     check('page offers to show a picture', b'"Show it"' in page)
-    check('page has the menu',all(t in page for t in [b'>Network</div>', b'>Sensors</div>', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
-                                                  b'data-view="espnow"', b'data-view="events"', b'>System</div>', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'>Recording</div>', b'data-view="nvr"', b'data-view="live">Live video<']))
+    check('page has the menu',all(t in page for t in [b'<span>Network</span>', b'<span>Sensors</span>', b'data-view="network"', b'data-view="wifi"', b'data-view="onvif"', b'data-view="http"', b'data-view="rtsp"', b'data-view="sensors"',
+                                                  b'data-view="espnow"', b'data-view="events"', b'<span>System</span>', b'data-view="maintenance"', b'data-view="time"', b'data-view="device"', b'<span>Recording</span>', b'data-view="nvr"', b'data-view="live">Live video<']))
     code, info = api('GET', '/api/info')
     info = json.loads(info) if code == 200 else {}
     check('hub details report its ports', info.get('onvifPort') == ONVIF and info.get('webPort') == WEB and info.get('rtspPort') == RTSP, info)
@@ -201,6 +201,11 @@ def file_manager_tests(files, hub_files_free):
             check(f'all {len(listed)} routes need the login', len(listed) > 40 and not open_ones, open_ones)
             check('the setup routes are marked as such', sorted(p for _, p, a in listed if a == 'setup') == ['/', '/api/wifi', '/api/wifi/scan', '/setup'],
                   [l for l in listed if l[2] == 'setup'])
+            check('the logout route is marked as such', [p for _, p, a in listed if a == 'logout'] == ['/api/logout'])
+            check('logging out is refused even with the login, so the browser forgets it', api('GET', '/api/logout')[0] == 401)
+            for _ in range(12):
+                api('GET', '/api/logout')
+            check('and logging out is never counted as a wrong password', api('GET', '/api/info')[0] == 200)
             check('an unknown route needs the login before it is called unknown', api('GET', '/api/nothing-here', auth=False)[0] == 401
                   and api('GET', '/api/nothing-here')[0] == 404)
         if not DEVICE:

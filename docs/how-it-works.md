@@ -139,7 +139,14 @@ last byte. Once all of it has arrived, the signature is checked over `s2o firmwa
 key in `CamConfig::firmwareKey`, and only then is the update kept; otherwise it is dropped and the running firmware
 stays. Monocypher (`lib/monocypher`) does the Ed25519 and SHA-512.
 
-`tools/sign_firmware.py` signs. The release workflow uses the `FIRMWARE_SIGNING_KEY` secret and stops if its public half
+The signed part ends with the release number: 4 bytes, least significant first, and `S2OREL1\n`. The number is
+major × 1000000 + minor × 1000 + patch of the newest release tag the build comes from or follows, which
+`tools/version.py` writes into `version.h` as `FIRMWARE_RELEASE`. `CamFirmwareSig` keeps the last 12 bytes it hashed, and
+an update whose number is lower than the hub's own, or that has none, is refused once its signature is known to be
+good. A hub from before release numbers writes those 12 bytes after the image with the rest, so the next update reaches
+it too.
+
+`tools/sign_firmware.py` signs, with the number from `version.h` unless given. The release workflow uses the `FIRMWARE_SIGNING_KEY` secret and stops if its public half
 is not `FIRMWARE_PUBLIC_KEY` in `include/config.h`. The PC build trusts `test/firmware-test-key.pem` instead, which signs
 the end-to-end test's updates and is never used for real firmware. A hub from before signing writes the 72 bytes after
 the image, where the bootloader does not read, so a signed file updates it too.

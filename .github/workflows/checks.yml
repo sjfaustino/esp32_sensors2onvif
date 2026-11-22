@@ -73,11 +73,20 @@ jobs:
       - name: Pictures of the pages
         run: python tools/screenshots.py
 
+      # A page that changed without its pictures being taken again would leave the user guide showing the old one.
+      - name: The pictures match the pages
+        run: |
+          pip install pillow==13.0.0
+          python tools/compare_pictures.py
+
       - name: Keep the pictures
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: page-pictures
-          path: docs/images/*.png
+          path: |
+            docs/images/*.png
+            .pio/picture-changes/*.png
 
       - name: Firmware for every board
         run: pio run -e esp32_16mb -e esp32dev -e esp32s3

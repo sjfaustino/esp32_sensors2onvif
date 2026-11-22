@@ -25,6 +25,9 @@
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "unknown"
 #endif
+#ifndef FIRMWARE_RELEASE
+#define FIRMWARE_RELEASE 0  // an update older than this release is refused
+#endif
 
 #define ONVIF_PORT 8899  // ONVIF only. Its usual default is 80, which the web interface uses here.
 #define WEB_PORT 80      // the file manager, sensor input, status and events

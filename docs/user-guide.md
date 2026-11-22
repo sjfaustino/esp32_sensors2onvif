@@ -165,6 +165,10 @@ something in a card is changed, a bar at the foot of the page says the changes a
 **Discard**; going to another page meanwhile asks first. Lists show grey bars while they load, and an empty one says what
 to do, with a button that does it.
 
+**Log out**, at the top right of every page, makes this browser forget the hub password, so the next page asks for it
+again; use it on a computer that others use. Every page works from the keyboard: Tab moves between the controls, the
+first Tab offers to skip past the menu, and the menu's groups open with Enter.
+
 The bar across the top of every page shows the hub's name and the alarm's state in the same colours, and links to the
 Overview. A line below it sums the hub up: green when all is well, yellow when something needs attention (disarmed, a
 sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
@@ -421,8 +425,9 @@ the hub now, making new keys, and resetting the settings; each asks first.
 A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
 30 minutes, that restart is skipped until the next time.
 The hub takes only firmware signed with the project's key, as each release's `.bin` is, so the hub password alone
-cannot put other firmware on it; anything else is refused and nothing changes. A firmware built by someone else can be
-put on over the board's USB cable, as a new hub is set up.
+cannot put other firmware on it; anything else is refused and nothing changes. Nor does it take a release older than its
+own, which may have faults since fixed. A firmware built by someone else, or an older one, can be put on over the
+board's USB cable, as a new hub is set up.
 A new firmware is kept only once it has done the hub's work: stayed on the network for a minute, started ESP-NOW, and,
 if the NVR was listening when the update began, got it listening again. If it crashes, stalls or loses the network
 first, the power fails meanwhile, or it has not managed within 10 minutes, the hub goes back to the previous firmware

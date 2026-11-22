@@ -20,6 +20,8 @@ python tools/e2e_pages.py     # the pages in a real browser: pip install playwri
                               # python -m playwright install chromium
 pio run -e esp32_16mb         # the firmware for the board you have; CI builds the others
 pio run -e host -t compiledb  # then python tools/tidy.py: clang-tidy's checks, as .clang-tidy lists them
+python tools/compare_pictures.py  # after python tools/screenshots.py: whether a page changed without its pictures
+                              # being committed again, as CI checks; pip install pillow
 python tools/coverage.py      # how much of the library the tests run: .pio/coverage/report/index.html;
                               # pip install gcovr, and add --pages for the browser tests too
 sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS with clang, as CI runs them; on

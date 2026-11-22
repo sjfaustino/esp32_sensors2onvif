@@ -36,9 +36,11 @@ bool CamWeb::ApiRequest::has(const char* name) const {
 }
 
 // Every route of the API, with who may use it. LOGIN needs the hub login. SETUP needs it too, except while the setup
-// network is open: that network's password guards it then, and a captive-portal window may not offer a login. The
-// ONVIF requests, sensor reports, uploads and the snapshot are served before these, in cam_web_server.cpp.
-enum CamAccess { LOGIN, SETUP };
+// network is open: that network's password guards it then, and a captive-portal window may not offer a login. LOGOUT is
+// refused always, login or not, and is not counted as a wrong password: a browser that is sent there with a made-up login
+// keeps that one in place of the hub's, which logs it out. The ONVIF requests, sensor reports, uploads and the snapshot are
+// served before these, in cam_web_server.cpp.
+enum CamAccess { LOGIN, SETUP, LOGOUT };
 struct CamWeb::Route {
   const char* method;  // "*" for any
   const char* path;
@@ -62,6 +64,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"GET", "/api/events", &CamWeb::getEvents, LOGIN},
       {"GET", "/api/espnow", &CamWeb::getEspnow, LOGIN},
       {"GET", "/api/info", &CamWeb::getInfo, LOGIN},
+      {"GET", "/api/logout", nullptr, LOGOUT},
       {"GET", "/api/time", &CamWeb::getTime, LOGIN},
       {"POST", "/api/time", &CamWeb::postTime, LOGIN},
       {"GET", "/api/schedule", &CamWeb::getSchedule, LOGIN},
@@ -113,7 +116,10 @@ std::string CamWeb::routesText() {
   const Route* list = routes(count);
   std::string out;
   for (size_t i = 0; i < count; i++)
-    out += std::string(i ? ";" : "") + list[i].method + " " + list[i].path + (list[i].access == SETUP ? " setup" : " login");
+    out += std::string(i ? ";" : "") + list[i].method + " " + list[i].path +
+           (list[i].access == SETUP    ? " setup"
+            : list[i].access == LOGOUT ? " logout"
+                                       : " login");
   return out;
 }
 
@@ -125,6 +131,10 @@ void CamWeb::handleApi(HttpConn& c, const std::string& method, const std::string
   const Route* found = nullptr;
   for (size_t i = 0; i < count && !found; i++)
     if (route == list[i].path && (list[i].method[0] == '*' || method == list[i].method)) found = &list[i];
+  if (found && found->access == LOGOUT) {
+    c.out = UNAUTHORIZED;
+    return;
+  }
   bool open = found && found->access == SETUP && radio_->setupActive();
   if (!open && !authorized(c, headers)) {  // before saying whether a route exists, so nothing is told without the login
     c.out = UNAUTHORIZED;

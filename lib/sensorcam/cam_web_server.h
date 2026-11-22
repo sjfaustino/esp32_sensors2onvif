@@ -61,7 +61,7 @@ class CamWeb {
   // A blank hub's first password, from its setup page: it guards the pages, ONVIF and the video at once, rather than
   // after the restart that follows, which a failed Wi-Fi save would not bring.
   void setPassword(const std::string& password);
-  std::string routesText();  // each route as "METHOD path login|setup", separated by ";", for the PC tests
+  std::string routesText();  // each route as "METHOD path login|setup|logout", separated by ";", for the PC tests
 
  private:
   using Health = CamSensorTable::Health;

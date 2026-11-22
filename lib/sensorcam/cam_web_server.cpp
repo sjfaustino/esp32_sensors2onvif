@@ -412,14 +412,18 @@ void CamWeb::finishFirmware(HttpConn& c, bool ok) {
   // The signature is checked before the update is kept: a firmware not signed with the project's key never runs.
   uint8_t key[32];
   bool signedOk = ok && camFirmwareKey(cfg_.firmwareKey, key) && firmwareSig_.good(key);
-  bool done = signedOk && chip_->firmwareEnd(true);
-  if (!signedOk) chip_->firmwareEnd(false);
+  // Nor one older than this, which may have a fault since fixed. Its number is signed with it, so it cannot be raised.
+  bool current = signedOk && firmwareSig_.release() >= (int64_t)cfg_.firmwareRelease;
+  bool done = current && chip_->firmwareEnd(true);
+  if (!current) chip_->firmwareEnd(false);
   firmwareOwner_ = nullptr;
   c.firmwareActive = false;
   c.discardLeft = c.firmwareLeft;
   c.drainFrom = millis_();
   c.firmwareLeft = 0;
-  c.out = done              ? jsonOk(JSON_OK)
+  c.out = done ? jsonOk(JSON_OK)
+          : signedOk && !current
+              ? jsonFail(400, "that firmware is older than this one, so nothing was changed; an older one goes on only over the cable")
           : ok && !signedOk ? jsonFail(400, "that firmware is not signed for this hub, so nothing was changed")
                             : jsonFail(400, "that is not valid firmware for this hub, so nothing was changed");
   c.answered = true;

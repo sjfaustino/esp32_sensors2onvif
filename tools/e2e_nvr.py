@@ -311,6 +311,15 @@ def test_esp_now_page():
         code, reply = api('PUT', '/api/firmware', signed(b'not firmware' * 500))
         check('other files are refused as firmware, signed or not', code == 400 and b'not valid firmware' in reply, (code, reply[:80]))
         check('and the next signed firmware is still accepted', api('PUT', '/api/firmware', signed(image))[0] == 200)
+        # Never an older release than the hub's own (4000 here, as 0.4.0), whose faults may since have been fixed.
+        code, reply = api('PUT', '/api/firmware', signed(image, 3999))
+        check('an older release is refused, as older', code == 400 and b'older' in reply, (code, reply[:90]))
+        check('a newer release is accepted', api('PUT', '/api/firmware', signed(image, 4001))[0] == 200)
+        code, reply = api('PUT', '/api/firmware', signed(image, None))
+        check('a signed firmware from before release numbers is refused, as older', code == 400 and b'older' in reply, (code, reply[:90]))
+        raised = bytearray(signed(image, 3999))
+        raised[len(image)] = 0xFF  # its number raised after signing
+        check('a release number changed after signing is refused', api('PUT', '/api/firmware', bytes(raised))[0] == 400)
         # During an upload the hub drops video and takes nothing new, so the update has the memory it needs.
         code, reply = test_firmware_upload_pauses_the_hub()
 
