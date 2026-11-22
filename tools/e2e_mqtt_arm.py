@@ -1,10 +1,13 @@
 """Home Assistant over MQTT, and arming and disarming."""
 from e2e_common import *  # noqa: F401,F403  (the helpers every part shares)
-import e2e_common as common
 
 
-def mqtt_tests(sensor_alert, sensor_clear):
+@case()
+def home_assistant(s):
     """Home Assistant through MQTT, against a pretend broker on this PC."""
+    def sensor_alert(n):
+        get(f'/sensor?{sid(n)}')
+    sensor_clear = clear
     settings = get_json('/api/mqtt')
     if settings['host']:
         print('SKIP MQTT: the hub already has a broker set, which these tests would replace')
@@ -165,7 +168,8 @@ def mqtt_tests(sensor_alert, sensor_clear):
     broker.close()
 
 
-def arm_tests():
+@case()
+def disarmed(s):
     """Disarmed, alerts are logged but not sent to the NVR; one that happened before the disarm still is."""
     check('arming needs the web password', api('POST', '/api/arm', 'armed=0', auth=False)[0] == 401)
     check('a bad arm value is refused', api('POST', '/api/arm', 'armed=maybe')[0] == 400)
@@ -189,7 +193,12 @@ def arm_tests():
     check('armed, an alert reaches the NVR again', name(1) in status()['active'], status())
     clear(1)
 
-    # A test alert takes the whole path, whatever the arm mode, and is logged as a test.
+
+@case()
+def a_test_alert(s):
+    """A test alert takes the whole path, whatever the arm mode, and is logged as a test."""
+    get(f'/sensor?{sid(3)}')  # a sensor heard, for the overview's checklist; a test alert is not one
+    clear(3)
     check('a test alert needs the web password', api('POST', f'/api/test-alert?path={name(3)}', 'x=1', auth=False)[0] == 401)
     check('a test alert for no such sensor is refused', api('POST', '/api/test-alert?path=02-00-00-00-00-77/9', 'x=1')[0] == 404)
     api('POST', '/api/arm', 'mode=disarmed&for=0')
@@ -207,9 +216,11 @@ def arm_tests():
           and ready['heard'] and 'notify' in ready and 'daily' in ready, ready)
     check('the overview needs the web password', api('GET', '/api/overview', auth=False)[0] == 401)
     clear(3)
-    api('POST', '/api/arm', 'mode=away')
 
-    # Armed home: interior sensors are logged but not sent to the NVR; perimeter ones count as ever.
+
+@case()
+def armed_home(s):
+    """Armed home: interior sensors are logged but not sent to the NVR; perimeter ones count as ever."""
     check('a bad zone is refused', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=garden')[0] == 400)
     check('a sensor can be marked interior', api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=interior')[0] == 200)
     zoned = [s for n in get_json('/api/tree')['nodes'] for s in n['sensors'] if f"{n['mac']}/{s['input']}" == name(2)]
@@ -237,26 +248,31 @@ def arm_tests():
     api('POST', '/api/arm', 'mode=away')
     api('POST', f'/api/sensor-settings?path={name(2)}', 'zone=perimeter')
 
-    # A storage error while the sensor table is rebuilt must not make the hub forget its sensors: their alerts would be
-    # ignored as from unknown senders until the next change.
-    if not DEVICE:
-        control('lists-fail')
-        changed = api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=20')[0]  # a change, so the table is rebuilt
-        code = get(f'/sensor?{sid(1)}')[0]
-        control('lists-work')
-        check('a folder that cannot be read keeps its sensors', changed == 200 and code == 200 and name(1) in status()['active'], (changed, code, status()))
-        clear(1)
-        api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=')
-        control('stats-fail')  # likewise a folder whose entries cannot be looked at, as when memory runs out
-        changed = api('POST', f'/api/node-settings?path={SENSORS[3][0]}', 'late=300')[0]
-        code = get(f'/sensor?{sid(3)}')[0]
-        control('stats-work')
-        check('a folder whose entries cannot be looked at keeps its sensors', changed == 200 and code == 200 and name(3) in status()['active'],
-              (changed, code, status()))
-        clear(3)
-        api('POST', f'/api/node-settings?path={SENSORS[3][0]}', '')
 
-    # A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched.
+@case(pc=True)
+def a_storage_error_keeps_the_sensors(s):
+    """A storage error while the sensor table is rebuilt must not make the hub forget its sensors: their alerts would be
+    ignored as from unknown senders until the next change."""
+    control('lists-fail')
+    changed = api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=20')[0]  # a change, so the table is rebuilt
+    code = get(f'/sensor?{sid(1)}')[0]
+    control('lists-work')
+    check('a folder that cannot be read keeps its sensors', changed == 200 and code == 200 and name(1) in status()['active'], (changed, code, status()))
+    clear(1)
+    api('POST', f'/api/sensor-settings?path={name(1)}', 'hold=')
+    control('stats-fail')  # likewise a folder whose entries cannot be looked at, as when memory runs out
+    changed = api('POST', f'/api/node-settings?path={SENSORS[3][0]}', 'late=300')[0]
+    code = get(f'/sensor?{sid(3)}')[0]
+    control('stats-work')
+    check('a folder whose entries cannot be looked at keeps its sensors', changed == 200 and code == 200 and name(3) in status()['active'],
+          (changed, code, status()))
+    clear(3)
+    api('POST', f'/api/node-settings?path={SENSORS[3][0]}', '')
+
+
+@case()
+def a_disarm_that_ends_by_itself(s):
+    """A disarm that ends by itself, so forgetting to arm again cannot leave the house unwatched."""
     check('a disarm longer than a week is refused', api('POST', '/api/arm', 'armed=0&for=10081')[0] == 400)
     check('a bad re-arm time is refused', api('POST', '/api/arm/rearm', 'minutes=soon')[0] == 400)
     check('the re-arm time for Home Assistant can be saved', api('POST', '/api/arm/rearm', 'minutes=480')[0] == 200 and get_json('/api/arm')['rearm'] == 480)

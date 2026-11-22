@@ -63,8 +63,9 @@ python tools/e2e_pages.py    # needs: pip install playwright==1.52.0, then pytho
 python tools/screenshots.py  # the pictures in docs/images, taken again after a page changes
 ```
 
-`tools/e2e_test.py` can also test a flashed board. Its header explains how. Its parts are the other `tools/e2e_*.py`
-files beside it, but for `tools/e2e_pages.py`, which opens the pages in a real browser and checks that arming,
+Each end-to-end test stands on its own, so `python tools/e2e_test.py pairing` runs just that test, and `--list`
+names them all. `tools/e2e_test.py` can also test a flashed board. Its header explains how. Its parts are the other
+`tools/e2e_*.py` files beside it, but for `tools/e2e_pages.py`, which opens the pages in a real browser and checks that arming,
 disarming and the test alerts work from them, and that a refused change never leaves the page showing what was asked
 for instead of what the hub is. It runs against the PC build only, as it changes the arm mode. The unit tests are a file per
 subject in `test/test_core`. The unit tests include a fuzz test that feeds

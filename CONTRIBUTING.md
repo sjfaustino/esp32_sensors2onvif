@@ -12,12 +12,19 @@ one.
 No hardware or NVR is needed for the tests; everything runs on loopback. On Windows, build from VS Code or PowerShell,
 because the toolchain's setup refuses to run under Git Bash.
 
+Each end-to-end test stands on its own. It starts from a quiet hub with the six test sensors in place
+(`quiet_hub` in `tools/e2e_common.py`), sets up anything else it needs, and puts back what it changed. A test that
+needs a paired node pairs one of its own (`PairedNode` in `tools/e2e_nodes.py`), which numbers its own reports. So
+a test can run alone or in any order, and a failure names the tests to run again. Run only one test or a few while
+working on them, and the whole set before a commit. Don't run two of these at once: they use the same ports.
+
 ```
 pio test -e native            # the unit tests
 pio run -e host               # the PC build that the next two drive
 python tools/e2e_test.py      # the end-to-end test, playing the NVR's part
 python tools/e2e_pages.py     # the pages in a real browser: pip install playwright==1.52.0, then
                               # python -m playwright install chromium
+python tools/e2e_test.py node  # only the tests with "node" in their names; --list names them all
 pio run -e esp32_16mb         # the firmware for the board you have; CI builds the others
 pio run -e host -t compiledb  # then python tools/tidy.py: clang-tidy's checks, as .clang-tidy lists them
 python tools/compare_pictures.py  # after python tools/screenshots.py: whether a page changed without its pictures

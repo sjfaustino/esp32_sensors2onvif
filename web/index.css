@@ -1043,8 +1043,14 @@ button.danger {
 .thumb.past {
   background: var(--home-solid);
 }
-.thumb.same {
+/* A slot showing the Seen picture in its place: a faded preview, or an outline whose words keep their contrast. */
+img.thumb.same {
   opacity: 0.5;
+}
+span.thumb.same {
+  background: none;
+  border: 1px dashed var(--line);
+  color: var(--muted-text);
 }
 .slotText {
   flex: 1;

@@ -89,6 +89,7 @@ class CamAlarm {
 
 #ifdef CAM_TEST_HOOKS  // only in the PC builds, for the tests
   void endAlerts();
+  void forgetWaiting();  // the past events waiting, so each test starts with none
   void setNvrGoneMs(uint32_t ms);
   void setMinuteMs(uint32_t ms) { minuteMs_ = ms; }
   void setBusyAlerts(int n) { busyAlerts_ = n; }

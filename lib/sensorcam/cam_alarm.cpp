@@ -366,6 +366,13 @@ void CamAlarm::queueDelayed(int id, const SensorReport& r, uint32_t now) {
 void CamAlarm::endAlerts() {
   for (int id = 1; id <= sensors_.count(); id++) sensors_.clear(id);
 }
+
+void CamAlarm::forgetWaiting() {
+  CamDelayed gone;
+  while (delayed_.take(gone)) {
+  }
+  waitingDirty_ = true;
+}
 #endif
 
 void CamAlarm::espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, uint8_t sealed) {

@@ -136,6 +136,9 @@ def test_a_refused_change_shows_the_truth(page, dialogs):
         else:
             route.continue_()
 
+    api('POST', '/api/arm', 'mode=disarmed&for=0')
+    page.goto(URL + '#overview')
+    wait_text(page, 'armTitle', 'Disarmed')
     page.route('**/api/arm', refuse)
     before = hub_arm()['mode']
     page.click('#armHome')
@@ -160,7 +163,8 @@ def end_alert(nvr):
 
 
 def test_alerts(page, dialogs, nvr):
-    # Still disarmed from above: a test alert takes the whole path whatever the alarm is set to.
+    # Disarmed: a test alert takes the whole path whatever the alarm is set to.
+    api('POST', '/api/arm', 'mode=disarmed&for=0')
     check('the test alerts run while the hub is disarmed', hub_arm()['mode'] == 'disarmed')
     page.goto(URL + '#sensors')
     open_alert_settings(page)
@@ -192,8 +196,9 @@ def test_alerts(page, dialogs, nvr):
 
 def test_the_first_steps(page):
     # The hub here has no notifications set up, so the Overview shows the next step, with what to do and a way there.
-    page.evaluate('localStorage.clear()')
     page.goto(URL + '#overview')
+    page.evaluate('localStorage.clear()')
+    page.reload()
     page.wait_for_selector('#wizard', state='visible')
     check('the Overview shows the next first step', 'Getting started' in page.text_content('#wizTitle') and page.text_content('#wizHelp'),
           page.text_content('#wizard'))
@@ -456,12 +461,30 @@ def test_dark_and_narrow(browser):
     page.close()
 
 
-def test_a_hub_without_a_password_asks_for_one(browser, storage):
+def own_hub(test):
+    """The test, on a hub of its own with fresh storage and no password, as a hub flashed from a release starts; the
+    hub the other tests use is started again afterwards, as it was."""
+    def run(browser, storage):
+        common.HUB.kill()
+        common.HUB.wait()
+        try:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as own:
+                start_hub(own, '')  # said as empty: with none said, the PC build takes the one compiled in
+                try:
+                    test(browser)
+                finally:
+                    common.HUB.kill()
+                    common.HUB.wait()
+        finally:
+            start_hub(storage, PASSWORD)
+            common.HUB.stdout.readline()
+    return run
+
+
+@own_hub
+def test_a_hub_without_a_password_asks_for_one(browser):
     # A hub can start with no password, from secrets.h or an older firmware that let it be turned off. Every page then
     # asks for one, and the page will not take two that differ or one that is too short.
-    common.HUB.kill()
-    common.HUB.wait()
-    start_hub(storage)
     check('a hub without a password starts', common.HUB.stdout.readline().strip() == 'ready')
     page = browser.new_page()
     dialogs = Dialogs(page)
@@ -489,12 +512,10 @@ def test_a_hub_without_a_password_asks_for_one(browser, storage):
     page.close()
 
 
-def test_a_blank_hub_is_set_up(browser, storage):
+@own_hub
+def test_a_blank_hub_is_set_up(browser):
     # A hub flashed from a release has no Wi-Fi and no password, and its setup network is open. Its setup page asks for
     # the hub password with the network, so the hub is never left without one, and the API refuses to go on without it.
-    common.HUB.kill()  # the test before gave this hub a password, which now applies at once
-    common.HUB.wait()
-    start_hub(storage)
     check('a blank hub starts', common.HUB.stdout.readline().strip() == 'ready')
     control('setup-on')
     try:
@@ -533,11 +554,71 @@ def test_a_blank_hub_is_set_up(browser, storage):
         control('setup-off')
 
 
+class Tab:
+    """A fresh browser page for one test, logged in, noting its script errors and any browser dialog box."""
+
+    def __init__(self, browser):
+        self.context = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD})
+        self.page = self.context.new_page()
+        self.errors = []
+        self.page.on('pageerror', lambda e: self.errors.append(str(e)))
+        self.dialogs = Dialogs(self.page)
+
+    def close(self):
+        check('no script errors on the pages', not self.errors, self.errors)
+        check("and none of the browser's own dialog boxes: the pages ask in the page", not self.dialogs.seen, self.dialogs.seen)
+        self.context.close()
+
+
+def page_cases(nvr, storage):
+    """Each test by name, given a fresh page, or the browser for those that open their own."""
+    def on_page(test, *more):
+        def run(browser):
+            tab = Tab(browser)
+            try:
+                test(tab.page, *[tab.dialogs if m == 'dialogs' else m for m in more])
+            finally:
+                tab.close()
+        return run
+    return [
+        ('arming', on_page(test_arming, 'dialogs')),
+        ('a_refused_change_shows_the_truth', on_page(test_a_refused_change_shows_the_truth, 'dialogs')),
+        ('alerts', on_page(test_alerts, 'dialogs', nvr)),
+        ('the_first_steps', on_page(test_the_first_steps)),
+        ('notifications_page', on_page(test_notifications_page)),
+        ('settings_pages', on_page(test_settings_pages)),
+        ('a_sensor_camera', on_page(test_a_sensor_camera)),
+        ('sensor_pictures', on_page(test_sensor_pictures)),
+        ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
+        ('every_page_opens', test_every_page_opens),
+        ('dark_and_narrow', test_dark_and_narrow),
+        ('quiet_when_hidden', test_quiet_when_hidden),
+        ('accessibility', test_accessibility),
+        ('accessibility_dark', lambda browser: test_accessibility(browser, dark=True)),
+        ('a_hub_without_a_password_asks_for_one', lambda browser: test_a_hub_without_a_password_asks_for_one(browser, storage)),
+        ('a_blank_hub_is_set_up', lambda browser: test_a_blank_hub_is_set_up(browser, storage)),
+    ]
+
+
 def main():
     if DEVICE:
         sys.exit('the page test changes the arm mode, so it runs against the PC build only')
+    import argparse
+    parser = argparse.ArgumentParser(description='The web pages in a real browser, against the PC build.')
+    parser.add_argument('words', nargs='*', help='run only the tests named, or with any of these in their names')
+    parser.add_argument('--list', action='store_true', help='list the tests and stop')
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as storage:
+        cases = page_cases(None, storage)
+        names = [n for n, _ in cases]
+        if args.list:
+            print('\n'.join(names))
+            return
+        chosen = [n for n in names if not args.words or any(w == n or (w not in names and w in n) for w in args.words)]
+        if not chosen:
+            sys.exit('no test has any of these in its name: ' + ' '.join(args.words))
         start_hub(storage, PASSWORD)
+        failed = []
         try:
             check('server starts', common.HUB.stdout.readline().strip() == 'ready')
             check('a sensor to test with', api('POST', f'/api/mkdir?path={SENSOR}')[0] == 200)
@@ -545,36 +626,30 @@ def main():
             inner = f'<ConsumerReference><Address>http://{LOCAL}:{nvr.port}/onvif_notify_server/</Address></ConsumerReference>'
             check('a pretend NVR subscribes', soap('Subscribe', '/onvif/device_service', inner)[0] == 200)
             wait_until(lambda: nvr.states()[:1] == ['false'])
+            cases = dict(page_cases(nvr, storage))
             with sync_playwright() as p:
                 browser = p.chromium.launch()
-                page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}).new_page()
-                errors = []
-                page.on('pageerror', lambda e: errors.append(str(e)))
-                dialogs = Dialogs(page)
-                for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
-                             lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
-                             lambda: test_settings_pages(page), lambda: test_a_sensor_camera(page), lambda: test_sensor_pictures(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
-                             lambda: test_dark_and_narrow(browser), lambda: test_quiet_when_hidden(browser), lambda: test_accessibility(browser),
-                             lambda: test_accessibility(browser, dark=True)):
+                for n in chosen:
+                    print(f'\n-- {n}', flush=True)
+                    before = len(failures)
+                    control('end-alerts')  # each starts from a quiet hub, armed away
+                    if hub_arm()['mode'] != 'away':
+                        api('POST', '/api/arm', 'mode=away')
                     try:
-                        test()
+                        cases[n](browser)
                     except Exception as e:  # a control that never appeared: a failure, and the rest still run
-                        check('the page could be used', False, str(e).splitlines()[0])
-                check('no script errors on the pages', not errors, errors)
-                check("and none of the browser's own dialog boxes: the pages ask in the page", not dialogs.seen, dialogs.seen)
-                try:
-                    test_a_hub_without_a_password_asks_for_one(browser, storage)
-                except Exception as e:
-                    check('the password page could be used', False, str(e).splitlines()[0])
-                try:
-                    test_a_blank_hub_is_set_up(browser, storage)
-                except Exception as e:
-                    check('the setup page could be used', False, str(e).splitlines()[0])
+                        check(f'{n}: the page could be used', False, str(e).splitlines()[0])
+                    if len(failures) > before:
+                        failed.append(n)
                 browser.close()
         finally:
             common.HUB.kill()
             common.HUB.wait()
-    print(f'\n{len(failures)} failure(s)' if failures else '\nall passed')
+    if failed:
+        print(f'\n{len(failures)} failure(s), in: ' + ' '.join(failed))
+        print('to run just those again: py tools/e2e_pages.py ' + ' '.join(failed))
+    else:
+        print('\nall passed' if not failures else f'\n{len(failures)} failure(s)')
     sys.exit(1 if failures else 0)
 
 

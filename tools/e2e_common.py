@@ -440,3 +440,159 @@ class FakeBroker:
 
     def events(self, topic):
         return [m for m in self.messages if m['topic'] == topic and m['qos'] == 1]
+
+
+# ---- the tests, each on its own ----
+#
+# Every test is a function taking the Session, registered with @case. Each starts from a quiet hub (quiet_hub): no alert
+# on, no past event waiting, armed away, no NVR address, and the six test sensors there as Session describes. It sets up
+# whatever else it needs, and puts back what it changed. So any test can run alone, in any order, and one that fails or
+# stops part way leaves the next to start as if it had not run.
+
+SENSOR_1_NAME = 'Front "gate"'  # a name with quotes, so every place a name goes is tested with them
+
+
+class Case:
+    def __init__(self, func, pc, free, last):
+        self.func, self.pc, self.free, self.last = func, pc, free, last
+        self.name = func.__name__
+
+
+CASES = []
+
+
+def case(pc=False, free=False, last=False):
+    """Registers a test. pc: it needs the PC build's test commands or its radio, so a board skips it. free: it replaces
+    the hub's own clear.h264 or text.json, so a board that has its own skips it. last: it restarts the hub or deletes
+    the test sensors, so it runs after the others."""
+    def register(func):
+        CASES.append(Case(func, pc, free, last))
+        return func
+    return register
+
+
+class Session:
+    """The hub under test and what every test shares: a pretend NVR that pulls events, as one must for the hub to count
+    it listening, and one that is pushed them (nvr), and the test pictures. Sensors 1 to 3 are on node A, 4 to 6 on node
+    B; sensor 1 is named SENSOR_1_NAME, and sensor 4 has only an alert picture and its past-event version."""
+
+    def __init__(self, storage, files):
+        self.storage, self.files = storage, files
+        self.proc = None
+        if not DEVICE:
+            self.proc = start_hub(storage, PASSWORD)
+            if HUB.stdout.readline().strip() != 'ready':
+                sys.exit('the PC build did not start')
+        codes = [api('GET', f'/api/file?path={p}')[0] for p in ('clear.h264', 'text.json')]
+        if any(c not in (200, 404) for c in codes):
+            sys.exit(f'stopping: cannot tell whether the board has its own files (HTTP {codes})')
+        self.hub_files_free = codes == [404, 404]
+        if not self.hub_files_free:
+            print('SKIP the board has its own clear.h264 or text.json, so the tests that replace them are skipped', flush=True)
+        self.puller = PullingNvr()
+        self.nvr = FakeNvrListener()
+        self.subscribe()
+
+    def subscribe(self):
+        inner = f'<ConsumerReference><Address>http://{LOCAL}:{self.nvr.port}/onvif_notify_server/</Address></ConsumerReference>'
+        soap('Subscribe', '/onvif/device_service', inner)
+
+    def restart(self, *args):
+        """Stops the PC build as a power cut would, and starts it again on the same storage."""
+        self.proc.kill()
+        self.proc.wait()
+        self.proc = start_hub(self.storage, PASSWORD, *args)
+        HUB.stdout.readline()
+        self.puller.stop()  # its subscription was in the hub that stopped
+        self.puller = PullingNvr()
+        self.subscribe()
+
+    def stop(self):
+        if self.proc:
+            self.proc.kill()
+            self.proc.wait()
+
+
+# What a test may have left set in the PC build when it stopped part way, put back before the next.
+PC_DEFAULTS = ('auth-off', 'memory-normal', 'disk-normal', 'lists-work', 'stats-work', 'drain-normal', 'firmware-allowed',
+               'nvr-gone-normal', 'overdue-ms 0', 'busy-alerts 100000')
+
+
+def quiet_hub(s):
+    """The state every test starts from."""
+    if DEVICE:
+        wait_until(lambda: (lambda st: not st['active'] and not st['delayed_waiting'])(status()), timeout=120, step=0.5)
+    else:
+        for command in PC_DEFAULTS:
+            control(command)
+        control('forget-waiting')
+        control('end-alerts')
+    if get_json('/api/arm')['mode'] != 'away':
+        api('POST', '/api/arm', 'mode=away')
+    if get_json('/api/nvr')['ip']:
+        api('POST', '/api/nvr', 'ip=')
+    api('POST', '/api/pairing/close', 'x=1')
+    nodes = {n['mac']: n for n in get_json('/api/tree')['nodes']}
+    for n, (mac, number) in SENSORS.items():
+        if not any(x['input'] == number for x in nodes.get(mac, {}).get('sensors', [])):
+            api('POST', f'/api/mkdir?path={name(n)}')
+    sensors = {f"{mac}/{x['input']}": x for mac, node in nodes.items() for x in node['sensors']}
+    if sensors.get(name(1), {}).get('name') != SENSOR_1_NAME:
+        api('POST', f'/api/sensor-settings?path={name(1)}', 'name=' + urllib.parse.quote(SENSOR_1_NAME))
+    pictures = {f['name'] for f in sensors.get(name(4), {}).get('files', [])}
+    for f in ('active.h264', 'active-delayed.h264'):
+        if f not in pictures:
+            api('PUT', f'/api/file?path={name(4)}/{f}', s.files[f])
+
+
+def run_cases(s, words):
+    """Runs the tests named, or with any of words in their names, or all of them; each to its end, whatever the others
+    did. A word that is a test's whole name picks that test alone."""
+    names = {c.name for c in CASES}
+    chosen = [c for c in CASES if not words or any(w == c.name or (w not in names and w in c.name) for w in words)]
+    chosen.sort(key=lambda c: c.last)
+    if not chosen:
+        sys.exit('no test has any of these in its name: ' + ' '.join(words))
+    failed = []
+    for c in chosen:
+        if c.pc and DEVICE:
+            print(f'SKIP {c.name}: it needs the PC build', flush=True)
+            continue
+        if c.free and not s.hub_files_free:
+            print(f'SKIP {c.name}: it would replace the board\'s own files', flush=True)
+            continue
+        print(f'\n-- {c.name}', flush=True)
+        before = len(failures)
+        try:
+            quiet_hub(s)
+            c.func(s)
+        except (OSError, http.client.HTTPException, ValueError, KeyError, IndexError, TypeError, AttributeError) as e:
+            import traceback
+            traceback.print_exc()
+            check(f'{c.name} runs to its end', False, repr(e))
+        if len(failures) > before:
+            failed.append(c.name)
+    return failed
+
+
+def main_of(title):
+    """The command line of a test file: its test names to run, or none for all."""
+    import argparse
+    parser = argparse.ArgumentParser(description=title)
+    parser.add_argument('words', nargs='*', help='run only the tests with any of these in their names')
+    parser.add_argument('--list', action='store_true', help='list the tests and stop')
+    args = parser.parse_args()
+    if args.list:
+        for c in sorted(CASES, key=lambda c: c.last):
+            print(c.name + (' (PC build only)' if c.pc else ''))
+        sys.exit(0)
+    return args.words
+
+
+def finish(failed):
+    if failed:
+        print(f'\n{len(failures)} failure(s), in: ' + ' '.join(failed))
+        print('to run just those again: py tools/e2e_test.py ' + ' '.join(failed))
+    else:
+        print('\nall passed')
+    sys.exit(1 if failures else 0)

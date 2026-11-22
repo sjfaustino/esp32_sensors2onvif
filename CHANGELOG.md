@@ -26,6 +26,15 @@ before that, a new minor version may change settings or the messages.
 - Saving a node's times on the Sensors page no longer loses the hardware set for it, and a full backup keeps the
   camera of a sensor that has only that setting.
 
+### Tests
+
+- Each end-to-end test stands on its own: it starts from a quiet hub, sets up what it needs, and puts back what it
+  changed, so any of them runs alone (`python tools/e2e_test.py pairing`) and one that fails does not take the next
+  with it. A test that needs a paired node pairs its own, which numbers its own reports. The browser tests each get a
+  fresh page.
+- Running them alone found a fault in the Sensors page: a picture slot showing the Seen picture in its place faded its
+  words too far to read. They keep their contrast now.
+
 ### The nodes
 
 - **Add a node**, on the Nodes and pairing page, takes a node through its setting up a step at a time, each ticked as
