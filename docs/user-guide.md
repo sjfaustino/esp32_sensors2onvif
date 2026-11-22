@@ -47,6 +47,13 @@ Open `http://esp-alarmhub.local` from a device on the same network as the hub. T
 and some devices cannot resolve `.local` names. In those cases use the address your router gave the hub, or the one
 printed on the serial console once Wi-Fi is up, as `http://<address>/`. Add the hub to the NVR by address, not by name.
 
+### Language
+
+The pages are in English, or in Portuguese (European) on a device whose browser prefers Portuguese. **Language**, at the
+foot of the menu, changes it for that device; each device keeps its own choice. The hub's messages, such as why it
+refused a setting, are shown in the same language. Notifications, Home Assistant and the NVR's pictures keep the
+hub's English; a picture made on the Sensors page starts with words in the page's language.
+
 ### IP address
 
 **Network > Network** switches between DHCP and a fixed address. A fixed address is used only on the WiFi network the

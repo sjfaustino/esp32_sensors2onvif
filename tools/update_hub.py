@@ -3,6 +3,7 @@
     python tools/update_hub.py 192.168.1.50            # build, sign, check, send, and watch it for 5 minutes
     python tools/update_hub.py 192.168.1.50 --watch 10 # watch it for 10 minutes
     python tools/update_hub.py 192.168.1.50 --untested # a build CI has not passed, such as while finding a fault
+    python tools/update_hub.py 192.168.1.50 --release v0.6.0  # a published release, as CI built and signed it
 
 It refuses, before sending anything:
   - a build with changes not committed, or a commit not pushed, as nobody could tell later what the hub runs;
@@ -18,6 +19,7 @@ if it went back. The hub's password is read from HUB_PASSWORD, or else include/s
 """
 import argparse
 import base64
+import hashlib
 import http.client
 import json
 import os
@@ -123,6 +125,39 @@ def built_version():
     return re.search(r'#define FIRMWARE_VERSION "([^"]*)"', text).group(1)
 
 
+def built(env):
+    """This checkout's firmware, built and signed here."""
+    print(f'-- building {env}', flush=True)
+    if subprocess.run(['pio', 'run', '-e', env], cwd=ROOT, capture_output=True).returncode:
+        fail(f'the build failed: pio run -e {env} says why')
+    with tempfile.TemporaryDirectory() as scratch:
+        signed = os.path.join(scratch, 'firmware-signed.bin')
+        image = os.path.join(ROOT, '.pio', 'build', env, 'firmware.bin')
+        if subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'sign_firmware.py'), image, signed],
+                          capture_output=True).returncode:
+            fail('signing failed: is the key in ~/.sensors2onvif/firmware-signing-key.pem?')
+        return built_version(), open(signed, 'rb').read()
+
+
+def released(tag, env):
+    """A published release's firmware for the board, as CI built and signed it, checked against its SHA256SUMS."""
+    gh = shutil.which('gh')
+    if not gh:
+        fail('the GitHub CLI (gh) is needed to download a release')
+    name = f'sensors2onvif-{tag}-{env}.bin'
+    with tempfile.TemporaryDirectory() as scratch:
+        got = subprocess.run([gh, 'release', 'download', tag, '--pattern', name, '--pattern', 'SHA256SUMS', '--dir', scratch],
+                             cwd=ROOT, capture_output=True, text=True)
+        if got.returncode:
+            fail(f'could not download {name} from the release {tag}: {got.stderr.strip()}')
+        data = open(os.path.join(scratch, name), 'rb').read()
+        sums = open(os.path.join(scratch, 'SHA256SUMS'), encoding='utf-8').read()
+    if f'{hashlib.sha256(data).hexdigest()}  {name}' not in sums:
+        fail(f"{name} does not match the release's SHA256SUMS")
+    print(f"-- downloaded {name}, matching the release's SHA256SUMS", flush=True)
+    return tag, data
+
+
 def health_line(hub):
     s = hub.status()
     o = hub.json('/api/overview')
@@ -138,10 +173,12 @@ def main():
     parser.add_argument('--env', default='esp32_16mb', help="the board's PlatformIO environment (default esp32_16mb)")
     parser.add_argument('--watch', type=float, default=5, help='minutes it must run without restarting (default 5)')
     parser.add_argument('--untested', action='store_true', help="send a build CI has not passed, or not committed")
+    parser.add_argument('--release', metavar='TAG', help='send a published release, such as v0.6.0, instead of a build')
     args = parser.parse_args()
 
     hub = Hub(args.host, password())
-    check_commit(args.untested)
+    if not args.release:  # a release was built by CI from a tag that passed it
+        check_commit(args.untested)
     try:
         before = hub.device()
         s = hub.status()
@@ -151,17 +188,7 @@ def main():
         fail('an alert is active or waiting to be sent; an update would pause the video the NVR records. Try again once it is over')
     print(f"the hub runs {before.get('Firmware version')}; {health_line(hub)}")
 
-    print(f'-- building {args.env}', flush=True)
-    if subprocess.run(['pio', 'run', '-e', args.env], cwd=ROOT, capture_output=True).returncode:
-        fail(f'the build failed: pio run -e {args.env} says why')
-    version = built_version()
-    with tempfile.TemporaryDirectory() as scratch:
-        signed = os.path.join(scratch, 'firmware-signed.bin')
-        image = os.path.join(ROOT, '.pio', 'build', args.env, 'firmware.bin')
-        if subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'sign_firmware.py'), image, signed],
-                          capture_output=True).returncode:
-            fail('signing failed: is the key in ~/.sensors2onvif/firmware-signing-key.pem?')
-        data = open(signed, 'rb').read()
+    version, data = released(args.release, args.env) if args.release else built(args.env)
     print(f'-- sending {version}, {len(data) // 1024} KB', flush=True)
     status, reply = hub.request('PUT', '/api/firmware', data, timeout=180)
     if status != 200:

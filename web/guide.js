@@ -5,7 +5,8 @@
   let chosen = "", // the node being set up: its MAC folder, or "" for a new one
     plan = null, // the floor plan, read once a visit
     events = []; // read only while a walk past the chosen node is still to come
-  const tick = (ok) => el("span", { className: "chip " + (ok ? "ok" : "none"), textContent: ok ? "Done" : "To do" });
+  const tick = (ok) =>
+    el("span", { className: "chip " + (ok ? "ok" : "none"), textContent: ok ? tr("Done") : tr("To do") });
   const button = (text, onclick) => el("button", { textContent: text, onclick });
   function step(n, ok, title, text, ...actions) {
     return el(
@@ -29,56 +30,68 @@
       step(
         1,
         heard,
-        "Flash it",
-        "Write the node's firmware to it over USB: run python tools/flasher.py in the node project and choose its board, which also prints its label with its fingerprint. Or build it with PlatformIO, as the node's README says.",
+        tr("Flash it"),
+        tr(
+          "Write the node's firmware to it over USB: run python tools/flasher.py in the node project and choose its board, which also prints its label with its fingerprint. Or build it with PlatformIO, as the node's README says.",
+        ),
       ),
       step(
         2,
         heard,
-        "Let it pair",
-        "Allow pairing, then reset the node, or power it up for the first time. It flashes yellow while it looks for the hub.",
-        button("Allow pairing for 2 minutes", () => $("pairOpen").click()),
+        tr("Let it pair"),
+        tr(
+          "Allow pairing, then reset the node, or power it up for the first time. It flashes yellow while it looks for the hub.",
+        ),
+        button(tr("Allow pairing for 2 minutes"), () => $("pairOpen").click()),
       ),
       step(
         3,
         paired,
-        "Approve it",
+        tr("Approve it"),
         waiting.length
-          ? "The hub has it: compare the fingerprint below with the one on the node's label or screen, and approve it under Pairing if they match. It then flashes green three times."
-          : "Once the node says hello, it is listed under Pairing below with its fingerprint.",
+          ? tr(
+              "The hub has it: compare the fingerprint below with the one on the node's label or screen, and approve it under Pairing if they match. It then flashes green three times.",
+            )
+          : tr("Once the node says hello, it is listed under Pairing below with its fingerprint."),
       ),
       step(
         4,
         paired && hwDone,
-        "Choose its sensor and pins",
+        tr("Choose its sensor and pins"),
         node && !node.hwRuns
-          ? "This node's firmware is from before hardware settings: update it first, and it can take them from the hub."
+          ? tr(
+              "This node's firmware is from before hardware settings: update it first, and it can take them from the hub.",
+            )
           : node && node.hwSet
-            ? "Saved: the node takes them after its next report and restarts into them."
-            : "On the Sensors page, under the node's Hardware, choose its sensor and the pins you wired.",
-        button("Open the Sensors page", () => (location.hash = "sensors")),
+            ? tr("Saved: the node takes them after its next report and restarts into them.")
+            : tr("On the Sensors page, under the node's Hardware, choose its sensor and the pins you wired."),
+        button(tr("Open the Sensors page"), () => (location.hash = "sensors")),
       ),
       step(
         5,
         paired && named,
-        "Name its sensors",
-        "On the Sensors page, name each of its sensors by where it is, such as Back door: alerts and notifications use the name.",
-        button("Open the Sensors page", () => (location.hash = "sensors")),
+        tr("Name its sensors"),
+        tr(
+          "On the Sensors page, name each of its sensors by where it is, such as Back door: alerts and notifications use the name.",
+        ),
+        button(tr("Open the Sensors page"), () => (location.hash = "sensors")),
       ),
       step(
         6,
         paired && (onPlan || !Object.keys(plan).length), // without a floor plan, nothing to do
-        "Put it on the floor plan",
-        "Choose its sensors on the Floor plan page and tap where they are.",
-        button("Open the floor plan", () => (location.hash = "plan")),
+        tr("Put it on the floor plan"),
+        tr("Choose its sensors on the Floor plan page and tap where they are."),
+        button(tr("Open the floor plan"), () => (location.hash = "plan")),
       ),
       step(
         7,
         paired && alerted,
-        "Walk past it",
-        "Mount the node, press its reset button, and walk past it from where an intruder would come: its light flashes 3, 2 or 1 times for a strong, fair or weak signal, and its alert shows here.",
+        tr("Walk past it"),
+        tr(
+          "Mount the node, press its reset button, and walk past it from where an intruder would come: its light flashes 3, 2 or 1 times for a strong, fair or weak signal, and its alert shows here.",
+        ),
         node &&
-          button("Start a walk test on it", () =>
+          button(tr("Start a walk test on it"), () =>
             call("POST", "/api/walk-test?path=" + node.mac, "go=1").catch(() => {}),
           ),
       ),
@@ -105,8 +118,10 @@
       if (chosen && !nodes.some((n) => n.mac == chosen)) chosen = "";
       if (chosen === "" && !$("guideNode").dataset.picked) chosen = (nodes.find((n) => !done(n)) || {}).mac || "";
       $("guideNode").replaceChildren(
-        el("option", { value: "", textContent: "A new node" }),
-        ...nodes.map((n) => el("option", { value: n.mac, textContent: label(n) + (done(n) ? ": set up" : "") })),
+        el("option", { value: "", textContent: tr("A new node") }),
+        ...nodes.map((n) =>
+          el("option", { value: n.mac, textContent: done(n) ? tr("{node}: set up", { node: label(n) }) : label(n) }),
+        ),
       );
       $("guideNode").value = chosen;
       const node = nodes.find((n) => n.mac == chosen);

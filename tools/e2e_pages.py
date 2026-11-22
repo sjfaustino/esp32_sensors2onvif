@@ -576,6 +576,41 @@ def test_dark_and_narrow(browser):
     page.close()
 
 
+def test_the_pages_in_portuguese(browser):
+    """A browser that prefers Portuguese gets every page in it, with no English left in what the pages show, and the
+    switch in the menu changes the language for that device."""
+    context = browser.new_context(locale='pt-PT', http_credentials={'username': 'admin', 'password': PASSWORD})
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    english = re.compile(r'\b(the|and|is|are|of|to|with|this|its|from|your|has|been)\b')
+    try:
+        page.goto(URL + '#overview')
+        page.wait_for_selector('#armPanel')
+        check('a browser preferring Portuguese gets the pages in Portuguese',
+              page.evaluate('document.documentElement.lang') == 'pt-PT' and 'Resumo' in page.text_content('#menu'),
+              page.evaluate('document.documentElement.lang'))
+        node = SENSOR.split('/')[0]
+        left = []
+        for view in ['overview', 'events', 'walk', 'plan', 'sensors', 'espnow', 'notify', 'ha', 'network', 'onvif', 'http',
+                     'rtsp', 'nvr', 'maintenance', 'time', 'device', 'node:' + node, 'sensor:' + SENSOR]:
+            page.evaluate(f"location.hash = '{view}'")
+            page.wait_for_timeout(1200)
+            text = page.evaluate("""() => [document.querySelector('header'), document.getElementById('status'),
+                ...[...document.querySelectorAll('.view')].filter((v) => !v.hidden)].map((e) => e.innerText).join('\\n')""")
+            # Two English words in a line, outside a row only the PC build has, is a phrase left in English.
+            left += [f'{view}: {line}' for line in text.split('\n')
+                     if len(set(english.findall(line))) >= 2 and not line.startswith('Picture storage')]
+        check('with no English left on any page', not left, left[:10])
+        check('and no script errors', not errors, errors)
+        page.select_option('#langPick', 'en')  # the page loads again, in English
+        page.wait_for_load_state()
+        check('the switch in the menu puts them back in English, for this device',
+              page_wait(page, lambda: 'Overview' in page.text_content('#menu')), page.text_content('#menu')[:80])
+    finally:
+        context.close()
+
+
 def own_hub(test):
     """The test, on a hub of its own with fresh storage and no password, as a hub flashed from a release starts; the
     hub the other tests use is started again afterwards, as it was."""
@@ -685,6 +720,14 @@ class Tab:
         self.context.close()
 
 
+
+def in_english(browser):
+    """Every page the tests open in English, whatever the language of the PC they run on, as Chromium otherwise takes
+    it from there and the pages follow it. A test that wants another language says so."""
+    for name in ('new_context', 'new_page'):
+        opened = getattr(browser, name)
+        setattr(browser, name, lambda *a, _opened=opened, **k: _opened(*a, **{'locale': 'en-GB', **k}))
+
 def page_cases(nvr, storage):
     """Each test by name, given a fresh page, or the browser for those that open their own."""
     def on_page(test, *more):
@@ -711,6 +754,7 @@ def page_cases(nvr, storage):
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),
         ('every_page_opens', test_every_page_opens),
         ('dark_and_narrow', test_dark_and_narrow),
+        ('the_pages_in_portuguese', test_the_pages_in_portuguese),
         ('quiet_when_hidden', test_quiet_when_hidden),
         ('accessibility', test_accessibility),
         ('accessibility_dark', lambda browser: test_accessibility(browser, dark=True)),
@@ -748,6 +792,7 @@ def main():
             cases = dict(page_cases(nvr, storage))
             with sync_playwright() as p:
                 browser = p.chromium.launch()
+                in_english(browser)
                 for n in chosen:
                     print(f'\n-- {n}', flush=True)
                     before = len(failures)

@@ -24,7 +24,7 @@
   async function tickTime() {
     try {
       const t = await (await fetch("/api/time")).json();
-      $("tmNow").value = t.synced ? t.local : "Not set yet";
+      $("tmNow").value = t.synced ? t.local : tr("Not set yet");
       return t;
     } catch (e) {
       return null;
@@ -57,7 +57,7 @@
       two(d.getSeconds());
     const m = $("tmMsg");
     m.className = "portMsg";
-    m.textContent = "Read from this PC. Press Save to set the hub to this time.";
+    m.textContent = tr("Read from this PC. Press Save to set the hub to this time.");
     window.hub.markDirty($("saveTime"));
   };
   $("saveTime").onclick = async () => {
@@ -67,7 +67,7 @@
     m.className = "portMsg";
     if (manual && !v) {
       m.className = "portMsg err";
-      m.textContent = "Enter the date and time, or use Read from this PC.";
+      m.textContent = tr("Enter the date and time, or use Read from this PC.");
       return;
     }
     let body =
@@ -80,7 +80,7 @@
       "&server=" +
       encodeURIComponent($("tmServer").value);
     if (manual) body += "&epoch=" + Math.floor(new Date(v).getTime() / 1000);
-    if (await send(m, "/api/time", body, "Saved.")) tickTime();
+    if (await send(m, "/api/time", body, tr("Saved."))) tickTime();
   };
   async function loadSchedule() {
     try {
@@ -96,7 +96,7 @@
     m.className = "portMsg";
     if (!v) {
       m.className = "portMsg err";
-      m.textContent = "Enter a time.";
+      m.textContent = tr("Enter a time.");
       return;
     }
     const minute = Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5));
@@ -104,44 +104,51 @@
       m,
       "/api/schedule",
       "on=" + ($("rbOn").checked ? 1 : 0) + "&day=" + $("rbDay").value + "&minute=" + minute,
-      "Saved.",
+      tr("Saved."),
     );
   };
   async function sysAction(url, body, done, after) {
     if ((await send($("sysMsg"), url, body, done)) && after) setTimeout(after, 12000);
   }
   $("rebootNow").onclick = async () => {
-    if (await ask("The video stops for a few seconds.", { title: "Restart the hub now?", ok: "Restart" }))
-      sysAction("/api/reboot", "", "The hub is restarting.", () => location.reload());
+    if (await ask(tr("The video stops for a few seconds."), { title: tr("Restart the hub now?"), ok: tr("Restart") }))
+      sysAction("/api/reboot", "", tr("The hub is restarting."), () => location.reload());
   };
   $("newKeys").onclick = async () => {
     if (
       await ask(
-        "Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts.",
-        { title: "Make new keys?", ok: "Make new keys", danger: true },
+        tr(
+          "Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts.",
+        ),
+        { title: tr("Make new keys?"), ok: tr("Make new keys"), danger: true },
       )
     )
-      sysAction("/api/newkeys", "confirm=yes", "New keys are being made. The hub is restarting.", () =>
+      sysAction("/api/newkeys", "confirm=yes", tr("New keys are being made. The hub is restarting."), () =>
         location.reload(),
       );
   };
   $("resetAll").onclick = async () => {
     if (
       await ask(
-        "The saved Wi-Fi networks, ports, name, web password, fixed address and time settings are erased. The hub restarts and may move to another address.",
-        { title: "Reset the settings?", ok: "Reset settings", danger: true },
+        tr(
+          "The saved Wi-Fi networks, ports, name, web password, fixed address and time settings are erased. The hub restarts and may move to another address.",
+        ),
+        { title: tr("Reset the settings?"), ok: tr("Reset settings"), danger: true },
       )
     )
       sysAction(
         "/api/reset",
         "confirm=yes",
-        "Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network.",
+        tr("Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network."),
       );
   };
   async function loadDevice() {
     try {
       const j = await (await fetch("/api/device")).json();
-      fill("devInfo", j.rows);
+      fill(
+        "devInfo",
+        j.rows.map(([k, v]) => [hubText(k), hubText(v)]),
+      );
       if (!j.crash) {
         $("crashActs").replaceChildren();
         return;
@@ -152,19 +159,27 @@
           className: "btn",
           href: "/api/crash",
           download: "hub-crash.bin",
-          textContent: "Download crash report",
+          textContent: tr("Download crash report"),
         }),
         " ",
         el("button", {
           className: "del",
-          textContent: "Delete crash report",
+          textContent: tr("Delete crash report"),
           onclick: async () => {
-            if (await ask("This cannot be undone.", { title: "Delete the crash report?", ok: "Delete", danger: true }))
-              act(() => call("POST", "/api/crash/delete", "x=1"), "Deleted the crash report").then(loadDevice);
+            if (
+              await ask(tr("This cannot be undone."), {
+                title: tr("Delete the crash report?"),
+                ok: tr("Delete"),
+                danger: true,
+              })
+            )
+              act(() => call("POST", "/api/crash/delete", "x=1"), tr("Deleted the crash report")).then(loadDevice);
           },
         }),
         el("br"),
-        "For diagnosis with the firmware it came from. It holds a copy of the hub's memory, which can include passwords.",
+        tr(
+          "For diagnosis with the firmware it came from. It holds a copy of the hub's memory, which can include passwords.",
+        ),
       );
     } catch (e) {}
   }
@@ -218,12 +233,12 @@
       const name = text(at, at + 100),
         size = parseInt(text(at + 124, at + 136).trim(), 8);
       if (!name || isNaN(size) || at + 512 + size > bytes.length)
-        throw new Error("This file is damaged, or is not a full backup from the hub.");
+        throw new Error(tr("This file is damaged, or is not a full backup from the hub."));
       const type = bytes[at + 156];
       if (type == 48 || type == 0) out.push([name, bytes.slice(at + 512, at + 512 + size)]);
       at += 512 + Math.ceil(size / 512) * 512;
     }
-    if (!ended) throw new Error("This file is cut short, or is not a full backup from the hub.");
+    if (!ended) throw new Error(tr("This file is cut short, or is not a full backup from the hub."));
     return out;
   }
   // The hub answers 507 while its one spare buffer is in use, so those requests are tried again.
@@ -243,8 +258,8 @@
       m.className = "portMsg err";
       m.textContent =
         p.length < 8
-          ? "Type a passphrase of 8 characters or more, at the top of Backup and restore."
-          : "The two passphrases differ.";
+          ? tr("Type a passphrase of 8 characters or more, at the top of Backup and restore.")
+          : tr("The two passphrases differ.");
       return null;
     }
     return p;
@@ -384,7 +399,7 @@
     return h;
   }
   window.backupKey = backupKey; // for the page tests, which check it against known values
-  const sealing = (m) => (f) => (m.textContent = "Sealing with your passphrase: " + Math.round(f * 100) + "%");
+  const sealing = (m) => (f) => (m.textContent = tr("Sealing with your passphrase: {n}%", { n: Math.round(f * 100) }));
   async function sealedSettings(p, m) {
     const salt = crypto.getRandomValues(new Uint8Array(16)),
       key = await backupKey(p, salt, ROUNDS, sealing(m));
@@ -392,7 +407,8 @@
       method: "POST",
       body: "key=" + hex(key) + "&salt=" + hex(salt) + "&rounds=" + ROUNDS,
     });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "The hub could not send its settings.");
+    if (!r.ok)
+      throw new Error(hubText((await r.json().catch(() => ({}))).error) || tr("The hub could not send its settings."));
     return new Uint8Array(await r.arrayBuffer());
   }
   // A sealed backup names its rounds and salt on its first line; the key from them goes with it, a plain one alone.
@@ -401,7 +417,7 @@
       head = text.match(/^sensorcam-backup sealed 2 pbkdf2-sha256 (\d+) ([0-9a-f]{32})\n/),
       headers = {};
     if (isSealed(text)) {
-      if (!head || +head[1] > 10000000) throw new Error("This backup is damaged, or was made by a newer hub.");
+      if (!head || +head[1] > 10000000) throw new Error(tr("This backup is damaged, or was made by a newer hub."));
       const salt = new Uint8Array(head[2].match(/../g).map((x) => parseInt(x, 16)));
       headers["X-Backup-Key"] = hex(await backupKey($("bkPass").value, salt, +head[1], sealing(m)));
     }
@@ -422,7 +438,7 @@
     if (!p) return;
     try {
       saveFile(await sealedSettings(p, m), "hub-settings.txt");
-      m.textContent = "Saved, sealed with your passphrase. Keep the passphrase apart from the file.";
+      m.textContent = tr("Saved, sealed with your passphrase. Keep the passphrase apart from the file.");
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = e.message;
@@ -438,9 +454,9 @@
         add = async (path) => {
           const r = await fetchRetry("/api/file?path=" + path);
           if (r.status == 404) return;
-          if (!r.ok) throw new Error("The hub could not send " + path);
+          if (!r.ok) throw new Error(tr("The hub could not send {file}", { file: path }));
           files.push([path, new Uint8Array(await r.arrayBuffer())]);
-          m.textContent = "Collected " + files.length + " files";
+          m.textContent = tr("Collected {n} files", { n: files.length });
         };
       files.push(["hub-settings.txt", await sealedSettings(p, m)]); // with each paired node's key, so pairing.txt stays out
       const t = await call("GET", "/api/tree");
@@ -464,7 +480,9 @@
         }
       }
       saveFile(tarBuild(files), "hub-backup-" + new Date().toISOString().slice(0, 10) + ".tar");
-      m.textContent = "Saved " + files.length + " files, the settings and node keys sealed with your passphrase.";
+      m.textContent = tr("Saved {n} files, the settings and node keys sealed with your passphrase.", {
+        n: files.length,
+      });
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = e.message;
@@ -476,13 +494,15 @@
     m.className = "portMsg";
     if (!f) {
       m.className = "portMsg err";
-      m.textContent = "Choose a full backup .tar file first.";
+      m.textContent = tr("Choose a full backup .tar file first.");
       return;
     }
     if (
       !(await ask(
-        "Its sensors, pictures and names are added, replacing any with the same name, then the settings are replaced and the hub restarts. It may move to another address.",
-        { title: "Restore this backup?", ok: "Restore" },
+        tr(
+          "Its sensors, pictures and names are added, replacing any with the same name, then the settings are replaced and the hub restarts. It may move to another address.",
+        ),
+        { title: tr("Restore this backup?"), ok: tr("Restore") },
       ))
     )
       return;
@@ -493,7 +513,7 @@
         if (n == "hub-settings.txt") settings = d;
         else list.push([n, d]);
       }
-      if (!settings) throw new Error("This is not a full backup from the hub.");
+      if (!settings) throw new Error(tr("This is not a full backup from the hub."));
       if (isSealed(new TextDecoder().decode(settings.slice(0, 40))) && !passphrase(m, false)) return;
       // Folders first. A new picture removes its thumbnail, so thumbnails go after pictures.
       const rank = (p) => (/\/\.(node|sensor)$/.test(p) ? 0 : p.endsWith(".h264") ? 1 : p.endsWith(".jpg") ? 2 : 3);
@@ -502,7 +522,7 @@
       for (let i = 0; i < list.length; i++) {
         const [path, data] = list[i],
           folder = /\/\.(node|sensor)$/.test(path);
-        m.textContent = "Restoring " + (i + 1) + " of " + list.length + ": " + path;
+        m.textContent = tr("Restoring {n} of {total}: {file}", { n: i + 1, total: list.length, file: path });
         const r = await fetchRetry(
           folder ? "/api/mkdir?path=" + path.replace(/\/\.(node|sensor)$/, "") : "/api/file?path=" + path,
           { method: folder ? "POST" : "PUT", body: folder ? null : data },
@@ -512,24 +532,22 @@
           try {
             j = await r.json();
           } catch (e) {}
-          failed.push(path + ": " + (j.error || "HTTP " + r.status));
+          failed.push(path + ": " + (hubText(j.error) || "HTTP " + r.status));
         }
       }
-      m.textContent = "Restoring the settings";
+      m.textContent = tr("Restoring the settings");
       const r = await restoreSettings(settings, m);
       if (!r.ok)
         throw new Error(
-          "The sensors and pictures were restored, but not the settings: " +
-            ((await r.json().catch(() => ({}))).error || "the hub refused them") +
-            ".",
+          tr("The sensors and pictures were restored, but not the settings: {why}.", {
+            why: hubText((await r.json().catch(() => ({}))).error) || tr("the hub refused them"),
+          }),
         );
       m.textContent =
-        "Restored " +
-        (list.length - failed.length) +
-        " of " +
-        list.length +
-        " items and the settings. The hub is restarting." +
-        (failed.length ? " Not restored: " + failed.join("; ") : "");
+        tr("Restored {n} of {total} items and the settings. The hub is restarting.", {
+          n: list.length - failed.length,
+          total: list.length,
+        }) + (failed.length ? " " + tr("Not restored: {list}", { list: failed.join("; ") }) : "");
       if (failed.length) m.className = "portMsg err";
       setTimeout(() => location.reload(), 15000);
     } catch (e) {
@@ -543,13 +561,13 @@
     m.className = "portMsg";
     if (!f) {
       m.className = "portMsg err";
-      m.textContent = "Choose a firmware .bin file first.";
+      m.textContent = tr("Choose a firmware .bin file first.");
       return;
     }
     if (
-      !(await ask("The hub restarts when it finishes, and the video stops until then.", {
-        title: "Update the firmware?",
-        ok: "Update",
+      !(await ask(tr("The hub restarts when it finishes, and the video stops until then."), {
+        title: tr("Update the firmware?"),
+        ok: tr("Update"),
       }))
     )
       return;
@@ -559,7 +577,9 @@
     const shown = (part) => {
       bar.style.width = Math.round(part * 100) + "%";
       pct.textContent =
-        part < 1 ? "Uploading: " + Math.round(part * 100) + "%. Keep this page open." : "Checking the signature";
+        part < 1
+          ? tr("Uploading: {n}%. Keep this page open.", { n: Math.round(part * 100) })
+          : tr("Checking the signature");
     };
     $("fwProg").hidden = false;
     $("fwSend").disabled = true;
@@ -582,13 +602,14 @@
     $("fwProg").hidden = true;
     $("fwSend").disabled = false;
     if (result.ok) {
-      m.textContent = "Done. The hub is restarting; this page reloads when it is back.";
+      m.textContent = tr("Done. The hub is restarting; this page reloads when it is back.");
       setTimeout(() => location.reload(), 25000);
     } else {
       m.className = "portMsg err";
-      m.textContent = result.error
-        ? result.error.charAt(0).toUpperCase() + result.error.slice(1) + "."
-        : "The upload failed. The hub keeps its current firmware.";
+      const why = hubText(result.error);
+      m.textContent = why
+        ? why.charAt(0).toUpperCase() + why.slice(1) + "."
+        : tr("The upload failed. The hub keeps its current firmware.");
     }
   };
   $("rsSend").onclick = async () => {
@@ -597,13 +618,13 @@
     m.className = "portMsg";
     if (!f) {
       m.className = "portMsg err";
-      m.textContent = "Choose a backup file first.";
+      m.textContent = tr("Choose a backup file first.");
       return;
     }
     if (
-      !(await ask("The hub restarts and may move to another address.", {
-        title: "Replace the hub's settings with this backup?",
-        ok: "Restore",
+      !(await ask(tr("The hub restarts and may move to another address."), {
+        title: tr("Replace the hub's settings with this backup?"),
+        ok: tr("Restore"),
       }))
     )
       return;
@@ -613,10 +634,12 @@
       const r = await restoreSettings(text, m),
         j = await r.json().catch(() => ({}));
       m.className = r.ok ? "portMsg" : "portMsg err";
-      m.textContent = r.ok ? "Restored. The hub is restarting." : (j.error || "The hub refused this backup") + ".";
+      m.textContent = r.ok
+        ? tr("Restored. The hub is restarting.")
+        : (hubText(j.error) || tr("The hub refused this backup")) + ".";
     } catch (e) {
       m.className = "portMsg err";
-      m.textContent = e instanceof TypeError ? "The hub did not answer. Try again." : e.message; // fetch fails as a TypeError
+      m.textContent = e instanceof TypeError ? tr("The hub did not answer. Try again.") : e.message; // fetch fails as a TypeError
     }
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {

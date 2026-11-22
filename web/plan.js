@@ -42,13 +42,13 @@ const plan = (() => {
     if (!loaded) await load();
     if (!image) {
       box.replaceChildren(
-        el("p", { className: "note", textContent: "No floor plan yet. Add one under Alarm > Floor plan." }),
+        el("p", { className: "note", textContent: tr("No floor plan yet. Add one under Alarm > Floor plan.") }),
       );
       return;
     }
     let wrap = box.firstElementChild;
     if (!wrap || wrap.dataset.src != image) {
-      const img = el("img", { src: image, alt: "Floor plan", className: "planImg", draggable: false });
+      const img = el("img", { src: image, alt: tr("Floor plan"), className: "planImg", draggable: false });
       wrap = el("div", { className: "plan" }, img);
       wrap.dataset.src = image;
       box.replaceChildren(wrap);
@@ -100,8 +100,11 @@ const plan = (() => {
   }
   const signalText = (n) =>
     n.rssi == null
-      ? "not heard yet"
-      : n.rssi + " dBm" + (n.weak ? ", weak on average" : "") + (n.refused ? ", " + n.refused + " refused" : "");
+      ? tr("not heard yet")
+      : n.rssi +
+        " dBm" +
+        (n.weak ? tr(", weak on average") : "") +
+        (n.refused ? ", " + tr("{n} refused", { n: n.refused }) : "");
 
   // A picture of any size and kind, as a JPEG small enough for the hub: smaller and coarser until it fits.
   async function shrink(file) {
@@ -117,7 +120,7 @@ const plan = (() => {
         if (blob && blob.size <= LIMIT) return blob;
       }
     }
-    throw new Error("That picture is too detailed to fit the hub's 32 KB. Try a simpler drawing, or crop it.");
+    throw new Error(tr("That picture is too detailed to fit the hub's 32 KB. Try a simpler drawing, or crop it."));
   }
 
   const msg = (text, err) => {
@@ -132,11 +135,11 @@ const plan = (() => {
       const choose = $("planSensor"),
         before = choose.value;
       choose.replaceChildren(
-        el("option", { value: "", textContent: "Choose a sensor to place" }),
+        el("option", { value: "", textContent: tr("Choose a sensor to place") }),
         ...esp.nodes.map((n) =>
           el("option", {
             value: keyOf(n),
-            textContent: labelOf(n) + (spots[keyOf(n)] ? "" : " (not on the plan yet)"),
+            textContent: labelOf(n) + (spots[keyOf(n)] ? "" : tr(" (not on the plan yet)")),
           }),
         ),
       );
@@ -147,17 +150,17 @@ const plan = (() => {
       $("planKey").replaceChildren(
         ...(bySignal
           ? [
-              ["strong", "Strong"],
-              ["good", "Good"],
-              ["fair", "Fair: may miss a message now and then"],
-              ["weak", "Weak: move the node or the hub"],
-              ["never", "Not heard yet"],
+              ["strong", tr("Strong")],
+              ["good", tr("Good")],
+              ["fair", tr("Fair: may miss a message now and then")],
+              ["weak", tr("Weak: move the node or the hub")],
+              ["never", tr("Not heard yet")],
             ]
           : [
-              ["ok", "Quiet"],
-              ["alert", "Firing now"],
-              ["problem", "A problem: silent, low battery, weak signal or refused messages"],
-              ["never", "Not heard yet"],
+              ["ok", tr("Quiet")],
+              ["alert", tr("Firing now")],
+              ["problem", tr("A problem: silent, low battery, weak signal or refused messages")],
+              ["never", tr("Not heard yet")],
             ]
         ).map(([kind, words]) => el("span", null, el("span", { className: "spot key " + kind }), words)),
       );
@@ -165,12 +168,14 @@ const plan = (() => {
       $("planHint").textContent = !image
         ? ""
         : placing
-          ? "Now tap where " + placing + " is on the plan."
+          ? tr("Now tap where {sensor} is on the plan.", { sensor: placing })
           : missing
-            ? missing +
-              (missing == 1 ? " sensor is" : " sensors are") +
-              " not on the plan yet: choose one above, then tap where it is."
-            : "Every sensor is on the plan. Tap a spot to open that sensor's page.";
+            ? trCount(
+                missing,
+                "{n} sensor is not on the plan yet: choose one above, then tap where it is.",
+                "{n} sensors are not on the plan yet: choose one above, then tap where it is.",
+              )
+            : tr("Every sensor is on the plan. Tap a spot to open that sensor's page.");
     } catch (e) {}
   }
 
@@ -183,13 +188,13 @@ const plan = (() => {
   async function place(x, y) {
     const key = $("planSensor").value;
     if (!key) {
-      msg("Choose a sensor above first.", true);
+      msg(tr("Choose a sensor above first."), true);
       return;
     }
     spots[key] = [x, y];
     try {
       await savePlaces();
-      msg("Placed.");
+      msg(tr("Placed."));
       placing = "";
     } catch (e) {
       msg(e.message, true);
@@ -199,7 +204,7 @@ const plan = (() => {
 
   $("planSensor").onchange = () => {
     const o = $("planSensor").selectedOptions[0];
-    placing = $("planSensor").value ? o.textContent.replace(/ \(not on the plan yet\)$/, "") : "";
+    placing = $("planSensor").value ? o.textContent.replace(tr(" (not on the plan yet)"), "") : "";
     refresh();
   };
   $("planShow").onchange = () => {
@@ -210,7 +215,7 @@ const plan = (() => {
     delete spots[$("planSensor").value];
     try {
       await savePlaces();
-      msg("Taken off the plan.");
+      msg(tr("Taken off the plan."));
     } catch (e) {
       msg(e.message, true);
     }
@@ -220,12 +225,12 @@ const plan = (() => {
     const input = el("input", { type: "file", accept: "image/*" });
     input.onchange = async () => {
       if (!input.files[0]) return;
-      msg("Making it small enough for the hub...");
+      msg(tr("Making it small enough for the hub..."));
       try {
         const blob = await shrink(input.files[0]);
         await call("PUT", "/api/file?path=plan.jpg", blob);
         loaded = false;
-        msg("Saved (" + Math.round(blob.size / 1024) + " KB). Now place each sensor on it.");
+        msg(tr("Saved ({size} KB). Now place each sensor on it.", { size: Math.round(blob.size / 1024) }));
       } catch (e) {
         msg(e.message, true);
       }
@@ -235,9 +240,9 @@ const plan = (() => {
   };
   $("planDelete").onclick = async () => {
     if (
-      !(await ask("Every sensor's place on it goes too.", {
-        title: "Delete the floor plan?",
-        ok: "Delete",
+      !(await ask(tr("Every sensor's place on it goes too."), {
+        title: tr("Delete the floor plan?"),
+        ok: tr("Delete"),
         danger: true,
       }))
     )
@@ -251,7 +256,7 @@ const plan = (() => {
       if (gone.every((g) => g.status == "rejected")) throw gone[0].reason;
       spots = {};
       loaded = false;
-      msg("Deleted.");
+      msg(tr("Deleted."));
     } catch (e) {
       msg(e.message, true);
     }

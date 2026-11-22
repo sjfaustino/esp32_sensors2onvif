@@ -82,6 +82,7 @@ CHECKS = [
     ('page scripts and styles (Prettier)', prettier),
     ('every setting is loaded and saved', python_check('check_settings.py')),
     ('every colour of the pages is named, light and dark', python_check('check_colours.py')),
+    ('every phrase of the pages has its Portuguese', python_check('check_translations.py')),
 ]
 
 

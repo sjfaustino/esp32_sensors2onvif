@@ -26,7 +26,7 @@
       const j = await r.json();
       if (!r.ok) {
         m.className = "portMsg err";
-        m.textContent = j.error;
+        m.textContent = hubText(j.error);
         return false;
       }
       if (done) m.textContent = typeof done == "function" ? done(j) : done;
@@ -35,7 +35,7 @@
       return j || true;
     } catch (e) {
       m.className = "portMsg err";
-      m.textContent = failed || "The hub did not answer. Try again.";
+      m.textContent = failed || tr("The hub did not answer. Try again.");
       return false;
     }
   }
@@ -109,7 +109,7 @@
   // A label for a state at a glance. kind: ok, warn, bad or none (not set up).
   const chip = (text, kind) => el("span", { className: "chip " + kind, textContent: text });
   // The alarm's mode in the bar at the top of every page: away, home or disarmed.
-  const MODE_WORDS = { away: "Armed away", home: "Armed home", disarmed: "Disarmed" };
+  const MODE_WORDS = { away: tr("Armed away"), home: tr("Armed home"), disarmed: tr("Disarmed") };
   function showMode(mode) {
     const c = $("modeChip");
     if (!MODE_WORDS[mode]) return;
@@ -142,63 +142,79 @@
     return [
       {
         ok: r.password,
-        text: "A hub password of your own, not one built into the firmware",
+        text: tr("A hub password of your own, not one built into the firmware"),
         view: "http",
-        go: "Choose a password",
-        help: "The hub password guards this page, the NVR's login and the hub's setup network. Choose one of 8 to 63 characters that only you know; the NVR needs it too, so note it down.",
+        go: tr("Choose a password"),
+        help: tr(
+          "The hub password guards this page, the NVR's login and the hub's setup network. Choose one of 8 to 63 characters that only you know; the NVR needs it too, so note it down.",
+        ),
       },
       {
         ok: r.clock,
-        text: "The hub's clock is set",
+        text: tr("The hub's clock is set"),
         view: "time",
-        go: "Set the clock",
-        help: "The hub needs the time to stamp each alert, keep quiet hours and send the daily check. With internet access it sets itself; otherwise give it a time server on your network, such as the router.",
+        go: tr("Set the clock"),
+        help: tr(
+          "The hub needs the time to stamp each alert, keep quiet hours and send the daily check. With internet access it sets itself; otherwise give it a time server on your network, such as the router.",
+        ),
       },
       {
         ok: o.nvr.set,
-        text: "The NVR's address is set",
+        text: tr("The NVR's address is set"),
         view: "nvr",
-        go: "Enter the NVR's address",
-        help: "With the NVR's address, the hub can check that the NVR listens and that each alert was recorded, and play again any it missed.",
+        go: tr("Enter the NVR's address"),
+        help: tr(
+          "With the NVR's address, the hub can check that the NVR listens and that each alert was recorded, and play again any it missed.",
+        ),
       },
       {
         ok: o.nvr.listening,
-        text: "The NVR is listening",
+        text: tr("The NVR is listening"),
         view: "nvr",
-        go: "Open the NVR page",
-        help: "On the NVR, add the hub as an ONVIF camera on a free channel: its address, port 8899, user admin and the hub password. Then turn on motion detection with recording for that channel. This step ticks itself once the NVR asks the hub for events.",
+        go: tr("Open the NVR page"),
+        help: tr(
+          "On the NVR, add the hub as an ONVIF camera on a free channel: its address, port 8899, user admin and the hub password. Then turn on motion detection with recording for that channel. This step ticks itself once the NVR asks the hub for events.",
+        ),
       },
       {
         ok: r.heard,
-        text: "At least one sensor has reported",
+        text: tr("At least one sensor has reported"),
         view: "espnow",
-        go: "Pair a node",
-        help: "Allow pairing, then start a sensor node in pairing mode and approve it once its fingerprint matches the one on its label. A device that calls a web address can be added there too.",
+        go: tr("Pair a node"),
+        help: tr(
+          "Allow pairing, then start a sensor node in pairing mode and approve it once its fingerprint matches the one on its label. A device that calls a web address can be added there too.",
+        ),
       },
       {
         ok: test != null && test < 30 * 86400,
         text:
           test == null
-            ? "A test alert sent, and its recording found on the NVR"
-            : "A test alert in the last month (the last was " + heardAgo(test) + ")",
+            ? tr("A test alert sent, and its recording found on the NVR")
+            : tr("A test alert in the last month (the last was {ago})", { ago: heardAgo(test) }),
         view: "overview",
-        go: "Test everything",
-        help: "Sends a test alert along the whole path and checks each step: the sensor, the hub, the NVR and your notifications. Then find its recording on the NVR, so you know an alert is kept. Do it once a month.",
+        go: tr("Test everything"),
+        help: tr(
+          "Sends a test alert along the whole path and checks each step: the sensor, the hub, the NVR and your notifications. Then find its recording on the NVR, so you know an alert is kept. Do it once a month.",
+        ),
         run: () => $("testAll").click(),
       },
       {
         ok: r.notify,
-        text: "Notifications or Home Assistant set up, so problems reach you",
+        text: tr("Notifications or Home Assistant set up, so problems reach you"),
         view: "notify",
-        go: "Set up notifications",
-        help: "So an alert, a silent node or a flat battery reaches your phone: an ntfy or Gotify server on your network, Home Assistant, or Node-RED.",
+        go: tr("Set up notifications"),
+        help: tr(
+          "So an alert, a silent node or a flat battery reaches your phone: an ntfy or Gotify server on your network, Home Assistant, or Node-RED.",
+        ),
       },
       {
         ok: r.daily,
-        text: "A daily check, so you notice when the hub goes quiet",
+        text: tr("A daily check, so you notice when the hub goes quiet"),
         view: "notify",
-        go: "Choose a time",
-        help: "Once a day the hub sends one short message. If it stops arriving, the hub is off or cut off, and you know to look.",
+        go: tr("Choose a time"),
+        help: tr(
+          "Once a day the hub sends one short message. If it stops arriving, the hub is off or cut off, and you know to look.",
+        ),
       },
     ];
   }
@@ -206,22 +222,23 @@
   function showStatus(o) {
     const bad = [],
       attention = [];
-    if (o.nvr.set && !o.nvr.listening) bad.push("the NVR is not listening, so alerts are not recorded");
-    if (o.mode == "disarmed") attention.push("disarmed");
-    if (o.problems.length)
-      attention.push(o.problems.length + (o.problems.length == 1 ? " sensor problem" : " sensor problems"));
+    if (o.nvr.set && !o.nvr.listening) bad.push(tr("the NVR is not listening, so alerts are not recorded"));
+    if (o.mode == "disarmed") attention.push(tr("disarmed"));
+    if (o.problems.length) attention.push(trCount(o.problems.length, "{n} sensor problem", "{n} sensor problems"));
     const todo = readyItems(o).filter((i) => !i.ok).length;
-    if (todo) attention.push(todo + (todo == 1 ? " setup step" : " setup steps") + " left");
+    if (todo) attention.push(trCount(todo, "{n} setup step left", "{n} setup steps left"));
     showMode(o.mode);
     const s = $("status");
     s.className = "status " + (bad.length ? "bad" : attention.length ? "attention" : "ok");
     s.href = bad.length ? "#nvr" : "#overview"; // where to put it right; on the Overview, see the click below
     s.dataset.steps = todo ? "1" : "";
     s.textContent = bad.length
-      ? "Not protecting: " + bad.concat(attention).join("; ")
+      ? tr("Not protecting: {why}", { why: bad.concat(attention).join("; ") })
       : attention.length
-        ? "Needs attention: " + attention.join("; ")
-        : "All good: armed " + o.mode + ", the NVR is listening, no problems.";
+        ? tr("Needs attention: {why}", { why: attention.join("; ") })
+        : o.mode == "home"
+          ? tr("All good: armed home, the NVR is listening, no problems.")
+          : tr("All good: armed away, the NVR is listening, no problems.");
     s.hidden = false;
   }
   async function loadStatus() {
@@ -233,30 +250,36 @@
   // "5 min ago", from a time the hub gave, by this device's clock.
   function ago(iso) {
     const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-    return s < 10 ? "just now" : heardAgo(s);
+    return s < 10 ? tr("just now") : heardAgo(s);
   }
   // Signal strength as bars and a word, for people who do not read dBm. The node's light uses the same steps.
   function signal(rssi) {
     if (rssi == null) return "-";
     const [bars, word] =
-      rssi >= -67 ? ["▂▄▆█", "strong"] : rssi >= -75 ? ["▂▄▆", "good"] : rssi >= -80 ? ["▂▄", "fair"] : ["▂", "weak"];
+      rssi >= -67
+        ? ["▂▄▆█", tr("strong")]
+        : rssi >= -75
+          ? ["▂▄▆", tr("good")]
+          : rssi >= -80
+            ? ["▂▄", tr("fair")]
+            : ["▂", tr("weak")];
     return bars + " " + word + " (" + rssi + " dBm)";
   }
   function batteryLeft(days) {
     return days >= 60
-      ? "about " + Math.round(days / 30) + " months left"
-      : "about " + days + (days == 1 ? " day" : " days") + " left";
+      ? tr("about {n} months left", { n: Math.round(days / 30) })
+      : trCount(days, "about {n} day left", "about {n} days left");
   }
   function heardAgo(s) {
     return s == null
-      ? "Never"
+      ? tr("Never")
       : s < 60
-        ? s + " s ago"
+        ? tr("{n} s ago", { n: s })
         : s < 3600
-          ? Math.floor(s / 60) + " min ago"
+          ? tr("{n} min ago", { n: Math.floor(s / 60) })
           : s < 86400
-            ? Math.floor(s / 3600) + " h ago"
-            : Math.floor(s / 86400) + " d ago";
+            ? tr("{n} h ago", { n: Math.floor(s / 3600) })
+            : tr("{n} d ago", { n: Math.floor(s / 86400) });
   }
   function expand(f, on) {
     f.classList.toggle("open", on);
@@ -321,6 +344,9 @@
         expand(f, on);
       }),
   );
+  // The language of the pages on this device, from the switch at the foot of the menu.
+  $("langPick").value = LANG;
+  $("langPick").onchange = () => chooseLanguage($("langPick").value);
   // The skip link at the very top takes the keyboard past the menu to the page.
   $("skip").onclick = (e) => {
     e.preventDefault();
@@ -334,10 +360,10 @@
     if (dirty && viewOf(to) != shown) {
       history.replaceState(null, "", "#" + shown); // fires no hashchange
       if (
-        !(await ask("The changes on this page are not saved.", {
-          title: "Leave without saving?",
-          ok: "Leave",
-          cancel: "Stay",
+        !(await ask(tr("The changes on this page are not saved."), {
+          title: tr("Leave without saving?"),
+          ok: tr("Leave"),
+          cancel: tr("Stay"),
         }))
       )
         return;
@@ -383,7 +409,7 @@
       };
       link("apple-touch-icon", png(180));
       const manifest = {
-        name: name + ": alarm hub",
+        name: tr("{name}: alarm hub", { name }),
         short_name: name,
         start_url: location.origin + "/",
         scope: location.origin + "/",
@@ -402,7 +428,13 @@
   // which the hub always refuses without counting it as a wrong password, makes the browser keep that one instead, so
   // the next page asks for the hub's login again.
   $("logout").onclick = async () => {
-    if (!(await ask("This browser will ask for the hub password again.", { title: "Log out?", ok: "Log out" }))) return;
+    if (
+      !(await ask(tr("This browser will ask for the hub password again."), {
+        title: tr("Log out?"),
+        ok: tr("Log out"),
+      }))
+    )
+      return;
     markClean();
     await new Promise((done) => {
       const x = new XMLHttpRequest();
@@ -414,9 +446,9 @@
       el(
         "main",
         { className: "loggedOut" },
-        el("h1", { textContent: "Logged out" }),
-        el("p", { textContent: "The hub's pages ask for the user admin and the hub password again." }),
-        el("a", { className: "btn", href: "/", textContent: "Log in again" }),
+        el("h1", { textContent: tr("Logged out") }),
+        el("p", { textContent: tr("The hub's pages ask for the user admin and the hub password again.") }),
+        el("a", { className: "btn", href: "/", textContent: tr("Log in again") }),
       ),
     );
   };
@@ -427,7 +459,7 @@
       pw = $("needPw").value;
     if (pw != $("needPw2").value) {
       m.className = "portMsg err";
-      m.textContent = "The two passwords differ.";
+      m.textContent = tr("The two passwords differ.");
       return;
     }
     if (
@@ -435,7 +467,7 @@
         m,
         "/api/settings",
         "password=" + encodeURIComponent(pw),
-        "Saved. Log in with user admin and the new password.",
+        tr("Saved. Log in with user admin and the new password."),
       )
     )
       setTimeout(() => location.reload(), 1500);
@@ -448,10 +480,10 @@
       if (!i.password) $("needPw").focus();
       if (i.name) {
         const name = i.name.replace(/\.local$/, "");
-        document.title = name + ": alarm hub";
+        document.title = tr("{name}: alarm hub", { name });
         $("hubTitle").textContent = name;
         appIcon(name);
-      } else appIcon("Alarm hub");
+      } else appIcon(tr("Alarm hub"));
       $("armWarn").hidden = i.armed !== false;
     })
     .catch(() => {});

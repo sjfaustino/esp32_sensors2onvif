@@ -11,24 +11,30 @@
   // Armed away, armed home, or disarmed. Home Assistant can change it too, so the page asks again while it shows it.
   // A disarm can last a while and then end by itself, so forgetting to arm again cannot leave the house unwatched.
   const DISARM_TIMES = [
-    [30, "30 minutes"],
-    [60, "1 hour"],
-    [120, "2 hours"],
-    [240, "4 hours"],
-    [480, "8 hours"],
-    [720, "12 hours"],
-    [1440, "1 day"],
-    [0, "until armed again"],
+    [30, tr("30 minutes")],
+    [60, tr("1 hour")],
+    [120, tr("2 hours")],
+    [240, tr("4 hours")],
+    [480, tr("8 hours")],
+    [720, tr("12 hours")],
+    [1440, tr("1 day")],
+    [0, tr("until armed again")],
   ];
   for (const id of ["armFor", "rearmDefault"])
     $(id).replaceChildren(
-      ...DISARM_TIMES.map(([m, t]) => el("option", { value: m, textContent: (id == "armFor" && m ? "for " : "") + t })),
+      ...DISARM_TIMES.map(([m, t]) =>
+        el("option", { value: m, textContent: id == "armFor" && m ? tr("for {time}", { time: t }) : t }),
+      ),
     );
   let armWasMode = null,
     armMode = null; // as the hub last said, for a change to be undone back to
   function timeLeft(s) {
     const m = Math.ceil(s / 60);
-    return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+    return m < 60
+      ? tr("{m} min", { m })
+      : m % 60
+        ? tr("{h} h {m} min", { h: Math.floor(m / 60), m: m % 60 })
+        : tr("{h} h", { h: Math.floor(m / 60) });
   }
   async function loadArm() {
     try {
@@ -38,14 +44,16 @@
       $("armTitle").textContent = MODE_WORDS[a.mode] || a.mode;
       $("armState").textContent =
         a.mode == "away"
-          ? "Every sensor counts."
+          ? tr("Every sensor counts.")
           : a.mode == "home"
-            ? "Interior sensors are logged but not sent to the NVR."
+            ? tr("Interior sensors are logged but not sent to the NVR.")
             : (!a.timed
-                ? "Until armed again."
+                ? tr("Until armed again.")
                 : a.left_s != null
-                  ? "Arms again in " + timeLeft(a.left_s) + "."
-                  : "Arms again soon.") + " Alerts are logged but not sent to the NVR, so nothing is recorded.";
+                  ? tr("Arms again in {time}.", { time: timeLeft(a.left_s) })
+                  : tr("Arms again soon.")) +
+              " " +
+              tr("Alerts are logged but not sent to the NVR, so nothing is recorded.");
       if ($("armIcon").dataset.mode != a.mode) {
         $("armIcon").innerHTML =
           '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -70,10 +78,10 @@
   }
   // A short next step for each problem the Overview lists.
   const PROBLEM_HINT = {
-    silent: "check its battery, or whether it was moved",
-    "low battery": "replace or charge it",
-    "weak signal": "move it or the hub closer",
-    "messages refused": "it may have the wrong key; pair it again",
+    silent: tr("check its battery, or whether it was moved"),
+    "low battery": tr("replace or charge it"),
+    "weak signal": tr("move it or the hub closer"),
+    "messages refused": tr("it may have the wrong key; pair it again"),
   };
   // "Since armed away at 23:10: 2 alerts, Back door 02:14 and Gate 02:15; all reached the NVR", from the events kept.
   function sinceArmed(events, mode, nvrSet) {
@@ -100,12 +108,15 @@
     const head =
       start < 0
         ? mode == "disarmed"
-          ? "Before the disarm at " + clock(at(events[end]))
-          : "Since it was last armed"
+          ? tr("Before the disarm at {time}", { time: clock(at(events[end])) })
+          : tr("Since it was last armed")
         : mode == "disarmed"
-          ? "While armed, " + clock(at(events[start])) + " to " + clock(at(events[end]))
-          : "Since armed at " + clock(at(events[start]));
-    const count = (start < 0 ? "at least " : "") + alerts.length + (alerts.length == 1 ? " alert" : " alerts");
+          ? tr("While armed, {from} to {to}", { from: clock(at(events[start])), to: clock(at(events[end])) })
+          : tr("Since armed at {time}", { time: clock(at(events[start])) });
+    const count =
+      start < 0
+        ? trCount(alerts.length, "at least {n} alert", "at least {n} alerts")
+        : trCount(alerts.length, "{n} alert", "{n} alerts");
     return (
       head +
       ": " +
@@ -116,17 +127,18 @@
             .slice(0, 6)
             .map((e) => (e.name || e.sensor) + " " + clock(at(e)))
             .join(", ") +
-          (alerts.length > 6 ? " and more" : "") +
+          (alerts.length > 6 ? tr(" and more") : "") +
+          "; " +
           (missed
-            ? "; " +
-              missed +
-              (caughtUp
-                ? " came while the NVR was not listening, and were played to it once it listened again"
-                : " did not reach the NVR yet; the hub keeps them until it listens")
+            ? caughtUp
+              ? tr("{n} came while the NVR was not listening, and were played to it once it listened again", {
+                  n: missed,
+                })
+              : tr("{n} did not reach the NVR yet; the hub keeps them until it listens", { n: missed })
             : nvrSet
-              ? "; all reached the NVR"
-              : "; with no NVR address set, the hub cannot tell whether they reached it")
-        : "no alerts.")
+              ? tr("all reached the NVR")
+              : tr("with no NVR address set, the hub cannot tell whether they reached it"))
+        : tr("no alerts."))
     );
   }
   // What someone checking the hub wants at a glance. Each line says what is wrong, if anything. The summary every few
@@ -145,54 +157,57 @@
       }
       const who = (s) => (s.name ? s.name + " (" + s.sensor + ")" : s.sensor);
       const listOf = (items, line) =>
-        el("span", null, ...(items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : ["None"]));
+        el("span", null, ...(items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : [tr("None")]));
       // Home Assistant's connection, as the hub words it: not set up, connected, connecting, or why it failed.
       const mqtt = o.mqtt || "",
         mqttChip =
-          mqtt == "not set up"
-            ? chip("Not set up", "none")
+          mqtt == "not set up" // not words: as the hub says it
+            ? chip(tr("Not set up"), "none")
             : mqtt == "connected"
-              ? chip("Connected", "ok")
+              ? chip(tr("Connected"), "ok")
               : mqtt == "connecting"
-                ? chip("Connecting", "warn")
-                : chip(mqtt.charAt(0).toUpperCase() + mqtt.slice(1), "bad");
+                ? chip(tr("Connecting"), "warn")
+                : chip(hubText(mqtt).charAt(0).toUpperCase() + hubText(mqtt).slice(1), "bad");
       fill("ovNow", [
-        ["Alerts", listOf(o.active, (a) => [sensorLink(a.sensor, who(a)), a.past ? " (a past event replaying)" : ""])],
         [
-          "Sensor problems",
+          tr("Alerts"),
+          listOf(o.active, (a) => [sensorLink(a.sensor, who(a)), a.past ? tr(" (a past event replaying)") : ""]),
+        ],
+        [
+          tr("Sensor problems"),
           listOf(o.problems, (p) => [
             sensorLink(p.sensor, who(p)),
-            ": " + p.problem + (PROBLEM_HINT[p.problem] ? " (" + PROBLEM_HINT[p.problem] + ")" : ""),
+            ": " + hubText(p.problem) + (PROBLEM_HINT[p.problem] ? " (" + PROBLEM_HINT[p.problem] + ")" : ""),
           ]),
         ],
         [
-          "Last alert",
+          tr("Last alert"),
           o.last
             ? who(o.last) +
               ", " +
-              o.last.event +
+              hubText(o.last.event) +
               (o.last.received ? ", " + new Date(o.last.received).toLocaleString() : "")
-            : "None in the history",
+            : tr("None in the history"),
         ],
       ]);
       fill("ovInfo", [
         [
           "NVR",
           !o.nvr.set
-            ? chip("No address set", "warn")
+            ? chip(tr("No address set"), "warn")
             : o.nvr.listening
-              ? chip("Listening" + (o.nvr.streams ? ", watching the video" : ""), "ok")
-              : chip("Not listening: alerts are not reaching it", "bad"),
+              ? chip(o.nvr.streams ? tr("Listening, watching the video") : tr("Listening"), "ok")
+              : chip(tr("Not listening: alerts are not reaching it"), "bad"),
         ],
         [
-          "Notifications",
+          tr("Notifications"),
           !o.webhook.set
-            ? chip("Not set up", "none")
+            ? chip(tr("Not set up"), "none")
             : o.webhook.last
-              ? "Last message: " + o.webhook.last
-              : "Nothing sent yet",
+              ? tr("Last message: {result}", { result: hubText(o.webhook.last) })
+              : tr("Nothing sent yet"),
         ],
-        ["Home Assistant", mqttChip],
+        ["Home Assistant", mqttChip], // not words: a name
       ]);
       if (full)
         call("GET", "/api/events")
@@ -209,7 +224,7 @@
             null,
             el("span", { className: i.ok ? "yes" : "no", textContent: i.ok ? "✓ " : "✗ " }),
             i.text,
-            i.ok ? "" : el("a", { href: "#" + i.view, textContent: "Fix" }),
+            i.ok ? "" : el("a", { href: "#" + i.view, textContent: tr("Fix") }),
           ),
         ),
       );
@@ -234,8 +249,8 @@
     if (!next) return;
     const done = items.length - left.length;
     $("wizTitle").textContent = done
-      ? "Getting started: step " + (done + 1) + " of " + items.length
-      : "Getting started";
+      ? tr("Getting started: step {n} of {total}", { n: done + 1, total: items.length })
+      : tr("Getting started");
     $("wizDone").style.width = Math.round((100 * done) / items.length) + "%";
     $("wizStep").textContent = next.text;
     $("wizHelp").textContent = next.help;
@@ -265,10 +280,13 @@
     try {
       await call("POST", "/api/arm", "mode=" + mode + "&for=" + (minutes || 0));
       notice(done || MODE_WORDS[mode], {
-        undo: before && before != mode ? () => setMode(before, 0, "Back to " + MODE_WORDS[before].toLowerCase()) : null,
+        undo:
+          before && before != mode
+            ? () => setMode(before, 0, tr("Back to {mode}", { mode: MODE_WORDS[before].toLowerCase() }))
+            : null,
       });
     } catch (e) {
-      notice("Not changed: " + e.message, { err: true });
+      notice(tr("Not changed: {why}", { why: e.message }), { err: true });
     }
     loadArm();
   }
@@ -277,21 +295,21 @@
   $("disarmBtn").onclick = async () => {
     const minutes = $("armFor").value,
       how = DISARM_TIMES.find(([m]) => m == minutes)[1],
-      when = minutes == 0 ? how : "for " + how;
+      when = minutes == 0 ? how : tr("for {time}", { time: how });
     if (
-      await ask("Alerts will be logged but not sent to the NVR, so nothing is recorded.", {
-        title: "Disarm the hub " + when + "?",
-        ok: "Disarm",
+      await ask(tr("Alerts will be logged but not sent to the NVR, so nothing is recorded."), {
+        title: tr("Disarm the hub {when}?", { when }),
+        ok: tr("Disarm"),
       })
     )
-      setMode("disarmed", minutes, "Disarmed " + when);
+      setMode("disarmed", minutes, tr("Disarmed {when}", { when }));
   };
   $("rearmDefault").onchange = async () => {
     try {
       await call("POST", "/api/arm/rearm", "minutes=" + $("rearmDefault").value);
-      notice("Saved");
+      notice(tr("Saved"));
     } catch (e) {
-      notice("Not saved: " + e.message, { err: true });
+      notice(tr("Not saved: {why}", { why: e.message }), { err: true });
     }
     loadArm();
   };

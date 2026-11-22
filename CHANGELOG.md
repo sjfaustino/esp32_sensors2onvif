@@ -5,11 +5,17 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### The pages
+
+- The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
+  for each device; the hub's messages are shown in the same language. `tools/check_translations.py`, run with the quick
+  checks, keeps every phrase translated.
+
 ### Tools
 
 - `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
-  hub keeps it or says it went back. It refuses a commit CI has not passed, changes not committed, and a hub with an
-  alert active.
+  hub keeps it or says it went back; with `--release v0.6.0` it sends a published release, as CI built it. It refuses
+  a commit CI has not passed, changes not committed, and a hub with an alert active.
 - `tools/precheck.py` runs CI's quick checks, the code's style, settings and colours, in seconds, and the pre-push hook
   in `tools/hooks` runs it before each push. CI runs the same script.
 

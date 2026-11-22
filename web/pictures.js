@@ -13,7 +13,8 @@ async function checkedCoreFile(name) {
   const r = await fetch(CDN + name);
   if (!r.ok) throw new Error("HTTP " + r.status + " for " + name);
   const bytes = new Uint8Array(await r.arrayBuffer());
-  if (sha256Hex(bytes) !== CORE_SHA256[name]) throw new Error(name + " is not the published file, so it was not run");
+  if (sha256Hex(bytes) !== CORE_SHA256[name])
+    throw new Error(tr("{file} is not the published file, so it was not run", { file: name }));
   return URL.createObjectURL(
     new Blob([bytes], { type: name.endsWith(".wasm") ? "application/wasm" : "text/javascript" }),
   );
@@ -23,22 +24,23 @@ const WORKER = document.getElementById("encoder-worker").textContent;
 const RED = "#B00000",
   AMBER = "#B06000",
   GREEN = "#004000";
+// The words a new picture starts with, in the page's language, as the NVR's recording shows them.
 const WORDS = {
-  active: "ACTIVE",
-  approaching: "APPROACHING",
-  away: "MOVING AWAY",
-  ltr: "LEFT TO RIGHT",
-  rtl: "RIGHT TO LEFT",
-  delayed: "PAST EVENT - CHECK LOGS",
+  active: tr("ACTIVE"),
+  approaching: tr("APPROACHING"),
+  away: tr("MOVING AWAY"),
+  ltr: tr("LEFT TO RIGHT"),
+  rtl: tr("RIGHT TO LEFT"),
+  delayed: tr("PAST EVENT - CHECK LOGS"),
 };
 const NAMES = [
-  ["label", "Name (first line)"],
-  ["active", "Active"],
-  ["approaching", "Approaching"],
-  ["away", "Moving away"],
-  ["ltr", "Left to right"],
-  ["rtl", "Right to left"],
-  ["delayed", "Past event (last line)"],
+  ["label", tr("Name (first line)")],
+  ["active", tr("Active")],
+  ["approaching", tr("Approaching")],
+  ["away", tr("Moving away")],
+  ["ltr", tr("Left to right")],
+  ["rtl", tr("Right to left")],
+  ["delayed", tr("Past event (last line)")],
 ];
 let encoder = null,
   jobs = new Map(),
@@ -65,7 +67,7 @@ function getEncoder() {
       return w;
     })().catch((e) => {
       encoder = null;
-      throw new Error("Could not load the encoder from the internet: " + e.message);
+      throw new Error(tr("Could not load the encoder from the internet: {why}", { why: e.message }));
     });
   return encoder;
 }
@@ -122,7 +124,7 @@ function keepPicture(d) {
     if (k + 1 < starts.length) while (end > s + 3 && d[end - 1] == 0) end--;
     units[d[s + 3] & 31] = d.subarray(s + 3, end);
   });
-  if (!units[7] || !units[8] || !units[5]) throw new Error("The encoder did not produce a complete picture");
+  if (!units[7] || !units[8] || !units[5]) throw new Error(tr("The encoder did not produce a complete picture"));
   const parts = [units[7], units[8], units[5]],
     out = new Uint8Array(parts.reduce((n, p) => n + p.length + 4, 0));
   let at = 0;
@@ -142,11 +144,11 @@ async function encodeCanvas(c) {
   for (let step = 0; step < QUALITY.length; step++) {
     const copy = png.slice(),
       r = await talk(w, { png: copy, crf: QUALITY[step] }, [copy.buffer]);
-    if (r.ret !== 0) throw new Error("The encoder failed");
+    if (r.ret !== 0) throw new Error(tr("The encoder failed"));
     const pic = keepPicture(r.data);
     if (pic.length <= MAX) return { pic, step };
   }
-  throw new Error("Even at the lowest quality this picture is over 32 KB. Try a simpler image.");
+  throw new Error(tr("Even at the lowest quality this picture is over 32 KB. Try a simpler image."));
 }
 async function encode(colour, lines) {
   const c = el("canvas", { width: 640, height: 360 });
@@ -164,12 +166,12 @@ async function decoded(pic) {
 function imageDialog(path) {
   const VIEW = "width:100%;max-width:480px;display:block;margin:8px 0;border-radius:4px;background:#000";
   const chooser = el("input", { type: "file", accept: "image/*" });
-  const words = el("textarea", { rows: 3, cols: 30, placeholder: "Optional text on top, up to 3 lines" });
+  const words = el("textarea", { rows: 3, cols: 30, placeholder: tr("Optional text on top, up to 3 lines") });
   const source = el("canvas", { width: 640, height: 360, style: VIEW });
-  const result = el("img", { alt: "Encoded picture", style: VIEW + ";display:none" });
-  const note = el("p", { textContent: "Choose an image. Any shape or size is fine." });
-  const make = el("button", { textContent: "Encode and preview", disabled: true });
-  const keep = el("button", { textContent: "Save to the hub", disabled: true });
+  const result = el("img", { alt: tr("Encoded picture"), style: VIEW + ";display:none" });
+  const note = el("p", { textContent: tr("Choose an image. Any shape or size is fine.") });
+  const make = el("button", { textContent: tr("Encode and preview"), disabled: true });
+  const keep = el("button", { textContent: tr("Save to the hub"), disabled: true });
   const dlg = el(
     "dialog",
     null,
@@ -179,7 +181,7 @@ function imageDialog(path) {
     source,
     result,
     note,
-    el("p", null, make, " ", keep, " ", el("button", { textContent: "Close", onclick: () => dlg.close() })),
+    el("p", null, make, " ", keep, " ", el("button", { textContent: tr("Close"), onclick: () => dlg.close() })),
   );
   let image = null,
     pic = null;
@@ -202,12 +204,12 @@ function imageDialog(path) {
     try {
       image = await createImageBitmap(f);
       make.disabled = false;
-      note.textContent = "Add text if you like, then encode.";
+      note.textContent = tr("Add text if you like, then encode.");
       redraw();
     } catch (e) {
       image = null;
       make.disabled = true;
-      note.textContent = "This browser cannot open that file.";
+      note.textContent = tr("This browser cannot open that file.");
     }
   };
   make.onclick = async () => {
@@ -216,21 +218,23 @@ function imageDialog(path) {
     make.disabled = true;
     keep.disabled = true;
     try {
-      note.textContent = "Encoding. The first time, this downloads about 30 MB.";
+      note.textContent = tr("Encoding. The first time, this downloads about 30 MB.");
       const r = await encodeCanvas(source);
       pic = r.pic;
       const size = (pic.length / 1024).toFixed(1) + " KB";
-      note.textContent =
-        size +
-        (r.step
-          ? ". Quality was lowered " + r.step + " of " + (QUALITY.length - 1) + " steps to fit 32 KB."
-          : " at full quality.");
+      note.textContent = r.step
+        ? tr("{size}. Quality was lowered {n} of {steps} steps to fit 32 KB.", {
+            size,
+            n: r.step,
+            steps: QUALITY.length - 1,
+          })
+        : tr("{size} at full quality.", { size });
       try {
         if (result.src) URL.revokeObjectURL(result.src);
         result.src = await decoded(pic);
         result.style.display = "block";
       } catch (e) {
-        note.textContent += " The preview could not be shown, but the picture can still be saved.";
+        note.textContent += " " + tr("The preview could not be shown, but the picture can still be saved.");
       }
       keep.disabled = false;
     } catch (e) {
@@ -247,7 +251,7 @@ function imageDialog(path) {
     try {
       await save(path, pic);
       dlg.close();
-      say("Saved " + path);
+      say(tr("Saved {file}", { file: path }));
       busy = false;
       await load();
     } catch (e) {
@@ -294,8 +298,11 @@ async function save(path, pic) {
     await makePreview(path, pic).catch(() => {});
     return done;
   } catch (e) {
-    if (e.message.includes("wrong video format"))
-      throw new Error("The hub refused this browser's video format. Please report this header: " + header(pic));
+    const refused = (e.hub || "").includes("wrong video format"); // not words: as the hub says it
+    if (refused)
+      throw new Error(
+        tr("The hub refused this browser's video format. Please report this header: {header}", { header: header(pic) }),
+      );
     throw e;
   }
 }
@@ -311,15 +318,15 @@ async function makeAll(jobsList, textPath, text) {
   if (busy) return;
   busy = true;
   try {
-    say("Getting the encoder ready. The first time, this downloads about 30 MB.");
+    say(tr("Getting the encoder ready. The first time, this downloads about 30 MB."));
     await getEncoder();
     for (let i = 0; i < jobsList.length; i++) {
       const [path, colour, lines] = jobsList[i];
-      say("Making picture " + (i + 1) + " of " + jobsList.length);
+      say(tr("Making picture {n} of {total}", { n: i + 1, total: jobsList.length }));
       await save(path, await encode(colour, lines));
     }
     await call("PUT", "/api/file?path=" + textPath, JSON.stringify(text));
-    say("Saved " + jobsList.length + " picture" + (jobsList.length > 1 ? "s" : ""));
+    say(trCount(jobsList.length, "Saved {n} picture", "Saved {n} pictures"));
     await load();
   } catch (e) {
     say(e.message, true);

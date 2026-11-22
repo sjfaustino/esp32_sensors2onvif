@@ -320,6 +320,19 @@ summary {
 .first.open::after {
   content: "\25B4";
 }
+/* The pages' language, for this device, at the foot of the menu. */
+.langPick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 16px 20px 0;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+.langPick select {
+  flex: 1;
+  min-width: 0;
+}
 .subs {
   max-height: 0;
   overflow: hidden;

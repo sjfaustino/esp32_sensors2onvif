@@ -1,12 +1,13 @@
 // One sensor's own page, opened as #sensor:AA-BB-CC-DD-EE-01/1 from its name anywhere: how it is now, when it fired
 // over the last week, its battery over time, and its latest events, each explained.
 (() => {
+  // As the hub's history names them, not words for the page.
   const ALERT_EVENTS = [
     "alert",
     "delayed alert",
-    "alert in quiet hours",
-    "alert while disarmed",
-    "alert while armed home",
+    "alert in quiet hours", // not words
+    "alert while disarmed", // not words
+    "alert while armed home", // not words
     "test alert",
   ];
   let shown = "",
@@ -40,7 +41,7 @@
   // is asked again a few times.
   // box: where to draw it; still: whether the page that asked is still open, so a late answer draws nothing.
   async function drawWeek(key, box = $("snWeek"), still = () => shown == key) {
-    box.replaceChildren(el("p", { className: "note", textContent: "Reading the history..." }));
+    box.replaceChildren(el("p", { className: "note", textContent: tr("Reading the history...") }));
     let text,
       why = "";
     for (let i = 0; i < 5 && text == null && still(); i++) {
@@ -55,7 +56,12 @@
     if (!still()) return; // another page was opened meanwhile
     if (text == null) {
       box.replaceChildren(
-        el("p", { className: "note", textContent: "Could not read the history" + (why ? ": " + why : ".") }),
+        el("p", {
+          className: "note",
+          textContent: why
+            ? tr("Could not read the history: {why}", { why: hubText(why) })
+            : tr("Could not read the history."),
+        }),
       );
       return;
     }
@@ -94,13 +100,13 @@
           null,
           el("th", {
             textContent:
-              day == 6 ? "Today" : new Date(first + day * 86400000).toLocaleDateString([], { weekday: "short" }),
+              day == 6 ? tr("Today") : new Date(first + day * 86400000).toLocaleDateString([], { weekday: "short" }),
           }),
           ...hours.map((n, h) =>
             el("td", {
               className: n ? "hit" : "",
               style: n ? "opacity:" + (0.35 + (0.65 * n) / most) : "",
-              title: n + (n == 1 ? " alert, " : " alerts, ") + String(h).padStart(2, "0") + ":00",
+              title: trCount(n, "{n} alert", "{n} alerts") + ", " + String(h).padStart(2, "0") + ":00",
             }),
           ),
         ),
@@ -110,8 +116,12 @@
       el("p", {
         className: "note",
         textContent: total
-          ? total + (total == 1 ? " alert" : " alerts") + " in the last 7 days, by hour of the day (local time)."
-          : "No alerts in the last 7 days.",
+          ? trCount(
+              total,
+              "{n} alert in the last 7 days, by hour of the day (local time).",
+              "{n} alerts in the last 7 days, by hour of the day (local time).",
+            )
+          : tr("No alerts in the last 7 days."),
       }),
       table,
     );
@@ -130,7 +140,7 @@
     } catch (e) {}
     if (points.length < 2) {
       box.replaceChildren(
-        el("p", { className: "note", textContent: "Not enough readings yet: the hub keeps one every 6 hours." }),
+        el("p", { className: "note", textContent: tr("Not enough readings yet: the hub keeps one every 6 hours.") }),
       );
       return;
     }
@@ -166,31 +176,37 @@
       const [esp, events] = await Promise.all([call("GET", "/api/espnow"), call("GET", "/api/events")]);
       const n = esp.nodes.find((r) => r.node + "/" + r.input == key);
       if (!n) {
-        $("snTitle").textContent = "No such sensor";
+        $("snTitle").textContent = tr("No such sensor");
         $("snFacts").replaceChildren();
         return;
       }
       $("snTitle").textContent = n.name || key;
       const STATES = {
-        active: "Firing now",
-        idle: "Quiet",
-        silent: "Silent: not heard for too long",
-        never: "Not heard yet",
+        active: tr("Firing now"),
+        idle: tr("Quiet"),
+        silent: tr("Silent: not heard for too long"),
+        never: tr("Not heard yet"),
       };
       hub.fill("snFacts", [
-        ["Sensor", key + (n.sensor ? ", " + n.sensor : "")],
-        ["State", STATES[n.state] || n.state],
-        ["Last heard", hub.heardAgo(n.ago)],
+        [tr("Sensor"), key + (n.sensor ? ", " + n.sensor : "")],
+        [tr("State"), STATES[n.state] || n.state],
+        [tr("Last heard"), hub.heardAgo(n.ago)],
         [
-          "Battery",
-          (n.battery == null ? "Not known" : n.battery + "%" + (n.low ? " (low)" : "")) +
+          tr("Battery"),
+          (n.battery == null ? tr("Not known") : n.battery + "%" + (n.low ? tr(" (low)") : "")) +
             (n.daysLeft == null ? "" : ", " + hub.batteryLeft(n.daysLeft)),
         ],
-        ["Signal", hub.signal(n.rssi) + (n.weak ? ", weak on average" : "")],
-        ["Last alert took", n.responseMs == null ? "-" : (n.responseMs / 1000).toFixed(1) + " s to reach the hub"],
+        [tr("Signal"), hub.signal(n.rssi) + (n.weak ? tr(", weak on average") : "")],
         [
-          "Firmware",
-          (n.version || "-") + (n.restarts == null ? "" : ", " + n.restarts + " restarts, the last: " + n.restart),
+          tr("Last alert took"),
+          n.responseMs == null ? "-" : tr("{s} s to reach the hub", { s: (n.responseMs / 1000).toFixed(1) }),
+        ],
+        [
+          tr("Firmware"),
+          (n.version || "-") +
+            (n.restarts == null
+              ? ""
+              : ", " + tr("{n} restarts, the last: {why}", { n: n.restarts, why: hubText(n.restart) })),
         ],
       ]);
       const mine = events.filter((e) => e.sensor == key).slice(0, 10);
@@ -200,12 +216,12 @@
               el(
                 "li",
                 null,
-                el("b", { textContent: e.event.charAt(0).toUpperCase() + e.event.slice(1) }),
+                el("b", { textContent: hubText(e.event).charAt(0).toUpperCase() + hubText(e.event).slice(1) }),
                 " " + (e.received ? hub.ago(e.received) : "") + ". ",
                 hub.explain(e),
               ),
             )
-          : [el("li", { textContent: "None among the latest 64 events." })]),
+          : [el("li", { textContent: tr("None among the latest 64 events.") })]),
       );
       if (full && shown == key) {
         drawWeek(key);
@@ -218,7 +234,7 @@
     try {
       await call("POST", "/api/test-alert?path=" + shown, "x=1");
       $("snMsg").className = "portMsg";
-      $("snMsg").textContent = "Test alert sent. The NVR should now record it: check that the recording is there.";
+      $("snMsg").textContent = tr("Test alert sent. The NVR should now record it: check that the recording is there.");
     } catch (e) {
       $("snMsg").className = "portMsg err";
       $("snMsg").textContent = e.message;

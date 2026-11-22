@@ -2,8 +2,14 @@
 // runs, its battery over time, its signal, restarts and update, each of its sensors with its week, and its latest events.
 (() => {
   const { fill, heardAgo, signal, batteryLeft, sensorLink, chip, explain, checkStep } = window.hub;
-  const SENSORS = { 1: "generic, active high", 2: "generic, active low", 3: "RCWL-0516", 4: "HC-SR501", 5: "LD2410" };
-  const CELLS = { 0: "none", 1: "lithium-ion", 2: "LiFePO4" };
+  const SENSORS = {
+    1: tr("generic, active high"),
+    2: tr("generic, active low"),
+    3: "RCWL-0516",
+    4: "HC-SR501",
+    5: "LD2410",
+  };
+  const CELLS = { 0: tr("none"), 1: tr("lithium-ion"), 2: "LiFePO4" };
   const DETECTED = [0, 3, 10, 13]; // its alerts, whether sent to the NVR or only logged: each shows it saw someone
   let shown = "",
     drawn = "",
@@ -51,25 +57,32 @@
         checkStep(
           1,
           good,
-          "Heard at a good signal",
+          tr("Heard at a good signal"),
           !worst
-            ? "Not heard yet: press its reset button, and it reports at once."
-            : "Its signal is " +
-                signal(worst.rssi) +
-                (worst.weak ? ", and weak on average" : "") +
-                ". Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this.",
+            ? tr("Not heard yet: press its reset button, and it reports at once.")
+            : worst.weak
+              ? tr(
+                  "Its signal is {signal}, and weak on average. Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this.",
+                  { signal: signal(worst.rssi) },
+                )
+              : tr(
+                  "Its signal is {signal}. Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this.",
+                  { signal: signal(worst.rssi) },
+                ),
         ),
         checkStep(
           2,
           reached,
-          "A test alert reached the NVR",
+          tr("A test alert reached the NVR"),
           tests.includes("missed")
-            ? "The NVR did not get its test alert. See on the Overview that the NVR is listening, then send another."
+            ? tr(
+                "The NVR did not get its test alert. See on the Overview that the NVR is listening, then send another.",
+              )
             : tests.includes("checking")
-              ? "Sent. Once the alert is over, the hub sees whether the NVR got it."
-              : "Send it a test alert: the NVR should record, as it would for an intruder.",
+              ? tr("Sent. Once the alert is over, the hub sees whether the NVR got it.")
+              : tr("Send it a test alert: the NVR should record, as it would for an intruder."),
           el("button", {
-            textContent: "Send a test alert",
+            textContent: tr("Send a test alert"),
             onclick: async (ev) => {
               ev.target.disabled = true;
               try {
@@ -83,10 +96,12 @@
         checkStep(
           3,
           walked,
-          "Walk past it",
-          "Walk past it from where an intruder would come, and each of its sensors must see you. During a walk test its light flashes 3, 2 or 1 times for a strong, fair or weak signal.",
+          tr("Walk past it"),
+          tr(
+            "Walk past it from where an intruder would come, and each of its sensors must see you. During a walk test its light flashes 3, 2 or 1 times for a strong, fair or weak signal.",
+          ),
           el("button", {
-            textContent: "Start a walk test on it",
+            textContent: tr("Start a walk test on it"),
             onclick: () => call("POST", "/api/walk-test?path=" + mac, "go=1").catch(() => {}),
           }),
         ),
@@ -108,18 +123,23 @@
         await call("PUT", "/api/file?path=" + mac + "/checked.txt", "checked=" + at + "\n");
         checked = at;
       } else {
-        $("ndCheckNote").textContent = "Three checks before you trust it, each ticked as the hub sees it done.";
+        $("ndCheckNote").textContent = tr("Three checks before you trust it, each ticked as the hub sees it done.");
         $("ndCheck").replaceChildren(...hour.steps);
         return;
       }
     }
     const when = Date.parse(checked);
     $("ndCheckNote").replaceChildren(
-      chip("Checked", "ok"),
-      " Its signal was good, the NVR got its test alert, and it saw someone walk past" +
-        (isNaN(when) ? "." : ", by " + new Date(when).toLocaleDateString() + ". "),
+      chip(tr("Checked"), "ok"),
+      " " +
+        (isNaN(when)
+          ? tr("Its signal was good, the NVR got its test alert, and it saw someone walk past.")
+          : tr("Its signal was good, the NVR got its test alert, and it saw someone walk past, by {date}.", {
+              date: new Date(when).toLocaleDateString(),
+            })) +
+        " ",
       el("button", {
-        textContent: "Check it again",
+        textContent: tr("Check it again"),
         onclick: async () => {
           try {
             lastEvents = await call("GET", "/api/events"); // as they are now, not as last read
@@ -139,16 +159,13 @@
   function hardwareWords(text) {
     const v = (text || "").split(",").map(Number);
     if (v.length != 6) return "";
-    const pin = (p) => (p == 255 ? "none" : "GPIO " + p);
-    return (
-      (SENSORS[v[1]] || "sensor " + v[1]) +
-      " on " +
-      pin(v[2]) +
-      "; tamper switch: " +
-      pin(v[3]) +
-      "; battery: " +
-      (v[5] ? CELLS[v[5]] + " on " + pin(v[4]) : "none")
-    );
+    const pin = (p) => (p == 255 ? tr("none") : "GPIO " + p);
+    return tr("{sensor} on {pin}; tamper switch: {tamper}; battery: {battery}", {
+      sensor: SENSORS[v[1]] || tr("sensor {n}", { n: v[1] }),
+      pin: pin(v[2]),
+      tamper: pin(v[3]),
+      battery: v[5] ? tr("{cell} on {pin}", { cell: CELLS[v[5]], pin: pin(v[4]) }) : tr("none"),
+    });
   }
   async function load(mac, full) {
     try {
@@ -168,7 +185,7 @@
       const rows = esp.nodes.filter((n) => n.node == mac),
         node = tree.nodes.find((n) => n.mac == mac);
       if (!node) {
-        $("ndTitle").textContent = "No such node";
+        $("ndTitle").textContent = tr("No such node");
         $("ndFacts").replaceChildren();
         return;
       }
@@ -178,36 +195,53 @@
       const runs = hardwareWords(node.hwRuns),
         set = hardwareWords(node.hwSet);
       fill("ndFacts", [
-        ["Address", mac],
-        ["Board", first.chip || "Not known yet"],
+        [tr("Address"), mac],
+        [tr("Board"), first.chip || tr("Not known yet")],
         [
-          "Firmware",
-          (first.version || "Not known yet") +
-            (first.update ? ", " + first.update : "") +
-            (first.restarts == null ? "" : "; " + first.restarts + " restarts, the last: " + first.restart),
+          tr("Firmware"),
+          (first.version || tr("Not known yet")) +
+            (first.update ? ", " + hubText(first.update) : "") +
+            (first.restarts == null
+              ? ""
+              : "; " + tr("{n} restarts, the last: {why}", { n: first.restarts, why: hubText(first.restart) })),
         ],
         [
-          "Hardware",
+          tr("Hardware"),
           runs
-            ? runs + (node.hwSet && node.hwSet != node.hwRuns ? " (it takes " + set + " after its next report)" : "")
-            : "Its firmware is from before hardware settings",
+            ? runs +
+              (node.hwSet && node.hwSet != node.hwRuns
+                ? " " + tr("(it takes {set} after its next report)", { set })
+                : "")
+            : tr("Its firmware is from before hardware settings"),
         ],
         [
-          "Paired",
-          node.paired ? (first.sealed ? "Yes, its messages sealed" : "Yes") : "No: it uses the shared ESP-NOW key",
+          tr("Paired"),
+          node.paired
+            ? first.sealed
+              ? tr("Yes, its messages sealed")
+              : tr("Yes")
+            : tr("No: it uses the shared ESP-NOW key"),
         ],
-        ["Last heard", heardAgo(first.ago)],
-        ["Signal", signal(first.rssi) + (first.weak ? ", weak on average" : "")],
+        [tr("Last heard"), heardAgo(first.ago)],
+        [tr("Signal"), signal(first.rssi) + (first.weak ? tr(", weak on average") : "")],
         [
-          "Battery",
-          (first.battery == null ? "Not known" : first.battery + "%" + (first.low ? " (low)" : "")) +
-            (first.saving ? ", saving it" : "") +
+          tr("Battery"),
+          (first.battery == null ? tr("Not known") : first.battery + "%" + (first.low ? tr(" (low)") : "")) +
+            (first.saving ? tr(", saving it") : "") +
             (first.daysLeft == null ? "" : ", " + batteryLeft(first.daysLeft)),
         ],
-        ["Reports", first.every ? "every " + Math.round(first.every / 60) + " minutes" : "Not known yet"],
+        [
+          tr("Reports"),
+          first.every ? tr("every {n} minutes", { n: Math.round(first.every / 60) }) : tr("Not known yet"),
+        ],
       ]);
       await showFirstHour(mac, node, rows);
-      const STATES = { active: "firing now", idle: "quiet", silent: "silent", never: "not heard yet" };
+      const STATES = {
+        active: tr("firing now"),
+        idle: tr("quiet"),
+        silent: tr("silent"),
+        never: tr("not heard yet"),
+      };
       // Drawn once a visit, so the refresh leaves their weeks alone.
       if (full)
         $("ndSensors").replaceChildren(
@@ -219,10 +253,10 @@
               el(
                 "h2",
                 null,
-                sensorLink(mac + "/" + s.input, s.name || "Sensor " + s.input),
+                sensorLink(mac + "/" + s.input, s.name || tr("Sensor {n}", { n: s.input })),
                 " ",
                 chip(
-                  STATES[row.state] || "unknown",
+                  STATES[row.state] || tr("unknown"),
                   row.state == "active" ? "bad" : row.state == "silent" ? "warn" : "none",
                 ),
               ),
@@ -238,12 +272,12 @@
                 el(
                   "li",
                   null,
-                  el("b", { textContent: e.event.charAt(0).toUpperCase() + e.event.slice(1) }),
+                  el("b", { textContent: hubText(e.event).charAt(0).toUpperCase() + hubText(e.event).slice(1) }),
                   " " + (e.name || e.sensor) + ", " + (e.received ? hub.ago(e.received) : "") + ". ",
                   explain(e),
                 ),
               )
-            : [el("li", { textContent: "None among the latest 64 events." })]),
+            : [el("li", { textContent: tr("None among the latest 64 events.") })]),
         );
       if (full && drawn != mac) {
         drawn = mac;

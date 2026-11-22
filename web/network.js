@@ -11,25 +11,25 @@
       $("rtspPort").value = i.rtspPort;
       if (view == "rtsp")
         fill("rtspInfo", [
-          ["Video address", "rtsp://" + i.ip + ":" + i.rtspPort + "/stream"],
-          ["Video streams open", i.streams],
+          [tr("Video address"), "rtsp://" + i.ip + ":" + i.rtspPort + "/stream"],
+          [tr("Video streams open"), i.streams],
         ]);
       $("hubName").value = i.name.replace(/\.local$/, "");
       $("hubHosts").value = i.hosts || "";
-      $("webPw").placeholder = i.password ? "Leave empty to keep it" : "8 to 63 characters";
+      $("webPw").placeholder = i.password ? tr("Leave empty to keep it") : tr("8 to 63 characters");
       if (view == "onvif")
         fill("onvifInfo", [
-          ["Login", i.onvifLogin ? "Required: user admin and the hub password" : "None"],
-          ["Device address", "http://" + i.ip + ":" + i.onvifPort + "/onvif/device_service"],
-          ["Event subscribers", i.subscribers],
-          ["Serial number", i.serial],
-          ["Requests not supported", i.unsupported.join(", ") || "None"],
+          [tr("Login"), i.onvifLogin ? tr("Required: user admin and the hub password") : tr("None")],
+          [tr("Device address"), "http://" + i.ip + ":" + i.onvifPort + "/onvif/device_service"],
+          [tr("Event subscribers"), i.subscribers],
+          [tr("Serial number"), i.serial],
+          [tr("Requests not supported"), i.unsupported.join(", ") || tr("None")],
         ]);
       if (view == "http")
         fill("httpInfo", [
-          ["Address", "http://" + i.ip + at + "/"],
-          ["Name", "http://" + i.name + at + "/"],
-          ["Sensor token", "add &token=" + i.token + " to /sensor requests"],
+          [tr("Address"), "http://" + i.ip + at + "/"],
+          [tr("Name"), "http://" + i.name + at + "/"],
+          [tr("Sensor token"), tr("add {token} to /sensor requests", { token: "&token=" + i.token })],
         ]);
     } catch (e) {}
   }
@@ -43,24 +43,27 @@
     const m = $("liveMsg");
     const get = (u) =>
       fetch(u, { cache: "no-store" }).catch(() => {
-        throw new Error("Could not reach the hub. Trying again.");
+        throw new Error(tr("Could not reach the hub. Trying again."));
       });
     try {
       const j = await (await get("/api/live")).json();
       if (run != liveRun) return;
       $("liveFile").textContent = j.file;
       if (j.seq !== liveSeq) {
-        if (liveSeq === null) m.textContent = "Getting the decoder ready. The first time, this downloads about 30 MB.";
+        if (liveSeq === null)
+          m.textContent = tr("Getting the decoder ready. The first time, this downloads about 30 MB.");
         const r = await get("/api/live/frame");
         if (!r.ok)
           throw new Error(
-            r.status == 507 ? "The hub is short of memory. Trying again." : "The hub could not send the picture.",
+            r.status == 507
+              ? tr("The hub is short of memory. Trying again.")
+              : tr("The hub could not send the picture."),
           );
         const seq = Number(r.headers.get("X-Frame-Seq"));
         // The hub stops sending a picture that is replaced meanwhile, so the next one can be asked for.
         const data = new Uint8Array(
           await r.arrayBuffer().catch(() => {
-            const e = new Error("The picture changed while it was being sent. Trying again.");
+            const e = new Error(tr("The picture changed while it was being sent. Trying again."));
             e.soon = true;
             throw e;
           }),
@@ -70,7 +73,9 @@
           url = await decoded(data);
         } catch (e) {
           throw new Error(
-            "Could not show the picture. The decoder needs internet access the first time. " + (e.message || ""),
+            tr("Could not show the picture. The decoder needs internet access the first time.") +
+              " " +
+              (e.message || ""),
           );
         }
         if (run != liveRun) {
@@ -89,7 +94,7 @@
     } catch (e) {
       wait = e.soon ? 500 : 5000;
       m.className = e.soon ? "portMsg" : "portMsg err";
-      m.textContent = e.message || "Could not show the picture.";
+      m.textContent = e.message || tr("Could not show the picture.");
     }
     setTimeout(() => livePoll(run), wait);
   }
@@ -109,16 +114,16 @@
       const n = await (await fetch("/api/nvr")).json();
       $("nvrIp").value = n.ip;
       $("nvrWarn").hidden = !!n.ip;
-      const state = (on) => (!n.ip ? "Enter the NVR's IP address" : on ? "Connected" : "Not connected");
+      const state = (on) => (!n.ip ? tr("Enter the NVR's IP address") : on ? tr("Connected") : tr("Not connected"));
       fill("nvrInfo", [
-        ["Video", state(n.video)],
-        ["Motion events", state(n.events)],
-        ["Viewers connected now", n.viewers.join(", ") || "None"],
+        [tr("Video"), state(n.video)],
+        [tr("Motion events"), state(n.events)],
+        [tr("Viewers connected now"), n.viewers.join(", ") || tr("None")],
       ]);
     } catch (e) {}
   }
   $("saveNvr").onclick = async () => {
-    if (await send($("nvrMsg"), "/api/nvr", "ip=" + encodeURIComponent($("nvrIp").value), "Saved.")) loadNvr();
+    if (await send($("nvrMsg"), "/api/nvr", "ip=" + encodeURIComponent($("nvrIp").value), tr("Saved."))) loadNvr();
   };
   async function loadNet() {
     try {
@@ -134,7 +139,7 @@
       $("netMsg").className = "portMsg";
       $("netMsg").textContent = n.dhcp
         ? ""
-        : "This fixed address is used only on " + n.staticFor + ". Other WiFi networks use DHCP.";
+        : tr("This fixed address is used only on {network}. Other WiFi networks use DHCP.", { network: n.staticFor });
     } catch (e) {}
   }
   $("netMode").onchange = netState;
@@ -143,9 +148,9 @@
       mode = $("netMode").value,
       ip = $("netIp").value;
     if (
-      !(await ask("A fixed address is used only on the Wi-Fi network it is connected to now.", {
-        title: "Restart the hub to use this address?",
-        ok: "Save and restart",
+      !(await ask(tr("A fixed address is used only on the Wi-Fi network it is connected to now."), {
+        title: tr("Restart the hub to use this address?"),
+        ok: tr("Save and restart"),
       }))
     )
       return;
@@ -169,8 +174,10 @@
     const named = location.hostname.endsWith(".local");
     m.textContent =
       mode == "static" || named
-        ? "Saved. The hub is restarting."
-        : "Saved. The hub is restarting and will get its address from the router. Open it by name, or find the new address in the router.";
+        ? tr("Saved. The hub is restarting.")
+        : tr(
+            "Saved. The hub is restarting and will get its address from the router. Open it by name, or find the new address in the router.",
+          );
     if (mode == "static" || named)
       setTimeout(() => {
         location.href =
@@ -185,29 +192,34 @@
   async function savePort(field, input, msg, warning) {
     const v = $(input).value,
       m = $(msg);
-    if (!(await ask(warning, { title: "Restart the hub to use this port?", ok: "Save and restart" }))) return;
+    if (!(await ask(warning, { title: tr("Restart the hub to use this port?"), ok: tr("Save and restart") }))) return;
     const j = await send(m, "/api/settings", field + "=" + encodeURIComponent(v), (j) =>
-      j.restart ? "Saved. The hub is restarting." : "Saved.",
+      j.restart ? tr("Saved. The hub is restarting.") : tr("Saved."),
     );
     if (j && j.restart) setTimeout(() => location.reload(), 10000);
   }
   $("saveRtsp").onclick = () =>
-    savePort("rtsp", "rtspPort", "rtspMsg", "The video stops briefly. A viewer such as VLC will need the new address.");
+    savePort(
+      "rtsp",
+      "rtspPort",
+      "rtspMsg",
+      tr("The video stops briefly. A viewer such as VLC will need the new address."),
+    );
   $("saveOnvif").onclick = () =>
     savePort(
       "onvif",
       "onvifPort",
       "onvifMsg",
-      "The NVR will lose this camera until its channel is set to the new port.",
+      tr("The NVR will lose this camera until its channel is set to the new port."),
     );
   $("saveWeb").onclick = async () => {
     const m = $("webMsg"),
       port = $("webPort").value,
       name = $("hubName").value;
     if (
-      !(await ask("A new port or name restarts the hub; a new password or other names apply at once.", {
-        title: "Save these settings?",
-        ok: "Save",
+      !(await ask(tr("A new port or name restarts the hub; a new password or other names apply at once."), {
+        title: tr("Save these settings?"),
+        ok: tr("Save"),
       }))
     )
       return;
@@ -222,7 +234,10 @@
         encodeURIComponent($("webPw").value) +
         "&hosts=" +
         encodeURIComponent($("hubHosts").value),
-      (j) => (j.restart ? "Saved. The hub is restarting." : "Saved. A new password applies now: log in again with it."),
+      (j) =>
+        j.restart
+          ? tr("Saved. The hub is restarting.")
+          : tr("Saved. A new password applies now: log in again with it."),
     );
     if (!j || !j.restart) return;
     const host = location.hostname.endsWith(".local") ? name + ".local" : location.hostname;
