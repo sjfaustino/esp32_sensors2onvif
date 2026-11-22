@@ -16,6 +16,11 @@
 #include "cam_server_internal.h"
 #include "cam_web_checks.h"
 
+static bool camEndsWith(const std::string& text, const char* end) {
+  size_t n = strlen(end);
+  return text.size() >= n && text.compare(text.size() - n, n, end) == 0;
+}
+
 // Pictures may use the storage only up to what the event history still needs: its full size, both CSV files, and room
 // to rewrite the saved files. Without that room no report could be saved, and so none could be confirmed.
 size_t CamWeb::historyRoom() const {
@@ -249,7 +254,8 @@ void CamWeb::apiFiles(const ApiRequest& r) {
       c.out = jsonFail(413, "text is too long");
     } else {
       c.out = saved(storage_.writeFile(path, body, bodyLen), "could not save the text; storage may be full");
-      if (path.find('/') != std::string::npos && path.compare(path.size() - 10, 10, "/text.json") != 0) alarm_.rescan();  // a name or settings
+      bool note = camEndsWith(path, "/text.json") || camEndsWith(path, "/checked.txt");  // the page's own, which the alarm never reads
+      if (path.find('/') != std::string::npos && !note) alarm_.rescan();                  // a name or settings
     }
   } else if (fileRoute && method == "PUT" && isFile) {
     CamNal nals[3];

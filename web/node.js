@@ -1,13 +1,140 @@
 // One node's own page, opened as #node:AA-BB-CC-DD-EE-01 from its address: its board and firmware, the hardware it
 // runs, its battery over time, its signal, restarts and update, each of its sensors with its week, and its latest events.
 (() => {
-  const { fill, heardAgo, signal, batteryLeft, sensorLink, chip, explain } = window.hub;
+  const { fill, heardAgo, signal, batteryLeft, sensorLink, chip, explain, checkStep } = window.hub;
   const SENSORS = { 1: "generic, active high", 2: "generic, active low", 3: "RCWL-0516", 4: "HC-SR501", 5: "LD2410" };
   const CELLS = { 0: "none", 1: "lithium-ion", 2: "LiFePO4" };
+  const DETECTED = [0, 3, 10, 13]; // its alerts, whether sent to the NVR or only logged: each shows it saw someone
   let shown = "",
     drawn = "",
     slowAt = 0,
-    lastTree = null;
+    lastTree = null,
+    lastEvents = [],
+    checked = null, // when its first hour's checks all passed, from checked.txt in its folder; "" for not yet
+    again = ""; // when they were started over, by the hub's clock: only events after it count
+  // Its first hour: heard at a good signal, a test alert the NVR got, and a walk past each of its sensors. Each is ticked
+  // as the hub sees it, from its reports and the latest events; once all three are, checked.txt keeps that they were.
+  // Checked again, it keeps when instead, as again=TIME COUNT: the newest event's time then, and how many had that time,
+  // as the hub's times are in whole seconds. Only events after those count.
+  function sinceAgain(all) {
+    if (!again) return all;
+    const [time, count] = again.split(" ");
+    let fresh = all.filter((e) => e.received == time).length - (+count || 0); // the newest of that second are new
+    return all.filter((e) => e.received > time || (e.received == time && fresh-- > 0));
+  }
+  function firstHour(mac, node, rows, all) {
+    const events = sinceAgain(all),
+      rowOf = (i) => rows.find((r) => r.input == i) || {},
+      mine = (i) => events.filter((e) => e.sensor == mac + "/" + i),
+      heard = rows.filter((r) => r.rssi != null),
+      worst = heard.reduce((w, r) => (w == null || r.rssi < w.rssi ? r : w), null),
+      good = rows.length > 0 && heard.length == rows.length && heard.every((r) => r.rssi >= -75 && !r.weak);
+    // A test alert reached the NVR when no "not delivered" came after it, once the hub has checked: when it is over.
+    const tested = (i) => {
+      const list = mine(i),
+        t = list.findIndex((e) => e.kind == 15);
+      return t < 0
+        ? "none"
+        : list.slice(0, t).some((e) => e.kind == 5)
+          ? "missed"
+          : rowOf(i).state == "active"
+            ? "checking"
+            : "reached";
+    };
+    const tests = node.sensors.map((s) => tested(s.input)),
+      walked = node.sensors.every((s) => mine(s.input).some((e) => DETECTED.includes(e.kind) && e.active));
+    if (tests.includes("checking")) slowAt = 0; // the events again on the next refresh, to see the check's outcome
+    const reached = tests.length > 0 && tests.every((t) => t == "reached");
+    return {
+      done: good && reached && walked,
+      steps: [
+        checkStep(
+          1,
+          good,
+          "Heard at a good signal",
+          !worst
+            ? "Not heard yet: press its reset button, and it reports at once."
+            : "Its signal is " +
+                signal(worst.rssi) +
+                (worst.weak ? ", and weak on average" : "") +
+                ". Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this.",
+        ),
+        checkStep(
+          2,
+          reached,
+          "A test alert reached the NVR",
+          tests.includes("missed")
+            ? "The NVR did not get its test alert. See on the Overview that the NVR is listening, then send another."
+            : tests.includes("checking")
+              ? "Sent. Once the alert is over, the hub sees whether the NVR got it."
+              : "Send it a test alert: the NVR should record, as it would for an intruder.",
+          el("button", {
+            textContent: "Send a test alert",
+            onclick: async (ev) => {
+              ev.target.disabled = true;
+              try {
+                for (const s of node.sensors) await call("POST", "/api/test-alert?path=" + mac + "/" + s.input, "x=1");
+              } catch (e) {}
+              slowAt = 0;
+              load(mac, false);
+            },
+          }),
+        ),
+        checkStep(
+          3,
+          walked,
+          "Walk past it",
+          "Walk past it from where an intruder would come, and each of its sensors must see you. During a walk test its light flashes 3, 2 or 1 times for a strong, fair or weak signal.",
+          el("button", {
+            textContent: "Start a walk test on it",
+            onclick: () => call("POST", "/api/walk-test?path=" + mac, "go=1").catch(() => {}),
+          }),
+        ),
+      ],
+    };
+  }
+  async function showFirstHour(mac, node, rows) {
+    if (checked == null) {
+      const r = await fetch("/api/file?path=" + mac + "/checked.txt");
+      const text = r.ok ? await r.text() : "";
+      checked = (text.match(/^checked=(.*)$/m) || [])[1] || "";
+      again = (text.match(/^again=(.*)$/m) || [])[1] || "";
+    }
+    if (shown != mac) return;
+    if (!checked) {
+      const hour = firstHour(mac, node, rows, lastEvents);
+      if (hour.done) {
+        const at = new Date().toISOString();
+        await call("PUT", "/api/file?path=" + mac + "/checked.txt", "checked=" + at + "\n");
+        checked = at;
+      } else {
+        $("ndCheckNote").textContent = "Three checks before you trust it, each ticked as the hub sees it done.";
+        $("ndCheck").replaceChildren(...hour.steps);
+        return;
+      }
+    }
+    const when = Date.parse(checked);
+    $("ndCheckNote").replaceChildren(
+      chip("Checked", "ok"),
+      " Its signal was good, the NVR got its test alert, and it saw someone walk past" +
+        (isNaN(when) ? "." : ", by " + new Date(when).toLocaleDateString() + ". "),
+      el("button", {
+        textContent: "Check it again",
+        onclick: async () => {
+          try {
+            lastEvents = await call("GET", "/api/events"); // as they are now, not as last read
+            const newest = (lastEvents.find((e) => e.received) || {}).received || "",
+              mark = newest && newest + " " + lastEvents.filter((e) => e.received == newest).length;
+            await call("PUT", "/api/file?path=" + mac + "/checked.txt", "again=" + mark + "\n");
+            checked = "";
+            again = mark;
+          } catch (e) {}
+          load(mac, false);
+        },
+      }),
+    );
+    $("ndCheck").replaceChildren();
+  }
   // "NUMBER,SENSOR,SENSORPIN,TAMPERPIN,BATTERYPIN,CELL", as the hub keeps it, in words.
   function hardwareWords(text) {
     const v = (text || "").split(",").map(Number);
@@ -35,6 +162,7 @@
       if (slow) {
         slowAt = Date.now();
         lastTree = tree;
+        lastEvents = events;
       }
       if (shown != mac) return;
       const rows = esp.nodes.filter((n) => n.node == mac),
@@ -78,6 +206,7 @@
         ],
         ["Reports", first.every ? "every " + Math.round(first.every / 60) + " minutes" : "Not known yet"],
       ]);
+      await showFirstHour(mac, node, rows);
       const STATES = { active: "firing now", idle: "quiet", silent: "silent", never: "not heard yet" };
       // Drawn once a visit, so the refresh leaves their weeks alone.
       if (full)
@@ -131,6 +260,9 @@
     }
     shown = arg;
     drawn = "";
+    checked = null;
+    again = "";
+    lastEvents = [];
     load(arg, true);
     hub.repeat(() => load(arg, false), 5000);
   });

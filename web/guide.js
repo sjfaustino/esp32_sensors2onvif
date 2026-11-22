@@ -84,6 +84,7 @@
       ),
     ];
   }
+  window.hub.checkStep = step; // the node page's first hour ticks its checks the same way
   async function load() {
     try {
       if (!plan) plan = await fetch("/api/file?path=plan.json").then((r) => (r.ok ? r.json() : {}));

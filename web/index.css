@@ -543,6 +543,36 @@ h2.sub {
   color: var(--text);
   box-shadow: 0 0 0 2px #1f5fbf;
 }
+.spot.good {
+  background: #4a7a14;
+}
+.spot.fair {
+  background: #b07800;
+}
+.spot.weak {
+  background: #b3261e;
+}
+/* The key under the floor plan: a small spot before each colour's meaning. */
+.planKey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+.planKey > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.spot.key {
+  position: static;
+  transform: none;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+}
 @keyframes pulse {
   to {
     box-shadow: 0 0 0 6px rgba(179, 38, 30, 0.35);

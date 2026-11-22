@@ -5,6 +5,12 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-22
+
+Update from 0.5.0 before updating any node to its 0.2.0, which seals its messages in a way only this hub reads; this hub
+still reads nodes on 0.1.0. A backup is now sealed with a passphrase, and a blank hub's setup network waits for its BOOT
+button.
+
 ### Security
 
 - Backups are sealed with a passphrase you choose (600,000 rounds of PBKDF2-HMAC-SHA256, worked out by the browser, then XChaCha20-Poly1305 on the hub), so the file holds no readable
@@ -59,6 +65,9 @@ before that, a new minor version may change settings or the messages.
   each sensor's week, and its events.
 - A node firmware can be tried on one node first; the others get it a day after that node runs it, and never if it
   had it undone. Each file says how many nodes of its chip run it.
+- A node's page checks its first hour: heard at a good signal, a test alert that reached the NVR, and a walk past each
+  of its sensors, each ticked as the hub sees it, and kept as `checked.txt` once all three are.
+- The floor plan can colour each sensor by how well the hub hears its node, with a key, to show where the signal is weak.
 
 ## [0.5.0] - 2026-11-22
 
@@ -230,7 +239,8 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.2.0...v0.3.0

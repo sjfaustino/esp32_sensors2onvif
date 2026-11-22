@@ -15,7 +15,8 @@
 const size_t CAM_MAX_FRAME = 32 * 1024;  // the one picture buffer, reserved at boot; video and downloads read from it or from storage
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set, and a sensor's
-// sensor.txt, and a node's node.txt; and name.txt and settings.txt, which they replaced (cam_node_files.h).
+// sensor.txt, and a node's node.txt; and name.txt and settings.txt, which they replaced (cam_node_files.h). A node's
+// checked.txt is the page's own note of when its first hour's checks all passed; the hub only keeps it.
 // plan.jpg and plan.json, at the top, are the floor plan and where each sensor is on it; they count as a preview and a
 // text.
 // CAM_PATH_PREVIEW is the JPEG beside a picture, made by the browser for ONVIF snapshots, because the hub cannot decode H.264.

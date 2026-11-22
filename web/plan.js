@@ -1,7 +1,8 @@
 // The floor plan, Alarm > Floor plan: a picture of the property with each sensor where it is, lit while it fires. The
 // picture is plan.jpg on the hub, made small enough here to fit the hub's 32 KB picture buffer; where each sensor is,
 // plan.json, as {"AA-BB-CC-DD-EE-01/1": [x, y]} in thousandths of the picture's width and height. The walk test draws
-// the same plan.
+// the same plan. Shown by signal instead, each spot is coloured by how well the hub hears its node, which shows where the
+// radio struggles, and where a new node might go.
 const plan = (() => {
   const LIMIT = 30 * 1024; // under the hub's 32 KB, with room to spare
   let image = null, // an object URL of plan.jpg, or null when there is none
@@ -9,6 +10,7 @@ const plan = (() => {
     loaded = false,
     timer = 0,
     placing = "",
+    bySignal = false, // each spot coloured by its signal, instead of by what the sensor is doing
     known = null; // the sensors the hub has, once read, so places of deleted ones are dropped
 
   async function load() {
@@ -33,8 +35,9 @@ const plan = (() => {
 
   // Draws the plan in box, with a spot for each sensor placed on it. stateOf gives a spot's colour: "alert" (red, firing
   // now), "problem" (amber), "never" (grey, not heard yet), "fired" (blue, seen in a walk test), "waiting" (outlined) or
-  // "ok" (green). onClick, when given, gets where the picture was clicked, in thousandths.
-  async function draw(box, sensors, stateOf, onClick) {
+  // "ok" (green); or by signal, "strong", "good", "fair" or "weak". onClick, when given, gets where the picture was
+  // clicked, in thousandths; textOf, each spot's words, its sensor's name unless given.
+  async function draw(box, sensors, stateOf, onClick, textOf) {
     if (!box) return;
     if (!loaded) await load();
     if (!image) {
@@ -70,8 +73,8 @@ const plan = (() => {
           className: "spot " + stateOf(n),
           href: "#sensor:" + keyOf(n),
           style: "left:" + p[0] / 10 + "%;top:" + p[1] / 10 + "%",
-          title: labelOf(n),
-          textContent: labelOf(n),
+          title: textOf ? labelOf(n) + ": " + textOf(n) : labelOf(n),
+          textContent: textOf ? labelOf(n) + " " + textOf(n) : labelOf(n),
         }),
       );
     }
@@ -87,6 +90,18 @@ const plan = (() => {
           ? "problem"
           : "ok";
   }
+
+  // Its node's signal, in the steps the node's light and the pages use; "never" until it is first heard. A node weak on
+  // average counts as weak, whatever its last report.
+  function signalOf(n) {
+    if (n.rssi == null) return "never";
+    if (n.weak) return "weak";
+    return n.rssi >= -67 ? "strong" : n.rssi >= -75 ? "good" : n.rssi >= -80 ? "fair" : "weak";
+  }
+  const signalText = (n) =>
+    n.rssi == null
+      ? "not heard yet"
+      : n.rssi + " dBm" + (n.weak ? ", weak on average" : "") + (n.refused ? ", " + n.refused + " refused" : "");
 
   // A picture of any size and kind, as a JPEG small enough for the hub: smaller and coarser until it fits.
   async function shrink(file) {
@@ -127,7 +142,25 @@ const plan = (() => {
       );
       choose.value = before;
       $("planRemove").disabled = !choose.value || !spots[choose.value];
-      await draw($("planBox"), esp.nodes, stateOf, place);
+      await draw($("planBox"), esp.nodes, bySignal ? signalOf : stateOf, place, bySignal ? signalText : null);
+      $("planKey").hidden = !image;
+      $("planKey").replaceChildren(
+        ...(bySignal
+          ? [
+              ["strong", "Strong"],
+              ["good", "Good"],
+              ["fair", "Fair: may miss a message now and then"],
+              ["weak", "Weak: move the node or the hub"],
+              ["never", "Not heard yet"],
+            ]
+          : [
+              ["ok", "Quiet"],
+              ["alert", "Firing now"],
+              ["problem", "A problem: silent, low battery, weak signal or refused messages"],
+              ["never", "Not heard yet"],
+            ]
+        ).map(([kind, words]) => el("span", null, el("span", { className: "spot key " + kind }), words)),
+      );
       const missing = esp.nodes.filter((n) => !spots[keyOf(n)]).length;
       $("planHint").textContent = !image
         ? ""
@@ -167,6 +200,10 @@ const plan = (() => {
   $("planSensor").onchange = () => {
     const o = $("planSensor").selectedOptions[0];
     placing = $("planSensor").value ? o.textContent.replace(/ \(not on the plan yet\)$/, "") : "";
+    refresh();
+  };
+  $("planShow").onchange = () => {
+    bySignal = $("planShow").value == "signal";
     refresh();
   };
   $("planRemove").onclick = async () => {

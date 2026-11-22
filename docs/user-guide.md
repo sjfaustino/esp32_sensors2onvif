@@ -202,6 +202,11 @@ and coarser until it fits. Then choose each sensor and tap where it is. The hub 
 places as `plan.json`, at the top of its storage, and a full backup carries both. Tapping a sensor on the plan opens its
 page.
 
+Under the plan, **Show how well the hub hears each one** colours each sensor by its node's signal instead, in the steps
+the pages and the node's light use: strong, good, fair, or weak (below -80 dBm, or weak on average), each spot with its
+dBm and any refused messages. It shows where the radio struggles, and, with a node held where one might go, whether
+the hub would hear it there.
+
 Each sensor has a page of its own, opened by its name anywhere: on the Overview, the Events and Nodes and pairing pages,
 and the floor plan. It shows how the sensor is now, when it fired over the last 7 days by hour of the day, its battery
 readings over time, and its latest events, each explained, with a button for a test alert.
@@ -500,6 +505,13 @@ Each node's address, on the Nodes and pairing page, and its name on the Sensors 
 board and firmware, the hardware it runs, its battery over time, its signal and restarts, each of its sensors with when
 it fired over the last week, and its latest events.
 
+**Its first hour**, on the node's page, is what to check before trusting a node: heard at a good signal (-75 dBm or
+better, and not weak on average), a test alert that reached the NVR, and a walk past each of its sensors. Each is
+ticked as the hub sees it, with a button for the test alert and the walk test. A test alert counts once it is over and
+the hub has seen that the NVR got it. Once all three are ticked, the hub keeps that they were, as `checked.txt` in the
+node's folder, and the page says so; **Check it again** starts over, counting only what happens from then on, as after
+moving the node.
+
 **Node firmware** on the same page takes a node's `firmware.bin`, from the node project, one per kind of chip, kept in
 `nodes/` on LittleFS. The hub reads the version from the file and refuses anything that is not a node's firmware, the
 hub's own included, and any that is not signed with the project's key, as the node project's releases are. Each node
@@ -553,6 +565,7 @@ AA-BB-CC-DD-EE-01/                 one folder per sensor node, named after its M
 AA-BB-CC-DD-EE-01/node.txt         the node's past-event, silent, report and repeat times and hardware, set on the Sensors
                                    page, and what it last said of itself, each line after "said."
 AA-BB-CC-DD-EE-01/battery.txt      its battery readings, for the forecast
+AA-BB-CC-DD-EE-01/checked.txt      when its first hour's checks all passed, kept for the node's page
 AA-BB-CC-DD-EE-01/1/               one subfolder per sensor on that node
 AA-BB-CC-DD-EE-01/1/active.h264    one file per state
 AA-BB-CC-DD-EE-01/1/sensor.txt     optional name, alert time, quiet hours, zone and camera, set on the Sensors page

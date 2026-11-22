@@ -41,10 +41,12 @@
 <div class="acts"><button id="walkStart" class="primary">Start on every node</button><button id="walkStop">Stop</button></div>
 <div class="portMsg" id="walkMsg"></div></section><div id="walkPlan"></div><table id="walkList" class="list"></table></div>
 <div class="view" id="view-plan" hidden><h1>Floor plan</h1>
-<section class="card"><p class="note">A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too.</p>
+<section class="card"><p class="note">A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard; or coloured by how well the hub hears each one, to see where the signal is weak. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too.</p>
 <div class="acts"><button id="planUpload" class="primary">Choose a picture</button><button id="planDelete" class="del">Delete the plan</button></div>
 <div class="acts"><select id="planSensor" aria-label="A sensor on the plan"></select><button id="planRemove">Take it off the plan</button></div>
-<div class="portMsg" id="planMsg"></div></section><p class="note" id="planHint"></p><div id="planBox"></div></div>
+<div class="portMsg" id="planMsg"></div></section><p class="note" id="planHint"></p>
+<div class="acts"><select id="planShow" aria-label="What the spots show"><option value="state">Show what each sensor is doing</option><option value="signal">Show how well the hub hears each one</option></select></div>
+<div class="planKey" id="planKey" hidden></div><div id="planBox"></div></div>
 <div class="view" id="view-sensor" hidden><h1 id="snTitle">Sensor</h1>
 <p class="portForm"><button id="snTest">Send a test alert</button> <a href="#sensors">Alert settings and pictures</a></p><div class="portMsg" id="snMsg"></div>
 <table class="info" id="snFacts"></table>
@@ -53,6 +55,7 @@
 <h2 class="sub">Its latest events</h2><ul class="explained" id="snEvents"></ul></div>
 <div class="view" id="view-node" hidden><h1 id="ndTitle">Node</h1>
 <section class="card"><table class="info" id="ndFacts"></table></section>
+<section class="card"><h2>Its first hour</h2><p class="note" id="ndCheckNote"></p><ol class="guideSteps" id="ndCheck"></ol></section>
 <section class="card"><h2>Battery</h2><div id="ndBattery"></div></section>
 <h2 class="sub">Its sensors, and when they fired over the last 7 days</h2><div id="ndSensors"></div>
 <section class="card"><h2>Its latest events</h2><ul class="explained" id="ndEvents"></ul></section></div>

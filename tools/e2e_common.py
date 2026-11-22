@@ -3,6 +3,7 @@ MQTT broker. See e2e_test.py for how to run it."""
 import base64, datetime, gzip, hashlib, hmac, http.client, http.server, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # a failure's details may hold the pages' signal bars
 import make_frames
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -14,6 +14,8 @@ static void classifies_storage_paths() {
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath("text.json"));
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/1/text.json"));
   TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/settings.txt"));  // the node's own settings
+  TEST_ASSERT_EQUAL(CAM_PATH_TEXT, camClassifyPath(std::string(mac) + "/checked.txt"));   // when its first hour was checked
+  TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/1/checked.txt"));
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/name.txt"));
   TEST_ASSERT_EQUAL(CAM_PATH_INVALID, camClassifyPath(std::string(mac) + "/text.json"));
   const char* bad[] = {"",

@@ -368,6 +368,63 @@ def test_settings_pages(page):
     check('times are words, with the date on hover', page.get_attribute('#evTable tr:nth-child(2) td:first-child', 'title') not in (None, ''))
 
 
+def test_a_nodes_first_hour(page, nvr):
+    """A node's page ticks its first hour's checks as the hub sees each done: heard at a good signal, a test alert the NVR
+    got, and a walk past it; once all three are, the hub keeps that they were, until asked to check again."""
+    node = SENSOR.split('/')[0]
+    path = f'/api/file?path={node}/checked.txt'
+    check('no first hour checked yet', api('GET', path)[0] == 404)
+    # Started over from now, as Check it again does, so the alerts other tests sent on this sensor do not count.
+    events = event_list()
+    newest = next((e['received'] for e in events if e.get('received')), '')
+    count = sum(e.get('received') == newest for e in events)
+    check('a fresh first hour to check', api('PUT', path, f'again={newest} {count}\n')[0] == 200)
+    control('radio-known')  # a report at a strong signal
+    page.goto(URL + '#node:' + node)
+    page.wait_for_selector('#ndCheck li')
+    check('the node page lists its three checks', page.locator('#ndCheck li').count() == 3, page.text_content('#ndCheck'))
+    check('heard at a good signal is ticked', page_wait(page, lambda: page.locator('#ndCheck li.done:has-text("good signal")').count() == 1),
+          page.text_content('#ndCheck'))
+    if 'reached the NVR' not in ' '.join(page.locator('#ndCheck li.done').all_text_contents()):
+        sent = len(nvr.events)
+        page.click('#ndCheck button:has-text("Send a test alert")')
+        check('its test alert reaches the NVR', wait_until(lambda: 'true' in nvr.states()[sent:], timeout=5), nvr.states()[sent:])
+        end_alert(nvr)
+        check('and once it is over, the page ticks it', page_wait(page, lambda: page.locator('#ndCheck li.done:has-text("reached the NVR")').count() == 1
+              or page.is_visible('#ndCheckNote .chip.ok'), 15), page.text_content('#view-node'))
+    control('radio-alert')  # someone walks past
+    control('end-alerts')
+    check('with a walk past it too, the node is checked', page_wait(page, lambda: page.is_visible('#ndCheckNote .chip.ok'), 40),
+          page.text_content('#view-node'))
+    check('and the hub keeps that it was', api('GET', path)[1].startswith(b'checked=20'), api('GET', path))
+    page.click('#ndCheckNote button:has-text("Check it again")')
+    check('checking again starts over, from then on', page_wait(page, lambda: page.locator('#ndCheck li').count() == 3)
+          and page.locator('#ndCheck li.done').count() == 1 and api('GET', path)[1].startswith(b'again=20'), api('GET', path))
+    page.reload()
+    page.wait_for_selector('#ndCheck li')
+    check('and still, opened again', page_wait(page, lambda: page.locator('#ndCheck li.done').count() == 1), page.text_content('#ndCheck'))
+    api('DELETE', path)
+
+
+def test_the_floor_plan_by_signal(page):
+    """The floor plan can colour each sensor by how well the hub hears its node, with a key to the colours."""
+    check('a plan to test with', api('PUT', '/api/file?path=plan.jpg', b'\xff\xd8\xff\xe0' + bytes(200))[0] == 200)
+    try:
+        check('with the sensor on it', api('PUT', '/api/file?path=plan.json', json.dumps({SENSOR: [500, 500]}))[0] == 200)
+        control('radio-known')  # its node heard at -61 dBm
+        page.goto(URL + '#plan')
+        page.wait_for_selector('#planBox .spot')
+        check('the spots show what each sensor is doing at first', 'dBm' not in page.text_content('#planBox .spot'))
+        page.select_option('#planShow', 'signal')
+        check('by signal, its spot is strong and says how strong',
+              page_wait(page, lambda: 'strong' in page.get_attribute('#planBox .spot', 'class') and '-61 dBm' in page.text_content('#planBox .spot')),
+              (page.get_attribute('#planBox .spot', 'class'), page.text_content('#planBox .spot')))
+        check('with a key to the colours', 'Weak: move the node or the hub' in page.text_content('#planKey'), page.text_content('#planKey'))
+    finally:
+        api('DELETE', '/api/file?path=plan.jpg')
+        api('DELETE', '/api/file?path=plan.json')
+
+
 def test_quiet_when_hidden(browser):
     """A page left open in a tab that is not shown asks the hub nothing, and asks again once it is shown; and the
     Overview asks for no more than its summary between changes."""
@@ -650,6 +707,8 @@ def page_cases(nvr, storage):
         ('a_sensor_camera', on_page(test_a_sensor_camera)),
         ('sensor_pictures', on_page(test_sensor_pictures)),
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
+        ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
+        ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),
         ('every_page_opens', test_every_page_opens),
         ('dark_and_narrow', test_dark_and_narrow),
         ('quiet_when_hidden', test_quiet_when_hidden),
