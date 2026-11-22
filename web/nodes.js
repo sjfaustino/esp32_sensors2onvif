@@ -285,7 +285,7 @@
       call("GET", "/api/alerts")
         .then((a) => ($("espAlarm").checked = a.alarm))
         .catch(() => {});
-      espTimer = setInterval(loadEsp, 3000);
+      espTimer = setInterval(() => document.hidden || loadEsp(), 3000);
     }
   }
   $("espAlarm").onchange = (e) => {

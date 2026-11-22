@@ -12,6 +12,12 @@ before that, a new minor version may change settings or the messages.
   still reads the old form from nodes on older firmware, and answers each in the form it used. X25519, for pairing, is
   Monocypher's too, in place of a port of TweetNaCl; keys made before still work.
 
+### The pages
+
+- The pages ask the hub far less: nothing while the tab is hidden, the Overview its summary every 3 s and the rest only
+  when it changes, and the status line not twice. Open on the Overview, a browser asks 12 times in 30 s, from 33; on Nodes
+  and pairing 29, from 47.
+
 ### The nodes
 
 - **Add a node**, on the Nodes and pairing page, takes a node through its setting up a step at a time, each ticked as

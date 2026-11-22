@@ -190,7 +190,7 @@ text), `plan.js`, `sensor.js` and `assist.js` (the floor plan, a sensor's own pa
 menu, which page shows, the status line and the helpers the rest share as `window.hub`), and a script for each area of
 the menu: `overview.js`, `events.js` (with the walk test), `nodes.js`, `notify.js`, `network.js` and `system.js`. Each
 adds what its pages show through `window.viewHooks`, which `index.js` calls with the page that opens, and refreshes a page
-with `hub.repeat`, whose one timer stops when another page opens. Opening `web/index.html` in a browser shows the layout, though nothing loads
+with `hub.repeat`, whose one timer stops when another page opens, and asks nothing while the tab is hidden; shown again, the page refreshes at once. A page asks often only for what changes often, such as the Overview's summary every 3 s, and the rest when that shows a change, or every 30 s: the hub has few sockets, and the NVR must always get one. Opening `web/index.html` in a browser shows the layout, though nothing loads
 without a hub. Every build runs `tools/embed_web.py`, which puts each stylesheet and script a page links inside it, gzips
 it and builds it into the firmware. `node --check` finds script mistakes before a build. The scripts and styles are laid
 out by Prettier, and the checks on GitHub refuse them otherwise; after an edit, run

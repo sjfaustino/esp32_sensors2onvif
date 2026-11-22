@@ -129,11 +129,20 @@
         : "no alerts.")
     );
   }
-  // What someone checking the hub wants at a glance. Each line says what is wrong, if anything.
-  async function loadOverview() {
-    loadArm();
+  // What someone checking the hub wants at a glance. Each line says what is wrong, if anything. The summary every few
+  // seconds; the arm panel's details and the alerts since arming only when the summary shows a change, or every 30 s.
+  let changeKey = "",
+    fullAt = 0;
+  async function loadOverview(force) {
     try {
       const o = await call("GET", "/api/overview");
+      const key = JSON.stringify([o.mode, o.last, o.active.length]),
+        full = force === true || key != changeKey || Date.now() - fullAt > 30000;
+      if (full) {
+        changeKey = key;
+        fullAt = Date.now();
+        loadArm();
+      }
       const who = (s) => (s.name ? s.name + " (" + s.sensor + ")" : s.sensor);
       const listOf = (items, line) =>
         el("span", null, ...(items.length ? items.flatMap((x, i) => (i ? ["; "] : []).concat(line(x))) : ["None"]));
@@ -185,9 +194,10 @@
         ],
         ["Home Assistant", mqttChip],
       ]);
-      call("GET", "/api/events")
-        .then((events) => ($("ovSince").textContent = sinceArmed(events, o.mode, o.nvr.set)))
-        .catch(() => {});
+      if (full)
+        call("GET", "/api/events")
+          .then((events) => ($("ovSince").textContent = sinceArmed(events, o.mode, o.nvr.set)))
+          .catch(() => {});
       showStatus(o);
       const items = readyItems(o);
       $("ovReadyBox").hidden = items.every((i) => i.ok);
@@ -287,7 +297,7 @@
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {
     if (view == "overview") {
-      loadOverview();
+      loadOverview(true);
       repeat(loadOverview, 3000);
     }
   });

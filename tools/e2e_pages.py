@@ -305,7 +305,33 @@ def test_settings_pages(page):
     check('times are words, with the date on hover', page.get_attribute('#evTable tr:nth-child(2) td:first-child', 'title') not in (None, ''))
 
 
-AXE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js'
+def test_quiet_when_hidden(browser):
+    """A page left open in a tab that is not shown asks the hub nothing, and asks again once it is shown; and the
+    Overview asks for no more than its summary between changes."""
+    page = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}).new_page()
+    try:
+        asked = []
+        page.on('request', lambda r: asked.append(r.url))
+        page.goto(URL + '#overview')
+        page.wait_for_selector('#armPanel')
+        page.wait_for_timeout(1500)
+        asked.clear()
+        page.wait_for_timeout(7000)
+        check('between changes the Overview asks only for its summary', asked and all('/api/overview' in u for u in asked), asked)
+        page.evaluate("Object.defineProperty(document, 'hidden', {get: () => true, configurable: true});"
+                      "document.dispatchEvent(new Event('visibilitychange'))")
+        asked.clear()
+        page.wait_for_timeout(7000)
+        check('a hidden tab asks the hub nothing', not asked, asked)
+        page.evaluate("Object.defineProperty(document, 'hidden', {get: () => false, configurable: true});"
+                      "document.dispatchEvent(new Event('visibilitychange'))")
+        page.wait_for_timeout(500)
+        check('shown again, it asks at once', any('/api/overview' in u for u in asked), asked)
+    finally:
+        page.context.close()
+
+
+AXE_URL ='https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js'
 AXE_SHA256 = 'b511cd9dec01c76f4b2ad1723b66b6db37d4c2eb4ed199076e1829d9ee7b75e3'
 
 
@@ -528,7 +554,7 @@ def main():
                 for test in (lambda: test_arming(page, dialogs), lambda: test_a_refused_change_shows_the_truth(page, dialogs),
                              lambda: test_alerts(page, dialogs, nvr), lambda: test_the_first_steps(page), lambda: test_notifications_page(page),
                              lambda: test_settings_pages(page), lambda: test_a_sensor_camera(page), lambda: test_sensor_pictures(page), lambda: test_the_wifi_page_frames_the_setup_page(page), lambda: test_every_page_opens(browser),
-                             lambda: test_dark_and_narrow(browser), lambda: test_accessibility(browser),
+                             lambda: test_dark_and_narrow(browser), lambda: test_quiet_when_hidden(browser), lambda: test_accessibility(browser),
                              lambda: test_accessibility(browser, dark=True)):
                     try:
                         test()

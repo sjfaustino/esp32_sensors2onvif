@@ -2,7 +2,9 @@
 // from what the hub already knows: pairing, the hardware the node runs, its sensors' names, the floor plan and its alerts.
 (() => {
   const { repeat } = window.hub;
-  let chosen = ""; // the node being set up: its MAC folder, or "" for a new one
+  let chosen = "", // the node being set up: its MAC folder, or "" for a new one
+    plan = null, // the floor plan, read once a visit
+    events = []; // read only while a walk past the chosen node is still to come
   const tick = (ok) => el("span", { className: "chip " + (ok ? "ok" : "none"), textContent: ok ? "Done" : "To do" });
   const button = (text, onclick) => el("button", { textContent: text, onclick });
   function step(n, ok, title, text, ...actions) {
@@ -84,12 +86,11 @@
   }
   async function load() {
     try {
-      const [tree, pairing, events, plan] = await Promise.all([
-        call("GET", "/api/tree"),
-        call("GET", "/api/pairing"),
-        call("GET", "/api/events"),
-        fetch("/api/file?path=plan.json").then((r) => (r.ok ? r.json() : {})),
-      ]);
+      if (!plan) plan = await fetch("/api/file?path=plan.json").then((r) => (r.ok ? r.json() : {}));
+      const [tree, pairing] = await Promise.all([call("GET", "/api/tree"), call("GET", "/api/pairing")]);
+      const walked = (n) => events.some((e) => e.sensor.startsWith(n.mac + "/") && e.kind == 0);
+      const pending = tree.nodes.find((n) => n.mac == chosen && n.paired && !walked(n));
+      if (pending) events = await call("GET", "/api/events");
       const nodes = tree.nodes.filter((n) => n.paired);
       const label = (n) =>
         (n.sensors
@@ -118,7 +119,8 @@
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {
     if (view != "espnow") return;
+    plan = null;
     load();
-    repeat(load, 5000);
+    repeat(load, 10000);
   });
 })();

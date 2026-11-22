@@ -232,6 +232,6 @@
     shown = arg;
     $("snMsg").textContent = "";
     refresh(arg, true);
-    timer = setInterval(() => refresh(arg, false), 3000);
+    timer = setInterval(() => document.hidden || refresh(arg, false), 3000);
   });
 })();

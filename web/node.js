@@ -5,7 +5,9 @@
   const SENSORS = { 1: "generic, active high", 2: "generic, active low", 3: "RCWL-0516", 4: "HC-SR501", 5: "LD2410" };
   const CELLS = { 0: "none", 1: "lithium-ion", 2: "LiFePO4" };
   let shown = "",
-    drawn = "";
+    drawn = "",
+    slowAt = 0,
+    lastTree = null;
   // "NUMBER,SENSOR,SENSORPIN,TAMPERPIN,BATTERYPIN,CELL", as the hub keeps it, in words.
   function hardwareWords(text) {
     const v = (text || "").split(",").map(Number);
@@ -23,11 +25,17 @@
   }
   async function load(mac, full) {
     try {
+      // Its facts every few seconds; what changes seldom, its sensors and events, on opening and every 30 s.
+      const slow = full || Date.now() - slowAt > 30000;
       const [esp, tree, events] = await Promise.all([
         call("GET", "/api/espnow"),
-        call("GET", "/api/tree"),
-        call("GET", "/api/events"),
+        slow ? call("GET", "/api/tree") : Promise.resolve(lastTree),
+        slow ? call("GET", "/api/events") : Promise.resolve(null),
       ]);
+      if (slow) {
+        slowAt = Date.now();
+        lastTree = tree;
+      }
       if (shown != mac) return;
       const rows = esp.nodes.filter((n) => n.node == mac),
         node = tree.nodes.find((n) => n.mac == mac);
@@ -93,20 +101,21 @@
             );
           }),
         );
-      const mine = events.filter((e) => e.sensor.startsWith(mac + "/")).slice(0, 15);
-      $("ndEvents").replaceChildren(
-        ...(mine.length
-          ? mine.map((e) =>
-              el(
-                "li",
-                null,
-                el("b", { textContent: e.event.charAt(0).toUpperCase() + e.event.slice(1) }),
-                " " + (e.name || e.sensor) + ", " + (e.received ? hub.ago(e.received) : "") + ". ",
-                explain(e),
-              ),
-            )
-          : [el("li", { textContent: "None among the latest 64 events." })]),
-      );
+      const mine = events ? events.filter((e) => e.sensor.startsWith(mac + "/")).slice(0, 15) : null;
+      if (mine)
+        $("ndEvents").replaceChildren(
+          ...(mine.length
+            ? mine.map((e) =>
+                el(
+                  "li",
+                  null,
+                  el("b", { textContent: e.event.charAt(0).toUpperCase() + e.event.slice(1) }),
+                  " " + (e.name || e.sensor) + ", " + (e.received ? hub.ago(e.received) : "") + ". ",
+                  explain(e),
+                ),
+              )
+            : [el("li", { textContent: "None among the latest 64 events." })]),
+        );
       if (full && drawn != mac) {
         drawn = mac;
         window.sensorCharts.drawBattery(mac, $("ndBattery"));

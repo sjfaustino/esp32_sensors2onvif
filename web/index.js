@@ -117,12 +117,20 @@
     c.textContent = MODE_WORDS[mode];
     c.hidden = false;
   }
-  // The one timer a page refreshes itself with, stopped as another page shows: see repeat.
-  let pageTimer = 0;
+  // The one timer a page refreshes itself with, stopped as another page shows. Nothing is asked of the hub while the
+  // tab is hidden, which a browser left open on a page would otherwise do all day; shown again, the page refreshes at once.
+  let pageTimer = 0,
+    pageRefresh = null;
   function repeat(fn, ms) {
     clearInterval(pageTimer);
-    pageTimer = setInterval(fn, ms);
+    pageRefresh = fn;
+    pageTimer = setInterval(() => document.hidden || fn(), ms);
   }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    loadStatus();
+    if (pageRefresh) pageRefresh();
+  });
   const headRow = (names) => el("tr", null, ...names.map((h) => el("th", { textContent: h, className: "left" })));
   const sensorLink = (sensor, text) =>
     el("a", { href: "#sensor:" + sensor, textContent: text, onclick: (ev) => ev.stopPropagation() });
@@ -217,6 +225,7 @@
     s.hidden = false;
   }
   async function loadStatus() {
+    if (shown == "overview") return; // the Overview shows the status from its own, more frequent, refresh
     try {
       showStatus(await call("GET", "/api/overview"));
     } catch (e) {}
@@ -279,6 +288,7 @@
       }
     });
     clearInterval(pageTimer);
+    pageRefresh = null;
     loadStatus();
     for (const hook of window.viewHooks || []) hook(view, arg); // each page's script loads what it shows
   }
@@ -430,7 +440,7 @@
     )
       setTimeout(() => location.reload(), 1500);
   };
-  setInterval(loadStatus, 10000);
+  setInterval(() => document.hidden || loadStatus(), 10000);
   fetch("/api/info")
     .then((r) => r.json())
     .then((i) => {

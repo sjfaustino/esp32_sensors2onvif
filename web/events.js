@@ -161,7 +161,7 @@
     if (!on) walkSeen = null;
     if (on) {
       walkTick();
-      walkTimer = setInterval(walkTick, 1500);
+      walkTimer = setInterval(() => document.hidden || walkTick(), 1500);
     }
   }
   const DIRECTIONS = ["", "approaching", "moving away", "left to right", "right to left"];

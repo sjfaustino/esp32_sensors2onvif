@@ -226,7 +226,7 @@ const plan = (() => {
     if (view != "plan") return;
     loaded = false; // read again, in case another device changed it
     refresh();
-    timer = setInterval(refresh, 2000);
+    timer = setInterval(() => document.hidden || refresh(), 2000);
   });
   return { draw, stateOf };
 })();
