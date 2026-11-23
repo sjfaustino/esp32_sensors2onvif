@@ -210,17 +210,19 @@ def main():
         fail(f'FAILED: the hub came back running {now_runs}, not {version}: it refused the new firmware or went back')
 
     print(f'-- {version} runs; watching it for {args.watch:g} minutes', flush=True)
-    start, last_uptime, proved, answered = time.time(), -1, False, time.time()
+    # Timed by the hub's own uptime and by tries, not by this PC's clock, which runs on while the PC sleeps: a PC that
+    # slept through the watch must not call a firmware that proved itself meanwhile a failure.
+    limit = max(args.watch * 60, 600) + 300
+    last_uptime, silent = -1, 0
     while True:
         time.sleep(10)
-        if time.time() - start > max(args.watch * 60, 600) + 300:
-            fail(f'FAILED: after {(time.time() - start) / 60:.0f} minutes the hub has still not proved the firmware')
         try:
             d = hub.device()
             uptime = hub.status()['uptime_s']
-            answered = time.time()
+            silent = 0
         except (OSError, ValueError, KeyError):
-            if time.time() - answered > 180:  # a moment's silence over Wi-Fi is no verdict; three minutes is
+            silent += 1
+            if silent >= 18:  # a moment's silence over Wi-Fi is no verdict; 18 tries, three minutes, is
                 fail('FAILED: the hub stopped answering for 3 minutes. Check its power and its light; if the new firmware '
                      'cannot start, it goes back to the previous one by itself')
             continue
@@ -231,11 +233,10 @@ def main():
             fail(f'FAILED: the hub restarted while being watched. Last restart: {d.get("Last restart", "not known")}')
         last_uptime = uptime
         proved = d.get('Firmware check') == 'Good'
-        if proved and time.time() - start >= args.watch * 60:
+        if proved and uptime >= args.watch * 60:
             break
-        if time.time() - start > max(args.watch * 60, 600) + 300:
-            fail(f'FAILED: after {(time.time() - start) / 60:.0f} minutes the firmware check still says '
-                 f'"{d.get("Firmware check")}"')
+        if not proved and uptime > limit:
+            fail(f'FAILED: after {uptime // 60} minutes running, the firmware check still says "{d.get("Firmware check")}"')
     print(f"kept: {version}, its check Good, {uptime} s without a restart; free memory {d.get('Free memory')}, "
           f"lowest {d.get('Lowest free memory')}")
     print(health_line(hub))
