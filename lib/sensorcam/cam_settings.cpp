@@ -1,5 +1,6 @@
 // What a good value is: every saved setting in CAM_SETTINGS (cam_config.h), and the checks of addresses, names and
 // tokens the API's handlers share (cam_web_checks.h).
+#include "cam_text.h"
 #include "cam_web_server.h"
 #include "cam_number.h"
 #include <ctype.h>
@@ -148,7 +149,7 @@ const CamSetting CAM_SETTINGS[] = {
     {"net", "hooktk", 's', 0, 0, [](const std::string& v) { return v.empty() || validToken(v); }},
     {"net", "hookwd", 'i', -1, 6, nullptr},  // the weekly summary's day, 0 for Sunday; -1 for none
     {"net", "hookwm", 'i', 0, 1439, nullptr},
-    {"net", "hookln", 'i', 0, 1, nullptr},  // the messages' language: 0 English, 1 Portuguese
+    {"net", "hooklg", 's', 0, 0, camTextLanguageKnown},  // the messages' language, as "pt"; "en" for English
 };
 const size_t CAM_SETTING_COUNT = sizeof(CAM_SETTINGS) / sizeof(CAM_SETTINGS[0]);
 

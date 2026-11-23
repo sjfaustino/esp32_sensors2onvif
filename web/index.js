@@ -26,7 +26,7 @@
       const j = await r.json();
       if (!r.ok) {
         m.className = "portMsg err";
-        m.textContent = hubText(j.error);
+        m.textContent = hubSaid(j);
         return false;
       }
       if (done) m.textContent = typeof done == "function" ? done(j) : done;
@@ -359,6 +359,7 @@
       }),
   );
   // The language of the pages on this device, from the switch at the foot of the menu.
+  languageOptions($("langPick"));
   $("langPick").value = LANG;
   $("langPick").onchange = () => chooseLanguage($("langPick").value);
   // The skip link at the very top takes the keyboard past the menu to the page.

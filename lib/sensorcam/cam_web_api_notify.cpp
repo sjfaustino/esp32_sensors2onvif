@@ -33,13 +33,13 @@ void CamWeb::postWebhook(const ApiRequest& r) {
   if (w.token.empty() && r.field("forget") != "1") w.token = webhook_.settings().token;
   w.alerts = r.field("alerts") == "1";
   w.problems = r.field("problems") == "1";
-  std::string language = r.field("language");  // en or pt; left out keeps the one saved
-  w.language = language.empty() ? webhook_.settings().language : language == "pt" ? CAM_LANG_PT : CAM_LANG_EN;
+  std::string language = r.field("language");  // "en", or a language the build put in; left out keeps the one saved
+  w.language = language.empty() ? webhook_.settings().language : language;
   std::string daily = r.field("daily"), weekDay = r.field("weekday"), weekMinute = r.field("weekminute");
   HttpUrl u;
   bool urlOk = camSettingValid("net.hook", w.url) && (w.url.empty() || parseHttpUrl(w.url, u));
-  if (!language.empty() && language != "en" && language != "pt") {
-    c.out = jsonFail(400, "the language must be en or pt");
+  if (!language.empty() && !camTextLanguageKnown(language)) {
+    c.out = jsonFail(400, "the hub has no such language");
   } else if (!format.empty() && format != "json" && format != "text" && format != "ntfy" && format != "gotify") {
     c.out = jsonFail(400, "the format must be json, text, ntfy or gotify");
   } else if (!urlOk) {

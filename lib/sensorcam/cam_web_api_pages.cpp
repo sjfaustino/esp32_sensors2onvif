@@ -127,14 +127,24 @@ std::string CamWeb::treeJson() {
   return out;
 }
 
-void CamWeb::sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag) {
+void CamWeb::sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag, const char* type) {
   if (headerValue(r.headers, "if-none-match") == tag)
     r.c.out = std::string("HTTP/1.1 304 Not Modified\r\nETag: ") + tag + "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
   else
-    sendBody(r.c, HTML_TYPE, (const char*)page, len, std::string(PAGE_HEADERS) + "ETag: " + tag + "\r\n");
+    sendBody(r.c, type, (const char*)page, len, std::string(PAGE_HEADERS) + "ETag: " + tag + "\r\n");
 }
 
-void CamWeb::getSetup(const ApiRequest& r) { sendPage(r, CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, CAM_SETUP_PAGE_TAG); }
+void CamWeb::getSetup(const ApiRequest& r) { sendPage(r, CAM_SETUP_PAGE, CAM_SETUP_PAGE_SIZE, CAM_SETUP_PAGE_TAG, HTML_TYPE); }
+
+void CamWeb::getLang(const ApiRequest& r) {
+  std::string file = queryParam(r.target, "file");
+  for (size_t i = 0; i < CAM_LANG_FILE_COUNT; i++)
+    if (file == CAM_LANG_FILES[i].name) {
+      sendPage(r, CAM_LANG_FILES[i].data, CAM_LANG_FILES[i].size, CAM_LANG_FILES[i].tag, "text/javascript; charset=utf-8");
+      return;
+    }
+  r.c.out = jsonFail(404, "the hub has no such language");
+}
 
 void CamWeb::getWifiScan(const ApiRequest& r) {
   r.c.out = jsonOk(jsonObject([&](CamJson& j) {
@@ -170,7 +180,7 @@ void CamWeb::getRoot(const ApiRequest& r) {
     getFiles(r);
 }
 
-void CamWeb::getFiles(const ApiRequest& r) { sendPage(r, CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, CAM_WEB_PAGE_TAG); }
+void CamWeb::getFiles(const ApiRequest& r) { sendPage(r, CAM_WEB_PAGE, CAM_WEB_PAGE_SIZE, CAM_WEB_PAGE_TAG, HTML_TYPE); }
 
 void CamWeb::getTree(const ApiRequest& r) {
   HttpConn& c = r.c;
@@ -238,7 +248,7 @@ void CamWeb::apiFiles(const ApiRequest& r) {
     return;
   }
   if (method != "GET" && method != "DELETE" && !table_.sensorFits(path)) {  // it would be stored and then never do anything
-    c.out = jsonFail(409, "the hub already has its limit of " + std::to_string(CAM_MAX_SENSORS) + " sensors; delete one first");
+    c.out = jsonFail(409, "the hub already has its limit of {n} sensors; delete one first", {{"n", std::to_string(CAM_MAX_SENSORS)}});
     return;
   }
   if (fileRoute && method == "PUT" && (isFile || isPreview) && !roomBesideHistory(bodyLen)) {

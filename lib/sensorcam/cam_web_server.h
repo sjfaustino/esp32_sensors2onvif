@@ -126,7 +126,7 @@ class CamWeb {
   static void sendBody(HttpConn& c, const char* type, const char* data, size_t len, const std::string& extraHeaders = std::string());
   // One of the built-in pages, with its tag, or 304 when the browser has that one already, so a page opened again
   // costs the hub a few bytes, not the whole page from flash.
-  static void sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag);
+  static void sendPage(const ApiRequest& r, const uint8_t* page, size_t len, const char* tag, const char* type);
   static void reply(HttpConn& c, int status, const char* type, std::string body, const std::string& extraHeaders = std::string());
   bool sendFile(HttpConn& c, const std::string& path, const char* type);  // false when there is no such file
   void shortOfMemory(HttpConn& c);
@@ -141,6 +141,7 @@ class CamWeb {
   static const Route* routes(size_t& count);  // the table, in cam_web_api.cpp
   // One handler a route; the routes table says which and who may call it.
   void getSetup(const ApiRequest& r);
+  void getLang(const ApiRequest& r);
   void getWifiScan(const ApiRequest& r);
   void postWifi(const ApiRequest& r);
   void getFiles(const ApiRequest& r);

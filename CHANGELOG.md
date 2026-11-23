@@ -13,6 +13,14 @@ before that, a new minor version may change settings or the messages.
 
 ### The pages
 
+- Each language is a gettext file, `i18n/<code>.po`, for translators' tools such as Poedit or Weblate: one file for the
+  pages and the hub's messages, with contexts for a word said two ways and each language's own plural rule. The build
+  makes from it what the pages fetch and the firmware holds, and offers a language once its file is marked complete.
+- The pages fetch only the language they show, once, instead of carrying every language: 78 KB gzipped in English,
+  from 103. The setup page fetches only its own few phrases.
+- The hub gives a refusal that holds values as a phrase and its values, so the pages translate it whole.
+- A battery's "none" is feminine in Portuguese, as a sensor's is not.
+
 - Notifications can be in Portuguese: **Language of the messages**, under Notifications, words every alert, problem,
   daily check and weekly summary, and Home Assistant's message. The event names stay English, for automations.
 - The daily check asks for a test alert once the last is over a month old, by the time the hub keeps, not only the

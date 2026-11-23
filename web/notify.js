@@ -1,6 +1,7 @@
 // The Notifications and Home Assistant pages.
 (() => {
   const { fill, send, repeat } = window.hub;
+  languageOptions($("hookLang")); // the languages the hub's messages come in, as the pages do
   async function loadMqtt(all) {
     try {
       const m = await call("GET", "/api/mqtt");

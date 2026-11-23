@@ -131,10 +131,7 @@ std::string CamWebhookSender::pageJson() {
   return jsonObject([&](CamJson& j) {
     static const char* const FORMATS[] = {"json", "text", "ntfy", "gotify"};
     j.str("url", w.url).str("format", FORMATS[w.format]).flag("token", !w.token.empty()).flag("alerts", w.alerts).flag("problems", w.problems);
-    j.num("daily", w.dailyMinute)
-        .num("weekday", w.weeklyDay)
-        .num("weekminute", w.weeklyMinute)
-        .str("language", w.language == CAM_LANG_PT ? "pt" : "en");
+    j.num("daily", w.dailyMinute).num("weekday", w.weeklyDay).num("weekminute", w.weeklyMinute).str("language", w.language);
     j.str("last", hooks_.result()).str("lastAt", clockOk, clockOk ? iso(hooks_.resultAt()) : std::string());
     j.num("waiting", hooks_.count() + !post_.idle()).num("dropped", hooks_.dropped());
   });
@@ -280,8 +277,8 @@ void CamWebhookSender::weeklyFinish(WeeklyWork& w, uint32_t now) {
   for (int n = 1; n <= CAM_MAX_SENSORS; n++) {
     const CamSensorTable::Node& node = table_.nodeAt(n);
     if (node.used && node.daysLeft >= 0 && node.daysLeft < 30)
-      s.batteries.push_back(node.daysLeft == 1 ? camText("{0}: about {1} day", {nodeLabel(table_, n), "1"})
-                                               : camText("{0}: about {1} days", {nodeLabel(table_, n), std::to_string(node.daysLeft)}));
+      s.batteries.push_back(
+          camCount(node.daysLeft, "{0}: about {1} day", "{0}: about {1} days", {nodeLabel(table_, n), std::to_string(node.daysLeft)}));
   }
   for (int id = 1; id <= alarm_.board().count(); id++) {
     const CamSensorTable::Health& h = table_.healthOf(id);

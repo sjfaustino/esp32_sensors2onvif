@@ -66,7 +66,7 @@ $("save").onclick = async () => {
     const j = await r.json();
     if (!r.ok) {
       m.className = "err";
-      m.textContent = hubText(j.error);
+      m.textContent = hubSaid(j);
       return;
     }
     m.textContent =

@@ -67,12 +67,28 @@ sh tools/fuzz.sh              # the parsers under libFuzzer, on Linux or macOS w
 - **A new setting starts in the table.** Every setting kept in flash is one line of `CAM_SETTINGS` in
   `lib/sensorcam/cam_settings.cpp`: its key, its kind and what a good value is. The page's checks and the backup's come
   from it, and `tools/check_settings.py`, run by CI, fails until `src/hub_settings.cpp` loads and saves it.
-- **Every phrase of the pages has its Portuguese.** The English stays in the code as the key: a script's words go
-  through `tr("...")` (with `{name}` for what changes, `trCount` for a count, `trParts` for a sentence holding a field),
-  a message from the hub through `hubText`, and `web/pt.js` has the Portuguese of each. `tools/check_translations.py`,
-  run with the quick checks, fails while any phrase of the pages, or any message the hub sends them, has none, or while
-  English in a script skips `tr()`; a code or a name is marked `// not words`.
+- **Every phrase has its translation.** The English stays in the code as the key: a script's words go through
+  `tr("...")`, with `{name}` for what changes, `trc("context", "...")` for a word said differently in two places,
+  `trCount(n, one, many)` for a count, and `trParts` for a sentence holding a field; a message from the hub through
+  `hubSaid(reply)`. The hub's own messages go through `camText()` and `camCount()`, as whole sentences with `{0}`, and a
+  refusal holding values through `jsonFail(status, "the phrase with {n}", {{"n", value}})`. `tools/check_translations.py`,
+  run with the quick checks, fails while any of these has no translation in a language offered, or while English in a
+  script skips `tr()`; a code or a name is marked `// not words`.
 - **Secrets stay out of git.** Passwords go only in `include/secrets.h`, which is not kept in git.
+
+## Adding a language
+
+Each language is one gettext file, `i18n/<code>.po`, with the English as the key; `i18n/pt.po` is European Portuguese.
+To add one, copy it to the new code, such as `i18n/es.po`, and in its header set `Language`, `X-Language-Name` (the
+language's name in itself), `Plural-Forms` for its plural rule (from the gettext manual or the CLDR tables), and
+`X-Complete: no`. Translate it with Poedit, Weblate or any gettext tool. Phrases with the context `message` are the hub's
+own notifications and daily check, as one sentence each; the rest are the pages'. A phrase with plural forms needs as
+many as `Plural-Forms` says.
+
+While `X-Complete` is `no`, `python tools/check_translations.py` only counts what is left, and the language is not
+offered. Set it to `yes` when the check passes for it: the build then serves its words to the pages at `/lang?file=<code>`,
+adds it to the Language switch and to the messages' language under Notifications, and puts its messages in the firmware.
+When an English phrase changes, gettext tools mark its translation fuzzy, and the check fails until it is looked at.
 
 ## Releases
 

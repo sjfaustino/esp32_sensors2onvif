@@ -127,6 +127,14 @@ def the_page(s):
     check('and one that has it already is told so in a few bytes, not sent it again', tag and again[0] == 304 and not again[1],
           (tag, again[0]))
     check('one that has another is sent the page', api('GET', '/', headers={'If-None-Match': '"older"'})[0] == 200)
+    # Each language's words, fetched by a page that shows it, once: not carried by every page.
+    code, words = api('GET', '/lang?file=pt')
+    check("a language's words are served", code == 200 and b'LANG_WORDS' in words and 'Resumo'.encode() in words, (code, words[:80]))
+    check('kept by the browser until they change', api('GET', '/lang?file=pt', headers={'If-None-Match': common.last_etag})[0] == 304)
+    setup_code, setup_words = api('GET', '/lang?file=pt-setup')
+    check("the setup page's are a few of them", setup_code == 200 and len(setup_words) * 10 < len(words), (len(setup_words), len(words)))
+    check('a language the hub has not is refused', api('GET', '/lang?file=xx')[0] == 404)
+    check('and the page itself carries none of them', 'Resumo'.encode() not in page and b'LANG_WORDS =' not in page)
     if not DEVICE:
         # Another site pointing its own name at the hub is refused; the hub's own names are not.
         check("a page under another site\'s name is refused", raw_get('/api/info', host='hub.attacker.example', password=PASSWORD) == 421)
@@ -228,7 +236,7 @@ def every_route_needs_the_login(s):
     open_ones = [f'{m} {p}' for m, p, access in listed
                  if api('GET' if m == '*' else m, p, b'' if m != 'GET' else None, auth=False)[0] != 401]
     check(f'all {len(listed)} routes need the login', len(listed) > 40 and not open_ones, open_ones)
-    check('the setup routes are marked as such', sorted(p for _, p, a in listed if a == 'setup') == ['/', '/api/wifi', '/api/wifi/scan', '/setup'],
+    check('the setup routes are marked as such', sorted(p for _, p, a in listed if a == 'setup') == ['/', '/api/wifi', '/api/wifi/scan', '/lang', '/setup'],
           [l for l in listed if l[2] == 'setup'])
     check('the logout route is marked as such', [p for _, p, a in listed if a == 'logout'] == ['/api/logout'])
     check('logging out is refused even with the login, so the browser forgets it', api('GET', '/api/logout')[0] == 401)
@@ -383,6 +391,15 @@ def sensor_folders(s):
         for i in (1, 2, 3):
             check(f'sensor folder {node}/{i} can be added', api('POST', f'/api/mkdir?path={node}/{i}')[0] == 200)
         check('new folders become sensors without a reboot', status()['sensors'] == baseline + 3, status())
+        # At its limit, the hub says so as a phrase and its values apart, so a page can translate the phrase whole.
+        i = 4
+        while api('POST', f'/api/mkdir?path={node}/{i}')[0] == 200 and i < 64:
+            i += 1
+        code, reply = api('POST', f'/api/mkdir?path={node}/{i}')
+        said = json.loads(reply) if code == 409 else {}
+        check('at its limit of sensors, the hub refuses another, giving the phrase and its values',
+              said.get('say') == 'the hub already has its limit of {n} sensors; delete one first' and said.get('values', {}).get('n') == '32'
+              and said.get('error') == 'the hub already has its limit of 32 sensors; delete one first', (code, reply))
     finally:
         api('DELETE', f'/api/file?path={node}')
 

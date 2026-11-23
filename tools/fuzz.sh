@@ -9,7 +9,7 @@ mkdir -p "$out/corpus"
 python3 tools/fuzz_seeds.py "$out/corpus"
 # The library but its pages, which a build makes from web/ and the fuzzer has no use for: test/fuzz/pages_stub.cpp.
 # Monocypher, in C, builds as C++ here.
-sources=$(ls lib/sensorcam/*.cpp lib/s2o_proto/*.cpp lib/monocypher/*.c | grep -v cam_web_pages.cpp)
+sources=$(ls lib/sensorcam/*.cpp lib/s2o_proto/*.cpp lib/monocypher/*.c | grep -v -e cam_web_pages.cpp -e cam_text_data.cpp)
 clang++ -std=gnu++17 -g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined -DCAM_TEST_HOOKS \
   -Ilib/sensorcam -Ilib/s2o_proto -Ilib/monocypher -Iinclude -Wno-deprecated test/fuzz/fuzz_parsers.cpp test/fuzz/pages_stub.cpp $sources \
   -o "$out/fuzz_parsers"

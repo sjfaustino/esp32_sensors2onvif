@@ -80,15 +80,15 @@ enum CamHookFormat : int { CAM_HOOK_JSON = 0, CAM_HOOK_TEXT = 1, CAM_HOOK_NTFY =
 
 // Messages to a web address of the user's choosing, such as Home Assistant, Node-RED, ntfy or Gotify.
 struct CamWebhook {
-  std::string url;             // http:// with an IPv4 address; empty sends nothing
-  int format = CAM_HOOK_JSON;  // a CamHookFormat
-  std::string token;           // ntfy's access token, or Gotify's application token; empty for none
-  bool alerts = true;          // sensor alerts
-  bool problems = true;        // silent nodes, low batteries and weak signals
-  int dailyMinute = -1;        // the daily check, in minutes after local midnight; -1 sends none
-  int weeklyDay = -1;          // the weekly summary's day, 0 for Sunday to 6; -1 sends none
-  int weeklyMinute = 9 * 60;   // and its time, in minutes after local midnight
-  int language = 0;            // of the messages: a CamLanguage (cam_text.h), English or Portuguese
+  std::string url;              // http:// with an IPv4 address; empty sends nothing
+  int format = CAM_HOOK_JSON;   // a CamHookFormat
+  std::string token;            // ntfy's access token, or Gotify's application token; empty for none
+  bool alerts = true;           // sensor alerts
+  bool problems = true;         // silent nodes, low batteries and weak signals
+  int dailyMinute = -1;         // the daily check, in minutes after local midnight; -1 sends none
+  int weeklyDay = -1;           // the weekly summary's day, 0 for Sunday to 6; -1 sends none
+  int weeklyMinute = 9 * 60;    // and its time, in minutes after local midnight
+  std::string language = "en";  // of the messages: "en", or a language the build put in (cam_text.h)
 };
 
 // An MQTT broker, through which Home Assistant finds the hub and its sensors by itself.

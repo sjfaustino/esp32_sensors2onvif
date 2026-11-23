@@ -39,7 +39,7 @@ def main():
     os.makedirs(os.path.join(OUT, 'report'), exist_ok=True)
     summary = os.path.join(OUT, 'summary.json')
     if run([sys.executable, '-m', 'gcovr', '--root', '.', '--object-directory', os.path.join(OUT, 'build'),
-            '--filter', 'lib/sensorcam/', '--filter', 'lib/s2o_proto/', '--exclude', '.*cam_web_pages\\.cpp',
+            '--filter', 'lib/sensorcam/', '--filter', 'lib/s2o_proto/', '--exclude', '.*cam_web_pages\\.cpp', '--exclude', '.*cam_text_data\\.cpp',
             '--gcov-ignore-errors', 'no_working_dir_found', '--merge-mode-functions', 'separate',
             '--html-details', os.path.join(OUT, 'report', 'index.html'), '--json-summary', summary,
             '--txt-summary']):

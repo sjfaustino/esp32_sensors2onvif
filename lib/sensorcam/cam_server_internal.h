@@ -55,6 +55,22 @@ inline std::string httpHead(int status, const char* type, size_t length, const s
 inline std::string httpResponse(int status, const char* type, const std::string& body) { return httpHead(status, type, body.size()) + body; }
 inline std::string jsonOk(const std::string& body) { return httpResponse(200, JSON_TYPE, body); }
 inline std::string jsonFail(int status, const std::string& message) { return httpResponse(status, JSON_TYPE, camJsonError(message)); }
+// A refusal whose message holds values: "error" has them filled in, in English, and "say" and "values" give the phrase and
+// them apart, so a page translates the phrase whole and puts the values in, in its own language's order.
+inline std::string jsonFail(int status, const std::string& say, std::initializer_list<std::pair<const char*, std::string>> values) {
+  std::string filled = say;
+  for (const auto& v : values) {
+    std::string mark = std::string("{") + v.first + "}";
+    for (size_t at = filled.find(mark); at != std::string::npos; at = filled.find(mark, at + v.second.size()))
+      filled.replace(at, mark.size(), v.second);
+  }
+  std::string body;
+  CamJson j(body);
+  j.object().flag("ok", false).str("error", filled).str("say", say).object("values");
+  for (const auto& v : values) j.str(v.first, v.second);
+  j.finish();
+  return httpResponse(status, JSON_TYPE, body);
+}
 const uint32_t CAM_WALK_TEST_S = 600;
 inline std::string saved(bool ok, const char* failure) { return ok ? jsonOk(JSON_OK) : jsonFail(507, failure); }
 

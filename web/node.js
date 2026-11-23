@@ -9,7 +9,7 @@
     4: "HC-SR501",
     5: "LD2410",
   };
-  const CELLS = { 0: tr("none"), 1: tr("lithium-ion"), 2: "LiFePO4" };
+  const CELLS = { 0: trc("battery", "none"), 1: tr("lithium-ion"), 2: "LiFePO4" };
   const DETECTED = [0, 3, 10, 13]; // its alerts, whether sent to the NVR or only logged: each shows it saw someone
   let shown = "",
     drawn = "",

@@ -96,7 +96,7 @@ static void the_daily_check_says_what_matters() {
 // Under Notifications the messages can be in Portuguese: whole sentences, each in its own word order, with the names,
 // numbers and times in them, and the events' names too.
 static void messages_can_be_in_portuguese() {
-  camSetTextLanguage(CAM_LANG_PT);
+  camSetTextLanguage("pt");
   CamDailyCheck d;
   d.hub = "central";
   d.mode = "home";
@@ -120,25 +120,26 @@ static void messages_can_be_in_portuguese() {
       "bloquear o rádio, como um bloqueador",
       camEventMessage(CAM_EVENT_JAMMING, "central", "3 nodes", CAM_AGE_UNKNOWN, false).c_str());
   TEST_ASSERT_EQUAL_STRING("5 dias 2 h", camDurationText(5 * 86400 + 2 * 3600).c_str());
-  camSetTextLanguage(CAM_LANG_EN);
+  camSetTextLanguage("en");
   TEST_ASSERT_EQUAL_STRING("Gate (X/1): alert", camEventMessage(CAM_EVENT_REPORT, "Gate (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());
 }
 
-// Each phrase has the same {n} in both languages, and each event's name is in the table, so no message is half English.
-static void each_message_phrase_has_its_portuguese() {
-  for (size_t i = 0; i < camPhraseCount(); i++) {
-    std::string en = camPhraseEnglish(i), pt = camPhrasePortuguese(i);
-    for (char n = '0'; n <= '9'; n++) {
-      std::string mark = std::string("{") + n + "}";
-      TEST_ASSERT_EQUAL_MESSAGE(en.find(mark) != std::string::npos, pt.find(mark) != std::string::npos, en.c_str());
-    }
-  }
-  camSetTextLanguage(CAM_LANG_PT);
+// Each language the build put in, from i18n/*.po: every event's name is in it, so no message is half English, and a
+// language the hub does not have is English. tools/check_translations.py checks the phrases' {n} and plural forms.
+static void each_language_has_every_event_name() {
+  TEST_ASSERT_TRUE(CAM_LANGUAGE_COUNT >= 1);
+  TEST_ASSERT_TRUE(camTextLanguageKnown("en") && camTextLanguageKnown("pt") && !camTextLanguageKnown("xx"));
   std::string missing;
-  for (const char* name : camEventNames())
-    if (strcmp(camText(name), name) == 0) missing += std::string(name) + "; ";
-  camSetTextLanguage(CAM_LANG_EN);  // before the check, so a failure leaves the other tests in English
+  for (size_t i = 0; i < CAM_LANGUAGE_COUNT; i++) {
+    camSetTextLanguage(CAM_LANGUAGES[i].code);
+    for (const char* name : camEventNames())
+      if (strcmp(camText(name), name) == 0) missing += std::string(CAM_LANGUAGES[i].code) + ": " + name + "; ";
+  }
+  camSetTextLanguage("xx");
+  bool english = camTextLanguage() == "en";
+  camSetTextLanguage("en");  // before the checks, so a failure leaves the other tests in English
   TEST_ASSERT_EQUAL_STRING("", missing.c_str());
+  TEST_ASSERT_TRUE(english);
 }
 
 static void the_weekly_summary_says_what_matters() {
@@ -226,7 +227,7 @@ void runTextTests() {
   RUN_TEST(long_names_are_cut_between_characters);
   RUN_TEST(the_daily_check_says_what_matters);
   RUN_TEST(messages_can_be_in_portuguese);
-  RUN_TEST(each_message_phrase_has_its_portuguese);
+  RUN_TEST(each_language_has_every_event_name);
   RUN_TEST(the_weekly_summary_says_what_matters);
   RUN_TEST(every_event_kind_has_its_own_name);
 }

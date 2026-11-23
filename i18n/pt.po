@@ -1,0 +1,3729 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: pt_PT\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Language-Name: Português\n"
+"X-Complete: yes\n"
+
+msgid ", from the node project, one for each kind of chip. Each node of that chip running another version fetches it by itself after its next report, unless it is saving its battery; one whose update fails goes back to what it had, and does not try that file again. A node watches nothing while it updates, for a minute or so, and stops to report if its sensor fires."
+msgstr ", do projeto do nó, um para cada tipo de chip. Cada nó desse chip com outra versão vai buscá-lo sozinho depois da sua próxima comunicação, a não ser que esteja a poupar a bateria; um cuja atualização falhe volta ao que tinha e não tenta esse ficheiro outra vez. Um nó não vigia nada enquanto se atualiza, durante cerca de um minuto, e para para comunicar se o seu sensor disparar."
+
+msgid ". The hub takes only firmware signed for it, and keeps what it has if the file is anything else. The video stops until it has restarted, about a minute."
+msgstr ". A central só aceita firmware assinado para ela, e mantém o que tem se o ficheiro for outra coisa. O vídeo para até ela reiniciar, cerca de um minuto."
+
+msgid "8 characters or more. A few words are easier to keep than a jumble of symbols. Restoring a backup asks for the one it was sealed with."
+msgstr "8 caracteres ou mais. Algumas palavras guardam-se melhor do que uma mistura de símbolos. Restaurar uma cópia pede a frase com que foi selada."
+
+msgid "8 to 63 characters"
+msgstr "8 a 63 caracteres"
+
+msgid "A backup is sealed with a passphrase you choose, so the file holds no password or key anyone can read. Keep the passphrase apart from the file: without it, nobody can open the backup, you included."
+msgstr "Uma cópia de segurança é selada com uma frase-passe à sua escolha, por isso o ficheiro não tem nenhuma palavra-passe ou chave que alguém consiga ler. Guarde a frase-passe longe do ficheiro: sem ela, ninguém consegue abrir a cópia, nem o próprio."
+
+msgid "A disarm from Home Assistant lasts"
+msgstr "Um desarme feito no Home Assistant dura"
+
+msgid "A new ESP-NOW key, pairing key, sensor token and snapshot address, then a restart. Every node must be set up or paired again, HTTP sensors need the new token, and ONVIF clients the new snapshot address. Use it if a key may have got out."
+msgstr "Uma nova chave ESP-NOW, chave de emparelhamento, token dos sensores e endereço de imagens, e depois um reinício. Todos os nós têm de ser configurados ou emparelhados outra vez, os sensores HTTP precisam do novo token e os clientes ONVIF do novo endereço de imagens. Use-o se uma chave possa ter sido divulgada."
+
+msgid "A node that supports pairing finds the hub by itself and gets a key of its own. Allow pairing, start the node in pairing mode, check that the fingerprint shown here matches the one on the node's label, and approve it. Its sensors are added for you."
+msgstr "Um nó que suporte emparelhamento encontra a central sozinho e recebe uma chave própria. Permita o emparelhamento, ligue o nó em modo de emparelhamento, confirme que a impressão digital mostrada aqui é igual à da etiqueta do nó, e aprove-o. Os seus sensores são adicionados automaticamente."
+
+msgid "A node's new"
+msgstr "O novo firmware de um nó,"
+
+msgid "A picture of the property with each sensor where it is: red while it fires, amber with a problem, grey until it is first heard; or coloured by how well the hub hears each one, to see where the signal is weak. Any picture will do, such as a photo of a drawing or a screenshot of a map; it is made small enough for the hub. The walk test shows it too."
+msgstr "Uma imagem da propriedade com cada sensor no seu lugar: vermelho enquanto dispara, âmbar com um problema, cinzento até ser ouvido pela primeira vez; ou colorido pela qualidade com que a central ouve cada um, para ver onde o sinal é fraco. Serve qualquer imagem, como uma fotografia de um desenho ou uma captura de um mapa; é reduzida para caber na central. O teste de passagem também a mostra."
+
+msgid "A sensor on the plan"
+msgstr "Um sensor na planta"
+
+msgid "A small file of the settings and each paired node's key. Pictures are not included."
+msgstr "Um ficheiro pequeno com as definições e a chave de cada nó emparelhado. As imagens não estão incluídas."
+
+msgid "Add a node"
+msgstr "Adicionar um nó"
+
+msgid "Add a sensor"
+msgstr "Adicionar um sensor"
+
+msgid "Add node"
+msgstr "Adicionar nó"
+
+msgid "Address"
+msgstr "Endereço"
+
+msgid "Addresses"
+msgstr "Endereços"
+
+msgid "Again"
+msgstr "Outra vez"
+
+msgid "Again, to download"
+msgstr "Outra vez, para descarregar"
+
+msgid "Alarm"
+msgstr "Alarme"
+
+msgid "Alarm hub"
+msgstr "Central de alarme"
+
+msgid "Alert settings and pictures"
+msgstr "Definições de alerta e imagens"
+
+msgid "Alerts"
+msgstr "Alertas"
+
+msgid "All clear picture"
+msgstr "Imagem de tudo calmo"
+
+msgid "Allow new nodes to pair for 2 minutes"
+msgstr "Permitir que novos nós emparelhem durante 2 minutos"
+
+msgid "Also the NVR's login for this camera. A new port or name restarts the hub; a new password or other names apply at once."
+msgstr "É também o acesso do NVR a esta câmara. Uma nova porta ou nome reinicia a central; uma nova palavra-passe ou outros nomes aplicam-se de imediato."
+
+msgid "An ntfy or Gotify server on your network passes each message on to your phone; a Home Assistant webhook or Node-RED can act on it. Use http:// and an IP address: https and names are not supported, so a service on the internet needs a server on your network in between."
+msgstr "Um servidor ntfy ou Gotify na sua rede passa cada mensagem ao seu telemóvel; um webhook do Home Assistant ou o Node-RED podem agir sobre ela. Use http:// e um endereço IP: https e nomes não são suportados, por isso um serviço na internet precisa de um servidor na sua rede pelo meio."
+
+msgid "Arm away"
+msgstr "Armar ausente"
+
+msgid "Arm home"
+msgstr "Armar em casa"
+
+msgid "Backup and restore"
+msgstr "Cópia de segurança e restauro"
+
+msgid "Backup network"
+msgstr "Rede de reserva"
+
+msgid "Battery"
+msgstr "Bateria"
+
+msgid "Broker address"
+msgstr "Endereço do broker"
+
+msgid "Changes not saved"
+msgstr "Alterações por guardar"
+
+msgid "Choose a password for the hub."
+msgstr "Escolha uma palavra-passe para a central."
+
+msgid "Choose a picture"
+msgstr "Escolher uma imagem"
+
+msgid "Connection"
+msgstr "Ligação"
+
+msgid "Connections"
+msgstr "Ligações"
+
+msgid "Create missing thumbnails"
+msgstr "Criar as miniaturas em falta"
+
+msgid "Current time"
+msgstr "Hora atual"
+
+msgid "DNS server"
+msgstr "Servidor DNS"
+
+msgid "Daily check at"
+msgstr "Verificação diária às"
+
+msgid "Danger zone"
+msgstr "Zona de perigo"
+
+msgid "Date and time"
+msgstr "Data e hora"
+
+msgid "Day"
+msgstr "Dia"
+
+msgid "Daylight saving"
+msgstr "Hora de verão"
+
+msgid "Delete the plan"
+msgstr "Apagar a planta"
+
+msgid "Device info"
+msgstr "Informação do aparelho"
+
+msgid "Disarm"
+msgstr "Desarmar"
+
+msgid "Discard"
+msgstr "Descartar"
+
+msgid "Download backup"
+msgstr "Descarregar cópia"
+
+msgid "Download full backup"
+msgstr "Descarregar cópia completa"
+
+msgid "Download the full history (CSV)"
+msgstr "Descarregar o histórico completo (CSV)"
+
+msgid "Drop a full backup"
+msgstr "Arraste uma cópia completa"
+
+msgid "Drop a node's"
+msgstr "Arraste o firmware de um nó,"
+
+msgid "Drop a settings backup here, or"
+msgstr "Arraste para aqui uma cópia das definições, ou"
+
+msgid "Drop the firmware"
+msgstr "Arraste o firmware"
+
+msgid "Each step is ticked as the hub sees it done."
+msgstr "Cada passo fica marcado quando a central o vê feito."
+
+msgid "Empty for an open or already saved network"
+msgstr "Vazio para uma rede aberta ou já guardada"
+
+msgid "Enabled"
+msgstr "Ativo"
+
+msgid "Erases the saved Wi-Fi networks, ports, name, hub password, fixed address, time, notification and MQTT settings, and arms the hub. Pictures, sensor nodes, and the ESP-NOW key and token that sensors use, are kept."
+msgstr "Apaga as redes Wi-Fi guardadas, as portas, o nome, a palavra-passe da central, o endereço fixo, a hora e as definições de notificações e MQTT, e arma a central. As imagens, os nós sensores, e a chave ESP-NOW e o token que os sensores usam, são mantidos."
+
+msgid "Europe"
+msgstr "Europa"
+
+msgid "Events"
+msgstr "Eventos"
+
+msgid "Every day"
+msgstr "Todos os dias"
+
+msgid "Firmware update"
+msgstr "Atualização do firmware"
+
+msgid "Floor plan"
+msgstr "Planta"
+
+msgid "Forget the saved token"
+msgstr "Esquecer o token guardado"
+
+msgid "Friday"
+msgstr "Sexta-feira"
+
+msgid "Full backup"
+msgstr "Cópia completa"
+
+msgid "Gateway"
+msgstr "Gateway"
+
+msgid "Hide for now"
+msgstr "Esconder por agora"
+
+msgid "Home Assistant, Node-RED or other (JSON)"
+msgstr "Home Assistant, Node-RED ou outro (JSON)"
+
+msgid "How long a disarm lasts"
+msgstr "Quanto tempo dura um desarme"
+
+msgid "Hub Wi-Fi setup"
+msgstr "Configuração Wi-Fi da central"
+
+msgid "Hub password"
+msgstr "Palavra-passe da central"
+
+msgid "IP address"
+msgstr "Endereço IP"
+
+msgid "IP mode"
+msgstr "Modo IP"
+
+msgid "Its first hour"
+msgstr "A sua primeira hora"
+
+msgid "Its latest events"
+msgstr "Os seus últimos eventos"
+
+msgid "Its sensors, and when they fired over the last 7 days"
+msgstr "Os seus sensores, e quando dispararam nos últimos 7 dias"
+
+msgid "Leave it empty to turn MQTT off."
+msgstr "Deixe vazio para desligar o MQTT."
+
+msgid "Left blank, the saved one is kept. Give the broker a login: without one, the hub takes no disarm from Home Assistant, as anything on the network could send it. The connection is not encrypted, as with the hub's other connections."
+msgstr "Em branco, mantém-se a guardada. Dê um acesso ao broker: sem ele, a central não aceita desarmes do Home Assistant, porque qualquer coisa na rede os poderia enviar. A ligação não é cifrada, como as outras ligações da central."
+
+msgid "Live video"
+msgstr "Vídeo em direto"
+
+msgid "Log out"
+msgstr "Sair"
+
+msgid "Looking for networks..."
+msgstr "À procura de redes..."
+
+msgid "MAC address"
+msgstr "Endereço MAC"
+
+msgid "MAC address of a node to add"
+msgstr "Endereço MAC de um nó a adicionar"
+
+msgid "MQTT broker"
+msgstr "Broker MQTT"
+
+msgid "Main network"
+msgstr "Rede principal"
+
+msgid "Maintenance"
+msgstr "Manutenção"
+
+msgid "Make new keys"
+msgstr "Criar novas chaves"
+
+msgid "Manual"
+msgstr "Manual"
+
+msgid "Monday"
+msgstr "Segunda-feira"
+
+msgid "NTP server"
+msgstr "Servidor NTP"
+
+msgid "Name"
+msgstr "Nome"
+
+msgid "Network"
+msgstr "Rede"
+
+msgid "No NVR address is set, so the hub cannot tell whether your NVR recorded an alert: any device subscribed to its events counts. Enter it under Recording > NVR."
+msgstr "Não há endereço do NVR, por isso a central não sabe se o seu NVR gravou um alerta: conta qualquer aparelho inscrito nos seus eventos. Indique-o em Gravação > NVR."
+
+msgid "Node"
+msgstr "Nó"
+
+msgid "Node firmware"
+msgstr "Firmware dos nós"
+
+msgid "Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often"
+msgstr "Problemas dos nós: em silêncio, bateria fraca, sinal fraco, possível interferência, um sensor a disparar muitas vezes"
+
+msgid "Nodes and pairing"
+msgstr "Nós e emparelhamento"
+
+msgid "None"
+msgstr "Nenhum"
+
+msgid "Notifications"
+msgstr "Notificações"
+
+msgid "ONVIF port"
+msgstr "Porta ONVIF"
+
+msgid "One message a day at this local time: the nodes heard, any problems, the day's alerts and whether they reached the NVR, and your last test alert, with a reminder to send one when the last is over a month old. If it stops arriving, the hub is off or cannot reach the address. Leave it empty for none; it needs the hub's clock."
+msgstr "Uma mensagem por dia a esta hora local: os nós ouvidos, os problemas, os alertas do dia e se chegaram ao NVR, e o seu último alerta de teste, com um lembrete para enviar um quando o último tiver mais de um mês. Se deixar de chegar, a central está desligada ou não consegue chegar ao endereço. Deixe vazio para nenhuma; precisa do relógio da central."
+
+msgid "Open this on your phone and walk the property. Every sensor that sees you shows here, with how strong its signal is and how long the hub took to hear it, and each node's light blinks green, yellow or red for its signal. Sensors still waiting at the end may not cover where you walked. The walk test lasts 10 minutes; alerts still reach the NVR meanwhile."
+msgstr "Abra isto no telemóvel e percorra a propriedade. Cada sensor que o vir aparece aqui, com a força do seu sinal e o tempo que a central levou a ouvi-lo, e a luz de cada nó pisca a verde, amarelo ou vermelho conforme o sinal. Os sensores ainda à espera no fim podem não cobrir por onde passou. O teste de passagem dura 10 minutos; entretanto os alertas continuam a chegar ao NVR."
+
+msgid "Or type its name"
+msgstr "Ou escreva o nome"
+
+msgid "Other (plain text)"
+msgstr "Outro (texto simples)"
+
+msgid "Other names"
+msgstr "Outros nomes"
+
+msgid "Overview"
+msgstr "Resumo"
+
+msgid "Pages"
+msgstr "Páginas"
+
+msgid "Pairing"
+msgstr "Emparelhamento"
+
+msgid "Passphrase"
+msgstr "Frase-passe"
+
+msgid "Password"
+msgstr "Palavra-passe"
+
+msgid "Password (user admin)"
+msgstr "Palavra-passe (utilizador admin)"
+
+msgid "Port"
+msgstr "Porta"
+
+msgid "Put on the hub"
+msgstr "Enviar para a central"
+
+msgid "RTSP port"
+msgstr "Porta RTSP"
+
+msgid "Raise an NVR alarm when a node goes silent or its battery runs low, or several nodes stop reporting together"
+msgstr "Dar um alarme no NVR quando um nó fica em silêncio ou com a bateria fraca, ou vários nós deixam de comunicar ao mesmo tempo"
+
+msgid "Read from this PC"
+msgstr "Ler deste PC"
+
+msgid "Ready to protect?"
+msgstr "Pronta para proteger?"
+
+msgid "Recording"
+msgstr "Gravação"
+
+msgid "Reset settings"
+msgstr "Repor definições"
+
+msgid "Reset the settings"
+msgstr "Repor as definições"
+
+msgid "Restart the hub"
+msgstr "Reiniciar a central"
+
+msgid "Restore full backup"
+msgstr "Restaurar cópia completa"
+
+msgid "Restore settings"
+msgstr "Restaurar definições"
+
+msgid "Right now"
+msgstr "Agora mesmo"
+
+msgid "Saturday"
+msgstr "Sábado"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Scheduled restart"
+msgstr "Reinício programado"
+
+msgid "Send a test"
+msgstr "Enviar um teste"
+
+msgid "Send a test alert"
+msgstr "Enviar um alerta de teste"
+
+msgid "Send the weekly summary now"
+msgstr "Enviar já o resumo semanal"
+
+msgid "Send to"
+msgstr "Enviar para"
+
+msgid "Sensor"
+msgstr "Sensor"
+
+msgid "Sensor nodes"
+msgstr "Nós sensores"
+
+msgid "Sensors"
+msgstr "Sensores"
+
+msgid "Set time by"
+msgstr "Acertar a hora por"
+
+msgid "Setting up"
+msgstr "Configuração"
+
+msgid "Settings"
+msgstr "Definições"
+
+msgid "Show"
+msgstr "Mostrar"
+
+msgid "Show how well the hub hears each one"
+msgstr "Mostrar como a central ouve cada um"
+
+msgid "Show more"
+msgstr "Mostrar mais"
+
+msgid "Show the file names, as the file manager and downloads use them"
+msgstr "Mostrar os nomes dos ficheiros, como os usam o gestor de ficheiros e as transferências"
+
+msgid "Show the steps one at a time"
+msgstr "Mostrar os passos um de cada vez"
+
+msgid "Show what each sensor is doing"
+msgstr "Mostrar o que cada sensor está a fazer"
+
+msgid "Skip to the page"
+msgstr "Saltar para a página"
+
+msgid "Start on every node"
+msgstr "Iniciar em todos os nós"
+
+msgid "Static"
+msgstr "Fixo"
+
+msgid "Status"
+msgstr "Estado"
+
+msgid "Stop"
+msgstr "Parar"
+
+msgid "Subnet mask"
+msgstr "Máscara de sub-rede"
+
+msgid "Sunday"
+msgstr "Domingo"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Take it off the plan"
+msgstr "Tirar da planta"
+
+msgid "Test everything"
+msgstr "Testar tudo"
+
+msgid "The NVR"
+msgstr "O NVR"
+
+msgid "The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again."
+msgstr "O NVR recebe sempre UTC, por isso estas definições só mudam a hora mostrada aqui e o reinício programado. Depois de um corte de energia, uma hora manual é lida uma vez do servidor NTP se a central lhe chegar; caso contrário, acerte-a de novo."
+
+msgid "The NVR's channel for the hub uses this port. A new port restarts the hub, and the NVR loses the camera until its channel has the new one."
+msgstr "O canal do NVR para a central usa esta porta. Uma nova porta reinicia a central, e o NVR perde a câmara até o canal ter a nova."
+
+msgid "The hub and each sensor appear in Home Assistant by themselves, through an MQTT broker: in Home Assistant, install the Mosquitto broker add-on and the MQTT integration, then enter the broker here. Home Assistant shows the hub as unavailable as soon as it loses its connection, so an automation can warn when the hub is unplugged or kept off the network."
+msgstr "A central e cada sensor aparecem sozinhos no Home Assistant, através de um broker MQTT: no Home Assistant, instale o extra Mosquitto broker e a integração MQTT, e depois indique aqui o broker. O Home Assistant mostra a central como indisponível assim que perde a ligação, por isso uma automação pode avisar quando a central é desligada ou afastada da rede."
+
+msgid "The hub answers only to its address, its name, and these names, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser."
+msgstr "A central só responde ao seu endereço, ao seu nome e a estes nomes, como um que o router lhe dê, separados por vírgulas. Isso impede um site de lhe chegar através do seu navegador."
+
+msgid "The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page."
+msgstr "A central está desarmada: os alertas ficam registados mas não são enviados ao NVR, por isso nada é gravado. Arme-a na página Resumo."
+
+msgid "The hub password again"
+msgstr "A palavra-passe da central outra vez"
+
+msgid "The hub's clock"
+msgstr "O relógio da central"
+
+msgid "The hub's pages"
+msgstr "As páginas da central"
+
+msgid "The node being set up"
+msgstr "O nó em configuração"
+
+msgid "The picture the hub is sending"
+msgstr "A imagem que a central está a enviar"
+
+msgid "The restart waits while an alert is on, and is skipped until the next time if the alert lasts over 30 minutes."
+msgstr "O reinício espera enquanto houver um alerta, e fica para a vez seguinte se o alerta durar mais de 30 minutos."
+
+msgid "The sensor nodes talk to the hub over ESP-NOW, a radio link of their own beside Wi-Fi."
+msgstr "Os nós sensores falam com a central por ESP-NOW, uma ligação de rádio própria ao lado do Wi-Fi."
+
+msgid "The settings and node keys, sealed, with every picture, and each sensor's name and alert settings, in one file made by this browser. Restoring adds the sensors and pictures in it, replacing any with the same name, then replaces the settings and restarts the hub."
+msgstr "As definições e as chaves dos nós, seladas, com todas as imagens, e o nome e as definições de alerta de cada sensor, num só ficheiro feito por este navegador. Restaurar acrescenta os sensores e as imagens que tiver, substituindo os que tenham o mesmo nome, depois substitui as definições e reinicia a central."
+
+msgid "The video stops, and the NVR records nothing, until it has started again."
+msgstr "O vídeo para, e o NVR não grava nada, até ela arrancar de novo."
+
+msgid "The video's port, for the NVR and for viewers such as VLC. A new port restarts the hub."
+msgstr "A porta do vídeo, para o NVR e para leitores como o VLC. Uma nova porta reinicia a central."
+
+msgid "The week's alerts and whether they reached the NVR, the sensor that fired most, the problems, batteries forecast to run out within a month, and the last test alert."
+msgstr "Os alertas da semana e se chegaram ao NVR, o sensor que mais disparou, os problemas, as baterias que devem acabar dentro de um mês, e o último alerta de teste."
+
+msgid "This hub has no password yet. Choose one: it guards the hub's page, the NVR's login and this setup network."
+msgstr "Esta central ainda não tem palavra-passe. Escolha uma: protege a página da central, o acesso do NVR e esta rede de configuração."
+
+msgid "Thursday"
+msgstr "Quinta-feira"
+
+msgid "Time"
+msgstr "Hora"
+
+msgid "Timezone"
+msgstr "Fuso horário"
+
+msgid "Token"
+msgstr "Token"
+
+msgid "Tuesday"
+msgstr "Terça-feira"
+
+msgid "United States"
+msgstr "Estados Unidos"
+
+msgid "Unknown senders"
+msgstr "Remetentes desconhecidos"
+
+msgid "Update firmware"
+msgstr "Atualizar o firmware"
+
+msgid "Use as"
+msgstr "Usar como"
+
+msgid "Use the"
+msgstr "Use o"
+
+msgid "User"
+msgstr "Utilizador"
+
+msgid "Walk test"
+msgstr "Teste de passagem"
+
+msgid "Wednesday"
+msgstr "Quarta-feira"
+
+msgid "Weekly summary"
+msgstr "Resumo semanal"
+
+msgid "What still needs doing before the hub can be trusted. This list goes once everything is done, and comes back if something slips."
+msgstr "O que ainda falta antes de se poder confiar na central. Esta lista desaparece quando tudo estiver feito, e volta se algo falhar."
+
+msgid "What the spots show"
+msgstr "O que os pontos mostram"
+
+msgid "What to send"
+msgstr "O que enviar"
+
+msgid "When it fired, the last 7 days"
+msgstr "Quando disparou, nos últimos 7 dias"
+
+msgid "Where the hub is on your network. DHCP lets the router choose; a fixed address stays the same, so the NVR always finds the hub."
+msgstr "Onde está a central na sua rede. Com DHCP escolhe o router; um endereço fixo mantém-se, para o NVR encontrar sempre a central."
+
+msgid "Where to send"
+msgstr "Para onde enviar"
+
+msgid "Which events"
+msgstr "Que eventos"
+
+msgid "Which sensor"
+msgstr "Que sensor"
+
+msgid "Wi-Fi settings"
+msgstr "Definições de Wi-Fi"
+
+msgid "With it, the hub checks that the NVR listens and records each alert, and plays again any alert it missed."
+msgstr "Com ele, a central confirma que o NVR ouve e grava cada alerta, e repete qualquer alerta que tenha perdido."
+
+msgid "Without one, anyone on this network can disarm it, change it and watch its video. It is also the NVR's login for this camera, so enter it on the NVR's channel too. The hub restarts to use it."
+msgstr "Sem ela, qualquer pessoa nesta rede pode desarmá-la, alterá-la e ver o seu vídeo. É também o acesso do NVR a esta câmara, por isso indique-a também no canal do NVR. A central reinicia para a usar."
+
+msgid "a node, or a device that calls a web address"
+msgstr "um nó, ou um aparelho que chama um endereço web"
+
+msgid "a test alert along the whole path, checked step by step"
+msgstr "um alerta de teste por todo o caminho, verificado passo a passo"
+
+msgid "alerts"
+msgstr "alertas"
+
+msgid "at"
+msgstr "às"
+
+msgid "choose it"
+msgstr "escolha-o"
+
+msgid "every event"
+msgstr "todos os eventos"
+
+msgid "every sensor and the hub"
+msgstr "todos os sensores e a central"
+
+msgid "for this board from a release, the one without"
+msgstr "desta placa, de uma versão publicada, o que não tem"
+
+msgid "here, or"
+msgstr "para aqui, ou"
+
+msgid "problems"
+msgstr "problemas"
+
+msgid "the hub's own"
+msgstr "os da própria central"
+
+msgid "Gotify needs the application's token"
+msgstr "O Gotify precisa do token da aplicação"
+
+msgid "NVR listening again"
+msgstr "NVR a ouvir outra vez"
+
+msgid "NVR not listening"
+msgstr "NVR não está a ouvir"
+
+msgid "a backup is sealed with a key from the page; reload the page and try again"
+msgstr "uma cópia é selada com uma chave feita pela página; recarregue a página e tente outra vez"
+
+msgid "a disarm lasts 0 to 10080 minutes"
+msgstr "um desarme dura de 0 a 10080 minutos"
+
+msgid "alert in quiet hours"
+msgstr "alerta em horas de silêncio"
+
+msgid "alert not delivered"
+msgstr "alerta não entregue"
+
+msgid "alert while armed home"
+msgstr "alerta com a central armada em casa"
+
+msgid "alert while disarmed"
+msgstr "alerta com a central desarmada"
+
+msgid "armed"
+msgstr "armada"
+
+msgid "armed home"
+msgstr "armada em casa"
+
+msgid "battery running out"
+msgstr "bateria a acabar"
+
+msgid "check the IP address"
+msgstr "verifique o endereço IP"
+
+msgid "check the address: the gateway must be on the same network, and the address cannot be the network or broadcast address"
+msgstr "verifique o endereço: o gateway tem de estar na mesma rede, e o endereço não pode ser o da rede nem o de difusão"
+
+msgid "check the day and the time"
+msgstr "verifique o dia e a hora"
+
+msgid "check the timezone, the NTP server name and the date and time"
+msgstr "verifique o fuso horário, o nome do servidor NTP e a data e hora"
+
+msgid "choose a hub password of 8 to 63 characters"
+msgstr "escolha uma palavra-passe da central com 8 a 63 caracteres"
+
+msgid "could not open that backup: the passphrase is wrong, or the file is damaged"
+msgstr "não foi possível abrir essa cópia: a frase-passe está errada, ou o ficheiro está danificado"
+
+msgid "could not restore that file: it is damaged"
+msgstr "não foi possível restaurar esse ficheiro: está danificado"
+
+msgid "could not restore that file: it is damaged, or the hub's settings storage is full"
+msgstr "não foi possível restaurar esse ficheiro: está danificado, ou o espaço de definições da central está cheio"
+
+msgid "could not save the file; storage may be full"
+msgstr "não foi possível guardar o ficheiro; o armazenamento pode estar cheio"
+
+msgid "could not save the hub password"
+msgstr "não foi possível guardar a palavra-passe da central"
+
+msgid "could not save the settings"
+msgstr "não foi possível guardar as definições"
+
+msgid "days must be 1 to 3650"
+msgstr "os dias têm de ser de 1 a 3650"
+
+msgid "delayed alert not delivered"
+msgstr "alerta atrasado não entregue"
+
+msgid "disarmed"
+msgstr "desarmada"
+
+msgid "enter an address like http://192.168.1.10:8123/path, with an IP address, not a name, and http, not https"
+msgstr "indique um endereço como http://192.168.1.10:8123/caminho, com um endereço IP, não um nome, e http, não https"
+
+msgid "enter the broker's IP address, such as 192.168.1.10; names are not supported"
+msgstr "indique o endereço IP do broker, como 192.168.1.10; os nomes não são suportados"
+
+msgid "file is larger than 32 KB"
+msgstr "o ficheiro tem mais de 32 KB"
+
+msgid "firing often"
+msgstr "a disparar muitas vezes"
+
+msgid "for ntfy, end the address with the topic, as in http://192.168.1.10/alarm"
+msgstr "para o ntfy, termine o endereço com o tópico, como em http://192.168.1.10/alarme"
+
+msgid "give the node's MAC address, as AA-BB-CC-DD-EE-FF"
+msgstr "indique o endereço MAC do nó, como AA-BB-CC-DD-EE-FF"
+
+msgid "give the sensor, its pin, and the tamper switch's and battery's pins, empty for none, and the battery's kind"
+msgstr "indique o sensor, o seu pino, e os pinos do interruptor antissabotagem e da bateria, vazios para nenhum, e o tipo de bateria"
+
+msgid "hub started"
+msgstr "central arrancou"
+
+msgid "invalid path"
+msgstr "caminho inválido"
+
+msgid "low battery"
+msgstr "bateria fraca"
+
+msgid "mode must be away, home or disarmed"
+msgstr "o modo tem de ser ausente, em casa ou desarmado"
+
+msgid "network lost"
+msgstr "rede perdida"
+
+msgid "no crash report is saved"
+msgstr "não há nenhum relatório de falha guardado"
+
+msgid "no such file"
+msgstr "esse ficheiro não existe"
+
+msgid "no such node"
+msgstr "esse nó não existe"
+
+msgid "no such sensor"
+msgstr "esse sensor não existe"
+
+msgid "node restarted by a fault"
+msgstr "nó reiniciou por uma falha"
+
+msgid "not a JPEG"
+msgstr "não é um JPEG"
+
+msgid "not a single H.264 picture with SPS, PPS and IDR"
+msgstr "não é uma só imagem H.264 com SPS, PPS e IDR"
+
+msgid "not confirmed"
+msgstr "não confirmado"
+
+msgid "not found"
+msgstr "não encontrado"
+
+msgid "nothing to delete at that path"
+msgstr "nada para apagar nesse caminho"
+
+msgid "other names: up to 4, separated by commas, of letters, digits, dots and hyphens"
+msgstr "outros nomes: até 4, separados por vírgulas, com letras, algarismos, pontos e hífenes"
+
+msgid "pairing is not available: the hub has no pairing key"
+msgstr "o emparelhamento não está disponível: a central não tem chave de emparelhamento"
+
+msgid "ports must be 1 to 65535 and all different"
+msgstr "as portas têm de ser de 1 a 65535 e todas diferentes"
+
+msgid "possible jamming"
+msgstr "possível interferência"
+
+msgid "restarting often"
+msgstr "a reiniciar muitas vezes"
+
+msgid "save an address first"
+msgstr "guarde primeiro um endereço"
+
+msgid "storage is nearly full, and the rest is kept for the event history; delete some pictures first"
+msgstr "o armazenamento está quase cheio, e o resto fica para o histórico de eventos; apague primeiro algumas imagens"
+
+msgid "test alert"
+msgstr "alerta de teste"
+
+msgid "text is too long"
+msgstr "o texto é demasiado longo"
+
+msgid "that firmware is not signed for this hub, so nothing was changed"
+msgstr "esse firmware não está assinado para esta central, por isso nada mudou"
+
+msgid "that firmware is older than this one, so nothing was changed; an older one goes on only over the cable"
+msgstr "esse firmware é mais antigo do que este, por isso nada mudou; um mais antigo só entra pelo cabo"
+
+msgid "that is not a node of this chip"
+msgstr "isso não é um nó deste chip"
+
+msgid "that is not a sensor node's firmware: use the firmware.bin of the node project, built for the node's chip"
+msgstr "isso não é firmware de um nó sensor: use o firmware.bin do projeto do nó, feito para o chip do nó"
+
+msgid "that is not valid firmware for this hub, so nothing was changed"
+msgstr "isso não é firmware válido para esta central, por isso nada mudou"
+
+msgid "that node firmware is not signed for these nodes, so nothing was changed: use a signed firmware.bin of the node project"
+msgstr "esse firmware de nó não está assinado para estes nós, por isso nada mudou: use um firmware.bin assinado do projeto do nó"
+
+msgid "the camera's name must be up to 32 characters, on one line"
+msgstr "o nome da câmara tem de ter até 32 caracteres, numa só linha"
+
+msgid "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none"
+msgstr "a hora da verificação diária tem de ser de 0 a 1439 minutos depois da meia-noite, ou -1 para nenhuma"
+
+msgid "the format must be json, text, ntfy or gotify"
+msgstr "o formato tem de ser json, text, ntfy ou gotify"
+
+msgid "the history is being downloaded already; try again when that is done"
+msgstr "o histórico já está a ser descarregado; tente outra vez quando acabar"
+
+msgid "the hold must be 1 to 3600 seconds, quiet hours need a start and an end that differ, and the zone must be interior or perimeter"
+msgstr "a duração tem de ser de 1 a 3600 segundos, as horas de silêncio precisam de um início e um fim diferentes, e a zona tem de ser interior ou perímetro"
+
+msgid "the hub always needs a password; enter a new one to change it"
+msgstr "a central precisa sempre de uma palavra-passe; indique uma nova para a mudar"
+
+msgid "the hub is short of memory; try again"
+msgstr "a central tem pouca memória; tente outra vez"
+
+msgid "the hub's clock is not set yet, and the node needs it to know when the walk test ends"
+msgstr "o relógio da central ainda não está acertado, e o nó precisa dele para saber quando acaba o teste de passagem"
+
+msgid "the hub's clock is not set yet, so it cannot tell which days those are; try again"
+msgstr "o relógio da central ainda não está acertado, por isso não sabe que dias são esses; tente outra vez"
+
+msgid "the name may use letters, digits and hyphens, up to 63 characters, and cannot start or end with a hyphen"
+msgstr "o nome pode ter letras, algarismos e hífenes, até 63 caracteres, e não pode começar nem acabar com um hífen"
+
+msgid "the name must be 1 to 32 characters and the password empty or 8 to 63"
+msgstr "o nome tem de ter de 1 a 32 caracteres e a palavra-passe ficar vazia ou ter de 8 a 63"
+
+msgid "the name must be up to 64 characters, on one line"
+msgstr "o nome tem de ter até 64 caracteres, numa só linha"
+
+msgid "the password must be 8 to 63 characters"
+msgstr "a palavra-passe tem de ter de 8 a 63 caracteres"
+
+msgid "the past-event time must be 1 to 86400 seconds, the silent time 60 to 604800, the report time 60 to 86400, and the repeat time 1 to 60"
+msgstr "o tempo de eventos passados tem de ser de 1 a 86400 segundos, o de silêncio de 60 a 604800, o de comunicação de 60 a 86400, e o de repetição de 1 a 60"
+
+msgid "the port must be 1 to 65535"
+msgstr "a porta tem de ser de 1 a 65535"
+
+msgid "the test is running already, or the hub is off its Wi-Fi network"
+msgstr "o teste já está a correr, ou a central está fora da sua rede Wi-Fi"
+
+msgid "the token must be up to 64 letters, digits, dots, hyphens and underscores"
+msgstr "o token tem de ter até 64 letras, algarismos, pontos, hífenes e sublinhados"
+
+msgid "the user name and password may have up to 64 characters"
+msgstr "o nome de utilizador e a palavra-passe podem ter até 64 caracteres"
+
+msgid "the weekly summary's day must be 0 for Sunday to 6, or -1 for none"
+msgstr "o dia do resumo semanal tem de ser de 0, para domingo, a 6, ou -1 para nenhum"
+
+msgid "the weekly summary's time must be 0 to 1439 minutes after midnight"
+msgstr "a hora do resumo semanal tem de ser de 0 a 1439 minutos depois da meia-noite"
+
+msgid "there is no firmware for that chip"
+msgstr "não há firmware para esse chip"
+
+msgid "this board has no radio test"
+msgstr "esta placa não tem teste de rádio"
+
+msgid "this hub has no source of random numbers to seal a backup with"
+msgstr "esta central não tem uma fonte de números aleatórios para selar uma cópia"
+
+msgid "unsupported request"
+msgstr "pedido não suportado"
+
+msgid "weak signal"
+msgstr "sinal fraco"
+
+msgid "went silent"
+msgstr "ficou em silêncio"
+
+msgid "wrong video format: make it with tools/make_frames.py"
+msgstr "formato de vídeo errado: faça-o com tools/make_frames.py"
+
+msgid " (open)"
+msgstr " (aberta)"
+
+msgid "Main network: {main}. Backup: {backup}."
+msgstr "Rede principal: {main}. Reserva: {backup}."
+
+msgid "none"
+msgstr "nenhuma"
+
+msgid "No network saved yet."
+msgstr "Ainda não há nenhuma rede guardada."
+
+msgid "Choose or type a network."
+msgstr "Escolha ou escreva uma rede."
+
+msgid "Choose a hub password of 8 to 63 characters."
+msgstr "Escolha uma palavra-passe da central com 8 a 63 caracteres."
+
+msgid "The two hub passwords differ."
+msgstr "As duas palavras-passe da central são diferentes."
+
+msgid "Saved as the backup network."
+msgstr "Guardada como rede de reserva."
+
+msgid "Saved. The hub is restarting to join {network}."
+msgstr "Guardada. A central está a reiniciar para entrar em {network}."
+
+msgid "Reconnect this device to that network, then open {address}."
+msgstr "Ligue este aparelho a essa rede e depois abra {address}."
+
+msgid "Reconnect this device to that network."
+msgstr "Ligue este aparelho a essa rede."
+
+msgid "If neither saved network works, the setup network comes back in about a minute, with the hub password as its password."
+msgstr "Se nenhuma rede guardada funcionar, a rede de configuração volta dentro de cerca de um minuto, com a palavra-passe da central como palavra-passe."
+
+msgid "If neither saved network works, the setup network comes back in about a minute."
+msgstr "Se nenhuma rede guardada funcionar, a rede de configuração volta dentro de cerca de um minuto."
+
+msgid "The hub did not answer. Try again."
+msgstr "A central não respondeu. Tente outra vez."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Armed away"
+msgstr "Armada ausente"
+
+msgid "Armed home"
+msgstr "Armada em casa"
+
+msgid "Disarmed"
+msgstr "Desarmada"
+
+msgid "A hub password of your own, not one built into the firmware"
+msgstr "Uma palavra-passe da central só sua, não uma que venha no firmware"
+
+msgid "Choose a password"
+msgstr "Escolher uma palavra-passe"
+
+msgid "The hub password guards this page, the NVR's login and the hub's setup network. Choose one of 8 to 63 characters that only you know; the NVR needs it too, so note it down."
+msgstr "A palavra-passe da central protege esta página, o acesso do NVR e a rede de configuração da central. Escolha uma com 8 a 63 caracteres que só o próprio conheça; o NVR também precisa dela, por isso aponte-a."
+
+msgid "The hub's clock is set"
+msgstr "O relógio da central está acertado"
+
+msgid "Set the clock"
+msgstr "Acertar o relógio"
+
+msgid "The hub needs the time to stamp each alert, keep quiet hours and send the daily check. With internet access it sets itself; otherwise give it a time server on your network, such as the router."
+msgstr "A central precisa da hora para marcar cada alerta, respeitar as horas de silêncio e enviar a verificação diária. Com acesso à internet acerta-se sozinha; caso contrário, dê-lhe um servidor de hora na sua rede, como o router."
+
+msgid "The NVR's address is set"
+msgstr "O endereço do NVR está indicado"
+
+msgid "Enter the NVR's address"
+msgstr "Indicar o endereço do NVR"
+
+msgid "With the NVR's address, the hub can check that the NVR listens and that each alert was recorded, and play again any it missed."
+msgstr "Com o endereço do NVR, a central pode confirmar que o NVR está a ouvir e que cada alerta foi gravado, e repetir os que tenha perdido."
+
+msgid "The NVR is listening"
+msgstr "O NVR está a ouvir"
+
+msgid "Open the NVR page"
+msgstr "Abrir a página do NVR"
+
+msgid "On the NVR, add the hub as an ONVIF camera on a free channel: its address, port 8899, user admin and the hub password. Then turn on motion detection with recording for that channel. This step ticks itself once the NVR asks the hub for events."
+msgstr "No NVR, adicione a central como câmara ONVIF num canal livre: o seu endereço, porta 8899, utilizador admin e a palavra-passe da central. Depois ligue a deteção de movimento com gravação nesse canal. Este passo fica marcado sozinho quando o NVR pedir eventos à central."
+
+msgid "At least one sensor has reported"
+msgstr "Pelo menos um sensor já comunicou"
+
+msgid "Pair a node"
+msgstr "Emparelhar um nó"
+
+msgid "Allow pairing, then start a sensor node in pairing mode and approve it once its fingerprint matches the one on its label. A device that calls a web address can be added there too."
+msgstr "Permita o emparelhamento, ligue um nó sensor em modo de emparelhamento e aprove-o quando a impressão digital for igual à da etiqueta. Também se pode adicionar lá um aparelho que chama um endereço web."
+
+msgid "A test alert sent, and its recording found on the NVR"
+msgstr "Um alerta de teste enviado, e a sua gravação encontrada no NVR"
+
+msgid "A test alert in the last month (the last was {ago})"
+msgstr "Um alerta de teste no último mês (o último foi {ago})"
+
+msgid "Sends a test alert along the whole path and checks each step: the sensor, the hub, the NVR and your notifications. Then find its recording on the NVR, so you know an alert is kept. Do it once a month."
+msgstr "Envia um alerta de teste por todo o caminho e verifica cada passo: o sensor, a central, o NVR e as suas notificações. Depois procure a gravação no NVR, para saber que um alerta fica guardado. Faça-o uma vez por mês."
+
+msgid "Notifications or Home Assistant set up, so problems reach you"
+msgstr "Notificações ou Home Assistant configurados, para os problemas lhe chegarem"
+
+msgid "Set up notifications"
+msgstr "Configurar notificações"
+
+msgid "So an alert, a silent node or a flat battery reaches your phone: an ntfy or Gotify server on your network, Home Assistant, or Node-RED."
+msgstr "Para um alerta, um nó em silêncio ou uma bateria vazia lhe chegarem ao telemóvel: um servidor ntfy ou Gotify na sua rede, o Home Assistant ou o Node-RED."
+
+msgid "A daily check, so you notice when the hub goes quiet"
+msgstr "Uma verificação diária, para dar conta quando a central se cala"
+
+msgid "Choose a time"
+msgstr "Escolher uma hora"
+
+msgid "Once a day the hub sends one short message. If it stops arriving, the hub is off or cut off, and you know to look."
+msgstr "Uma vez por dia a central envia uma mensagem curta. Se deixar de chegar, a central está desligada ou isolada, e sabe que tem de ir ver."
+
+msgid "the NVR is not listening, so alerts are not recorded"
+msgstr "o NVR não está a ouvir, por isso os alertas não são gravados"
+
+msgid "{n} sensor problem"
+msgid_plural "{n} sensor problems"
+msgstr[0] "{n} problema num sensor"
+msgstr[1] "{n} problemas nos sensores"
+
+msgid "{n} setup step left"
+msgid_plural "{n} setup steps left"
+msgstr[0] "falta {n} passo de configuração"
+msgstr[1] "faltam {n} passos de configuração"
+
+msgid "Not protecting: {why}"
+msgstr "Não está a proteger: {why}"
+
+msgid "Needs attention: {why}"
+msgstr "Precisa de atenção: {why}"
+
+msgid "All good: armed home, the NVR is listening, no problems."
+msgstr "Tudo bem: armada em casa, o NVR está a ouvir, sem problemas."
+
+msgid "All good: armed away, the NVR is listening, no problems."
+msgstr "Tudo bem: armada ausente, o NVR está a ouvir, sem problemas."
+
+msgid "just now"
+msgstr "agora mesmo"
+
+msgid "strong"
+msgstr "forte"
+
+msgid "good"
+msgstr "bom"
+
+msgid "fair"
+msgstr "razoável"
+
+msgid "weak"
+msgstr "fraco"
+
+msgid "about {n} months left"
+msgstr "cerca de {n} meses restantes"
+
+msgid "about {n} day left"
+msgid_plural "about {n} days left"
+msgstr[0] "cerca de {n} dia restante"
+msgstr[1] "cerca de {n} dias restantes"
+
+msgid "Never"
+msgstr "Nunca"
+
+msgid "{n} s ago"
+msgstr "há {n} s"
+
+msgid "{n} min ago"
+msgstr "há {n} min"
+
+msgid "{n} h ago"
+msgstr "há {n} h"
+
+msgid "{n} d ago"
+msgstr "há {n} d"
+
+msgid "The changes on this page are not saved."
+msgstr "As alterações nesta página não estão guardadas."
+
+msgid "Leave without saving?"
+msgstr "Sair sem guardar?"
+
+msgid "Leave"
+msgstr "Sair"
+
+msgid "Stay"
+msgstr "Ficar"
+
+msgid "{name}: alarm hub"
+msgstr "{name}: central de alarme"
+
+msgid "This browser will ask for the hub password again."
+msgstr "Este navegador vai pedir outra vez a palavra-passe da central."
+
+msgid "Log out?"
+msgstr "Sair?"
+
+msgid "Logged out"
+msgstr "Sessão terminada"
+
+msgid "The hub's pages ask for the user admin and the hub password again."
+msgstr "As páginas da central pedem outra vez o utilizador admin e a palavra-passe da central."
+
+msgid "Log in again"
+msgstr "Entrar outra vez"
+
+msgid "The two passwords differ."
+msgstr "As duas palavras-passe são diferentes."
+
+msgid "Saved. Log in with user admin and the new password."
+msgstr "Guardada. Entre com o utilizador admin e a nova palavra-passe."
+
+msgid " (changed)"
+msgstr " (alteradas)"
+
+msgid " (firmware too old)"
+msgstr " (firmware demasiado antigo)"
+
+msgid " (waiting for the node)"
+msgstr " (à espera do nó)"
+
+msgid "Add sensor"
+msgstr "Adicionar sensor"
+
+msgid "Added node {mac}"
+msgstr "Nó {mac} adicionado"
+
+msgid "Added sensor {n}"
+msgstr "Sensor {n} adicionado"
+
+msgid "Alert settings"
+msgstr "Definições de alerta"
+
+msgid "All clear"
+msgstr "Tudo calmo"
+
+msgid "An alert lasts {hold} seconds. Empty uses the hub's default."
+msgstr "Um alerta dura {hold} segundos. Vazio usa o valor da central."
+
+msgid "An alert this node reports as having happened more than {late} seconds ago is a past event: it shows the sensor's past-event picture, or the built-in \"PAST EVENT, CHECK LOGS\", and gets its own NVR record. Its true time is in the Events list. Empty uses 30 seconds. Set it to how long this node can take to deliver an alert in real time, including retries."
+msgstr "Um alerta que este nó diga ter acontecido há mais de {late} segundos é um evento passado: mostra a imagem de evento passado do sensor, ou a incorporada \"PAST EVENT, CHECK LOGS\", e tem o seu próprio registo no NVR. A sua hora verdadeira está na lista de Eventos. Vazio usa 30 segundos. Defina-o como o tempo que este nó pode levar a entregar um alerta em tempo real, com as repetições."
+
+msgid "Battery's pin"
+msgstr "Pino da bateria"
+
+msgid "Built-in"
+msgstr "Incorporada"
+
+msgid "Built-in “ALL CLEAR”"
+msgstr "Incorporada “ALL CLEAR”"
+
+msgid "Camera to look at: {camera}. The NVR camera that covers this sensor, named in its notifications and on the Events page, so you know which recording to watch."
+msgstr "Câmara a ver: {camera}. A câmara do NVR que cobre este sensor, indicada nas suas notificações e na página de Eventos, para saber que gravação ver."
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Change"
+msgstr "Alterar"
+
+msgid "Change the all clear picture"
+msgstr "Alterar a imagem de tudo calmo"
+
+msgid "Change the picture for {what}"
+msgstr "Alterar a imagem de {what}"
+
+msgid "Change the words"
+msgstr "Alterar as palavras"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Coming closer"
+msgstr "A aproximar-se"
+
+msgid "Could not reach the hub."
+msgstr "Não foi possível chegar à central."
+
+msgid "Could not show this picture. {why}"
+msgstr "Não foi possível mostrar esta imagem. {why}"
+
+msgid "Delete"
+msgstr "Apagar"
+
+msgid "Delete it"
+msgstr "Apagá-la"
+
+msgid "Delete node"
+msgstr "Apagar nó"
+
+msgid "Delete sensor"
+msgstr "Apagar sensor"
+
+msgid "Delete {what}?"
+msgstr "Apagar {what}?"
+
+msgid "Deleted {what}"
+msgstr "Apagado: {what}"
+
+msgid "Download it"
+msgstr "Descarregá-la"
+
+msgid "Empty uses 180 minutes."
+msgstr "Vazio usa 180 minutos."
+
+msgid "Enter a MAC address like AA:BB:CC:DD:EE:01"
+msgstr "Indique um endereço MAC como AA:BB:CC:DD:EE:01"
+
+msgid "Enter a name for the first line"
+msgstr "Indique um nome para a primeira linha"
+
+msgid "Enter the text to show"
+msgstr "Indique o texto a mostrar"
+
+msgid "Getting the decoder ready. The first time, this downloads about 30 MB."
+msgstr "A preparar o descodificador. Da primeira vez, isto descarrega cerca de 30 MB."
+
+msgid "Going away"
+msgstr "A afastar-se"
+
+msgid "HC-SR501 passive infrared"
+msgstr "HC-SR501 infravermelho passivo"
+
+msgid "Hardware"
+msgstr "Hardware"
+
+msgid "It goes to the NVR, Notifications and Home Assistant, whatever the alarm is set to, and is logged as a test."
+msgstr "Vai para o NVR, as Notificações e o Home Assistant, seja qual for o estado do alarme, e fica registado como teste."
+
+msgid "Its pictures and settings go too. Its past alerts stay in the event history."
+msgstr "As suas imagens e definições também vão. Os seus alertas passados ficam no histórico de eventos."
+
+msgid "Its sensors, their pictures and settings go too. Their past alerts stay in the event history."
+msgstr "Os seus sensores, as imagens e as definições deles também vão. Os alertas passados ficam no histórico de eventos."
+
+msgid "LD2410 24 GHz radar"
+msgstr "LD2410 radar de 24 GHz"
+
+msgid "Left to right"
+msgstr "Da esquerda para a direita"
+
+msgid "Lithium iron phosphate (LiFePO4) cell"
+msgstr "Célula de fosfato de ferro-lítio (LiFePO4)"
+
+msgid "Lithium-ion or lithium-polymer cell"
+msgstr "Célula de iões de lítio ou de polímero de lítio"
+
+msgid "Live alert"
+msgstr "Alerta em direto"
+
+msgid "Live alert: {state}"
+msgstr "Alerta em direto: {state}"
+
+msgid "Past event: {state}"
+msgstr "Evento passado: {state}"
+
+msgid "Loading the picture..."
+msgstr "A carregar a imagem..."
+
+msgid "Make and save"
+msgstr "Criar e guardar"
+
+msgid "Make and save 10 pictures"
+msgstr "Criar e guardar 10 imagens"
+
+msgid "Make it from an image"
+msgstr "Criá-la a partir de uma imagem"
+
+msgid "Making thumbnail {n} of {total}. The first time, this downloads about 30 MB."
+msgstr "A criar a miniatura {n} de {total}. Da primeira vez, isto descarrega cerca de 30 MB."
+
+msgid "Name of sensor {n}"
+msgstr "Nome do sensor {n}"
+
+msgid "Name, such as Back door"
+msgstr "Nome, como Porta das traseiras"
+
+msgid "No nodes yet"
+msgstr "Ainda não há nós"
+
+msgid "Node settings"
+msgstr "Definições do nó"
+
+msgid "Node {mac}"
+msgstr "Nó {mac}"
+
+msgid "Node {mac} already exists"
+msgstr "O nó {mac} já existe"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Other, its output goes high while it detects"
+msgstr "Outro, a saída fica alta enquanto deteta"
+
+msgid "Other, its output goes low while it detects"
+msgstr "Outro, a saída fica baixa enquanto deteta"
+
+msgid "Pair a node, which adds its sensors for you, or add one by its MAC address above."
+msgstr "Emparelhe um nó, que adiciona os seus sensores automaticamente, ou adicione um pelo endereço MAC acima."
+
+msgid "Past event"
+msgstr "Evento passado"
+
+msgid "Picture storage: {used} KB of {total} KB used. {kept} KB of what is left is kept for the event history, so pictures cannot use it."
+msgstr "Armazenamento de imagens: {used} KB de {total} KB usados. {kept} KB do que resta ficam para o histórico de eventos, por isso as imagens não os podem usar."
+
+msgid "Quiet hours from {from} to {to}. During quiet hours alerts are logged but not sent to the NVR or to Notifications. Leave both empty for none."
+msgstr "Horas de silêncio das {from} às {to}. Durante as horas de silêncio os alertas ficam registados mas não são enviados ao NVR nem às Notificações. Deixe ambos vazios para nenhumas."
+
+msgid "RCWL-0516 microwave radar"
+msgstr "RCWL-0516 radar de micro-ondas"
+
+msgid "Report this node silent after {silent} minutes without a message. A disabled or stolen sensor is noticed only then, so keep it short: a little over the time between the node's regular reports."
+msgstr "Dar este nó como em silêncio após {silent} minutos sem mensagens. Um sensor desativado ou roubado só é notado nessa altura, por isso mantenha-o curto: um pouco mais do que o tempo entre as comunicações regulares do nó."
+
+msgid "Right to left"
+msgstr "Da direita para a esquerda"
+
+msgid "Running, {n} min left."
+msgstr "A decorrer, faltam {n} min."
+
+msgid "Same as Seen"
+msgstr "Igual à de Visto"
+
+msgid "Save alert settings"
+msgstr "Guardar definições de alerta"
+
+msgid "Save hardware"
+msgstr "Guardar hardware"
+
+msgid "Save name"
+msgstr "Guardar nome"
+
+msgid "Save node settings"
+msgstr "Guardar definições do nó"
+
+msgid "Saved the alert settings"
+msgstr "Definições de alerta guardadas"
+
+msgid "Saved the hardware; the node takes it after its next report"
+msgstr "Hardware guardado; o nó aplica-o depois da próxima comunicação"
+
+msgid "Saved the name"
+msgstr "Nome guardado"
+
+msgid "Saved the node settings"
+msgstr "Definições do nó guardadas"
+
+msgid "Saved {file}"
+msgstr "Guardado: {file}"
+
+msgid "Saved; the node takes them after its next report."
+msgstr "Guardadas; o nó aplica-as depois da próxima comunicação."
+
+msgid "Seen"
+msgstr "Visto"
+
+msgid "Send a test alert from this sensor?"
+msgstr "Enviar um alerta de teste deste sensor?"
+
+msgid "Send test alert"
+msgstr "Enviar alerta de teste"
+
+msgid "Sensor number"
+msgstr "Número do sensor"
+
+msgid "Sensor number must be 1 to 255"
+msgstr "O número do sensor tem de ser de 1 a 255"
+
+msgid "Sensor {n}"
+msgstr "Sensor {n}"
+
+msgid "Sensor {n} already exists on {mac}"
+msgstr "O sensor {n} já existe em {mac}"
+
+msgid "Sensor's pin"
+msgstr "Pino do sensor"
+
+msgid "Sent a test alert. Check that the NVR recorded it."
+msgstr "Alerta de teste enviado. Confirme que o NVR o gravou."
+
+msgid "Set on the node itself; save here to set it from the hub."
+msgstr "Definido no próprio nó; guarde aqui para o definir a partir da central."
+
+msgid "Show it"
+msgstr "Mostrá-la"
+
+msgid "Shown for a live alert"
+msgstr "Mostrada num alerta em direto"
+
+msgid "Shown for a past event"
+msgstr "Mostrada num evento passado"
+
+msgid "Shown when no alert is on"
+msgstr "Mostrada quando não há alertas"
+
+msgid "Start a walk test"
+msgstr "Iniciar um teste de passagem"
+
+msgid "Tamper switch's pin"
+msgstr "Pino do interruptor antissabotagem"
+
+msgid "The Seen picture, or the built-in one, is shown in its place."
+msgstr "Em seu lugar é mostrada a imagem de Visto, ou a incorporada."
+
+msgid "The battery"
+msgstr "A bateria"
+
+msgid "The battery's pin"
+msgstr "O pino da bateria"
+
+msgid "The built-in one is shown in its place."
+msgstr "Em seu lugar é mostrada a incorporada."
+
+msgid "The built-in picture is shown in its place."
+msgstr "Em seu lugar é mostrada a imagem incorporada."
+
+msgid "The decoder could not load or could not read this picture. It needs internet access the first time."
+msgstr "O descodificador não carregou ou não conseguiu ler esta imagem. Da primeira vez precisa de acesso à internet."
+
+msgid "The hub could not send this picture."
+msgstr "A central não conseguiu enviar esta imagem."
+
+msgid "The hub could not send {file}"
+msgstr "A central não conseguiu enviar {file}"
+
+msgid "The node reports that it is alive every {every} minutes, and every {repeat} seconds while its sensor stays on. Empty leaves each to the node's own setting. These reach the node with the hub's next answer to it, so after its next report. Less often saves its battery, but a stolen node is noticed later. The repeat is kept below each sensor's alert time, so the alert does not lapse between repeats."
+msgstr "O nó comunica que está vivo a cada {every} minutos, e a cada {repeat} segundos enquanto o sensor continua ativo. Vazio deixa cada um à definição do próprio nó. Estes valores chegam ao nó com a próxima resposta da central, ou seja, depois da próxima comunicação. Menos vezes poupa a bateria, mas um nó roubado é notado mais tarde. A repetição fica abaixo do tempo de alerta de cada sensor, para o alerta não caducar entre repetições."
+
+msgid "The node runs newer settings than these."
+msgstr "O nó tem definições mais recentes do que estas."
+
+msgid "The node runs these settings."
+msgstr "O nó tem estas definições."
+
+msgid "The node says it reports every {every} minutes, so empty uses {silent} minutes, and follows the node if that changes."
+msgstr "O nó diz que comunica a cada {every} minutos, por isso vazio usa {silent} minutos, e acompanha o nó se isso mudar."
+
+msgid "The pins listed are those this node's chip can use: ones that can wake it for the sensor and the tamper switch, ones that can read a voltage for the battery, through two equal resistors. The node checks them again before it takes them."
+msgstr "Os pinos indicados são os que o chip deste nó pode usar: os que o podem acordar, para o sensor e o interruptor antissabotagem, e os que podem ler uma tensão, para a bateria, através de duas resistências iguais. O nó volta a verificá-los antes de os aplicar."
+
+msgid "The sensor's pin"
+msgstr "O pino do sensor"
+
+msgid "The tamper switch's pin"
+msgstr "O pino do interruptor antissabotagem"
+
+msgid "The walk test is on for 10 minutes"
+msgstr "O teste de passagem está ativo durante 10 minutos"
+
+msgid "This cannot be undone."
+msgstr "Isto não se pode desfazer."
+
+msgid "This node's firmware is from before hardware settings: update it, and it can take them from here."
+msgstr "O firmware deste nó é anterior às definições de hardware: atualize-o, e passa a recebê-las daqui."
+
+msgid "Thumbnails are up to date"
+msgstr "As miniaturas estão em dia"
+
+msgid "Undo"
+msgstr "Desfazer"
+
+msgid "Upload a .h264 file"
+msgstr "Enviar um ficheiro .h264"
+
+msgid "Upload another .h264 file"
+msgstr "Enviar outro ficheiro .h264"
+
+msgid "Walk test: for the next 10 minutes, the node blinks its LED after each alert the hub confirms, 3 times for a strong signal, 2 for a fair one and 1 for a weak one, so you can walk the area and see what it covers. It starts with the first alert the node sends after this."
+msgstr "Teste de passagem: durante os próximos 10 minutos, o nó pisca o LED depois de cada alerta que a central confirmar, 3 vezes para um sinal forte, 2 para um razoável e 1 para um fraco, para poder percorrer a zona e ver o que cobre. Começa com o primeiro alerta que o nó enviar depois disto."
+
+msgid "YOUR PICTURE"
+msgstr "A SUA IMAGEM"
+
+msgid "Your picture"
+msgstr "A sua imagem"
+
+msgid "Your picture, {size} KB"
+msgstr "A sua imagem, {size} KB"
+
+msgid "Zone: {zone}. Mark the sensors inside the house as interior, so the hub can be armed home at night."
+msgstr "Zona: {zone}. Marque os sensores dentro de casa como interiores, para a central poder ficar armada em casa à noite."
+
+msgid "default"
+msgstr "predefinido"
+
+msgid "interior: not watched while the hub is armed home"
+msgstr "interior: não vigiado com a central armada em casa"
+
+msgid "perimeter: watched whenever the hub is armed"
+msgstr "perímetro: vigiado sempre que a central está armada"
+
+msgid "sensor no."
+msgstr "n.º do sensor"
+
+msgid "such as Camera 3, garden"
+msgstr "como Câmara 3, jardim"
+
+msgid "the node {name}"
+msgstr "o nó {name}"
+
+msgid "the sensor {name}"
+msgstr "o sensor {name}"
+
+msgid "this picture"
+msgstr "esta imagem"
+
+msgid "{file} is larger than 32 KB"
+msgstr "{file} tem mais de 32 KB"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Copied"
+msgstr "Copiado"
+
+msgid "Select and copy it"
+msgstr "Selecione e copie"
+
+msgid "Add a sensor first: there is nothing to test with."
+msgstr "Adicione primeiro um sensor: não há nada com que testar."
+
+msgid "No sensor yet"
+msgstr "Ainda não há sensores"
+
+msgid "Start"
+msgstr "Iniciar"
+
+msgid "Sends a real test alert, from the sensor you choose, along the whole path: the NVR, Notifications and Home Assistant. It records on the NVR like a real alert, and is logged as a test."
+msgstr "Envia um alerta de teste real, do sensor que escolher, por todo o caminho: o NVR, as Notificações e o Home Assistant. Grava no NVR como um alerta real, e fica registado como teste."
+
+msgid "Test with {sensor} {start}"
+msgstr "Testar com {sensor} {start}"
+
+msgid "Test alert from {name}"
+msgstr "Alerta de teste de {name}"
+
+msgid "The NVR was told"
+msgstr "O NVR foi avisado"
+
+msgid "no NVR address is set, so the hub cannot tell (Recording > NVR)"
+msgstr "não há endereço do NVR, por isso a central não consegue saber (Gravação > NVR)"
+
+msgid "the NVR is not listening; the hub keeps the alert and plays it once it does"
+msgstr "o NVR não está a ouvir; a central guarda o alerta e repete-o quando ele ouvir"
+
+msgid "not set up"
+msgstr "não configurado"
+
+msgid "no answer"
+msgstr "sem resposta"
+
+msgid "connected, so it got the test"
+msgstr "ligado, por isso recebeu o teste"
+
+msgid "Now check the NVR: it should have a recording from the hub's channel at {time}, with {name}'s picture."
+msgstr "Agora veja no NVR: deve haver uma gravação do canal da central às {time}, com a imagem de {name}."
+
+msgid "What kind of sensor is it?"
+msgstr "Que tipo de sensor é?"
+
+msgid "A sensor node"
+msgstr "Um nó sensor"
+
+msgid "one of these nodes, which talks to the hub over its own radio"
+msgstr "um destes nós, que fala com a central pelo seu próprio rádio"
+
+msgid "A device that calls a web address"
+msgstr "Um aparelho que chama um endereço web"
+
+msgid "such as a Shelly, a Tasmota plug or a script"
+msgstr "como um Shelly, uma tomada Tasmota ou um script"
+
+msgid "Pairing is open for 2 minutes. Power the node on, or reset it while holding its forget button. It appears on this page under Pairing with its fingerprint: check that it matches the node's, approve it, and say where each of its sensors is."
+msgstr "O emparelhamento está aberto durante 2 minutos. Ligue o nó, ou reinicie-o com o botão de esquecer premido. Aparece nesta página em Emparelhamento com a sua impressão digital: confirme que é igual à do nó, aprove-o, e diga onde está cada um dos seus sensores."
+
+msgid "Back door"
+msgstr "Porta das traseiras"
+
+msgid "Add it"
+msgstr "Adicionar"
+
+msgid "Where is it"
+msgstr "Onde está"
+
+msgid "Its MAC address"
+msgstr "O seu endereço MAC"
+
+msgid "The device's own, if it shows one, or the made-up one here. Input 1 unless it has several."
+msgstr "O do próprio aparelho, se mostrar um, ou o inventado aqui. Entrada 1, a não ser que tenha várias."
+
+msgid "Input"
+msgstr "Entrada"
+
+msgid "Waiting for its first report..."
+msgstr "À espera da primeira comunicação..."
+
+msgid "That sensor already existed, so it was kept as it was, with the new name."
+msgstr "Esse sensor já existia, por isso ficou como estava, com o novo nome."
+
+msgid "That sensor already existed, so it was kept as it was."
+msgstr "Esse sensor já existia, por isso ficou como estava."
+
+msgid "Set the device to call this address when it detects something:"
+msgstr "Configure o aparelho para chamar este endereço quando detetar algo:"
+
+msgid "and, if it can, this one when it stops (optional: the alert ends by itself):"
+msgstr "e, se puder, este quando parar (opcional: o alerta acaba sozinho):"
+
+msgid "A report arrived. It is ready; try a test alert from its page."
+msgstr "Chegou uma comunicação. Está pronto; experimente um alerta de teste na sua página."
+
+msgid "Its first report arrived. It is ready; try a test alert from its page."
+msgstr "Chegou a primeira comunicação. Está pronto; experimente um alerta de teste na sua página."
+
+msgid "Open its page"
+msgstr "Abrir a sua página"
+
+msgid "The sensor saw something, and the NVR was told, so it records."
+msgstr "O sensor viu algo, e o NVR foi avisado, por isso grava."
+
+msgid "Check the recording if nobody was expected."
+msgstr "Veja a gravação se não se esperava ninguém."
+
+msgid "No report from this sensor for longer than its silent time. Its battery may be flat, or it was unplugged, moved or taken."
+msgstr "Nenhuma comunicação deste sensor há mais tempo do que o seu tempo de silêncio. A bateria pode estar vazia, ou foi desligado, mudado de sítio ou levado."
+
+msgid "Check the sensor and its battery. This clears by itself once it reports again."
+msgstr "Verifique o sensor e a bateria. Isto desaparece sozinho quando voltar a comunicar."
+
+msgid "Its battery is at 20% or less."
+msgstr "A bateria está a 20% ou menos."
+
+msgid "Replace or charge it soon."
+msgstr "Substitua-a ou carregue-a em breve."
+
+msgid "The sensor fired during its quiet hours, so the NVR was not told."
+msgstr "O sensor disparou durante as horas de silêncio, por isso o NVR não foi avisado."
+
+msgid "If this should have been recorded, change the quiet hours in the sensor's Alert settings."
+msgstr "Se isto devia ter sido gravado, altere as horas de silêncio nas Definições de alerta do sensor."
+
+msgid "Its radio signal has stayed below -80 dBm, so its messages may be lost."
+msgstr "O sinal de rádio tem ficado abaixo de -80 dBm, por isso as mensagens podem perder-se."
+
+msgid "Move the node or the hub closer, or raise the node off the ground and away from metal."
+msgstr "Aproxime o nó da central, ou levante o nó do chão e afaste-o de metal."
+
+msgid "The NVR was not listening when this alert came, so it did not record it then. The hub keeps it and plays it as a past event once the NVR listens again."
+msgstr "O NVR não estava a ouvir quando este alerta chegou, por isso não o gravou nessa altura. A central guarda-o e repete-o como evento passado quando o NVR voltar a ouvir."
+
+msgid "Check that the NVR is on and on the network."
+msgstr "Confirme que o NVR está ligado e na rede."
+
+msgid "The NVR has not been listening for 3 minutes, so alerts are not being recorded."
+msgstr "O NVR não está a ouvir há 3 minutos, por isso os alertas não estão a ser gravados."
+
+msgid "Check that the NVR is on, on the network, and still has the hub's channel set up."
+msgstr "Confirme que o NVR está ligado, na rede, e ainda tem o canal da central configurado."
+
+msgid "The NVR is listening again. Alerts kept for it play now."
+msgstr "O NVR está a ouvir outra vez. Os alertas guardados para ele são repetidos agora."
+
+msgid "The hub started, for the reason shown."
+msgstr "A central arrancou, pelo motivo indicado."
+
+msgid "If power cuts are common, a small UPS keeps it running."
+msgstr "Se os cortes de energia forem frequentes, uma pequena UPS mantém-na a funcionar."
+
+msgid "The hub was off its Wi-Fi for the time shown. Alerts in that time reached the NVR afterwards, as past events."
+msgstr "A central esteve fora do Wi-Fi durante o tempo indicado. Os alertas desse período chegaram depois ao NVR, como eventos passados."
+
+msgid "If this happens often, check the Wi-Fi where the hub is. Someone may be keeping it off on purpose."
+msgstr "Se isto acontecer muitas vezes, verifique o Wi-Fi onde está a central. Alguém pode estar a afastá-la de propósito."
+
+msgid "The sensor fired while the hub was disarmed, so the NVR was not told."
+msgstr "O sensor disparou com a central desarmada, por isso o NVR não foi avisado."
+
+msgid "Arm the hub whenever nobody is home."
+msgstr "Arme a central sempre que não estiver ninguém em casa."
+
+msgid "The hub was armed, from where the details say."
+msgstr "A central foi armada, a partir de onde dizem os detalhes."
+
+msgid "The hub was disarmed, from where the details say. Alerts are logged but not recorded."
+msgstr "A central foi desarmada, a partir de onde dizem os detalhes. Os alertas ficam registados mas não são gravados."
+
+msgid "An interior sensor fired while the hub was armed home, so the NVR was not told."
+msgstr "Um sensor interior disparou com a central armada em casa, por isso o NVR não foi avisado."
+
+msgid "If it should always record, mark it perimeter in its Alert settings."
+msgstr "Se deve gravar sempre, marque-o como perímetro nas Definições de alerta."
+
+msgid "The hub was armed home: interior sensors are logged but not recorded."
+msgstr "A central foi armada em casa: os sensores interiores ficam registados mas não são gravados."
+
+msgid "A test alert, sent from the page or Home Assistant. It records like a real one."
+msgstr "Um alerta de teste, enviado da página ou do Home Assistant. Grava como um real."
+
+msgid "Check that the NVR has the recording."
+msgstr "Confirme que o NVR tem a gravação."
+
+msgid "The hub restarted by itself three times within an hour: it is crashing, losing power or being restarted."
+msgstr "A central reiniciou sozinha três vezes numa hora: está a falhar, a perder energia ou a ser reiniciada."
+
+msgid "Check its power supply. Device Info shows the reasons."
+msgstr "Verifique a fonte de alimentação. A Informação do aparelho mostra os motivos."
+
+msgid "The node restarted because of a fault, such as a brownout from a weak battery, or a bad wire."
+msgstr "O nó reiniciou por uma falha, como uma quebra de tensão por bateria fraca, ou um fio com mau contacto."
+
+msgid "Check its battery and its wiring."
+msgstr "Verifique a bateria e as ligações."
+
+msgid "From its readings, the battery will run out within a week."
+msgstr "Pelas leituras, a bateria vai acabar dentro de uma semana."
+
+msgid "Replace or charge it."
+msgstr "Substitua-a ou carregue-a."
+
+msgid "Several nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a jammer."
+msgstr "Vários nós deixaram de comunicar ao mesmo tempo. As baterias falham uma de cada vez, por isso algo pode estar a bloquear o rádio, como um bloqueador."
+
+msgid "Check the property now: this can mean a break-in."
+msgstr "Verifique já a propriedade: isto pode significar uma intrusão."
+
+msgid "The sensor fired 20 times within an hour. Every alert still went to the NVR, but a fault or a bad aim is likelier than that many intruders."
+msgstr "O sensor disparou 20 vezes numa hora. Todos os alertas foram para o NVR, mas uma avaria ou uma má orientação é mais provável do que tantos intrusos."
+
+msgid "Check what it sees, such as moving plants, sun, pets or heating, and its wiring."
+msgstr "Veja o que ele vê, como plantas a mexer, sol, animais ou aquecimento, e as ligações."
+
+msgid "The sensor reports nothing in front of it any more. Its alert ends when the alert time runs out."
+msgstr "O sensor já não comunica nada à sua frente. O alerta acaba quando acabar o tempo de alerta."
+
+msgid "Signal"
+msgstr "Sinal"
+
+msgid "Hub heard it in"
+msgstr "A central ouviu-o em"
+
+msgid "fired {n} times"
+msgstr "disparou {n} vezes"
+
+msgid "fired"
+msgstr "disparou"
+
+msgid "waiting"
+msgstr "à espera"
+
+msgid "No sensor nodes yet. Pair one under Sensors > Nodes and pairing."
+msgstr "Ainda não há nós sensores. Emparelhe um em Sensores > Nós e emparelhamento."
+
+msgid "On for {n} node for 10 minutes. Walk past each sensor; each node starts on its next report."
+msgid_plural "On for {n} nodes for 10 minutes. Walk past each sensor; each node starts on its next report."
+msgstr[0] "Ativo em {n} nó durante 10 minutos. Passe por cada sensor; cada nó começa na sua próxima comunicação."
+msgstr[1] "Ativo em {n} nós durante 10 minutos. Passe por cada sensor; cada nó começa na sua próxima comunicação."
+
+msgid "Stopped. What fired stays listed until you leave this page."
+msgstr "Parado. O que disparou fica na lista até sair desta página."
+
+msgid "approaching"
+msgstr "a aproximar-se"
+
+msgid "moving away"
+msgstr "a afastar-se"
+
+msgid "left to right"
+msgstr "da esquerda para a direita"
+
+msgid "right to left"
+msgstr "da direita para a esquerda"
+
+msgid "{m} min"
+msgstr "{m} min"
+
+msgid "{h} h {m} min"
+msgstr "{h} h {m} min"
+
+msgid "{d} days {h} h"
+msgstr "{d} dias {h} h"
+
+msgid "the hub"
+msgstr "a central"
+
+msgid "Event"
+msgstr "Evento"
+
+msgid "Details"
+msgstr "Detalhes"
+
+msgid "off for up to {time}"
+msgstr "desligada até {time}"
+
+msgid "look at {camera}"
+msgstr "ver {camera}"
+
+msgid "Tap for what this means"
+msgstr "Toque para ver o que significa"
+
+msgid "Clock not set"
+msgstr "Relógio por acertar"
+
+msgid "Hub"
+msgstr "Central"
+
+msgid "Show {n} more"
+msgstr "Mostrar mais {n}"
+
+msgid "None of these"
+msgstr "Nenhum destes"
+
+msgid "Nothing of this kind among the latest 64 events. The CSV has the whole history."
+msgstr "Nada deste tipo nos últimos 64 eventos. O CSV tem o histórico completo."
+
+msgid "No events yet"
+msgstr "Ainda não há eventos"
+
+msgid "Alerts, problems and the hub's own events show here as they happen."
+msgstr "Os alertas, os problemas e os eventos da própria central aparecem aqui à medida que acontecem."
+
+msgid "Send a test alert from the Overview"
+msgstr "Enviar um alerta de teste no Resumo"
+
+msgid "clear"
+msgstr "fim"
+
+msgid "delayed alert"
+msgstr "alerta atrasado"
+
+msgid "alert"
+msgstr "alerta"
+
+msgid "the web page"
+msgstr "a página web"
+
+msgid "the re-arm timer"
+msgstr "o temporizador de rearme"
+
+msgid "{from}, for {n} min"
+msgstr "{from}, por {n} min"
+
+msgid "{from}, for {n} h"
+msgstr "{from}, por {n} h"
+
+msgid "{from}, for {n} day"
+msgstr "{from}, por {n} dia"
+
+msgid "{from}, for {n} days"
+msgstr "{from}, por {n} dias"
+
+msgid " (low)"
+msgstr " (fraca)"
+
+msgid " (not on the plan yet)"
+msgstr " (ainda não está na planta)"
+
+msgid "(it takes {set} after its next report)"
+msgstr "(passa a {set} depois da próxima comunicação)"
+
+msgid ", saving it"
+msgstr ", a poupá-la"
+
+msgid ", weak on average"
+msgstr ", fraco em média"
+
+msgid "A new node"
+msgstr "Um nó novo"
+
+msgid "A problem: silent, low battery, weak signal or refused messages"
+msgstr "Um problema: em silêncio, bateria fraca, sinal fraco ou mensagens recusadas"
+
+msgid "A test alert reached the NVR"
+msgstr "Um alerta de teste chegou ao NVR"
+
+msgid "Allow pairing for 2 minutes"
+msgstr "Permitir emparelhamento durante 2 minutos"
+
+msgid "Allow pairing, then reset the node, or power it up for the first time. It flashes yellow while it looks for the hub."
+msgstr "Permita o emparelhamento e depois reinicie o nó, ou ligue-o pela primeira vez. Pisca a amarelo enquanto procura a central."
+
+msgid "Approve it"
+msgstr "Aprove-o"
+
+msgid "Board"
+msgstr "Placa"
+
+msgid "Check it again"
+msgstr "Verificar outra vez"
+
+msgid "Checked"
+msgstr "Verificado"
+
+msgid "Choose a sensor above first."
+msgstr "Escolha primeiro um sensor acima."
+
+msgid "Choose a sensor to place"
+msgstr "Escolha um sensor para colocar"
+
+msgid "Choose its sensor and pins"
+msgstr "Escolha o sensor e os pinos"
+
+msgid "Choose its sensors on the Floor plan page and tap where they are."
+msgstr "Escolha os seus sensores na página Planta e toque onde estão."
+
+msgid "Delete the floor plan?"
+msgstr "Apagar a planta?"
+
+msgid "Deleted."
+msgstr "Apagada."
+
+msgid "Done"
+msgstr "Feito"
+
+msgid "Every sensor is on the plan. Tap a spot to open that sensor's page."
+msgstr "Todos os sensores estão na planta. Toque num ponto para abrir a página desse sensor."
+
+msgid "Every sensor's place on it goes too."
+msgstr "O lugar de cada sensor nela também vai."
+
+msgid "Fair: may miss a message now and then"
+msgstr "Razoável: pode perder uma mensagem de vez em quando"
+
+msgid "Firing now"
+msgstr "A disparar agora"
+
+msgid "Firmware"
+msgstr "Firmware"
+
+msgid "Flash it"
+msgstr "Grave-o"
+
+msgid "Good"
+msgstr "Bom"
+
+msgid "Heard at a good signal"
+msgstr "Ouvido com bom sinal"
+
+msgid "Its firmware is from before hardware settings"
+msgstr "O firmware é anterior às definições de hardware"
+
+msgid "Its signal is {signal}, and weak on average. Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this."
+msgstr "O sinal é {signal}, e fraco em média. Mude o nó, ou a central, de sítio até ficar bom ou forte: mais alto, mais perto, com menos paredes entre eles. Cada comunicação atualiza isto."
+
+msgid "Its signal is {signal}. Move the node, or the hub, until it is good or strong: higher, nearer, with fewer walls between them. Each report updates this."
+msgstr "O sinal é {signal}. Mude o nó, ou a central, de sítio até ficar bom ou forte: mais alto, mais perto, com menos paredes entre eles. Cada comunicação atualiza isto."
+
+msgid "Its signal was good, the NVR got its test alert, and it saw someone walk past, by {date}."
+msgstr "O sinal era bom, o NVR recebeu o alerta de teste, e viu alguém passar, até {date}."
+
+msgid "Its signal was good, the NVR got its test alert, and it saw someone walk past."
+msgstr "O sinal era bom, o NVR recebeu o alerta de teste, e viu alguém passar."
+
+msgid "Last heard"
+msgstr "Ouvido pela última vez"
+
+msgid "Let it pair"
+msgstr "Deixe-o emparelhar"
+
+msgid "Making it small enough for the hub..."
+msgstr "A reduzi-la para caber na central..."
+
+msgid "Mount the node, press its reset button, and walk past it from where an intruder would come: its light flashes 3, 2 or 1 times for a strong, fair or weak signal, and its alert shows here."
+msgstr "Monte o nó, carregue no botão de reinício, e passe por ele vindo de onde viria um intruso: a luz pisca 3, 2 ou 1 vezes para um sinal forte, razoável ou fraco, e o alerta aparece aqui."
+
+msgid "Name its sensors"
+msgstr "Dê nome aos sensores"
+
+msgid "No floor plan yet. Add one under Alarm > Floor plan."
+msgstr "Ainda não há planta. Adicione uma em Alarme > Planta."
+
+msgid "No such node"
+msgstr "Esse nó não existe"
+
+msgid "No: it uses the shared ESP-NOW key"
+msgstr "Não: usa a chave ESP-NOW partilhada"
+
+msgid "None among the latest 64 events."
+msgstr "Nenhum nos últimos 64 eventos."
+
+msgid "Not heard yet"
+msgstr "Ainda não ouvido"
+
+msgid "Not heard yet: press its reset button, and it reports at once."
+msgstr "Ainda não ouvido: carregue no botão de reinício, e comunica logo."
+
+msgid "Not known"
+msgstr "Desconhecida"
+
+msgid "Not known yet"
+msgstr "Ainda desconhecido"
+
+msgid "Now tap where {sensor} is on the plan."
+msgstr "Agora toque onde está {sensor} na planta."
+
+msgid "On the Sensors page, name each of its sensors by where it is, such as Back door: alerts and notifications use the name."
+msgstr "Na página Sensores, dê a cada sensor o nome do sítio onde está, como Porta das traseiras: os alertas e as notificações usam esse nome."
+
+msgid "On the Sensors page, under the node's Hardware, choose its sensor and the pins you wired."
+msgstr "Na página Sensores, no Hardware do nó, escolha o sensor e os pinos que ligou."
+
+msgid "Once the node says hello, it is listed under Pairing below with its fingerprint."
+msgstr "Quando o nó se apresentar, aparece em Emparelhamento, abaixo, com a sua impressão digital."
+
+msgid "Open the Sensors page"
+msgstr "Abrir a página Sensores"
+
+msgid "Open the floor plan"
+msgstr "Abrir a planta"
+
+msgid "Paired"
+msgstr "Emparelhado"
+
+msgid "Placed."
+msgstr "Colocado."
+
+msgid "Put it on the floor plan"
+msgstr "Coloque-o na planta"
+
+msgid "Quiet"
+msgstr "Calmo"
+
+msgid "Reports"
+msgstr "Comunicações"
+
+msgid "Saved ({size} KB). Now place each sensor on it."
+msgstr "Guardada ({size} KB). Agora coloque nela cada sensor."
+
+msgid "Saved: the node takes them after its next report and restarts into them."
+msgstr "Guardado: o nó aplica-os depois da próxima comunicação e reinicia com eles."
+
+msgid "Send it a test alert: the NVR should record, as it would for an intruder."
+msgstr "Envie-lhe um alerta de teste: o NVR deve gravar, como faria com um intruso."
+
+msgid "Sent. Once the alert is over, the hub sees whether the NVR got it."
+msgstr "Enviado. Quando o alerta acabar, a central vê se o NVR o recebeu."
+
+msgid "Start a walk test on it"
+msgstr "Iniciar um teste de passagem nele"
+
+msgid "Strong"
+msgstr "Forte"
+
+msgid "Taken off the plan."
+msgstr "Tirado da planta."
+
+msgid "That picture is too detailed to fit the hub's 32 KB. Try a simpler drawing, or crop it."
+msgstr "Essa imagem tem demasiado detalhe para caber nos 32 KB da central. Experimente um desenho mais simples, ou recorte-a."
+
+msgid "The NVR did not get its test alert. See on the Overview that the NVR is listening, then send another."
+msgstr "O NVR não recebeu o alerta de teste. Veja no Resumo se o NVR está a ouvir, e depois envie outro."
+
+msgid "The hub has it: compare the fingerprint below with the one on the node's label or screen, and approve it under Pairing if they match. It then flashes green three times."
+msgstr "A central já o tem: compare a impressão digital abaixo com a da etiqueta ou do ecrã do nó, e aprove-o em Emparelhamento se forem iguais. Depois pisca a verde três vezes."
+
+msgid "This node's firmware is from before hardware settings: update it first, and it can take them from the hub."
+msgstr "O firmware deste nó é anterior às definições de hardware: atualize-o primeiro, e passa a recebê-las da central."
+
+msgid "Three checks before you trust it, each ticked as the hub sees it done."
+msgstr "Três verificações antes de confiar nele, cada uma marcada quando a central a vê feita."
+
+msgid "To do"
+msgstr "Por fazer"
+
+msgid "Walk past it"
+msgstr "Passe por ele"
+
+msgid "Walk past it from where an intruder would come, and each of its sensors must see you. During a walk test its light flashes 3, 2 or 1 times for a strong, fair or weak signal."
+msgstr "Passe por ele vindo de onde viria um intruso, e cada um dos seus sensores tem de o ver. Durante um teste de passagem a luz pisca 3, 2 ou 1 vezes para um sinal forte, razoável ou fraco."
+
+msgid "Weak: move the node or the hub"
+msgstr "Fraco: mude o nó ou a central de sítio"
+
+msgid "Write the node's firmware to it over USB: run python tools/flasher.py in the node project and choose its board, which also prints its label with its fingerprint. Or build it with PlatformIO, as the node's README says."
+msgstr "Grave o firmware no nó por USB: execute python tools/flasher.py no projeto do nó e escolha a placa, o que também imprime a etiqueta com a impressão digital. Ou compile-o com o PlatformIO, como diz o README do nó."
+
+msgid "Yes"
+msgstr "Sim"
+
+msgid "Yes, its messages sealed"
+msgstr "Sim, com as mensagens seladas"
+
+msgid "every {n} minutes"
+msgstr "a cada {n} minutos"
+
+msgid "firing now"
+msgstr "a disparar agora"
+
+msgid "generic, active high"
+msgstr "genérico, ativo em alto"
+
+msgid "generic, active low"
+msgstr "genérico, ativo em baixo"
+
+msgid "lithium-ion"
+msgstr "iões de lítio"
+
+msgid "not heard yet"
+msgstr "ainda não ouvido"
+
+msgid "quiet"
+msgstr "calmo"
+
+msgid "sensor {n}"
+msgstr "sensor {n}"
+
+msgid "silent"
+msgstr "em silêncio"
+
+msgid "unknown"
+msgstr "desconhecido"
+
+msgid "{cell} on {pin}"
+msgstr "{cell} em {pin}"
+
+msgid "{node}: set up"
+msgstr "{node}: configurado"
+
+msgid "{n} refused"
+msgstr "{n} recusadas"
+
+msgid "{n} restarts, the last: {why}"
+msgstr "{n} reinícios, o último: {why}"
+
+msgid "{n} sensor is not on the plan yet: choose one above, then tap where it is."
+msgid_plural "{n} sensors are not on the plan yet: choose one above, then tap where it is."
+msgstr[0] "{n} sensor ainda não está na planta: escolha-o acima, e depois toque onde está."
+msgstr[1] "{n} sensores ainda não estão na planta: escolha um acima, e depois toque onde está."
+
+msgid "{sensor} on {pin}; tamper switch: {tamper}; battery: {battery}"
+msgstr "{sensor} em {pin}; interruptor antissabotagem: {tamper}; bateria: {battery}"
+
+msgid "30 minutes"
+msgstr "30 minutos"
+
+msgid "1 hour"
+msgstr "1 hora"
+
+msgid "2 hours"
+msgstr "2 horas"
+
+msgid "4 hours"
+msgstr "4 horas"
+
+msgid "8 hours"
+msgstr "8 horas"
+
+msgid "12 hours"
+msgstr "12 horas"
+
+msgid "1 day"
+msgstr "1 dia"
+
+msgid "until armed again"
+msgstr "até voltar a armar"
+
+msgid "for {time}"
+msgstr "durante {time}"
+
+msgid "{h} h"
+msgstr "{h} h"
+
+msgid "Every sensor counts."
+msgstr "Todos os sensores contam."
+
+msgid "Interior sensors are logged but not sent to the NVR."
+msgstr "Os sensores interiores ficam registados mas não são enviados ao NVR."
+
+msgid "Until armed again."
+msgstr "Até voltar a armar."
+
+msgid "Arms again in {time}."
+msgstr "Volta a armar dentro de {time}."
+
+msgid "Arms again soon."
+msgstr "Volta a armar em breve."
+
+msgid "Alerts are logged but not sent to the NVR, so nothing is recorded."
+msgstr "Os alertas ficam registados mas não são enviados ao NVR, por isso nada é gravado."
+
+msgid "check its battery, or whether it was moved"
+msgstr "verifique a bateria, ou se foi mudado de sítio"
+
+msgid "replace or charge it"
+msgstr "substitua-a ou carregue-a"
+
+msgid "move it or the hub closer"
+msgstr "aproxime-o da central"
+
+msgid "it may have the wrong key; pair it again"
+msgstr "pode ter a chave errada; emparelhe-o outra vez"
+
+msgid "messages refused"
+msgstr "mensagens recusadas"
+
+msgid "Before the disarm at {time}"
+msgstr "Antes do desarme às {time}"
+
+msgid "Since it was last armed"
+msgstr "Desde que foi armada pela última vez"
+
+msgid "While armed, {from} to {to}"
+msgstr "Enquanto armada, das {from} às {to}"
+
+msgid "Since armed at {time}"
+msgstr "Desde que foi armada às {time}"
+
+msgid "at least {n} alert"
+msgid_plural "at least {n} alerts"
+msgstr[0] "pelo menos {n} alerta"
+msgstr[1] "pelo menos {n} alertas"
+
+msgid "{n} alert"
+msgid_plural "{n} alerts"
+msgstr[0] "{n} alerta"
+msgstr[1] "{n} alertas"
+
+msgid " and more"
+msgstr " e mais"
+
+msgid "{n} came while the NVR was not listening, and were played to it once it listened again"
+msgstr "{n} chegaram com o NVR sem ouvir, e foram-lhe repetidos quando voltou a ouvir"
+
+msgid "{n} did not reach the NVR yet; the hub keeps them until it listens"
+msgstr "{n} ainda não chegaram ao NVR; a central guarda-os até ele ouvir"
+
+msgid "all reached the NVR"
+msgstr "todos chegaram ao NVR"
+
+msgid "with no NVR address set, the hub cannot tell whether they reached it"
+msgstr "sem endereço do NVR, a central não consegue saber se lhe chegaram"
+
+msgid "no alerts."
+msgstr "nenhum alerta."
+
+msgid "Not set up"
+msgstr "Não configurado"
+
+msgid "Connected"
+msgstr "Ligado"
+
+msgid "Connecting"
+msgstr "A ligar"
+
+msgid " (a past event replaying)"
+msgstr " (um evento passado a ser repetido)"
+
+msgid "Sensor problems"
+msgstr "Problemas dos sensores"
+
+msgid "Last alert"
+msgstr "Último alerta"
+
+msgid "None in the history"
+msgstr "Nenhum no histórico"
+
+msgid "No address set"
+msgstr "Sem endereço"
+
+msgid "Listening, watching the video"
+msgstr "A ouvir, a ver o vídeo"
+
+msgid "Listening"
+msgstr "A ouvir"
+
+msgid "Not listening: alerts are not reaching it"
+msgstr "Não está a ouvir: os alertas não lhe chegam"
+
+msgid "Last message: {result}"
+msgstr "Última mensagem: {result}"
+
+msgid "Nothing sent yet"
+msgstr "Ainda nada enviado"
+
+msgid "Fix"
+msgstr "Corrigir"
+
+msgid "Getting started: step {n} of {total}"
+msgstr "Primeiros passos: passo {n} de {total}"
+
+msgid "Getting started"
+msgstr "Primeiros passos"
+
+msgid "Back to {mode}"
+msgstr "De volta a {mode}"
+
+msgid "Not changed: {why}"
+msgstr "Não mudou: {why}"
+
+msgid "Disarm the hub {when}?"
+msgstr "Desarmar a central {when}?"
+
+msgid "Disarmed {when}"
+msgstr "Desarmada {when}"
+
+msgid "Saved"
+msgstr "Guardado"
+
+msgid "Not saved: {why}"
+msgstr "Não guardado: {why}"
+
+msgid "Hub MAC address"
+msgstr "Endereço MAC da central"
+
+msgid "WiFi channel"
+msgstr "Canal Wi-Fi"
+
+msgid "ESP-NOW key"
+msgstr "Chave ESP-NOW"
+
+msgid "Active"
+msgstr "Ativo"
+
+msgid "Idle"
+msgstr "Em repouso"
+
+msgid "Silent"
+msgstr "Em silêncio"
+
+msgid "State"
+msgstr "Estado"
+
+msgid "Report no."
+msgstr "N.º da comunicação"
+
+msgid "Refused"
+msgstr "Recusadas"
+
+msgid "Key"
+msgstr "Chave"
+
+msgid "Sensor type"
+msgstr "Tipo de sensor"
+
+msgid "Restarts"
+msgstr "Reinícios"
+
+msgid "Last alert took"
+msgstr "O último alerta levou"
+
+msgid "(no name)"
+msgstr "(sem nome)"
+
+msgid "(no report for {n} minutes)"
+msgstr "(sem comunicações há {n} minutos)"
+
+msgid "its own"
+msgstr "própria"
+
+msgid "shared"
+msgstr "partilhada"
+
+msgid ", sealed"
+msgstr ", selada"
+
+msgid "{n}, last: {why}"
+msgstr "{n}, o último: {why}"
+
+msgid " (a fault)"
+msgstr " (uma falha)"
+
+msgid "No sensor nodes yet"
+msgstr "Ainda não há nós sensores"
+
+msgid "Allow pairing and start a node in pairing mode, or add a device that calls a web address."
+msgstr "Permita o emparelhamento e ligue um nó em modo de emparelhamento, ou adicione um aparelho que chama um endereço web."
+
+msgid "Allow pairing"
+msgstr "Permitir emparelhamento"
+
+msgid "{on} of {all} nodes run it."
+msgstr "{on} de {all} nós usam-no."
+
+msgid "Offered to every node of this chip."
+msgstr "Oferecido a todos os nós deste chip."
+
+msgid "{name} had it undone, so it is not offered to the others."
+msgstr "{name} desfê-lo, por isso não é oferecido aos outros."
+
+msgid "Tried on {name} first; the others get it a day after it runs it."
+msgstr "Experimentado primeiro em {name}; os outros recebem-no um dia depois de ele o usar."
+
+msgid "{name} runs it; the others get it in {n} h."
+msgstr "{name} usa-o; os outros recebem-no dentro de {n} h."
+
+msgid "{name} ran it for a day, so the others get it too."
+msgstr "{name} usou-o durante um dia, por isso os outros também o recebem."
+
+msgid "Chip"
+msgstr "Chip"
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "Size"
+msgstr "Tamanho"
+
+msgid "Nodes"
+msgstr "Nós"
+
+msgid "Try it first on"
+msgstr "Experimentar primeiro em"
+
+msgid "None on the hub."
+msgstr "Nenhum na central."
+
+msgid "The node to try it on first"
+msgstr "O nó onde o experimentar primeiro"
+
+msgid "It is tried on {name} first"
+msgstr "É experimentado primeiro em {name}"
+
+msgid "Offered to every node"
+msgstr "Oferecido a todos os nós"
+
+msgid "No node: every node at once"
+msgstr "Nenhum: todos os nós de uma vez"
+
+msgid "Messages"
+msgstr "Mensagens"
+
+msgid "These are ignored until added under Sensors > Sensors."
+msgstr "Estes são ignorados até serem adicionados em Sensores > Sensores."
+
+msgid "None since the hub last started."
+msgstr "Nenhum desde que a central arrancou."
+
+msgid "Not available on this hub."
+msgstr "Não disponível nesta central."
+
+msgid "Open for {n} s more."
+msgstr "Aberto durante mais {n} s."
+
+msgid "Closed."
+msgstr "Fechado."
+
+msgid "The hub's fingerprint is {fingerprint}."
+msgstr "A impressão digital da central é {fingerprint}."
+
+msgid "Fingerprint"
+msgstr "Impressão digital"
+
+msgid " (paired before, with another key)"
+msgstr " (emparelhado antes, com outra chave)"
+
+msgid " (added before, without pairing)"
+msgstr " (adicionado antes, sem emparelhamento)"
+
+msgid "Approve"
+msgstr "Aprovar"
+
+msgid "Only if its label shows the fingerprint {fingerprint}."
+msgstr "Só se a etiqueta mostrar a impressão digital {fingerprint}."
+
+msgid "Approve {mac}?"
+msgstr "Aprovar {mac}?"
+
+msgid "For example: Back door. Alerts and notifications will use this name."
+msgstr "Por exemplo: Porta das traseiras. Os alertas e as notificações vão usar este nome."
+
+msgid "Where is sensor {n} of this node?"
+msgstr "Onde está o sensor {n} deste nó?"
+
+msgid "Where is this sensor?"
+msgstr "Onde está este sensor?"
+
+msgid "Skip"
+msgstr "Saltar"
+
+msgid "The name was not saved: {why}. Name it on the Sensors page."
+msgstr "O nome não foi guardado: {why}. Dê-lhe nome na página Sensores."
+
+msgid "Paired {mac}. It starts reporting once it hears the hub again."
+msgstr "{mac} emparelhado. Começa a comunicar quando voltar a ouvir a central."
+
+msgid "Reject"
+msgstr "Rejeitar"
+
+msgid "Node problems now raise the alarm"
+msgstr "Os problemas dos nós passam a dar alarme"
+
+msgid "Node problems no longer raise the alarm"
+msgstr "Os problemas dos nós deixam de dar alarme"
+
+msgid "Choose a node's firmware .bin file first."
+msgstr "Escolha primeiro o ficheiro .bin do firmware de um nó."
+
+msgid "Uploading. Keep this page open."
+msgstr "A enviar. Mantenha esta página aberta."
+
+msgid "Done. The nodes of that chip update after their next report."
+msgstr "Feito. Os nós desse chip atualizam-se depois da próxima comunicação."
+
+msgid "The upload failed."
+msgstr "O envio falhou."
+
+msgid "update ready"
+msgstr "atualização pronta"
+
+msgid "update undone"
+msgstr "atualização desfeita"
+
+msgid "updating, {n}%"
+msgstr "a atualizar, {n}%"
+
+msgid "wrong signature"
+msgstr "assinatura errada"
+
+msgid "Alerts will be logged but not sent to the NVR, so nothing is recorded."
+msgstr "Os alertas vão ficar registados mas não serão enviados ao NVR, por isso nada será gravado."
+
+msgid "Video address"
+msgstr "Endereço do vídeo"
+
+msgid "Video streams open"
+msgstr "Ligações de vídeo abertas"
+
+msgid "Leave empty to keep it"
+msgstr "Deixe vazio para a manter"
+
+msgid "Login"
+msgstr "Acesso"
+
+msgid "Required: user admin and the hub password"
+msgstr "Obrigatório: utilizador admin e a palavra-passe da central"
+
+msgid "Device address"
+msgstr "Endereço do aparelho"
+
+msgid "Event subscribers"
+msgstr "Inscritos nos eventos"
+
+msgid "Serial number"
+msgstr "Número de série"
+
+msgid "Requests not supported"
+msgstr "Pedidos não suportados"
+
+msgid "Sensor token"
+msgstr "Token dos sensores"
+
+msgid "add {token} to /sensor requests"
+msgstr "acrescente {token} aos pedidos /sensor"
+
+msgid "Could not reach the hub. Trying again."
+msgstr "Não foi possível chegar à central. A tentar outra vez."
+
+msgid "The hub is short of memory. Trying again."
+msgstr "A central tem pouca memória. A tentar outra vez."
+
+msgid "The hub could not send the picture."
+msgstr "A central não conseguiu enviar a imagem."
+
+msgid "The picture changed while it was being sent. Trying again."
+msgstr "A imagem mudou enquanto era enviada. A tentar outra vez."
+
+msgid "Could not show the picture. The decoder needs internet access the first time."
+msgstr "Não foi possível mostrar a imagem. Da primeira vez, o descodificador precisa de acesso à internet."
+
+msgid "Could not show the picture."
+msgstr "Não foi possível mostrar a imagem."
+
+msgid "Enter the NVR's IP address"
+msgstr "Indique o endereço IP do NVR"
+
+msgid "Not connected"
+msgstr "Desligado"
+
+msgid "Video"
+msgstr "Vídeo"
+
+msgid "Motion events"
+msgstr "Eventos de movimento"
+
+msgid "Viewers connected now"
+msgstr "Leitores ligados agora"
+
+msgid "Saved."
+msgstr "Guardado."
+
+msgid "This fixed address is used only on {network}. Other WiFi networks use DHCP."
+msgstr "Este endereço fixo só é usado em {network}. As outras redes Wi-Fi usam DHCP."
+
+msgid "A fixed address is used only on the Wi-Fi network it is connected to now."
+msgstr "Um endereço fixo só é usado na rede Wi-Fi a que está ligada agora."
+
+msgid "Restart the hub to use this address?"
+msgstr "Reiniciar a central para usar este endereço?"
+
+msgid "Save and restart"
+msgstr "Guardar e reiniciar"
+
+msgid "Saved. The hub is restarting."
+msgstr "Guardado. A central está a reiniciar."
+
+msgid "Saved. The hub is restarting and will get its address from the router. Open it by name, or find the new address in the router."
+msgstr "Guardado. A central está a reiniciar e vai receber o endereço do router. Abra-a pelo nome, ou procure o novo endereço no router."
+
+msgid "Restart the hub to use this port?"
+msgstr "Reiniciar a central para usar esta porta?"
+
+msgid "The video stops briefly. A viewer such as VLC will need the new address."
+msgstr "O vídeo para por instantes. Um leitor como o VLC vai precisar do novo endereço."
+
+msgid "The NVR will lose this camera until its channel is set to the new port."
+msgstr "O NVR vai perder esta câmara até o canal ter a nova porta."
+
+msgid "A new port or name restarts the hub; a new password or other names apply at once."
+msgstr "Uma nova porta ou nome reinicia a central; uma nova palavra-passe ou outros nomes aplicam-se de imediato."
+
+msgid "Save these settings?"
+msgstr "Guardar estas definições?"
+
+msgid "Saved. A new password applies now: log in again with it."
+msgstr "Guardado. Uma nova palavra-passe aplica-se já: entre outra vez com ela."
+
+msgid "saved"
+msgstr "guardada"
+
+msgid "since {time}"
+msgstr "desde {time}"
+
+msgid "Events waiting to send"
+msgstr "Eventos à espera de envio"
+
+msgid "Events lost, too many waiting"
+msgstr "Eventos perdidos, demasiados à espera"
+
+msgid "Topics"
+msgstr "Tópicos"
+
+msgid "In Home Assistant"
+msgstr "No Home Assistant"
+
+msgid "the device {hub}, and one device per sensor"
+msgstr "o aparelho {hub}, e um aparelho por sensor"
+
+msgid "Saved. The connection shows below within a few seconds."
+msgstr "Guardado. A ligação aparece abaixo dentro de alguns segundos."
+
+msgid "The address of your ntfy server, ending with the topic to send to. Subscribe to that topic in the ntfy app on your phone. Alerts arrive as urgent, problems as high priority, and the daily check and weekly summary quietly."
+msgstr "O endereço do seu servidor ntfy, a terminar com o tópico para onde enviar. Inscreva-se nesse tópico na aplicação ntfy do telemóvel. Os alertas chegam como urgentes, os problemas com prioridade alta, e a verificação diária e o resumo semanal discretamente."
+
+msgid "Access token, if the topic needs one"
+msgstr "Token de acesso, se o tópico precisar"
+
+msgid "The address of your Gotify server, ending with /message, and an application's token from its Apps page. Alerts arrive with the highest priority."
+msgstr "O endereço do seu servidor Gotify, a terminar com /message, e o token de uma aplicação da página Apps. Os alertas chegam com a prioridade máxima."
+
+msgid "Application token"
+msgstr "Token da aplicação"
+
+msgid "Each message is posted as JSON, with the event, the sensor, its name and camera, the battery and the time. In Home Assistant, use a webhook trigger in an automation."
+msgstr "Cada mensagem é enviada como JSON, com o evento, o sensor, o seu nome e câmara, a bateria e a hora. No Home Assistant, use um acionador webhook numa automação."
+
+msgid "Each message is posted as one line of plain text."
+msgstr "Cada mensagem é enviada como uma linha de texto simples."
+
+msgid "saved; leave blank to keep it"
+msgstr "guardado; deixe vazio para o manter"
+
+msgid "Last message"
+msgstr "Última mensagem"
+
+msgid "None sent yet"
+msgstr "Ainda nenhuma enviada"
+
+msgid "Waiting to send"
+msgstr "À espera de envio"
+
+msgid "Dropped, too many waiting"
+msgstr "Descartadas, demasiadas à espera"
+
+msgid "Test sent. The result shows below within a few seconds."
+msgstr "Teste enviado. O resultado aparece abaixo dentro de alguns segundos."
+
+msgid "Summary sent. The result shows below within a few seconds."
+msgstr "Resumo enviado. O resultado aparece abaixo dentro de alguns segundos."
+
+msgid "connected"
+msgstr "ligado"
+
+msgid "connecting"
+msgstr "a ligar"
+
+msgid "Reading the history..."
+msgstr "A ler o histórico..."
+
+msgid "Could not read the history: {why}"
+msgstr "Não foi possível ler o histórico: {why}"
+
+msgid "Could not read the history."
+msgstr "Não foi possível ler o histórico."
+
+msgid "Today"
+msgstr "Hoje"
+
+msgid "{n} alert in the last 7 days, by hour of the day (local time)."
+msgid_plural "{n} alerts in the last 7 days, by hour of the day (local time)."
+msgstr[0] "{n} alerta nos últimos 7 dias, por hora do dia (hora local)."
+msgstr[1] "{n} alertas nos últimos 7 dias, por hora do dia (hora local)."
+
+msgid "No alerts in the last 7 days."
+msgstr "Nenhum alerta nos últimos 7 dias."
+
+msgid "Not enough readings yet: the hub keeps one every 6 hours."
+msgstr "Ainda não há leituras suficientes: a central guarda uma a cada 6 horas."
+
+msgid "No such sensor"
+msgstr "Esse sensor não existe"
+
+msgid "Silent: not heard for too long"
+msgstr "Em silêncio: não é ouvido há demasiado tempo"
+
+msgid "{s} s to reach the hub"
+msgstr "{s} s a chegar à central"
+
+msgid "Test alert sent. The NVR should now record it: check that the recording is there."
+msgstr "Alerta de teste enviado. O NVR deve gravá-lo agora: confirme que a gravação lá está."
+
+msgid "{file} is not the published file, so it was not run"
+msgstr "{file} não é o ficheiro publicado, por isso não foi executado"
+
+msgid "ACTIVE"
+msgstr "ATIVO"
+
+msgid "APPROACHING"
+msgstr "A APROXIMAR-SE"
+
+msgid "MOVING AWAY"
+msgstr "A AFASTAR-SE"
+
+msgid "LEFT TO RIGHT"
+msgstr "DA ESQUERDA PARA A DIREITA"
+
+msgid "RIGHT TO LEFT"
+msgstr "DA DIREITA PARA A ESQUERDA"
+
+msgid "PAST EVENT - CHECK LOGS"
+msgstr "EVENTO PASSADO - VER REGISTOS"
+
+msgid "Name (first line)"
+msgstr "Nome (primeira linha)"
+
+msgid "Approaching"
+msgstr "A aproximar-se"
+
+msgid "Moving away"
+msgstr "A afastar-se"
+
+msgid "Past event (last line)"
+msgstr "Evento passado (última linha)"
+
+msgid "Could not load the encoder from the internet: {why}"
+msgstr "Não foi possível carregar o codificador da internet: {why}"
+
+msgid "The encoder did not produce a complete picture"
+msgstr "O codificador não produziu uma imagem completa"
+
+msgid "The encoder failed"
+msgstr "O codificador falhou"
+
+msgid "Even at the lowest quality this picture is over 32 KB. Try a simpler image."
+msgstr "Mesmo com a qualidade mais baixa esta imagem tem mais de 32 KB. Experimente uma imagem mais simples."
+
+msgid "Optional text on top, up to 3 lines"
+msgstr "Texto opcional por cima, até 3 linhas"
+
+msgid "Encoded picture"
+msgstr "Imagem codificada"
+
+msgid "Choose an image. Any shape or size is fine."
+msgstr "Escolha uma imagem. Qualquer forma ou tamanho serve."
+
+msgid "Encode and preview"
+msgstr "Codificar e pré-visualizar"
+
+msgid "Save to the hub"
+msgstr "Guardar na central"
+
+msgid "Add text if you like, then encode."
+msgstr "Acrescente texto se quiser, e depois codifique."
+
+msgid "This browser cannot open that file."
+msgstr "Este navegador não consegue abrir esse ficheiro."
+
+msgid "Encoding. The first time, this downloads about 30 MB."
+msgstr "A codificar. Da primeira vez, isto descarrega cerca de 30 MB."
+
+msgid "{size}. Quality was lowered {n} of {steps} steps to fit 32 KB."
+msgstr "{size}. A qualidade foi reduzida {n} de {steps} passos para caber em 32 KB."
+
+msgid "{size} at full quality."
+msgstr "{size} com a qualidade máxima."
+
+msgid "The preview could not be shown, but the picture can still be saved."
+msgstr "Não foi possível mostrar a pré-visualização, mas a imagem pode ser guardada na mesma."
+
+msgid "The hub refused this browser's video format. Please report this header: {header}"
+msgstr "A central recusou o formato de vídeo deste navegador. Por favor comunique este cabeçalho: {header}"
+
+msgid "Getting the encoder ready. The first time, this downloads about 30 MB."
+msgstr "A preparar o codificador. Da primeira vez, isto descarrega cerca de 30 MB."
+
+msgid "Making picture {n} of {total}"
+msgstr "A criar a imagem {n} de {total}"
+
+msgid "Saved {n} picture"
+msgid_plural "Saved {n} pictures"
+msgstr[0] "{n} imagem guardada"
+msgstr[1] "{n} imagens guardadas"
+
+msgid "Not set yet"
+msgstr "Ainda por acertar"
+
+msgid "Read from this PC. Press Save to set the hub to this time."
+msgstr "Lida deste PC. Carregue em Guardar para acertar a central com esta hora."
+
+msgid "Enter the date and time, or use Read from this PC."
+msgstr "Indique a data e a hora, ou use Ler deste PC."
+
+msgid "Enter a time."
+msgstr "Indique uma hora."
+
+msgid "The video stops for a few seconds."
+msgstr "O vídeo para durante alguns segundos."
+
+msgid "Restart the hub now?"
+msgstr "Reiniciar a central agora?"
+
+msgid "Restart"
+msgstr "Reiniciar"
+
+msgid "The hub is restarting."
+msgstr "A central está a reiniciar."
+
+msgid "Every sensor node stops being heard until it is set up or paired again, and HTTP sensors need the new token. The hub restarts."
+msgstr "Nenhum nó sensor volta a ser ouvido até ser configurado ou emparelhado outra vez, e os sensores HTTP precisam do novo token. A central reinicia."
+
+msgid "Make new keys?"
+msgstr "Criar novas chaves?"
+
+msgid "New keys are being made. The hub is restarting."
+msgstr "Estão a ser criadas novas chaves. A central está a reiniciar."
+
+msgid "The saved Wi-Fi networks, ports, name, web password, fixed address and time settings are erased. The hub restarts and may move to another address."
+msgstr "As redes Wi-Fi guardadas, as portas, o nome, a palavra-passe web, o endereço fixo e as definições de hora são apagados. A central reinicia e pode mudar de endereço."
+
+msgid "Reset the settings?"
+msgstr "Repor as definições?"
+
+msgid "Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network."
+msgstr "Definições apagadas. A central está a reiniciar. Se não conseguir entrar numa rede, abre a sua rede de configuração."
+
+msgid "Download crash report"
+msgstr "Descarregar relatório de falha"
+
+msgid "Delete crash report"
+msgstr "Apagar relatório de falha"
+
+msgid "Delete the crash report?"
+msgstr "Apagar o relatório de falha?"
+
+msgid "Deleted the crash report"
+msgstr "Relatório de falha apagado"
+
+msgid "For diagnosis with the firmware it came from. It holds a copy of the hub's memory, which can include passwords."
+msgstr "Para diagnóstico com o firmware de onde veio. Contém uma cópia da memória da central, que pode incluir palavras-passe."
+
+msgid "This file is damaged, or is not a full backup from the hub."
+msgstr "Este ficheiro está danificado, ou não é uma cópia completa da central."
+
+msgid "This file is cut short, or is not a full backup from the hub."
+msgstr "Este ficheiro está incompleto, ou não é uma cópia completa da central."
+
+msgid "Type a passphrase of 8 characters or more, at the top of Backup and restore."
+msgstr "Escreva uma frase-passe com 8 caracteres ou mais, no topo de Cópia de segurança e restauro."
+
+msgid "The two passphrases differ."
+msgstr "As duas frases-passe são diferentes."
+
+msgid "Sealing with your passphrase: {n}%"
+msgstr "A selar com a sua frase-passe: {n}%"
+
+msgid "The hub could not send its settings."
+msgstr "A central não conseguiu enviar as definições."
+
+msgid "This backup is damaged, or was made by a newer hub."
+msgstr "Esta cópia está danificada, ou foi feita por uma central mais recente."
+
+msgid "Saved, sealed with your passphrase. Keep the passphrase apart from the file."
+msgstr "Guardada, selada com a sua frase-passe. Guarde a frase-passe longe do ficheiro."
+
+msgid "Collected {n} files"
+msgstr "{n} ficheiros recolhidos"
+
+msgid "Saved {n} files, the settings and node keys sealed with your passphrase."
+msgstr "{n} ficheiros guardados, com as definições e as chaves dos nós seladas com a sua frase-passe."
+
+msgid "Choose a full backup .tar file first."
+msgstr "Escolha primeiro o ficheiro .tar de uma cópia completa."
+
+msgid "Its sensors, pictures and names are added, replacing any with the same name, then the settings are replaced and the hub restarts. It may move to another address."
+msgstr "Os sensores, as imagens e os nomes são acrescentados, substituindo os que tiverem o mesmo nome, depois as definições são substituídas e a central reinicia. Pode mudar de endereço."
+
+msgid "Restore this backup?"
+msgstr "Restaurar esta cópia?"
+
+msgid "Restore"
+msgstr "Restaurar"
+
+msgid "This is not a full backup from the hub."
+msgstr "Isto não é uma cópia completa da central."
+
+msgid "Restoring {n} of {total}: {file}"
+msgstr "A restaurar {n} de {total}: {file}"
+
+msgid "Restoring the settings"
+msgstr "A restaurar as definições"
+
+msgid "The sensors and pictures were restored, but not the settings: {why}."
+msgstr "Os sensores e as imagens foram restaurados, mas as definições não: {why}."
+
+msgid "the hub refused them"
+msgstr "a central recusou-as"
+
+msgid "Restored {n} of {total} items and the settings. The hub is restarting."
+msgstr "Restaurados {n} de {total} itens e as definições. A central está a reiniciar."
+
+msgid "Not restored: {list}"
+msgstr "Não restaurados: {list}"
+
+msgid "Choose a firmware .bin file first."
+msgstr "Escolha primeiro um ficheiro .bin de firmware."
+
+msgid "The hub restarts when it finishes, and the video stops until then."
+msgstr "A central reinicia quando acabar, e o vídeo para até lá."
+
+msgid "Update the firmware?"
+msgstr "Atualizar o firmware?"
+
+msgid "Update"
+msgstr "Atualizar"
+
+msgid "Uploading: {n}%. Keep this page open."
+msgstr "A enviar: {n}%. Mantenha esta página aberta."
+
+msgid "Checking the signature"
+msgstr "A verificar a assinatura"
+
+msgid "Done. The hub is restarting; this page reloads when it is back."
+msgstr "Feito. A central está a reiniciar; esta página recarrega quando ela voltar."
+
+msgid "The upload failed. The hub keeps its current firmware."
+msgstr "O envio falhou. A central mantém o firmware atual."
+
+msgid "Choose a backup file first."
+msgstr "Escolha primeiro um ficheiro de cópia de segurança."
+
+msgid "The hub restarts and may move to another address."
+msgstr "A central reinicia e pode mudar de endereço."
+
+msgid "Replace the hub's settings with this backup?"
+msgstr "Substituir as definições da central por esta cópia?"
+
+msgid "Restored. The hub is restarting."
+msgstr "Restaurada. A central está a reiniciar."
+
+msgid "The hub refused this backup"
+msgstr "A central recusou esta cópia"
+
+msgid "Arduino core"
+msgstr "Núcleo Arduino"
+
+msgid "Crash"
+msgstr "Falha"
+
+msgid "Device name"
+msgstr "Nome do aparelho"
+
+msgid "ESP-IDF"
+msgstr "ESP-IDF"
+
+msgid "ESP-NOW messages dropped while busy"
+msgstr "Mensagens ESP-NOW descartadas por estar ocupada"
+
+msgid "Firmware built"
+msgstr "Firmware compilado"
+
+msgid "Firmware check"
+msgstr "Verificação do firmware"
+
+msgid "Firmware version"
+msgstr "Versão do firmware"
+
+msgid "Fixed address could not reach the router"
+msgstr "O endereço fixo não chegou ao router"
+
+msgid "Flash size"
+msgstr "Tamanho da flash"
+
+msgid "Free memory"
+msgstr "Memória livre"
+
+msgid "Free memory pieces"
+msgstr "Blocos de memória livre"
+
+msgid "Largest free block"
+msgstr "Maior bloco livre"
+
+msgid "Last crash"
+msgstr "Última falha"
+
+msgid "Last restart"
+msgstr "Último reinício"
+
+msgid "Low memory"
+msgstr "Pouca memória"
+
+msgid "Low power supply voltage"
+msgstr "Tensão de alimentação baixa"
+
+msgid "Lowest free memory"
+msgstr "Menor memória livre"
+
+msgid "Memory in use"
+msgstr "Memória em uso"
+
+msgid "Memory in use by size"
+msgstr "Memória em uso por tamanho"
+
+msgid "New WiFi settings"
+msgstr "Novas definições de Wi-Fi"
+
+msgid "New firmware, being checked"
+msgstr "Firmware novo, em verificação"
+
+msgid "New keys"
+msgstr "Novas chaves"
+
+msgid "New web, port or address settings"
+msgstr "Novas definições web, de porta ou de endereço"
+
+msgid "Other"
+msgstr "Outro"
+
+msgid "Power on or reset button"
+msgstr "Ligação à corrente ou botão de reinício"
+
+msgid "Program size"
+msgstr "Tamanho do programa"
+
+msgid "Restart button"
+msgstr "Botão de reinício"
+
+msgid "Router stopped answering"
+msgstr "O router deixou de responder"
+
+msgid "Server stalled"
+msgstr "O servidor parou"
+
+msgid "Settings reset"
+msgstr "Definições repostas"
+
+msgid "Settings restored"
+msgstr "Definições restauradas"
+
+msgid "Settings storage"
+msgstr "Espaço das definições"
+
+msgid "Smallest largest free block"
+msgstr "Menor dos maiores blocos livres"
+
+msgid "Software restart"
+msgstr "Reinício por software"
+
+msgid "The last update failed and was undone"
+msgstr "A última atualização falhou e foi desfeita"
+
+msgid "Uptime"
+msgstr "Tempo ligada"
+
+msgid "Watchdog"
+msgstr "Watchdog"
+
+msgid "WiFi lost for 5 minutes"
+msgstr "Wi-Fi perdido durante 5 minutos"
+
+msgid "WiFi network"
+msgstr "Rede Wi-Fi"
+
+msgid "WiFi signal"
+msgstr "Sinal Wi-Fi"
+
+msgid "Work dropped for lack of memory"
+msgstr "Trabalho descartado por falta de memória"
+
+msgid "brownout"
+msgstr "quebra de tensão"
+
+msgid "closed without a reply"
+msgstr "fechada sem resposta"
+
+msgid "could not connect"
+msgstr "não foi possível ligar"
+
+msgid "could not connect to the broker"
+msgstr "não foi possível ligar ao broker"
+
+msgid "crash"
+msgstr "falha"
+
+msgid "power on"
+msgstr "ligação à corrente"
+
+msgid "reset button"
+msgstr "botão de reinício"
+
+msgid "software"
+msgstr "software"
+
+msgid "the broker address is not an IP address"
+msgstr "o endereço do broker não é um endereço IP"
+
+msgid "the broker closed the connection"
+msgstr "o broker fechou a ligação"
+
+msgid "the broker did not acknowledge an event"
+msgstr "o broker não confirmou um evento"
+
+msgid "the broker sent something that is not MQTT"
+msgstr "o broker enviou algo que não é MQTT"
+
+msgid "the broker stopped answering"
+msgstr "o broker deixou de responder"
+
+msgid "the connection failed"
+msgstr "a ligação falhou"
+
+msgid "the connection to the broker failed"
+msgstr "a ligação ao broker falhou"
+
+msgid "watchdog"
+msgstr "watchdog"
+
+msgid "{n} times since the start; the hub kept running"
+msgstr "{n} vezes desde o arranque; a central continuou a funcionar"
+
+msgid "{n}, which their sensors resend"
+msgstr "{n}, que os sensores voltam a enviar"
+
+msgid "{a} KB of {b} KB"
+msgstr "{a} KB de {b} KB"
+
+msgid "{a} of {b} entries used"
+msgstr "{a} de {b} entradas usadas"
+
+msgid "{n} cores at {m} MHz"
+msgstr "{n} núcleos a {m} MHz"
+
+msgid "{n} KB since the start, checked each second"
+msgstr "{n} KB desde o arranque, verificado a cada segundo"
+
+msgid "{model} revision {n}"
+msgstr "{model} revisão {n}"
+
+msgid "Disarming from Home Assistant"
+msgstr "Desarmar a partir do Home Assistant"
+
+msgid "Allowed, as the hub logs in to the broker"
+msgstr "Permitido, porque a central entra no broker com um acesso"
+
+msgid "Refused: give the broker a login, so not anyone on the network can disarm the hub"
+msgstr "Recusado: dê um acesso ao broker, para que não seja qualquer pessoa na rede a poder desarmar a central"
+
+msgid "Language of the messages"
+msgstr "Idioma das mensagens"
+
+msgid "could not create the folder"
+msgstr "não foi possível criar a pasta"
+
+msgid "could not delete the crash report"
+msgstr "não foi possível apagar o relatório de falha"
+
+msgid "could not delete the file"
+msgstr "não foi possível apagar o ficheiro"
+
+msgid "could not do that"
+msgstr "não foi possível fazer isso"
+
+msgid "could not save it; storage may be full"
+msgstr "não foi possível guardar; o armazenamento pode estar cheio"
+
+msgid "could not save the MQTT settings"
+msgstr "não foi possível guardar as definições de MQTT"
+
+msgid "could not save the NVR address"
+msgstr "não foi possível guardar o endereço do NVR"
+
+msgid "could not save the Wi-Fi settings"
+msgstr "não foi possível guardar as definições de Wi-Fi"
+
+msgid "could not save the address"
+msgstr "não foi possível guardar o endereço"
+
+msgid "could not save the name; storage may be full"
+msgstr "não foi possível guardar o nome; o armazenamento pode estar cheio"
+
+msgid "could not save the notification settings"
+msgstr "não foi possível guardar as definições das notificações"
+
+msgid "could not save the preview; storage may be full"
+msgstr "não foi possível guardar a pré-visualização; o armazenamento pode estar cheio"
+
+msgid "could not save the schedule"
+msgstr "não foi possível guardar o horário"
+
+msgid "could not save the setting"
+msgstr "não foi possível guardar a definição"
+
+msgid "could not save the setting; storage may be full"
+msgstr "não foi possível guardar a definição; o armazenamento pode estar cheio"
+
+msgid "could not save the settings; storage may be full"
+msgstr "não foi possível guardar as definições; o armazenamento pode estar cheio"
+
+msgid "could not save the text; storage may be full"
+msgstr "não foi possível guardar o texto; o armazenamento pode estar cheio"
+
+msgid "could not save the time settings"
+msgstr "não foi possível guardar as definições de hora"
+
+msgid "the hub's clock is not set, or it is short of memory"
+msgstr "o relógio da central não está acertado, ou tem pouca memória"
+
+msgid "{n} times in an hour"
+msgstr "{n} vezes numa hora"
+
+msgid "{n} nodes"
+msgstr "{n} nós"
+
+msgid "A sealed backup of the settings and the nodes' keys"
+msgstr "Uma cópia de segurança selada das definições e das chaves dos nós"
+
+msgid "A new backup, as a node was paired since the last"
+msgstr "Uma cópia nova, porque um nó foi emparelhado depois da última"
+
+msgid "A backup in the last month (the last was {ago})"
+msgstr "Uma cópia no último mês (a última foi {ago})"
+
+msgid "Make a backup"
+msgstr "Fazer uma cópia"
+
+msgid "A sealed backup holds the settings and each paired node's key. Without one, a hub that fails or is taken means setting it up and pairing every node again. Keep the file and its passphrase apart, and make a new one after pairing a node."
+msgstr "Uma cópia selada guarda as definições e a chave de cada nó emparelhado. Sem ela, uma central que avarie ou seja levada obriga a configurá-la e a emparelhar todos os nós outra vez. Guarde o ficheiro e a frase-passe em sítios diferentes, e faça uma nova depois de emparelhar um nó."
+
+msgid "The hub's label"
+msgstr "A etiqueta da central"
+
+msgid "A label to stick on the hub: where its page is, how its setup network opens, and the fingerprint a node is paired against. Whoever finds the hub later knows what it is and how to reach it."
+msgstr "Uma etiqueta para colar na central: onde está a sua página, como abre a rede de configuração, e a impressão digital com que se emparelha um nó. Quem encontrar a central mais tarde sabe o que é e como lhe chegar."
+
+msgid "Print a label for the hub"
+msgstr "Imprimir uma etiqueta para a central"
+
+msgid "Alarm hub for ONVIF NVRs. Log in as admin with the hub password, kept elsewhere."
+msgstr "Central de alarme para NVR ONVIF. Entre como admin com a palavra-passe da central, guardada noutro sítio."
+
+msgid "Page: {address} or {name}"
+msgstr "Página: {address} ou {name}"
+
+msgid "Setup network {network}: opens when the hub cannot join its Wi-Fi, with the hub password; on a hub with no settings, press its BOOT button first."
+msgstr "Rede de configuração {network}: abre quando a central não consegue entrar no seu Wi-Fi, com a palavra-passe da central; numa central sem definições, carregue primeiro no botão BOOT."
+
+msgid "Fingerprint for pairing nodes: {fingerprint}"
+msgstr "Impressão digital para emparelhar nós: {fingerprint}"
+
+msgid "Serial number {serial}"
+msgstr "Número de série {serial}"
+
+msgctxt "message"
+msgid "{0}: {1}"
+msgstr "{0}: {1}"
+
+msgctxt "message"
+msgid "{0}: {1}, because the NVR is not listening"
+msgstr "{0}: {1}, porque o NVR não está a ouvir"
+
+msgctxt "message"
+msgid "The NVR is not listening to {0}: alerts are not reaching it"
+msgstr "O NVR não está a ouvir {0}: os alertas não lhe chegam"
+
+msgctxt "message"
+msgid "The NVR is listening to {0} again"
+msgstr "O NVR está a ouvir {0} outra vez"
+
+msgctxt "message"
+msgid "{0} started ({1})"
+msgstr "{0} arrancou ({1})"
+
+msgctxt "message"
+msgid "{0} started ({1}), after being off for up to {2}"
+msgstr "{0} arrancou ({1}), depois de desligada até {2}"
+
+msgctxt "message"
+msgid "{0} was off its Wi-Fi network for up to {1}; alerts in that time reach the NVR as past events once it is back"
+msgstr "{0} esteve fora da rede Wi-Fi até {1}; os alertas desse período chegam ao NVR como eventos passados quando voltar"
+
+msgctxt "message"
+msgid "an unknown time"
+msgstr "um tempo desconhecido"
+
+msgctxt "message"
+msgid "unknown"
+msgstr "desconhecido"
+
+msgctxt "message"
+msgid "{0} was armed"
+msgstr "{0} foi armada"
+
+msgctxt "message"
+msgid "{0} was armed from {1}"
+msgstr "{0} foi armada a partir de {1}"
+
+msgctxt "message"
+msgid "{0} was armed home: interior sensors are logged but not sent to the NVR"
+msgstr "{0} foi armada em casa: os sensores interiores ficam registados mas não são enviados ao NVR"
+
+msgctxt "message"
+msgid "{0} was armed home from {1}: interior sensors are logged but not sent to the NVR"
+msgstr "{0} foi armada em casa a partir de {1}: os sensores interiores ficam registados mas não são enviados ao NVR"
+
+msgctxt "message"
+msgid "{0} was disarmed: alerts are logged but not sent to the NVR"
+msgstr "{0} foi desarmada: os alertas ficam registados mas não são enviados ao NVR"
+
+msgctxt "message"
+msgid "{0} was disarmed from {1}: alerts are logged but not sent to the NVR"
+msgstr "{0} foi desarmada a partir de {1}: os alertas ficam registados mas não são enviados ao NVR"
+
+msgctxt "message"
+msgid "{0} has restarted by itself {1} times in an hour: something keeps stopping it, so alerts may be missed"
+msgstr "{0} reiniciou sozinha {1} vezes numa hora: algo a está a parar, por isso podem perder-se alertas"
+
+msgctxt "message"
+msgid "{0}: the node restarted by a fault, such as a brownout from a weak battery or a bad wire; see the Nodes and pairing page"
+msgstr "{0}: o nó reiniciou por uma falha, como uma quebra de tensão por bateria fraca ou um fio com mau contacto; veja a página Nós e emparelhamento"
+
+msgctxt "message"
+msgid "{0}: the battery will run out within a week"
+msgstr "{0}: a bateria vai acabar dentro de uma semana"
+
+msgctxt "message"
+msgid "{0}: {1} nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a jammer"
+msgstr "{0}: {1} nós deixaram de comunicar ao mesmo tempo. As baterias falham uma de cada vez, por isso algo pode estar a bloquear o rádio, como um bloqueador"
+
+msgctxt "message"
+msgid "{0}: fired {1} times within an hour. Every alert still goes to the NVR, but check the sensor's aim and wiring"
+msgstr "{0}: disparou {1} vezes numa hora. Todos os alertas continuam a ir para o NVR, mas verifique a orientação e as ligações do sensor"
+
+msgctxt "message"
+msgid "Test from {0}"
+msgstr "Teste de {0}"
+
+msgctxt "message"
+msgid "alert"
+msgstr "alerta"
+
+msgctxt "message"
+msgid "delayed alert"
+msgstr "alerta atrasado"
+
+msgctxt "message"
+msgid "clear"
+msgstr "fim"
+
+msgctxt "message"
+msgid "test alert"
+msgstr "alerta de teste"
+
+msgctxt "message"
+msgid "alert in quiet hours"
+msgstr "alerta em horas de silêncio"
+
+msgctxt "message"
+msgid "alert while disarmed"
+msgstr "alerta com a central desarmada"
+
+msgctxt "message"
+msgid "alert while armed home"
+msgstr "alerta com a central armada em casa"
+
+msgctxt "message"
+msgid "alert not delivered"
+msgstr "alerta não entregue"
+
+msgctxt "message"
+msgid "delayed alert not delivered"
+msgstr "alerta atrasado não entregue"
+
+msgctxt "message"
+msgid "went silent"
+msgstr "ficou em silêncio"
+
+msgctxt "message"
+msgid "low battery"
+msgstr "bateria fraca"
+
+msgctxt "message"
+msgid "weak signal"
+msgstr "sinal fraco"
+
+msgctxt "message"
+msgid "battery running out"
+msgstr "bateria a acabar"
+
+msgctxt "message"
+msgid "node restarted by a fault"
+msgstr "nó reiniciou por uma falha"
+
+msgctxt "message"
+msgid "firing often"
+msgstr "a disparar muitas vezes"
+
+msgctxt "message"
+msgid "NVR not listening"
+msgstr "NVR não está a ouvir"
+
+msgctxt "message"
+msgid "NVR listening again"
+msgstr "NVR a ouvir outra vez"
+
+msgctxt "message"
+msgid "hub started"
+msgstr "central arrancou"
+
+msgctxt "message"
+msgid "network lost"
+msgstr "rede perdida"
+
+msgctxt "message"
+msgid "armed"
+msgstr "armada"
+
+msgctxt "message"
+msgid "restarting often"
+msgstr "a reiniciar muitas vezes"
+
+msgctxt "message"
+msgid "possible jamming"
+msgstr "possível interferência"
+
+msgctxt "message"
+msgid "silent"
+msgstr "em silêncio"
+
+msgctxt "message"
+msgid "messages refused"
+msgstr "mensagens recusadas"
+
+msgctxt "message"
+msgid "the web page"
+msgstr "a página web"
+
+msgctxt "message"
+msgid "Home Assistant"
+msgstr "Home Assistant"
+
+msgctxt "message"
+msgid "the re-arm timer"
+msgstr "o temporizador de rearme"
+
+msgctxt "message"
+msgid "{0}, for {1}"
+msgstr "{0}, durante {1}"
+
+msgctxt "message"
+msgid "{0} min"
+msgstr "{0} min"
+
+msgctxt "message"
+msgid "{0} h"
+msgstr "{0} h"
+
+msgctxt "message"
+msgid "{0} h {1} min"
+msgstr "{0} h {1} min"
+
+msgctxt "message"
+msgid "{0} day"
+msgid_plural "{0} days"
+msgstr[0] "{0} dia"
+msgstr[1] "{0} dias"
+
+msgctxt "message"
+msgid "{0} days {1} h"
+msgstr "{0} dias {1} h"
+
+msgctxt "message"
+msgid "Power on or reset button"
+msgstr "ligação à corrente ou botão de reinício"
+
+msgctxt "message"
+msgid "Crash"
+msgstr "falha"
+
+msgctxt "message"
+msgid "Watchdog"
+msgstr "watchdog"
+
+msgctxt "message"
+msgid "Low power supply voltage"
+msgstr "tensão de alimentação baixa"
+
+msgctxt "message"
+msgid "Other"
+msgstr "outro"
+
+msgctxt "message"
+msgid "Software restart"
+msgstr "reinício por software"
+
+msgctxt "message"
+msgid "WiFi lost for 5 minutes"
+msgstr "Wi-Fi perdido durante 5 minutos"
+
+msgctxt "message"
+msgid "Low memory"
+msgstr "pouca memória"
+
+msgctxt "message"
+msgid "Server stalled"
+msgstr "o servidor parou"
+
+msgctxt "message"
+msgid "Router stopped answering"
+msgstr "o router deixou de responder"
+
+msgctxt "message"
+msgid "New WiFi settings"
+msgstr "novas definições de Wi-Fi"
+
+msgctxt "message"
+msgid "New web, port or address settings"
+msgstr "novas definições web, de porta ou de endereço"
+
+msgctxt "message"
+msgid "Fixed address could not reach the router"
+msgstr "o endereço fixo não chegou ao router"
+
+msgctxt "message"
+msgid "Scheduled restart"
+msgstr "reinício programado"
+
+msgctxt "message"
+msgid "Settings reset"
+msgstr "definições repostas"
+
+msgctxt "message"
+msgid "Restart button"
+msgstr "botão de reinício"
+
+msgctxt "message"
+msgid "Firmware update"
+msgstr "atualização do firmware"
+
+msgctxt "message"
+msgid "Settings restored"
+msgstr "definições restauradas"
+
+msgctxt "message"
+msgid "New keys"
+msgstr "novas chaves"
+
+msgctxt "message"
+msgid "{0} daily check: {1} of {2} nodes heard in the last day"
+msgstr "{0} verificação diária: {1} de {2} nós ouvidos no último dia"
+
+msgctxt "message"
+msgid "no problems"
+msgstr "sem problemas"
+
+msgctxt "message"
+msgid "problems: {0}"
+msgstr "problemas: {0}"
+
+msgctxt "message"
+msgid "{0} alert in the last day"
+msgid_plural "{0} alerts in the last day"
+msgstr[0] "{0} alerta no último dia"
+msgstr[1] "{0} alertas no último dia"
+
+msgctxt "message"
+msgid "at least {0} alert in the last day"
+msgid_plural "at least {0} alerts in the last day"
+msgstr[0] "pelo menos {0} alerta no último dia"
+msgstr[1] "pelo menos {0} alertas no último dia"
+
+msgctxt "message"
+msgid "{0} not delivered to the NVR"
+msgstr "{0} não entregues ao NVR"
+
+msgctxt "message"
+msgid "all delivered to the NVR"
+msgstr "todos entregues ao NVR"
+
+msgctxt "message"
+msgid "the NVR is listening"
+msgstr "o NVR está a ouvir"
+
+msgctxt "message"
+msgid "the NVR is NOT listening"
+msgstr "o NVR NÃO está a ouvir"
+
+msgctxt "message"
+msgid "disarmed"
+msgstr "desarmada"
+
+msgctxt "message"
+msgid "armed away"
+msgstr "armada ausente"
+
+msgctxt "message"
+msgid "armed home"
+msgstr "armada em casa"
+
+msgctxt "message"
+msgid "last test alert {0} ago"
+msgstr "último alerta de teste há {0}"
+
+msgctxt "message"
+msgid "last test alert {0} ago, over a month: send one from the hub's Overview, to see that the NVR still records"
+msgstr "último alerta de teste há {0}, mais de um mês: envie um no Resumo da central, para ver que o NVR continua a gravar"
+
+msgctxt "message"
+msgid "no test alert in the last month: send one from the hub's Overview, to see that the NVR still records"
+msgstr "nenhum alerta de teste no último mês: envie um no Resumo da central, para ver que o NVR continua a gravar"
+
+msgctxt "message"
+msgid "{0} weekly summary"
+msgstr "{0} resumo semanal"
+
+msgctxt "message"
+msgid "{0} alert in the last 7 days"
+msgid_plural "{0} alerts in the last 7 days"
+msgstr[0] "{0} alerta nos últimos 7 dias"
+msgstr[1] "{0} alertas nos últimos 7 dias"
+
+msgctxt "message"
+msgid "at least {0} alert in the last 7 days"
+msgid_plural "at least {0} alerts in the last 7 days"
+msgstr[0] "pelo menos {0} alerta nos últimos 7 dias"
+msgstr[1] "pelo menos {0} alertas nos últimos 7 dias"
+
+msgctxt "message"
+msgid "most from {0} ({1})"
+msgstr "mais de {0} ({1})"
+
+msgctxt "message"
+msgid "{0} more only logged, while disarmed, armed home or in quiet hours"
+msgstr "mais {0} só registados, com a central desarmada, armada em casa ou em horas de silêncio"
+
+msgctxt "message"
+msgid "{0} problem reported"
+msgid_plural "{0} problems reported"
+msgstr[0] "{0} problema comunicado"
+msgstr[1] "{0} problemas comunicados"
+
+msgctxt "message"
+msgid "batteries running low: {0}"
+msgstr "baterias a acabar: {0}"
+
+msgctxt "message"
+msgid "{0}: about {1} day"
+msgid_plural "{0}: about {1} days"
+msgstr[0] "{0}: cerca de {1} dia"
+msgstr[1] "{0}: cerca de {1} dias"
+
+msgctxt "message"
+msgid "no problems now"
+msgstr "sem problemas agora"
+
+msgctxt "message"
+msgid "problems now: {0}"
+msgstr "problemas agora: {0}"
+
+msgctxt "message"
+msgid "no test alert this week"
+msgstr "nenhum alerta de teste esta semana"
+
+#. a battery: none, as Portuguese makes it feminine
+msgctxt "battery"
+msgid "None"
+msgstr "Nenhuma"
+
+msgctxt "battery"
+msgid "none"
+msgstr "nenhuma"
+
+msgid "the hub already has its limit of {n} sensors; delete one first"
+msgstr "a central já tem o seu limite de {n} sensores; apague um primeiro"
+
+msgid "the hub has no such language"
+msgstr "a central não tem esse idioma"

@@ -17,7 +17,7 @@
 <div class="subs"><a class="item" href="#nvr" data-view="nvr">NVR</a><a class="item" href="#live" data-view="live">Live video</a></div>
 <button class="first" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M13 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0M7 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/></svg><span>System</span></button>
 <div class="subs"><a class="item" href="#maintenance" data-view="maintenance">Maintenance</a><a class="item" href="#time" data-view="time">Time</a><a class="item" href="#device" data-view="device">Device info</a></div>
-<label class="langPick"><span>Language</span><select id="langPick"><option value="en">English</option><option value="pt">Português</option></select></label>
+<label class="langPick"><span>Language</span><select id="langPick"></select></label>
 </nav>
 <main id="main" tabindex="-1">
 <a id="status" class="status" href="#overview" hidden></a>
@@ -134,7 +134,7 @@
 <label class="netRow" id="hookTokenRow"><span>Token</span><input id="hookToken" maxlength="64" autocapitalize="none" autocomplete="off" class="wide"></label>
 <label class="check hint" id="hookForgetRow" hidden><input id="hookForget" type="checkbox"> Forget the saved token</label></section>
 <section class="card" data-save="saveHook"><h2>What to send</h2>
-<label class="netRow"><span>Language of the messages</span><select id="hookLang"><option value="en">English</option><option value="pt">Português</option></select></label>
+<label class="netRow"><span>Language of the messages</span><select id="hookLang"></select></label>
 <label class="check"><input id="hookAlerts" type="checkbox"> Alerts</label>
 <label class="check"><input id="hookProblems" type="checkbox"> Node problems: silent, low battery, weak signal, possible jamming, a sensor firing often</label>
 <label class="netRow"><span>Daily check at</span><input id="hookDaily" type="time"></label>
@@ -220,7 +220,7 @@
 <div id="unsaved" class="unsaved" role="region" aria-label="Changes not saved" hidden><span>Changes not saved</span><button id="unsavedDiscard">Discard</button><button id="unsavedSave" class="primary">Save</button></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <script type="text/plain" id="encoder-worker" src="encoder-worker.js"></script>
-<script src="pt.js"></script>
+<script src="lang-pick.js"></script>
 <script src="i18n.js"></script>
 <script src="sha256.js"></script>
 <script src="pictures.js"></script>

@@ -431,8 +431,7 @@
       method: "POST",
       body: "key=" + hex(key) + "&salt=" + hex(salt) + "&rounds=" + ROUNDS,
     });
-    if (!r.ok)
-      throw new Error(hubText((await r.json().catch(() => ({}))).error) || tr("The hub could not send its settings."));
+    if (!r.ok) throw new Error(hubSaid(await r.json().catch(() => ({}))) || tr("The hub could not send its settings."));
     return new Uint8Array(await r.arrayBuffer());
   }
   // A sealed backup names its rounds and salt on its first line; the key from them goes with it, a plain one alone.
@@ -558,7 +557,7 @@
           try {
             j = await r.json();
           } catch (e) {}
-          failed.push(path + ": " + (hubText(j.error) || "HTTP " + r.status));
+          failed.push(path + ": " + (hubSaid(j) || "HTTP " + r.status));
         }
       }
       m.textContent = tr("Restoring the settings");
@@ -566,7 +565,7 @@
       if (!r.ok)
         throw new Error(
           tr("The sensors and pictures were restored, but not the settings: {why}.", {
-            why: hubText((await r.json().catch(() => ({}))).error) || tr("the hub refused them"),
+            why: hubSaid(await r.json().catch(() => ({}))) || tr("the hub refused them"),
           }),
         );
       m.textContent =
@@ -662,7 +661,7 @@
       m.className = r.ok ? "portMsg" : "portMsg err";
       m.textContent = r.ok
         ? tr("Restored. The hub is restarting.")
-        : (hubText(j.error) || tr("The hub refused this backup")) + ".";
+        : (hubSaid(j) || tr("The hub refused this backup")) + ".";
     } catch (e) {
       m.className = "portMsg err";
       m.textContent = e instanceof TypeError ? tr("The hub did not answer. Try again.") : e.message; // fetch fails as a TypeError

@@ -466,7 +466,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
   target = target.substr(sp + 1, sp2 - sp - 1);
   bool isGet = method == "GET";
   std::string route = target.substr(0, target.find('?'));
-  bool isApi = route.compare(0, 5, "/api/") == 0 || route == "/" || route == "/files" || route == "/setup";
+  bool isApi = route.compare(0, 5, "/api/") == 0 || route == "/" || route == "/files" || route == "/setup" || route == "/lang";
 
   std::string lengthText = headerValue(headers, "content-length");
   size_t contentLength = 0;

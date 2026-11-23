@@ -92,7 +92,8 @@ void loadSettings() {
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
     s.webhook.dailyMinute = p.getInt("hookdy", -1);
-    s.webhook.language = p.getInt("hookln", 0) == 1 ? 1 : 0;
+    // By its code; a hub that saved it as a number before, 1 for Portuguese, keeps it.
+    s.webhook.language = p.getString("hooklg", p.getInt("hookln", 0) == 1 ? "pt" : "en").c_str();
     s.mqtt.host = p.getString("mqhost", "").c_str();
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
@@ -237,7 +238,7 @@ bool storeWebhook(const CamWebhook& w) {
     return putText(p, "hook", w.url.c_str()) && p.putBool("hooktx", w.format == CAM_HOOK_TEXT) == 1 && p.putInt("hookfm", w.format) == 4 &&
            putText(p, "hooktk", w.token.c_str()) && p.putInt("hookwd", w.weeklyDay) == 4 && p.putInt("hookwm", w.weeklyMinute) == 4 &&
            p.putBool("hookal", w.alerts) == 1 && p.putBool("hookpr", w.problems) == 1 && p.putInt("hookdy", w.dailyMinute) == 4 &&
-           p.putInt("hookln", w.language) == 4;
+           putText(p, "hooklg", w.language.c_str());
   });
 }
 

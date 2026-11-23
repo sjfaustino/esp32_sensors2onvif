@@ -49,10 +49,12 @@ printed on the serial console once Wi-Fi is up, as `http://<address>/`. Add the 
 
 ### Language
 
-The pages are in English, or in Portuguese (European) on a device whose browser prefers Portuguese. **Language**, at the
-foot of the menu, changes it for that device; each device keeps its own choice. The hub's messages, such as why it
-refused a setting, are shown in the same language. Notifications, Home Assistant and the NVR's pictures keep the
-hub's English; a picture made on the Sensors page starts with words in the page's language.
+The pages are in English, or in another language the hub has, now Portuguese (European), on a device whose browser
+prefers it: a browser set to Brazilian Portuguese gets the European one until there is its own. **Language**, at the foot
+of the menu, changes it for that device; each device keeps its own choice. The hub's messages, such as why it refused a
+setting, are shown in the same language. Notifications and the daily check have their own language, under Notifications;
+the NVR's built-in pictures stay English, and a picture made on the Sensors page starts with words in the page's
+language. Each language's words come from the hub once, and the browser keeps them until the hub's firmware changes.
 
 ### IP address
 

@@ -53,6 +53,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"GET", "/", &CamWeb::getRoot, SETUP},  // the setup page while the setup network is open, else the hub's page
       {"GET", "/files", &CamWeb::getFiles, LOGIN},
       {"GET", "/setup", &CamWeb::getSetup, SETUP},
+      {"GET", "/lang", &CamWeb::getLang, SETUP},  // a language's words for the pages, the setup page's too
       {"GET", "/api/wifi/scan", &CamWeb::getWifiScan, SETUP},
       {"POST", "/api/wifi", &CamWeb::postWifi, SETUP},
       {"GET", "/api/tree", &CamWeb::getTree, LOGIN},

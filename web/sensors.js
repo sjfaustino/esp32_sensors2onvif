@@ -86,7 +86,7 @@ async function call(method, url, body) {
   try {
     j = await r.json();
   } catch (e) {}
-  if (!r.ok) throw Object.assign(new Error(hubText(j.error) || "HTTP " + r.status), { hub: j.error || "" }); // as said
+  if (!r.ok) throw Object.assign(new Error(hubSaid(j) || "HTTP " + r.status), { hub: j.error || "" }); // as said
   return j;
 }
 async function act(fn, done) {
@@ -440,7 +440,7 @@ const SENSOR_KINDS = [
   [2, tr("Other, its output goes low while it detects")],
 ];
 const CELLS = [
-  [0, tr("None")],
+  [0, trc("battery", "None")],
   [1, tr("Lithium-ion or lithium-polymer cell")],
   [2, tr("Lithium iron phosphate (LiFePO4) cell")],
 ];

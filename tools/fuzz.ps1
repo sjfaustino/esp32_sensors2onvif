@@ -23,7 +23,7 @@ if ($LASTEXITCODE) { throw 'fuzz_seeds.py failed' }
 # The library but its pages, as fuzz.sh builds it. test\fuzz\msvc holds the two POSIX headers cam_storage.cpp needs and
 # Microsoft's C library lacks. The STL's container annotations are off because the prebuilt libFuzzer was built without
 # them and the linker refuses the mix; AddressSanitizer still checks every access. Monocypher, in C, builds as C++ here.
-$sources = Get-ChildItem lib\sensorcam\*.cpp, lib\s2o_proto\*.cpp, lib\monocypher\*.c | Where-Object Name -ne 'cam_web_pages.cpp' |
+$sources = Get-ChildItem lib\sensorcam\*.cpp, lib\s2o_proto\*.cpp, lib\monocypher\*.c | Where-Object { $_.Name -ne 'cam_web_pages.cpp' -and $_.Name -ne 'cam_text_data.cpp' } |
   ForEach-Object { $_.FullName }
 $flags = @('-std=gnu++17', '-g', '-O1', '-fsanitize=fuzzer,address,undefined', '-fno-sanitize-recover=undefined',
   '-D_DISABLE_STRING_ANNOTATION', '-D_DISABLE_VECTOR_ANNOTATION', '-D_CRT_SECURE_NO_WARNINGS',
