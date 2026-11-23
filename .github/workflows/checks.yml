@@ -116,7 +116,7 @@ jobs:
 
       - name: Install PlatformIO, gcovr, the browser and ffmpeg
         run: |
-          pip install platformio cryptography gcovr==8.8 playwright==1.52.0
+          pip install platformio cryptography gcovr==8.8 playwright==1.52.0 segno==1.6.1
           python -m playwright install chromium
           choco install ffmpeg --no-progress -y
 
