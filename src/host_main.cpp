@@ -217,7 +217,12 @@ class TestChip : public CamChip {
     h.worstLargestBlock = 60 * 1024;
     h.wifiRssi = -58;
     h.uptimeS = 3600;
+    h.lowFree = memoryLow;  // low, so the daily check tells it, until it is told
+    h.lowWeb = 3;
+    h.lowVideo = 1;
   }
+  void healthDayStart() override { memoryLow = 90 * 1024; }
+  uint32_t memoryLow = 30 * 1024;
   int localMinute() override { return (int)(time(nullptr) / 60 % 1440); }         // UTC, which the test also uses
   int localWeekday() override { return (int)((time(nullptr) / 86400 + 4) % 7); }  // 1 January 1970 was a Thursday
   void timeInfo(CamJson& j) override {

@@ -265,7 +265,9 @@ whenever alerts or node problems are; the hub's own events are sent with node pr
 nodes were heard in the last day (`nodes`, `heard`), the sensors with a problem (`problems`), the day's alerts and how many
 did not reach the NVR (`alerts`, `notDelivered`; `allCounted` is false when more happened than the hub keeps in memory),
 whether the NVR is listening, how the hub is armed, and how long since the last test alert (`testAgo_s`). Once that is
-over a month, or none is known, it asks for a test alert from the Overview, so the reminder reaches the phone. It shows
+over a month, or none is known, it asks for a test alert from the Overview, so the reminder reaches the phone. It also
+gives the least free memory since the last daily check, and how many web and video connections were open then
+(`memoryLow_kb`, `memoryLowWeb`, `memoryLowVideo`), and says so in words when it fell below 40 KB. It shows
 the system works; if it stops arriving, the hub is off, cut off from the network, or its clock is not set. Leave the time
 empty for none.
 
@@ -483,7 +485,9 @@ keys, and restarts the hub. Use **New keys** if a backup and its passphrase may 
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
-**Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status.
+**Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status,
+and the least free memory since the last daily check: when, and with how many connections open, as a fall that
+recovered leaves nothing else to see.
 **Print a label for the hub** prints a small label to stick on it: its page's address and name, its setup network and
 when that opens, the fingerprint nodes are paired against, and its serial number, so whoever finds the hub later knows
 what it is and how to reach it.

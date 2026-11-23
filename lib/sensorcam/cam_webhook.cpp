@@ -177,6 +177,9 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
       d.notDelivered += e.kind == CAM_EVENT_NOT_DELIVERED;
     }
     if (alarm_.log().count() < CamEventLog::RECENT) d.allCounted = true;  // nothing has been dropped from memory yet
+    CamHealth health;
+    chip_->health(health);
+    d.memoryLow = health.lowFree;
     // The last test as the hub keeps it, too, which outlasts the events kept in memory, so a reminder is not sent early.
     time_t kept = alarm_.lastTestAt();
     if (kept >= CAM_CLOCK_VALID_AFTER && kept <= t && (d.testAgoS < 0 || (long long)(t - kept) < d.testAgoS)) d.testAgoS = (long long)(t - kept);
@@ -187,8 +190,10 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
             for (const std::string& p : d.problems) j.str(p);
             j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
             j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
+            j.num("memoryLow_kb", d.memoryLow != 0, d.memoryLow / 1024).num("memoryLowWeb", health.lowWeb).num("memoryLowVideo", health.lowVideo);
             j.str("message", message);
           }));
+    chip_->healthDayStart();  // told: the next daily check tells the low from here
   } catch (const std::bad_alloc&) {
     failures_.note();
     hooks_.dropOne();

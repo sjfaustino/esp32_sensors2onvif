@@ -108,6 +108,11 @@ struct CamHealth {
   uint32_t espNowDropped = 0;      // arrived while the hub was busy; their senders resend
   int wifiRssi = 0;                // dBm; 0 when not connected
   uint64_t uptimeS = 0;
+  // The least free memory since the last daily check, or the start: when, by the hub's clock (0 when not set), and how
+  // many web and video connections were open then, for what was going on. lowFree 0 when this build does not keep it.
+  uint32_t lowFree = 0;
+  int64_t lowAt = 0;
+  uint16_t lowWeb = 0, lowVideo = 0;
 };
 
 enum CamArmMode : uint8_t { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
@@ -151,6 +156,7 @@ class CamChip {
   virtual bool random32(uint32_t& out) { return false; }                 // a number from the chip's random source; false where there is none
   virtual bool tellsHealth() { return false; }                           // health() has figures, for Home Assistant's diagnostic sensors
   virtual void health(CamHealth& h) {}
+  virtual void healthDayStart() {}                     // the daily check has told the day's low: a new day's starts
   virtual time_t wallTime() { return time(nullptr); }  // seconds since 1970 UTC; before the clock is set, a small number
   virtual int localMinute() { return -1; }             // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   virtual int localWeekday() { return -1; }            // 0 for Sunday to 6, or -1 when the clock is not set

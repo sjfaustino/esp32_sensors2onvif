@@ -374,6 +374,9 @@ def trouble_reports(s):
         daily = wait_until(lambda: sent('daily check'), timeout=5)
         check('the daily check arrives at its time', len(daily) == 1 and daily[0]['nodes'] >= 2 and ' daily check: ' in daily[0]['message']
               and 'nvrListening' in daily[0], daily)
+        check("it tells the day's least free memory, and what was open then",
+              daily and daily[0].get('memoryLow_kb') == 30 and daily[0].get('memoryLowWeb') == 3 and daily[0].get('memoryLowVideo') == 1, daily)
+        check('and says so in words when it was low', daily and 'free memory fell to 30 KB' in daily[0]['message'], daily)
         time.sleep(1)  # time for a second one to be wrongly sent
         check('and only once', len(sent('daily check')) == 1)
         api('POST', '/api/webhook', f'url={hook.url}&alerts=1&problems=1')

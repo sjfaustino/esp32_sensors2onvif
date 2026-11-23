@@ -50,6 +50,8 @@ class SensorCamServer : private CamAlarmOutside {
   bool alarmBusy() const { return alarm_.busy(); }                     // see CamAlarm::busy
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
+  int webOpen() const { return web_.openCount(); }                     // web connections open now
+  int videoOpen() const { return video_.openCount(); }                 // video connections open now
 #ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests
   CamAlarm& alarm() { return alarm_; }                                 // its test hooks, such as setMinuteMs, and its arm mode
 #endif

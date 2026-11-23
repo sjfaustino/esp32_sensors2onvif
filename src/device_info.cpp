@@ -70,13 +70,35 @@ void deviceInfoBegin() {
 
 uint32_t worstLargestBlock() { return smallestBlock == UINT32_MAX ? largestBlock() : smallestBlock; }
 
-void sampleMemory() {
+// The day's low, since the last daily check: a fall that recovers leaves nothing else to see.
+static uint32_t dayLow = UINT32_MAX;
+static int64_t dayLowAt = 0;
+static uint16_t dayLowWeb = 0, dayLowVideo = 0;
+
+void sampleMemory(int webOpen, int videoOpen) {
   static uint32_t sampledAt = 0;
   if (millis() - sampledAt < 1000) return;
   sampledAt = millis();
   uint32_t block = largestBlock();
   if (block < smallestBlock) smallestBlock = block;
+  uint32_t free = ESP.getFreeHeap();
+  if (free < dayLow) {
+    dayLow = free;
+    time_t now = time(nullptr);
+    dayLowAt = now >= CAM_CLOCK_VALID_AFTER ? (int64_t)now : 0;
+    dayLowWeb = (uint16_t)webOpen;
+    dayLowVideo = (uint16_t)videoOpen;
+  }
 }
+
+void memoryDayLow(uint32_t& lowFree, int64_t& lowAt, uint16_t& lowWeb, uint16_t& lowVideo) {
+  lowFree = dayLow == UINT32_MAX ? ESP.getFreeHeap() : dayLow;
+  lowAt = dayLowAt;
+  lowWeb = dayLowWeb;
+  lowVideo = dayLowVideo;
+}
+
+void memoryDayStart() { dayLow = UINT32_MAX; }
 
 // How the memory is cut up: the largest free pieces and the largest pieces in use, to find what holds memory apart.
 // The walk holds the heap's lock, so it only fills fixed arrays and allocates nothing.
@@ -147,6 +169,20 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Last crash", crashSummary);
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
+  {
+    uint32_t low;
+    int64_t at;
+    uint16_t web, video;
+    memoryDayLow(low, at, web, video);
+    char when[24] = "";
+    if (at) {
+      time_t t = (time_t)at;
+      struct tm local;
+      localtime_r(&t, &local);
+      strftime(when, sizeof(when), " at %H:%M", &local);
+    }
+    add("Lowest free memory today", String(low / 1024) + " KB" + when + ", with " + web + " web and " + video + " video connections open");
+  }
   add("Largest free block", String(largestBlock() / 1024) + " KB");
   add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");
   HeapPieces pieces;

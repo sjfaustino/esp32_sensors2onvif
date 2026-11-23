@@ -15,7 +15,11 @@ struct DeviceStatus {
 
 void deviceInfoBegin();  // once, at start: measures the firmware and reads any saved crash report
 void deviceRows(CamJson& j, const DeviceStatus& status);
-void sampleMemory();  // each pass of the main loop: keeps the worst the free memory has been cut up
+// Each pass of the main loop: keeps the worst the free memory has been cut up, and the least it has been since the last
+// daily check, with the web and video connections open then.
+void sampleMemory(int webOpen, int videoOpen);
+void memoryDayLow(uint32_t& lowFree, int64_t& lowAt, uint16_t& lowWeb, uint16_t& lowVideo);
+void memoryDayStart();
 
 // What malloc can really hand out. ESP.getMaxAllocHeap() also counts instruction RAM, which strings cannot use.
 uint32_t largestBlock();

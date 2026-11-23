@@ -68,6 +68,7 @@ static void hubHealth(CamHealth& h) {
   h.espNowDropped = espNowDropped();
   h.wifiRssi = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   h.uptimeS = esp_timer_get_time() / 1000000ULL;
+  memoryDayLow(h.lowFree, h.lowAt, h.lowWeb, h.lowVideo);
 }
 
 // ---- what the board does for the hub: the chip, the radio, and where settings are kept ----
@@ -106,6 +107,7 @@ class HubChip : public CamChip {
   }
   bool tellsHealth() override { return true; }
   void health(CamHealth& h) override { hubHealth(h); }
+  void healthDayStart() override { memoryDayStart(); }
   int localMinute() override { return ::localMinute(); }
   bool random32(uint32_t& out) override {
     out = esp_random();  // truly random while Wi-Fi runs, as it does from the start
@@ -292,7 +294,7 @@ void loop() {
   serveSetupNetwork();
   keepTime();
   restartWhenAsked();
-  sampleMemory();  // for Device Info: how cut up the memory has been
+  sampleMemory(server ? server->webOpen() : 0, server ? server->videoOpen() : 0);  // for Device Info and the daily check
   CamRestartRules::Pass pass = rulesPass(connected, guest);
   CamRestartRule rule = rules.check(pass);
   proveFirmware(pass, rules, espNowRunning());  // first, so an update that failed says why before any other restart undoes it

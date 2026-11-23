@@ -5,52 +5,59 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23
+
+Update from 0.6.0. The pages and the notifications can be in Portuguese, from translation files any gettext tool edits;
+Home Assistant can disarm the hub only through a broker it logs in to; and the hub keeps an eye on itself: a monthly
+test reminder, a backup reminder, and its least free memory each day.
+
 ### Security
 
 - The hub takes a disarm from Home Assistant only when it logs in to the MQTT broker with a user. A broker that lets
   anyone in, as Mosquitto can, let anyone on the network disarm the hub; arming and test alerts are still taken. The
   Home Assistant page says which applies.
 
-### The pages
+### Languages
 
+- The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
+  for each device; the hub's messages are shown in the same language.
+- Notifications can be in Portuguese: **Language of the messages**, under Notifications, words every alert, problem,
+  daily check and weekly summary, and Home Assistant's message. The event names stay English, for automations.
 - Each language is a gettext file, `i18n/<code>.po`, for translators' tools such as Poedit or Weblate: one file for the
   pages and the hub's messages, with contexts for a word said two ways and each language's own plural rule. The build
   makes from it what the pages fetch and the firmware holds, and offers a language once its file is marked complete.
+  CONTRIBUTING.md says how to add one.
 - The pages fetch only the language they show, once, instead of carrying every language: 78 KB gzipped in English,
-  from 103. The setup page fetches only its own few phrases.
+  from 103. The setup page fetches only its own few phrases, so it stays at 5 KB over the hub's open setup network.
 - The hub gives a refusal that holds values as a phrase and its values, so the pages translate it whole.
-- A battery's "none" is feminine in Portuguese, as a sensor's is not.
+- `tools/check_translations.py`, one of the quick checks, keeps every phrase translated: the pages', the messages the
+  hub sends them, and the hub's own notifications.
 
-- Notifications can be in Portuguese: **Language of the messages**, under Notifications, words every alert, problem,
-  daily check and weekly summary, and Home Assistant's message. The event names stay English, for automations.
-- The daily check asks for a test alert once the last is over a month old, by the time the hub keeps, not only the
-  events in memory.
+### The pages
+
 - The Overview asks for a sealed backup when there is none from the last month, or a node was paired since.
+- The daily check asks for a test alert once the last is over a month old, by the time the hub keeps.
+- The daily check and Device info give the least free memory since the last daily check, when it was, and how many
+  web and video connections were open then; the daily check says so in words when it fell below 40 KB. A fall that
+  recovered left nothing to see before.
 - Device info prints a label for the hub: a QR code of its page, its setup network, the fingerprint nodes are paired
   against, and its serial number. The QR code is made in the page, and checked against segno module by module.
-- The hub's messages when saving fails are in Portuguese too, and the translation check now finds them.
-
-- The pages are in Portuguese (European) on a device whose browser prefers it, with a switch at the foot of the menu
-  for each device; the hub's messages are shown in the same language. `tools/check_translations.py`, run with the quick
-  checks, keeps every phrase translated.
 - The pages carry an ETag, so a browser opening them again is told in a few bytes that it has them, instead of being
-  sent the whole 100 KB page from the hub's flash each time. The setup page carries only its own few dozen phrases of
-  Portuguese, keeping it at 5 KB over the hub's open setup network.
+  sent the whole page from the hub's flash each time.
+- The Sensors page no longer shows for a moment before the page asked for, as it was the one page not hidden at first.
 - A full backup keeps each node's battery readings and its first hour's checks; the hub takes a battery log of up to
   8 KB back.
 
 ### Tools
 
+- `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
+  hub keeps it or says it went back, by the hub's own uptime, so a PC that sleeps meanwhile does not misjudge it. With
+  `--release v0.7.0` it sends a published release, as CI built it. It refuses a commit CI has not passed, changes not
+  committed, and a hub with an alert active.
+- `tools/precheck.py` runs CI's quick checks in seconds, and the pre-push hook in `tools/hooks` runs it before each
+  push; CI runs the same script. The sensor node project runs it too, from its `hub/` folder.
 - `tools/check_platform.py` checks, in CI and before a release is built, that the PlatformIO platform fetched by URL
   is byte for byte the one recorded, and with it the versions and addresses of the compiler and framework it installs.
-- `tools/update_hub.py` updates a hub over the network: it builds, signs and sends the firmware, and watches until the
-  hub keeps it or says it went back; with `--release v0.6.0` it sends a published release, as CI built it. It refuses
-  a commit CI has not passed, changes not committed, and a hub with an alert active.
-- `tools/update_hub.py` reports a hub that stops answering for 3 minutes while it watches, where it waited forever.
-- The translation check also finds English of two words with a common word among them, and English inside the values
-  given to `tr()`.
-- `tools/precheck.py` runs CI's quick checks, the code's style, settings and colours, in seconds, and the pre-push hook
-  in `tools/hooks` runs it before each push. CI runs the same script.
 
 ## [0.6.0] - 2026-11-22
 
@@ -286,7 +293,8 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.3.0...v0.4.0

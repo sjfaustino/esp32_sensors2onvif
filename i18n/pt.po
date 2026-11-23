@@ -3727,3 +3727,16 @@ msgstr "a central já tem o seu limite de {n} sensores; apague um primeiro"
 
 msgid "the hub has no such language"
 msgstr "a central não tem esse idioma"
+
+msgctxt "message"
+msgid "free memory fell to {0} KB, which risks dropped work: see Device info"
+msgstr "a memória livre desceu a {0} KB, o que arrisca trabalho perdido: veja a Informação do aparelho"
+
+msgid "Lowest free memory today"
+msgstr "Menor memória livre hoje"
+
+msgid "{n} KB at {time}, with {web} web and {video} video connections open"
+msgstr "{n} KB às {time}, com {web} ligações web e {video} de vídeo abertas"
+
+msgid "{n} KB, with {web} web and {video} video connections open"
+msgstr "{n} KB, com {web} ligações web e {video} de vídeo abertas"

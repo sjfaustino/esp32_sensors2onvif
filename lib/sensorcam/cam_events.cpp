@@ -149,6 +149,9 @@ std::string camDailyMessage(const CamDailyCheck& d) {
   m += std::string("; ") + camText(d.nvrListening ? "the NVR is listening" : "the NVR is NOT listening");
   m += std::string("; ") + modeText(d.mode);
   m += "; " + testText(d.testAgoS, true);
+  // Told only when low, as a figure every day would be read past; the JSON has it every day.
+  if (d.memoryLow && d.memoryLow < CAM_MEMORY_LOW_WARN)
+    m += "; " + camText("free memory fell to {0} KB, which risks dropped work: see Device info", {std::to_string(d.memoryLow / 1024)});
   return m;
 }
 
