@@ -9,7 +9,8 @@ const LANG = (() => {
     chosen = localStorage.getItem("lang") || "";
   } catch (e) {}
   if (LANGUAGES[chosen]) return chosen;
-  const preferred = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
+  const preferred =
+    navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
   for (const p of preferred) {
     const code = String(p).toLowerCase();
     if (LANGUAGES[code]) return code;
