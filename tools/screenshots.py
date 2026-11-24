@@ -102,6 +102,7 @@ def main():
             fill_the_hub()
             context = browser.new_context(http_credentials={'username': 'admin', 'password': PASSWORD}, **SAME_EVERYWHERE,
                                           viewport={'width': 1280, 'height': 820})
+            context.route('https://api.github.com/**', lambda r: r.abort())  # no newer release offered: the same picture offline
             page = context.new_page()
             for view, ready in PAGES:
                 take(page, view, ready, view.split(':')[0])

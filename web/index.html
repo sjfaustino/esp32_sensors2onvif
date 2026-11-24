@@ -167,7 +167,7 @@
 <section class="card"><h2>Firmware update</h2>
 <div class="newRelease" id="fwNew" hidden></div>
 <p class="note">Use the <code>.bin</code> for this board from a release, the one without <code>-full</code>. The hub takes only firmware signed for it, and keeps what it has if the file is anything else. The video stops until it has restarted, about a minute.</p>
-<p class="hint">This page asks GitHub, from your browser, once a day, whether a newer release is out; the hub itself does not reach the internet.</p>
+<p class="note">This page asks GitHub, from your browser, once a day, whether a newer release is out; the hub itself does not reach the internet.</p>
 <label class="drop"><input id="fwFile" type="file" accept=".bin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop the firmware <code>.bin</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
 <div class="progress" id="fwProg" hidden><div class="bar"><div id="fwBar"></div></div><span id="fwPct"></span></div>
 <div class="acts"><button id="fwSend" class="primary">Update firmware</button></div>
