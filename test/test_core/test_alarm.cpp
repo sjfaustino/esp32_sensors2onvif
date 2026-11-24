@@ -586,7 +586,26 @@ static void the_status_leds_say_what_the_hub_is_doing() {
   TEST_ASSERT_TRUE(lit(50, true, true) && lit(200, true, false));  // a sensor firing: red flashes fast, still armed
 }
 
+// The LEDs go only on pins the board can spare; one saved for another board, or both on one pin, is left out.
+static void the_status_leds_go_only_on_pins_the_board_can_spare() {
+  TEST_ASSERT_TRUE(camLedPinAllowed("esp32_16mb", 32) && camLedPinAllowed("esp32dev", 33) && camLedPinAllowed("esp32s3", 4));
+  for (int pin : {0, 2, 5, 6, 11, 12, 15, 16, 17, 34, 39}) TEST_ASSERT_FALSE(camLedPinAllowed("esp32_16mb", pin));  // start, flash, PSRAM, input
+  for (int pin : {0, 3, 19, 20, 33, 37, 43, 45, 46}) TEST_ASSERT_FALSE(camLedPinAllowed("esp32s3", pin));           // start, USB, octal PSRAM, serial
+  TEST_ASSERT_FALSE(camLedPinAllowed("", 32));                                                                      // a board not known: none
+  CamLedPins p;
+  p.green = 32;
+  p.red = 32;
+  CamLedPins c = camLedPinsChecked("esp32_16mb", p);
+  TEST_ASSERT_TRUE(c.green == 32 && c.red == -1);
+  p.green = 8;  // fine on an ESP32-S3, the flash's on an ESP32
+  p.red = 33;
+  c = camLedPinsChecked("esp32_16mb", p);
+  TEST_ASSERT_TRUE(c.green == -1 && c.red == 33);
+  TEST_ASSERT_TRUE(camLedPinsChecked("esp32s3", CamLedPins()).green == -1);  // none unless set
+}
+
 void runAlarmTests() {
+  RUN_TEST(the_status_leds_go_only_on_pins_the_board_can_spare);
   RUN_TEST(the_status_leds_say_what_the_hub_is_doing);
   RUN_TEST(sealed_message_numbers_never_repeat_and_are_reserved_ahead);
   RUN_TEST(no_sealed_message_without_a_number_saved_as_reserved);

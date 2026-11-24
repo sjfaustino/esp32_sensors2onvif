@@ -287,6 +287,7 @@ class TestStore : public CamStore {
   bool backupNoted(int64_t, int) override { return true; }  // kept by the web part while the PC build runs
   bool mqttSave(const CamMqtt&) override { return true; }
   bool nvrSave(const std::string&) override { return true; }
+  bool ledsSave(const CamLedPins&) override { return true; }
   bool sealReserve(uint32_t) override { return true; }
 };
 

@@ -159,6 +159,7 @@ class HubStore : public CamStore {
   bool backupNoted(int64_t at, int paired) override { return storeBackupNoted(at, paired); }
   bool mqttSave(const CamMqtt& m) override { return storeMqtt(m); }
   bool nvrSave(const std::string& ip) override { return storeNvr(ip); }
+  bool ledsSave(const CamLedPins& p) override { return storeLeds(p); }
   bool sealReserve(uint32_t next) override { return storeSealNext(next); }
 };
 
@@ -174,6 +175,7 @@ static CamConfig makeConfig() {
   c.onvifPort = settings.onvifPort;
   c.webPort = settings.webPort;
   c.schedule = settings.schedule;
+  c.leds = settings.leds;
   c.nvrIp = settings.nvrIp;
   if (settings.webPort != 80) c.setupAddress += ":" + std::to_string(settings.webPort);
   c.hostName = std::string(settings.hubName.c_str()) + ".local";
@@ -288,22 +290,27 @@ static void printHeartbeat() {
       (unsigned)lastRestartCause(), (unsigned)pingReplies(), (unsigned)pingLost(), setupIsOpen() ? "open" : "off", server->debugLine().c_str());
 }
 
-// The status LEDs, set ten times a second from what the hub is doing; see cam_status_leds.h.
+// The status LEDs, if the page says where they are, set ten times a second from what the hub is doing; see
+// cam_status_leds.h. A pin the page moves an LED off is let go, as an input, for whatever else is wired to it.
 static void showStatus(bool connected) {
   static uint32_t shownAt = 0;
-  static bool begun = false;
-  if (!server || (begun && millis() - shownAt < 100)) return;
+  static CamLedPins driven;  // none at first
+  if (!server || millis() - shownAt < 100) return;
   shownAt = millis();
-  int pins[2] = {STATUS_LED_GREEN_PIN, STATUS_LED_RED_PIN};
-  if (!begun) {
-    for (int pin : pins)
+  CamLedPins want = server->ledPins();
+  if (want.green != driven.green || want.red != driven.red) {
+    for (int pin : {driven.green, driven.red})
+      if (pin >= 0) pinMode(pin, INPUT);
+    for (int pin : {want.green, want.red})
       if (pin >= 0) pinMode(pin, OUTPUT);
-    begun = true;
   }
-  CamLeds l = camStatusLeds(server->ledState(connected, setupIsOpen()), shownAt);
-  bool on[2] = {l.green, l.red};
-  for (int i = 0; i < 2; i++)
-    if (pins[i] >= 0) digitalWrite(pins[i], on[i] ? STATUS_LED_ON : !STATUS_LED_ON);
+  driven = want;
+  CamLeds l = server->leds(connected, setupIsOpen());
+  auto light = [&](int pin, bool on) {
+    if (pin >= 0) digitalWrite(pin, on != want.lowOn ? HIGH : LOW);
+  };
+  light(want.green, l.green);
+  light(want.red, l.red);
 }
 
 void loop() {

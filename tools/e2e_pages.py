@@ -425,6 +425,21 @@ def test_the_floor_plan_by_signal(page):
         api('DELETE', '/api/file?path=plan.json')
 
 
+def test_status_lights(page):
+    """Device info sets the status LEDs' pins, from a list that starts with None, and lights each alone as a test."""
+    page.goto(URL + '#device')
+    page.wait_for_selector('#ledGreen option[value="32"]', state='attached', timeout=10000)
+    check('the LEDs start as None, the first choice', page.input_value('#ledGreen') == '-1' and page.input_value('#ledRed') == '-1')
+    try:
+        page.select_option('#ledGreen', '32')
+        page.select_option('#ledRed', '33')
+        page.click('#saveLeds')
+        check('their pins are saved', page_wait(page, lambda: get_json('/api/leds')['red'] == 33), page.text_content('#ledMsg'))
+        page.click('#testGreen')
+        check('and the test says what it lights', page_wait(page, lambda: 'green LED' in page.text_content('#ledMsg')), page.text_content('#ledMsg'))
+    finally:
+        api('POST', '/api/leds', 'green=-1&red=-1&lowOn=0')
+
 def test_the_hubs_label(page):
     """Device info prints a label for the hub, with its page's address, its setup network, its pairing fingerprint and
     its serial number, and the printed page holds the label alone."""
@@ -825,6 +840,7 @@ def page_cases(nvr, storage):
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
         ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),
+        ('status_lights', on_page(test_status_lights)),
         ('the_hubs_label', on_page(test_the_hubs_label)),
         ('a_newer_release_is_offered', on_page(test_a_newer_release_is_offered)),
         ('every_page_opens', test_every_page_opens),

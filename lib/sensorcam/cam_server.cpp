@@ -139,6 +139,13 @@ bool SensorCamServer::nvrListening(uint32_t now) const { return events_.nvrListe
 
 bool SensorCamServer::downloadingHistory() const { return web_.downloadingHistory(); }
 
+CamLeds SensorCamServer::leds(bool online, bool setupOpen) {
+  uint32_t now = millis_();
+  CamLeds l = camStatusLeds(ledState(online, setupOpen), now);
+  web_.ledTest(now, l);  // the page's Test lights one alone for a moment
+  return l;
+}
+
 CamLedState SensorCamServer::ledState(bool online, bool setupOpen) const {
   CamLedState s;
   s.online = online;

@@ -160,7 +160,7 @@
     const ns = "http://www.w3.org/2000/svg",
       W = 320,
       H = 70,
-      L = 34;
+      L = 46; // room for "-90 dBm"
     const day = (t) => new Date(t * 1000).toLocaleDateString([], { weekday: "short" });
     // One chart: each hour's bar from the bottom to its value, scaled between lo and hi; marks are the grid's values,
     // and warn, when given, a value below which a bar is drawn in the warning colour.
@@ -236,6 +236,34 @@
       ),
     );
   }
+  // The status LEDs: None, or a pin from those the hub says its board can spare.
+  async function loadLeds() {
+    try {
+      const l = await call("GET", "/api/leds");
+      for (const [id, pin] of [
+        ["ledGreen", l.green],
+        ["ledRed", l.red],
+      ]) {
+        $(id).replaceChildren(
+          el("option", { value: "-1", textContent: tr("None") }),
+          ...l.pins.map((p) => el("option", { value: String(p), textContent: "GPIO " + p })),
+        );
+        $(id).value = String(pin);
+      }
+      $("ledLow").value = l.lowOn ? "1" : "0";
+    } catch (e) {}
+  }
+  $("saveLeds").onclick = () =>
+    send(
+      $("ledMsg"),
+      "/api/leds",
+      "green=" + $("ledGreen").value + "&red=" + $("ledRed").value + "&lowOn=" + $("ledLow").value,
+      tr("Saved."),
+    );
+  $("testGreen").onclick = () =>
+    send($("ledMsg"), "/api/leds/test", "led=green", tr("The green LED is lit alone for 3 seconds."));
+  $("testRed").onclick = () =>
+    send($("ledMsg"), "/api/leds/test", "led=red", tr("The red LED is lit alone for 3 seconds."));
   async function loadDevice() {
     try {
       const j = await (await fetch("/api/device")).json();
@@ -827,6 +855,7 @@
     }
     if (view == "device") {
       loadDevice();
+      loadLeds();
       repeat(loadDevice, 5000);
     }
   });

@@ -53,7 +53,8 @@ class SensorCamServer : private CamAlarmOutside {
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
   int webOpen() const { return web_.openCount(); }                     // web connections open now
   int videoOpen() const { return video_.openCount(); }                 // video connections open now
-  CamLedState ledState(bool online, bool setupOpen) const;             // for the status LEDs; see cam_status_leds.h
+  CamLedPins ledPins() const { return web_.ledPins(); }                // where the status LEDs are, -1 for none; see cam_status_leds.h
+  CamLeds leds(bool online, bool setupOpen);                           // which of them to light now
 #ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests
   CamAlarm& alarm() { return alarm_; }                                 // its test hooks, such as setMinuteMs, and its arm mode
 #endif
@@ -69,6 +70,7 @@ class SensorCamServer : private CamAlarmOutside {
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) override;
   void sensorReset(int id) override;
   void sensorsRescanned(bool listChanged) override;
+  CamLedState ledState(bool online, bool setupOpen) const;
 
   const CamConfig cfg_;  // the start-up settings; see CamConfig for who holds what changes later
   CamChip* chip_;        // the board's parts, or ones with every default for a part left out

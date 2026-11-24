@@ -210,6 +210,23 @@ def device_info_and_crash_report(s):
 
 
 @case(pc=True)
+def status_light_pins(s):
+    """The status LEDs are a choice: none until their pins are set, only from the pins the board can spare, and each
+    can be lit alone to check its wiring. On the PC build only, so a board's pins are never driven by a test."""
+    leds = get_json('/api/leds')
+    check('no status LEDs until they are set, with the pins the board can spare',
+          leds['green'] == -1 and leds['red'] == -1 and 32 in leds['pins'] and 6 not in leds['pins'] and 0 not in leds['pins'], leds)
+    check("a pin the board needs, such as the flash's, is refused", api('POST', '/api/leds', 'green=6&red=-1&lowOn=0')[0] == 400)
+    check('so are both LEDs on one pin', api('POST', '/api/leds', 'green=32&red=32&lowOn=0')[0] == 400)
+    check('a test needs the pin saved first', api('POST', '/api/leds/test', 'led=green')[0] == 400)
+    check('pins from the list are saved', api('POST', '/api/leds', 'green=32&red=33&lowOn=1')[0] == 200
+          and get_json('/api/leds') == {**leds, 'green': 32, 'red': 33, 'lowOn': True}, get_json('/api/leds'))
+    check('and each LED can be lit alone', api('POST', '/api/leds/test', 'led=red')[0] == 200)
+    check('the LEDs can be taken out again', api('POST', '/api/leds', 'green=-1&red=-1&lowOn=0')[0] == 200
+          and get_json('/api/leds') == leds, get_json('/api/leds'))
+
+
+@case(pc=True)
 def time_schedule_restart_and_reset(s):
     """The clock, the restart schedule, a restart, new keys and a reset, each refused unless confirmed."""
     zone = 'offset=60&dst=1'

@@ -68,6 +68,13 @@ struct CamTime {
   long long epoch = 0;    // manual mode: the time to set, or 0 to leave the clock alone
 };
 
+// The status LEDs' pins, -1 for none, as the page sets them: a hub has none until someone wires them and says where.
+// lowOn for LEDs wired from 3.3 V to the pin, lit when it is low. See cam_status_leds.h.
+struct CamLedPins {
+  int green = -1, red = -1;
+  bool lowOn = false;
+};
+
 struct CamSchedule {
   bool on = false;
   int day = -1;    // -1 every day, otherwise 0 is Sunday
@@ -201,6 +208,7 @@ class CamStore {
   virtual bool backupNoted(int64_t at, int paired) { return false; }  // a sealed backup was made
   virtual bool mqttSave(const CamMqtt& m) { return false; }
   virtual bool nvrSave(const std::string& ip) { return false; }
+  virtual bool ledsSave(const CamLedPins& p) { return false; }
   // The first number the next start may give a sealed message, kept in flash and never in a backup. Each number seals
   // one message for good: used twice with a node's key, the two could be compared. So the hub reserves numbers a block
   // at a time, ahead of using them, and a start, even after a power cut, begins after the last block reserved.
@@ -209,7 +217,7 @@ class CamStore {
 
 // The hub's settings at the start, which do not change while it runs. A setting the pages change later is held by the
 // part it concerns from then on: the health alarm and the re-arm time by CamAlarm, the NVR address by CamOnvifEvents, the
-// webhook by CamWebhookSender, MQTT by CamMqttClient, the restart schedule by CamWeb.
+// webhook by CamWebhookSender, MQTT by CamMqttClient, the restart schedule and the LED pins by CamWeb.
 struct CamConfig {
   CamChip* chip = nullptr;  // the board's parts, which outlive the server; any may be left out
   CamRadio* radio = nullptr;
@@ -225,6 +233,7 @@ struct CamConfig {
   std::string onvifPassword;                     // when set, ONVIF and RTSP need the user admin and this password
   bool healthAlarm = false;                      // a silent node or low battery also raises an NVR alarm
   CamSchedule schedule;
+  CamLedPins leds;         // checked against the board's pins before use, as a backup from another board may hold any
   std::string espNowKey;   // signs the ESP-NOW messages of nodes not paired
   std::string pairingKey;  // the hub's X25519 private key, as 64 hex digits; empty turns pairing off
   CamWebhook webhook;

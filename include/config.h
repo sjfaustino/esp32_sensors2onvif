@@ -48,26 +48,5 @@
 #define SETUP_BUTTON_PIN 0
 #endif
 
-// The status LEDs, green and red, each from its pin through a resistor (about 330 ohm) to ground; see
-// lib/sensorcam/cam_status_leds.h for what they say. -1 for none. The defaults are pins each board leaves free: on an
-// ESP32, not the flash's, the PSRAM's or one the chip reads as it starts; on an ESP32-S3, not those or its octal
-// PSRAM's (33 to 37) or USB's (19, 20).
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-#define STATUS_LED_DEFAULT_GREEN 4
-#define STATUS_LED_DEFAULT_RED 5
-#else
-#define STATUS_LED_DEFAULT_GREEN 32
-#define STATUS_LED_DEFAULT_RED 33
-#endif
-#ifndef STATUS_LED_GREEN_PIN
-#define STATUS_LED_GREEN_PIN STATUS_LED_DEFAULT_GREEN
-#endif
-#ifndef STATUS_LED_RED_PIN
-#define STATUS_LED_RED_PIN STATUS_LED_DEFAULT_RED
-#endif
-#ifndef STATUS_LED_ON
-#define STATUS_LED_ON HIGH  // LOW for LEDs wired from 3.3 V to the pin
-#endif
-
 // How long one sensor alert stays active. A new alert from the same sensor restarts it.
 #define SENSOR_HOLD_MS 10000

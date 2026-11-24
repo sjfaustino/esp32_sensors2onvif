@@ -28,6 +28,7 @@ struct HubSettings {
   String ntpServer;
   int tzOffset = 0, tzDst = 0;
   CamSchedule schedule;
+  CamLedPins leds;
 };
 extern HubSettings settings;
 
@@ -47,6 +48,7 @@ bool rememberWifi(const std::string& ssid, const std::string& password, bool bac
 bool storeTime(const CamTime& t);
 bool storeSchedule(const CamSchedule& s);
 bool storeNvr(const std::string& ip);
+bool storeLeds(const CamLedPins& p);
 bool storeAddress(const CamAddress& a, const String& network);  // a fixed address for that network, or DHCP
 void forgetStatic();
 bool storeHealthAlarm(bool on);

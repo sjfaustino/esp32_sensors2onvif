@@ -31,10 +31,12 @@ which only someone holding the hub can press. A board without that button can be
 
 ### Status lights
 
-Two LEDs, a green and a red, tell someone standing by the hub how it is without a phone. Wire each from its pin through
-a resistor of about 330 ohm to ground: on an ESP32, green on GPIO 32 and red on GPIO 33; on an ESP32-S3, green on
-GPIO 4 and red on GPIO 5. Other pins, or LEDs wired from 3.3 V to the pin, are set in `include/config.h`
-(`STATUS_LED_GREEN_PIN`, `STATUS_LED_RED_PIN`, `STATUS_LED_ON`), and -1 leaves one out.
+Two LEDs, a green and a red, can tell someone standing by the hub how it is without a phone. They are a choice: a hub
+has none until you add them. Wire each from a free pin through a resistor of about 330 ohm to ground, such as GPIO 32
+and 33 on an ESP32, then choose their pins under **System > Device info > Status lights**; **Test green** and **Test
+red** light each alone for 3 seconds, to check the wiring. The list offers only pins the board can spare, none that
+the chip reads as it starts or that its flash, PSRAM, USB or serial port use, and the hub checks again as it starts, so
+a backup from another board cannot set a pin this one needs. Choose **Low** for LEDs wired from 3.3 V to the pin.
 
 | Light | Means |
 | --- | --- |

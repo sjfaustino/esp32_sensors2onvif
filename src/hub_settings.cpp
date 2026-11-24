@@ -115,6 +115,9 @@ void loadSettings() {
     s.schedule.on = p.getBool("rben", false);
     s.schedule.day = p.getInt("rbday", -1);
     s.schedule.minute = p.getInt("rbmin", 0);
+    s.leds.green = p.getInt("ledg", -1);
+    s.leds.red = p.getInt("ledr", -1);
+    s.leds.lowOn = p.getBool("ledlo", false);
     s.staticFor = p.getString("ipfor", "");
     s.staticIp = p.getString("ip", "");
     s.staticMask = p.getString("mask", "");
@@ -210,6 +213,13 @@ bool storeSchedule(const CamSchedule& s) {
   bool ok = withPrefs(
       "net", [&](Preferences& p) { return p.putBool("rben", s.on) == 1 && p.putInt("rbday", s.day) == 4 && p.putInt("rbmin", s.minute) == 4; });
   if (ok) settings.schedule = s;
+  return ok;
+}
+
+bool storeLeds(const CamLedPins& l) {
+  bool ok = withPrefs(
+      "net", [&](Preferences& p) { return p.putInt("ledg", l.green) == 4 && p.putInt("ledr", l.red) == 4 && p.putBool("ledlo", l.lowOn) == 1; });
+  if (ok) settings.leds = l;
   return ok;
 }
 

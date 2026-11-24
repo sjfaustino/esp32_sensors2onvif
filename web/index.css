@@ -707,6 +707,14 @@ svg.chart .bar {
 svg.chart .bar.warn {
   fill: var(--danger);
 }
+details.ledKey {
+  margin: 8px 0;
+  font-size: 14px;
+}
+details.ledKey summary {
+  cursor: pointer;
+  color: var(--muted-text);
+}
 figure.healthChart {
   margin: 0 0 12px;
 }

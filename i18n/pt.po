@@ -3773,3 +3773,90 @@ msgstr "Sinal Wi-Fi mais fraco"
 
 msgid "NVR listening"
 msgstr "NVR à escuta"
+
+msgid "Status lights"
+msgstr "Luzes de estado"
+
+msgid "Two LEDs on the hub, if you add them, tell someone standing by it how it is: green while it is armed, red while it is not protecting or a sensor is firing. Wire each from its pin through a resistor of about 330 ohm to ground, then choose its pin here. The list holds only pins this board can spare."
+msgstr "Dois LEDs na central, se os acrescentar, dizem a quem está junto dela como está: verde enquanto está armada, vermelho enquanto não protege ou um sensor está a disparar. Ligue cada um do seu pino, através de uma resistência de cerca de 330 ohm, à massa, e escolha aqui o pino. A lista tem só os pinos que esta placa pode dispensar."
+
+msgid "Green LED"
+msgstr "LED verde"
+
+msgid "Red LED"
+msgstr "LED vermelho"
+
+msgid "Lit when the pin is"
+msgstr "Aceso quando o pino está"
+
+msgid "High: LED to ground"
+msgstr "Alto: LED à massa"
+
+msgid "Low: LED to 3.3 V"
+msgstr "Baixo: LED aos 3,3 V"
+
+msgid "What the lights say"
+msgstr "O que as luzes dizem"
+
+msgid "Green, steady"
+msgstr "Verde, fixo"
+
+msgid "Armed away, and protecting"
+msgstr "Armada total, e a proteger"
+
+msgid "Green, blinking slowly"
+msgstr "Verde, a piscar devagar"
+
+msgid "Green, a short flash every 3 s"
+msgstr "Verde, um clarão curto a cada 3 s"
+
+msgid "Disarmed: running, but raising no alerts"
+msgstr "Desarmada: a funcionar, mas sem dar alertas"
+
+msgid "Red, flashing fast"
+msgstr "Vermelho, a piscar depressa"
+
+msgid "A sensor is firing now"
+msgstr "Um sensor está a disparar agora"
+
+msgid "Red, steady"
+msgstr "Vermelho, fixo"
+
+msgid "Not protecting: off Wi-Fi, or the NVR not set or not listening. Green is off."
+msgstr "Não protege: fora do Wi-Fi, ou o NVR não definido ou sem escutar. O verde fica apagado."
+
+msgid "Red, blinking slowly"
+msgstr "Vermelho, a piscar devagar"
+
+msgid "The setup network is open"
+msgstr "A rede de configuração está aberta"
+
+msgid "Red, a short flash every 2 s"
+msgstr "Vermelho, um clarão curto a cada 2 s"
+
+msgid "A sensor has a problem: silent, a low battery, a weak signal"
+msgstr "Um sensor tem um problema: calado, bateria fraca, sinal fraco"
+
+msgid "Test green"
+msgstr "Testar verde"
+
+msgid "Test red"
+msgstr "Testar vermelho"
+
+msgid "The green LED is lit alone for 3 seconds."
+msgstr "O LED verde acende sozinho durante 3 segundos."
+
+msgid "The red LED is lit alone for 3 seconds."
+msgstr "O LED vermelho acende sozinho durante 3 segundos."
+
+msgid "choose each LED's pin from the list"
+msgstr "escolha da lista o pino de cada LED"
+
+msgid "could not save the LED pins"
+msgstr "não foi possível guardar os pinos dos LEDs"
+
+msgid "save a pin for that LED first"
+msgstr "guarde primeiro um pino para esse LED"
+
+msgid "the two LEDs need different pins"
+msgstr "os dois LEDs precisam de pinos diferentes"

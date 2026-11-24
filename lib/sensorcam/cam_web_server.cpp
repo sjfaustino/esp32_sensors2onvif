@@ -35,6 +35,7 @@ CamWeb::CamWeb(const CamWebParts& p)
       backupPaired_(p.cfg.backupPaired),
       extraHosts_(p.cfg.extraHosts),
       onvifPassword_(p.cfg.onvifPassword),
+      leds_(camLedPinsChecked(p.cfg.board, p.cfg.leds)),
       schedule_(p.cfg.schedule) {
   csvRead_ = [this](size_t offset, char* out, size_t len) { return alarm_.log().csvRead(offset, out, len); };  // see HttpConn::stream
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
