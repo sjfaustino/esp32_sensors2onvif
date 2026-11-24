@@ -1,5 +1,7 @@
 #include "cam_health_history.h"
+#include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "cam_events.h"
 
 static const uint32_t LOOK_MAX_MS = 60000;  // a longer gap between looks, the loop held up, stands for no more than this
@@ -72,12 +74,21 @@ void CamHealthHistory::read(const std::string& text) {
     if (end == std::string::npos) end = text.size();
     std::string line = text.substr(at, end - at);
     at = end + 1;
-    unsigned long hour;
-    unsigned low, up, nvr;
-    int rssi;
-    char extra;
-    if (sscanf(line.c_str(), "%lu %u %d %u %u %c", &hour, &low, &rssi, &up, &nvr, &extra) != 5) continue;
-    if (low > 0xFFFF || rssi > 0 || rssi < -127 || up > 60 || nvr > up || hour < (unsigned long)(CAM_CLOCK_VALID_AFTER / 3600)) continue;
+    // Five whole numbers, each after one space, and nothing after them.
+    long long v[5] = {};
+    const char* p = line.c_str();
+    bool ok = true;
+    for (int i = 0; i < 5 && ok; i++) {
+      char* stop;
+      errno = 0;
+      v[i] = strtoll(p, &stop, 10);
+      ok = stop != p && errno == 0 && (*stop == (i < 4 ? ' ' : '\0'));
+      p = stop + (i < 4 ? 1 : 0);
+    }
+    long long hour = v[0], low = v[1], rssi = v[2], up = v[3], nvr = v[4];
+    if (!ok || low < 0 || low > 0xFFFF || rssi > 0 || rssi < -127 || up < 0 || up > 60 || nvr < 0 || nvr > up ||
+        hour < CAM_CLOCK_VALID_AFTER / 3600 || hour > 0xFFFFFFFFLL)
+      continue;
     CamHealthHour h;
     h.hour = (uint32_t)hour;
     h.lowKb = (uint16_t)low;
