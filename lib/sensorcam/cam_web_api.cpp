@@ -60,6 +60,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"GET", "/api/live", &CamWeb::getLive, LOGIN},
       {"GET", "/api/live/frame", &CamWeb::getLiveFrame, LOGIN},
       {"GET", "/api/device", &CamWeb::getDevice, LOGIN},
+      {"GET", "/api/health-history", &CamWeb::getHealthHistory, LOGIN},
       {"GET", "/api/crash", &CamWeb::getCrash, LOGIN},
       {"POST", "/api/crash/delete", &CamWeb::postCrashDelete, LOGIN},
       {"GET", "/api/events", &CamWeb::getEvents, LOGIN},

@@ -175,7 +175,9 @@ a lack of memory skips a reading and never an alert. The forecast is a least-squ
 
 `CamLoginGuard` (`lib/sensorcam/cam_auth.h`) counts wrong passwords per address, on the web page, ONVIF and RTSP: ten in
 a row lock the address for a minute, each one after that doubles the lock up to 15 minutes, and the count is kept for a
-day or until a right password. Asking without a password does not count. `camKnownHost` lets the web port answer only to
+day or until a right password. Asking without a password does not count. It has room for eight addresses; an address
+that has used up its ten keeps its place for the day, and once all eight are such, every other address shares one
+count, so a guesser with many addresses does not get ten tries for each. `camKnownHost` lets the web port answer only to
 the hub's address, its name alone or with `.local`, `.lan`, `.home`, `.home.arpa`, `.localdomain` or `.internal`, the
 setup address and the names set on the HTTP page, which stops DNS rebinding; sensor reports are exempt, because their
 token guards them. The snapshot token is an HMAC of the password with a secret kept on the hub. The page checks the

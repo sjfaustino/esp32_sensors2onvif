@@ -5,6 +5,20 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+### Security
+
+- Guessing the hub password from many addresses no longer gets ten tries for each. The hub has room to count eight
+  addresses, and a new one used to push out the one quiet longest, which then started again; now an address that has
+  used up its tries keeps its place for the day, and once all eight are such, the others share one count.
+- The Maintenance page follows a newer release's links only when they are GitHub's own.
+
+### Changes
+
+- Device info and the week of health take the least free memory as the memory itself keeps it, at every allocation,
+  so a fall that lasts a moment, as a web request's, is seen. The row that said "today" says since the daily check,
+  or, on a hub without one, since the start.
+- The week of health is asked for on its own, once a minute, not with Device info every few seconds.
+
 - Two status LEDs, green and red, can say whether the hub is armed and protecting, and when a sensor is firing, to
   someone standing by it. They are a choice: their pins are set under Device info > Status lights, from a list of the
   pins the board can spare, with a test for each. See Status lights in the user guide.

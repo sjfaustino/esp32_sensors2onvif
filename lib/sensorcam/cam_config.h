@@ -163,7 +163,10 @@ class CamChip {
   virtual bool random32(uint32_t& out) { return false; }                 // a number from the chip's random source; false where there is none
   virtual bool tellsHealth() { return false; }                           // health() has figures, for Home Assistant's diagnostic sensors
   virtual void health(CamHealth& h) {}
-  virtual void healthDayStart() {}                     // the daily check has told the day's low: a new day's starts
+  virtual void healthDayStart() {}  // the daily check has told the day's low: a new day's starts
+  // The least free memory since the last call, for the week of health: what the heap itself kept, at every allocation,
+  // so a fall that lasts a moment, as a web request's does, is seen too. 0 where the board does not keep it.
+  virtual uint32_t takeMemoryLow() { return 0; }
   virtual time_t wallTime() { return time(nullptr); }  // seconds since 1970 UTC; before the clock is set, a small number
   virtual int localMinute() { return -1; }             // minutes after local midnight, or -1 when the clock is not set; for quiet hours
   virtual int localWeekday() { return -1; }            // 0 for Sunday to 6, or -1 when the clock is not set

@@ -3732,9 +3732,6 @@ msgctxt "message"
 msgid "free memory fell to {0} KB, which risks dropped work: see Device info"
 msgstr "a memória livre desceu a {0} KB, o que arrisca trabalho perdido: veja a Informação do aparelho"
 
-msgid "Lowest free memory today"
-msgstr "Menor memória livre hoje"
-
 msgid "{n} KB at {time}, with {web} web and {video} video connections open"
 msgstr "{n} KB às {time}, com {web} ligações web e {video} de vídeo abertas"
 
@@ -3860,3 +3857,9 @@ msgstr "guarde primeiro um pino para esse LED"
 
 msgid "the two LEDs need different pins"
 msgstr "os dois LEDs precisam de pinos diferentes"
+
+msgid "Lowest free memory since the daily check"
+msgstr "Menor memória livre desde a verificação diária"
+
+msgid "When the free memory was lowest"
+msgstr "Quando a memória livre esteve mais baixa"

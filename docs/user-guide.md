@@ -452,7 +452,7 @@ HTTP sensor reports need `&token=<value>`. The hub makes a token the first time 
 ESP-NOW reports are signed with a separate key instead; see "Sensor input over ESP-NOW".
 
 Ten wrong passwords in a row from one address lock it out for a minute, then longer for each further one, up to 15
-minutes. The web page answers only to the hub's address, its own name with `.local` or a home router's usual ending,
+minutes; many addresses guessing at once share one such count, so more addresses do not mean more tries. The web page answers only to the hub's address, its own name with `.local` or a home router's usual ending,
 and the **Other names** on the HTTP page: add the name your router gives the hub there if you use it. A refused name
 gets a reply saying so. Details are in [docs/how-it-works.md](how-it-works.md).
 
@@ -507,9 +507,10 @@ receives UTC, so these only change the time shown on the page and the scheduled 
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
 
 **Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status,
-and the least free memory since the last daily check: when, and with how many connections open, as a fall that
-recovered leaves nothing else to see.
-**The last week** draws the hub's health an hour to a bar: the least free memory in each hour, the weakest Wi-Fi
+and the least free memory since the last daily check, or since the start on a hub without one: when, and with how many
+connections open, as a fall that recovered leaves nothing else to see.
+**The last week** draws the hub's health an hour to a bar: the least free memory in each hour, as the memory itself
+keeps it at every allocation, so even a moment's fall shows, the weakest Wi-Fi
 signal, and how much of the hour the NVR was listening for alerts. A memory that keeps falling, a Wi-Fi that fades at
 night, or an NVR that was off for hours shows at a glance. The hub keeps it once its clock is set, and saves it as each
 hour ends, so a restart loses at most the hour under way.

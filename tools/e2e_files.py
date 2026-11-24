@@ -190,7 +190,7 @@ def device_info_and_crash_report(s):
     code, device = api('GET', '/api/device')
     rows = dict(json.loads(device)['rows']) if code == 200 else {}
     check('device info is served', 'Firmware version' in rows and 'Picture storage' in rows and 'Sensors' in rows, rows)
-    history = json.loads(device).get('history') if code == 200 else None
+    history = get_json('/api/health-history').get('hours')
     hour = int(time.time()) // 3600 * 3600
     check("with the week of the hub's health, the hour under way last",
           bool(history) and all(len(h) == 5 and h[0] % 3600 == 0 and 0 <= h[4] <= h[3] <= 60 for h in history)
@@ -199,6 +199,7 @@ def device_info_and_crash_report(s):
     code, sched = api('GET', '/api/schedule')
     check('restart schedule is served', code == 200 and 'minute' in json.loads(sched), code)
     check('device info needs the web password', not PASSWORD or api('GET', '/api/device', auth=False)[0] == 401)
+    check('so does its history', not PASSWORD or api('GET', '/api/health-history', auth=False)[0] == 401)
 
     if not DEVICE:  # the PC build has a pretend crash report; a board's real one is not deleted
         check('device info says a crash report is saved', json.loads(device).get('crash') == 3000, json.loads(device).get('crash'))

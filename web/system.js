@@ -142,8 +142,18 @@
         tr("Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network."),
       );
   };
-  // The last week of the hub's health, an hour to a bar: [[start, lowKb, rssi, upMinutes, nvrMinutes], ...].
-  let historyShown = "";
+  // The last week of the hub's health, an hour to a bar: [[start, lowKb, rssi, upMinutes, nvrMinutes], ...]. Asked for
+  // apart from the rest of Device info, and once a minute, as it changes no faster and is the largest part.
+  let historyShown = "",
+    historyAt = 0;
+  async function loadHistory() {
+    historyAt = Date.now();
+    try {
+      showHistory((await call("GET", "/api/health-history")).hours);
+    } catch (e) {
+      historyAt = 0; // asked again at the next refresh
+    }
+  }
   function showHistory(hours) {
     const key = JSON.stringify(hours);
     if (key == historyShown) return; // refreshed every 5 s; drawn again only when it changed
@@ -267,7 +277,7 @@
   async function loadDevice() {
     try {
       const j = await (await fetch("/api/device")).json();
-      showHistory(j.history || []);
+      if (Date.now() - historyAt >= 60000) loadHistory();
       fill(
         "devInfo",
         j.rows.map(([k, v]) => [hubText(k), hubText(v)]),
@@ -726,6 +736,9 @@
     } catch (e) {}
     return release;
   }
+  // Only a link to GitHub itself is used: a page on the hub that followed a javascript: link from elsewhere would run it
+  // with the hub's login. Checked where it is used, as the copy kept on this device could have been changed too.
+  const github = (url) => (typeof url == "string" && url.startsWith("https://github.com/") ? url : null);
   async function checkRelease() {
     const box = $("fwNew");
     try {
@@ -736,7 +749,9 @@
         return;
       }
       const name = "sensors2onvif-" + latest.tag + "-" + info.board + ".bin",
-        file = latest.files.find(([n]) => n == name);
+        found = (latest.files || []).find(([n]) => n == name),
+        file = found && github(found[1]),
+        notes = github(latest.url);
       box.replaceChildren(
         el("b", {
           textContent: tr("Version {version} is out; this hub runs {runs}.", {
@@ -745,12 +760,12 @@
           }),
         }),
         " ",
-        el("a", { href: latest.url, target: "_blank", rel: "noopener", textContent: tr("What is new") }),
+        notes ? el("a", { href: notes, target: "_blank", rel: "noopener", textContent: tr("What is new") }) : "",
         el(
           "p",
           null,
           ...(file
-            ? trParts("Download {file}, then drop it below.", { file: el("a", { href: file[1], textContent: name }) })
+            ? trParts("Download {file}, then drop it below.", { file: el("a", { href: file, textContent: name }) })
             : [tr("Its release has no file for this hub's board.")]),
         ),
       );
@@ -854,6 +869,7 @@
       repeat(tickTime, 1000);
     }
     if (view == "device") {
+      historyAt = 0;
       loadDevice();
       loadLeds();
       repeat(loadDevice, 5000);

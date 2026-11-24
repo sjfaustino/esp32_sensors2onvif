@@ -103,6 +103,28 @@ static void wrong_passwords_lock_out_quick_and_slow_guessing() {
   TEST_ASSERT_TRUE(g.allowed(9, CamLoginGuard::FORGET_MS));
 }
 
+// More addresses than the guard has room for do not each get ten tries afresh: once every entry holds an address shut
+// out, the others share one count, which locks like any.
+static void many_addresses_do_not_get_fresh_tries() {
+  CamLoginGuard g;
+  uint32_t t = 5000;
+  for (uint32_t peer = 1; peer <= 8; peer++)
+    for (int i = 0; i < CamLoginGuard::FREE_TRIES; i++) g.note(peer, false, t);
+  for (uint32_t peer = 1; peer <= 8; peer++) TEST_ASSERT_FALSE(g.allowed(peer, t));
+  int tries = 0;
+  for (uint32_t peer = 100; peer < 200 && g.allowed(peer, t); peer++, tries++) g.note(peer, false, t);
+  TEST_ASSERT_EQUAL(CamLoginGuard::FREE_TRIES, tries);  // a hundred more addresses, ten tries between them
+  TEST_ASSERT_FALSE(g.allowed(999, t + 1000));
+  t += CamLoginGuard::FIRST_LOCK_MS;  // and once the locks run out, the shut-out addresses are still remembered
+  TEST_ASSERT_TRUE(g.allowed(3, t));
+  g.note(500, false, t);  // a new address does not push one of them out
+  g.note(3, false, t);
+  TEST_ASSERT_FALSE(g.allowed(3, t + 1000));
+  g.note(5, true, t);  // a right password clears that address's count, and frees its entry
+  TEST_ASSERT_TRUE(g.allowed(5, t));
+  TEST_ASSERT_TRUE(g.allowed(777, t + 2 * CamLoginGuard::LONGEST_LOCK_MS));
+}
+
 static void only_the_hubs_own_names_are_served() {
   const char* ip = "192.168.1.50";
   TEST_ASSERT_TRUE(camKnownHost("", ip, "esp-alarmhub.local", "192.168.4.1:8080", ""));
@@ -294,6 +316,7 @@ void runCryptoTests() {
   RUN_TEST(the_long_fingerprint_starts_with_the_short_one);
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);
+  RUN_TEST(many_addresses_do_not_get_fresh_tries);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(base64_matches_known_values);
   RUN_TEST(hmac_sha1_matches_rfc_2202);

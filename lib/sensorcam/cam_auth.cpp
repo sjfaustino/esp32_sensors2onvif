@@ -214,31 +214,38 @@ uint32_t CamLoginGuard::lockMs(uint16_t failures) {
   return ms < LONGEST_LOCK_MS ? ms : LONGEST_LOCK_MS;
 }
 
+// Where an address's wrong passwords are counted: its own entry; else a free one; else the one quiet longest of those
+// that have not used up their free tries; else, every entry holding an address shut out today, the shared one.
+int CamLoginGuard::slotFor(uint32_t peer, uint32_t now) const {
+  for (int i = 0; i < ENTRIES; i++)
+    if (kept(entries_[i], now) && entries_[i].peer == peer) return i;
+  for (int i = 0; i < ENTRIES; i++)
+    if (!kept(entries_[i], now)) return i;
+  int spare = -1;
+  for (int i = 0; i < ENTRIES; i++)
+    if (entries_[i].failures < FREE_TRIES && (spare < 0 || now - entries_[i].lastAt > now - entries_[spare].lastAt)) spare = i;
+  return spare >= 0 ? spare : ENTRIES;
+}
+
 bool CamLoginGuard::allowed(uint32_t peer, uint32_t now) const {
-  for (const Entry& e : entries_)
-    if (e.peer == peer && e.failures && now - e.lastAt < lockMs(e.failures)) return false;
-  return true;
+  int i = slotFor(peer, now);
+  const Entry& e = entries_[i];
+  bool counts = i == ENTRIES || e.peer == peer;  // a spare entry is someone else's count
+  return !(counts && kept(e, now) && now - e.lastAt < lockMs(e.failures));
 }
 
 void CamLoginGuard::note(uint32_t peer, bool ok, uint32_t now) {
-  Entry* entry = nullptr;
-  Entry* spare = &entries_[0];  // a free entry, or else the one quiet for longest
-  for (Entry& e : entries_) {
-    if (e.peer == peer && e.failures) entry = &e;
-    if (spare->failures && (!e.failures || now - e.lastAt > now - spare->lastAt)) spare = &e;
-  }
+  int i = slotFor(peer, now);
+  Entry& e = entries_[i];
+  bool own = i < ENTRIES && e.peer == peer && kept(e, now);
   if (ok) {
-    if (entry) *entry = Entry();
+    if (own) e = Entry();  // the shared count stays: a right password from one address says nothing of the others
     return;
   }
-  if (!entry) {
-    entry = spare;
-    *entry = Entry();
-    entry->peer = peer;
-  }
-  if (entry->failures && now - entry->lastAt >= FORGET_MS) entry->failures = 0;
-  if (entry->failures < 0xFFFF) entry->failures++;
-  entry->lastAt = now;
+  if (!kept(e, now) || (i < ENTRIES && !own)) e = Entry();
+  e.peer = i < ENTRIES ? peer : 0;
+  if (e.failures < 0xFFFF) e.failures++;
+  e.lastAt = now;
 }
 
 // Keyed with a secret that stays on the hub, so a snapshot link seen in an NVR's settings cannot be used to guess the

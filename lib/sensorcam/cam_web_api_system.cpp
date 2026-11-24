@@ -101,7 +101,14 @@ void CamWeb::getDevice(const ApiRequest& r) {
     row("Event subscribers", std::to_string(events_.subs().count()));
     if (alarm_.log().saveFailed()) row("Event history", "Could not be saved; storage may be full");
     j.end().num("crash", chip_->crashSize());
-    j.array("history");  // the last week, an hour at a time: see CamHealthHistory::hours
+  }));
+}
+
+// The last week of the hub's health, an hour at a time: see CamHealthHistory::hours. Apart from /api/device, which the
+// page asks for every few seconds, as this is larger and changes once a minute at most.
+void CamWeb::getHealthHistory(const ApiRequest& r) {
+  r.c.out = jsonOk(jsonObject([&](CamJson& j) {
+    j.array("hours");
     health_.hours(j);
     j.end();
   }));

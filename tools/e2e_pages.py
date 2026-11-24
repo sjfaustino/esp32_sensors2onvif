@@ -481,8 +481,9 @@ def test_the_hubs_label(page):
 def test_a_newer_release_is_offered(page):
     """The Maintenance page says when a newer release is out, as GitHub lists it, and links the file for this hub's
     board; a release no newer, or the internet out of reach, says nothing."""
+    files = 'https://github.com/sjfaustino/esp32_sensors2onvif/releases/download/v0.9.0/'
     release = {'tag_name': 'v0.9.0', 'html_url': 'https://github.com/sjfaustino/esp32_sensors2onvif/releases/tag/v0.9.0',
-               'assets': [{'name': f'sensors2onvif-v0.9.0-{b}.bin', 'browser_download_url': f'https://example.invalid/{b}.bin'}
+               'assets': [{'name': f'sensors2onvif-v0.9.0-{b}.bin', 'browser_download_url': f'{files}{b}.bin'}
                           for b in ('esp32_16mb', 'esp32dev', 'esp32s3')]}
     asked = []
 
@@ -495,10 +496,17 @@ def test_a_newer_release_is_offered(page):
     text = page.text_content('#fwNew')
     check('a newer release is offered, saying what the hub runs', 'v0.9.0' in text and get_json('/api/info')['version'] in text, text)
     link = page.get_attribute('#fwNew a[href$=".bin"]', 'href')
-    check("with the file for this hub's board", link == 'https://example.invalid/esp32_16mb.bin', link)
+    check("with the file for this hub's board", link == files + 'esp32_16mb.bin', link)
     page.reload()
     page.wait_for_selector('#fwNew', state='visible', timeout=10000)
     check('and GitHub is asked once a day, not on each visit', len(asked) == 1, asked)
+    page.evaluate("localStorage.removeItem('release')")
+    release['html_url'] = 'javascript:alert(1)'  # a link that is not GitHub's is left out
+    release['assets'][0]['browser_download_url'] = 'javascript:alert(2)'
+    page.reload()
+    page.wait_for_selector('#fwNew', state='visible', timeout=10000)
+    links = page.eval_on_selector_all('#fwNew a', 'as => as.map(a => a.getAttribute("href"))')
+    check('a link that is not to GitHub is left out', not any('javascript' in (h or '') for h in links), links)
     page.evaluate("localStorage.removeItem('release')")
     release['tag_name'] = 'v0.6.0'
     page.reload()

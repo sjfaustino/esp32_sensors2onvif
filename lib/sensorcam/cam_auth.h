@@ -45,6 +45,8 @@ bool camHostListValid(const std::string& names);
 // Each wrong one after that, possible only once a lock has run out, doubles the lock, up to 15 minutes. The count is
 // kept for a day after the last wrong password, and cleared by a right one. So guessing in quick bursts and guessing
 // slowly both get at most about 100 tries a day.
+// An address that has used up its free tries keeps its entry for that day. Once every entry holds one, any other address
+// is counted in one entry they all share, so taking more addresses than there are entries does not start the count again.
 class CamLoginGuard {
  public:
   static const int FREE_TRIES = CAM_LOGIN_FREE_TRIES;
@@ -58,6 +60,9 @@ class CamLoginGuard {
     uint16_t failures = 0;
     uint32_t lastAt = 0;
   };
+  static const int ENTRIES = 8;  // and after them, the one the other addresses share
   static uint32_t lockMs(uint16_t failures);
-  Entry entries_[8];
+  bool kept(const Entry& e, uint32_t now) const { return e.failures && now - e.lastAt < FORGET_MS; }
+  int slotFor(uint32_t peer, uint32_t now) const;
+  Entry entries_[ENTRIES + 1];
 };

@@ -75,13 +75,30 @@ static uint32_t dayLow = UINT32_MAX;
 static int64_t dayLowAt = 0;
 static uint16_t dayLowWeb = 0, dayLowVideo = 0;
 
+static uint32_t sinceTaken = UINT32_MAX;  // the least since the week of health last asked, a few seconds ago
+static uint32_t sinceStart = UINT32_MAX;
+static bool dayStarted = false;  // a daily check has started a new day; until then the day's low is since the start
+static bool watching = false;
+
+// The least free memory in the last second. The heap keeps its least free at every allocation, from the start or from
+// when it is told to begin again; so a fall that lasts a moment, as a web request's does, is caught, which a look at
+// the free memory now and then would miss. Read, then begun again, each second.
+static uint32_t secondLow() {
+  uint32_t low = watching ? heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) : ESP.getMinFreeHeap();
+  if (watching) heap_caps_monitor_local_minimum_free_size_stop();
+  watching = heap_caps_monitor_local_minimum_free_size_start() == ESP_OK;
+  return low;
+}
+
 void sampleMemory(int webOpen, int videoOpen) {
   static uint32_t sampledAt = 0;
   if (millis() - sampledAt < 1000) return;
   sampledAt = millis();
   uint32_t block = largestBlock();
   if (block < smallestBlock) smallestBlock = block;
-  uint32_t free = ESP.getFreeHeap();
+  uint32_t free = secondLow();
+  if (free < sinceTaken) sinceTaken = free;
+  if (free < sinceStart) sinceStart = free;
   if (free < dayLow) {
     dayLow = free;
     time_t now = time(nullptr);
@@ -98,7 +115,19 @@ void memoryDayLow(uint32_t& lowFree, int64_t& lowAt, uint16_t& lowWeb, uint16_t&
   lowVideo = dayLowVideo;
 }
 
-void memoryDayStart() { dayLow = UINT32_MAX; }
+void memoryDayStart() {
+  dayLow = UINT32_MAX;
+  dayStarted = true;
+}
+
+uint32_t memoryLowTaken() {
+  uint32_t low = sinceTaken == UINT32_MAX ? ESP.getFreeHeap() : sinceTaken;
+  sinceTaken = UINT32_MAX;
+  return low;
+}
+
+// While the heap is watched a second at a time, its own least is only that second's.
+uint32_t memoryLowSinceStart() { return sinceStart == UINT32_MAX ? ESP.getMinFreeHeap() : sinceStart; }
 
 // How the memory is cut up: the largest free pieces and the largest pieces in use, to find what holds memory apart.
 // The walk holds the heap's lock, so it only fills fixed arrays and allocates nothing.
@@ -168,7 +197,7 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Last restart", status.lastRestart);
   add("Last crash", crashSummary);
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
-  add("Lowest free memory", String(ESP.getMinFreeHeap() / 1024) + " KB");
+  add("Lowest free memory", String(memoryLowSinceStart() / 1024) + " KB");
   {
     uint32_t low;
     int64_t at;
@@ -181,7 +210,13 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
       localtime_r(&t, &local);
       strftime(when, sizeof(when), " at %H:%M", &local);
     }
-    add("Lowest free memory today", String(low / 1024) + " KB" + when + ", with " + web + " web and " + video + " video connections open");
+    // Since the daily check, which starts a new day's; on a hub without one, since the start, as the row above, but
+    // with when and what was open.
+    String value = String(low / 1024) + " KB" + when + ", with " + web + " web and " + video + " video connections open";
+    if (dayStarted)
+      add("Lowest free memory since the daily check", value);
+    else
+      add("When the free memory was lowest", value);
   }
   add("Largest free block", String(largestBlock() / 1024) + " KB");
   add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");

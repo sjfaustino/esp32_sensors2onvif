@@ -62,7 +62,8 @@ void CamWeb::healthLook(uint32_t now) {
   healthLookedAt_ = now;
   CamHealth h;
   chip_->health(h);
-  if (health_.sample(chip_->wallTime(), h.freeHeap, h.wifiRssi, nvrListening(now), span)) {
+  uint32_t low = chip_->takeMemoryLow();
+  if (health_.sample(chip_->wallTime(), low ? low : h.freeHeap, h.wifiRssi, nvrListening(now), span)) {
     std::string text = health_.text();
     storage_.writeFile(HEALTH_FILE, text.data(), text.size());
   }

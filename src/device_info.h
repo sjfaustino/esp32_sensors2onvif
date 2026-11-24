@@ -20,6 +20,8 @@ void deviceRows(CamJson& j, const DeviceStatus& status);
 void sampleMemory(int webOpen, int videoOpen);
 void memoryDayLow(uint32_t& lowFree, int64_t& lowAt, uint16_t& lowWeb, uint16_t& lowVideo);
 void memoryDayStart();
+uint32_t memoryLowTaken();       // the least free memory since the last call
+uint32_t memoryLowSinceStart();  // and since the start
 
 // What malloc can really hand out. ESP.getMaxAllocHeap() also counts instruction RAM, which strings cannot use.
 uint32_t largestBlock();

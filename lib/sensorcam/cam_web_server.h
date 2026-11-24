@@ -160,6 +160,7 @@ class CamWeb {
   std::string pairingLines() const;
   void getCrash(const ApiRequest& r);
   void getDevice(const ApiRequest& r);
+  void getHealthHistory(const ApiRequest& r);
   void getLeds(const ApiRequest& r);
   void postLeds(const ApiRequest& r);
   void postLedsTest(const ApiRequest& r);

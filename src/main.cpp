@@ -62,7 +62,7 @@ static bool restoreBackup(const std::string& text) {
 
 static void hubHealth(CamHealth& h) {
   h.freeHeap = ESP.getFreeHeap();
-  h.lowestFreeHeap = ESP.getMinFreeHeap();
+  h.lowestFreeHeap = memoryLowSinceStart();
   h.largestBlock = largestBlock();
   h.worstLargestBlock = worstLargestBlock();
   h.espNowDropped = espNowDropped();
@@ -108,6 +108,7 @@ class HubChip : public CamChip {
   bool tellsHealth() override { return true; }
   void health(CamHealth& h) override { hubHealth(h); }
   void healthDayStart() override { memoryDayStart(); }
+  uint32_t takeMemoryLow() override { return memoryLowTaken(); }
   int localMinute() override { return ::localMinute(); }
   bool random32(uint32_t& out) override {
     out = esp_random();  // truly random while Wi-Fi runs, as it does from the start
