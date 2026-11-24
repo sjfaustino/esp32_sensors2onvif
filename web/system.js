@@ -142,9 +142,104 @@
         tr("Settings erased. The hub is restarting. If it cannot join a network, it opens its setup network."),
       );
   };
+  // The last week of the hub's health, an hour to a bar: [[start, lowKb, rssi, upMinutes, nvrMinutes], ...].
+  let historyShown = "";
+  function showHistory(hours) {
+    const key = JSON.stringify(hours);
+    if (key == historyShown) return; // refreshed every 5 s; drawn again only when it changed
+    historyShown = key;
+    const box = $("devHistory");
+    if (!hours.length) {
+      box.replaceChildren(
+        el("p", { className: "note", textContent: tr("Nothing yet: the hub keeps it once its clock is set.") }),
+      );
+      return;
+    }
+    const last = hours[hours.length - 1][0],
+      first = last - 167 * 3600;
+    const ns = "http://www.w3.org/2000/svg",
+      W = 320,
+      H = 70,
+      L = 34;
+    const day = (t) => new Date(t * 1000).toLocaleDateString([], { weekday: "short" });
+    // One chart: each hour's bar from the bottom to its value, scaled between lo and hi; marks are the grid's values,
+    // and warn, when given, a value below which a bar is drawn in the warning colour.
+    const chart = (title, value, lo, hi, marks, label, warn) => {
+      const svg = document.createElementNS(ns, "svg");
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      svg.setAttribute("class", "chart");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", title);
+      const add = (tag, attrs, text) => {
+        const e = document.createElementNS(ns, tag);
+        for (const k in attrs) e.setAttribute(k, attrs[k]);
+        if (text != null) e.textContent = text;
+        svg.append(e);
+        return e;
+      };
+      const y = (v) => 6 + (1 - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (H - 20),
+        w = (W - L - 4) / 168;
+      for (const m of marks) {
+        add("line", { x1: L, x2: W - 4, y1: y(m), y2: y(m), class: "grid" });
+        add("text", { x: L - 3, y: y(m) + 3, "text-anchor": "end" }, label(m));
+      }
+      for (const h of hours) {
+        const v = value(h);
+        if (v == null || h[0] < first) continue;
+        const x = L + ((h[0] - first) / 3600) * w;
+        const bar = add("rect", {
+          x: x.toFixed(1),
+          y: y(v).toFixed(1),
+          width: Math.max(1, w - 0.4).toFixed(2),
+          height: Math.max(0.5, y(lo) - y(v)).toFixed(1),
+          class: warn != null && v < warn ? "bar warn" : "bar",
+        });
+        const tip = document.createElementNS(ns, "title");
+        bar.append(tip);
+        tip.textContent =
+          new Date(h[0] * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) +
+          ": " +
+          label(v);
+      }
+      for (let t = Math.ceil(first / 86400) * 86400; t <= last; t += 86400)
+        add("text", { x: (L + ((t - first) / 3600) * w).toFixed(1), y: H - 2 }, day(t));
+      return el("figure", { className: "healthChart" }, el("figcaption", { textContent: title }), svg);
+    };
+    const top = Math.max(100, ...hours.map((h) => h[1]));
+    box.replaceChildren(
+      chart(
+        tr("Least free memory"),
+        (h) => h[1],
+        0,
+        Math.ceil(top / 50) * 50,
+        [0, Math.ceil(top / 100) * 50],
+        (v) => v + " KB",
+        40,
+      ),
+      chart(
+        tr("Weakest Wi-Fi signal"),
+        (h) => (h[2] < 0 ? h[2] : null),
+        -100,
+        -30,
+        [-90, -70, -50],
+        (v) => v + " dBm",
+        -80,
+      ),
+      chart(
+        tr("NVR listening"),
+        (h) => (h[3] ? Math.round((100 * h[4]) / h[3]) : null),
+        0,
+        100,
+        [0, 50, 100],
+        (v) => v + "%",
+        100,
+      ),
+    );
+  }
   async function loadDevice() {
     try {
       const j = await (await fetch("/api/device")).json();
+      showHistory(j.history || []);
       fill(
         "devInfo",
         j.rows.map(([k, v]) => [hubText(k), hubText(v)]),
@@ -580,6 +675,60 @@
       m.textContent = e.message;
     }
   };
+  // A newer release, as GitHub lists it: this browser asks, as the hub does not reach the internet, at most once a day,
+  // and keeps the answer on this device. The file for this hub's board is linked, to drop in the zone below; GitHub
+  // lets a page read the list of releases, not download their files, so that takes the browser's own download.
+  const REPO = "sjfaustino/esp32_sensors2onvif";
+  const versionOf = (v) => (String(v).match(/^v?(\d+)\.(\d+)\.(\d+)/) || []).slice(1).map(Number);
+  const isNewer = (a, b) => {
+    for (let i = 0; i < 3; i++) if (a[i] != b[i]) return a[i] > b[i];
+    return false;
+  };
+  async function latestRelease() {
+    try {
+      const kept = JSON.parse(localStorage.getItem("release") || "null");
+      if (kept && Date.now() - kept.at < 86400000) return kept.release;
+    } catch (e) {}
+    const r = await fetch("https://api.github.com/repos/" + REPO + "/releases/latest");
+    if (!r.ok) return null;
+    const j = await r.json();
+    const release = { tag: j.tag_name, url: j.html_url, files: j.assets.map((a) => [a.name, a.browser_download_url]) };
+    try {
+      localStorage.setItem("release", JSON.stringify({ at: Date.now(), release }));
+    } catch (e) {}
+    return release;
+  }
+  async function checkRelease() {
+    const box = $("fwNew");
+    try {
+      const [latest, info] = await Promise.all([latestRelease(), call("GET", "/api/info")]);
+      const runs = versionOf(info.version);
+      if (!latest || runs.length != 3 || !isNewer(versionOf(latest.tag), runs)) {
+        box.hidden = true;
+        return;
+      }
+      const name = "sensors2onvif-" + latest.tag + "-" + info.board + ".bin",
+        file = latest.files.find(([n]) => n == name);
+      box.replaceChildren(
+        el("b", {
+          textContent: tr("Version {version} is out; this hub runs {runs}.", {
+            version: latest.tag,
+            runs: info.version,
+          }),
+        }),
+        " ",
+        el("a", { href: latest.url, target: "_blank", rel: "noopener", textContent: tr("What is new") }),
+        el(
+          "p",
+          null,
+          ...(file
+            ? trParts("Download {file}, then drop it below.", { file: el("a", { href: file[1], textContent: name }) })
+            : [tr("Its release has no file for this hub's board.")]),
+        ),
+      );
+      box.hidden = false;
+    } catch (e) {} // a browser without the internet: nothing to say
+  }
   $("fwSend").onclick = async () => {
     const m = $("fwMsg"),
       f = $("fwFile").files[0];
@@ -668,7 +817,10 @@
     }
   };
   (window.viewHooks = window.viewHooks || []).push((view) => {
-    if (view == "maintenance") loadSchedule();
+    if (view == "maintenance") {
+      loadSchedule();
+      checkRelease();
+    }
     if (view == "time") {
       loadTime();
       repeat(tickTime, 1000);

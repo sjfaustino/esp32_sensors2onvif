@@ -239,7 +239,8 @@ struct CamConfig {
   uint32_t rearmMinutes = 0;     // how long a disarm from Home Assistant lasts; 0 until armed again
   int64_t backupAt = 0;          // when the last sealed backup was made, by the hub's clock; 0 for none known
   int backupPaired = 0;          // and how many nodes were paired then, so one paired since asks for a new backup
-  std::string firmwareVersion;   // told to Home Assistant
+  std::string firmwareVersion;   // told to Home Assistant, and the pages, which check for a newer release
+  std::string board;             // which build, as the release files are named: esp32_16mb, esp32dev or esp32s3
   std::string firmwareKey;       // the Ed25519 public key, as 64 hex digits, that signs updates (s2o_fw_sig.h)
   uint32_t firmwareRelease = 0;  // this firmware's release number; an update with a lower one is refused
   std::string nvrIp;             // only for the connection status on the NVR page; the hub never contacts the NVR

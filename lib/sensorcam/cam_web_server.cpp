@@ -40,12 +40,31 @@ CamWeb::CamWeb(const CamWebParts& p)
   crashReader_ = [this](size_t offset, char* out, size_t len) { return chip_->crashRead(offset, out, len); };
 }
 
+// The week of health, an hour a line; the file API leaves it alone, as it is no picture or text of a sensor.
+static const char HEALTH_FILE[] = "health.txt";
+
 bool CamWeb::begin() {
   onvifListen_ = netListen(cfg_.onvifPort, cfg_.loopbackOnly);
   webListen_ = netListen(cfg_.webPort, cfg_.loopbackOnly);
   if (cfg_.captivePort && cfg_.captivePort != cfg_.webPort && cfg_.captivePort != cfg_.onvifPort && cfg_.captivePort != cfg_.rtspPort)
     captiveListen_ = netListen(cfg_.captivePort, cfg_.loopbackOnly);
+  std::string saved;
+  if (storage_.readFile(HEALTH_FILE, saved, 16384)) health_.read(saved);
   return onvifListen_ >= 0 && webListen_ >= 0;
+}
+
+// A look at the hub's health every few seconds, for the week of it on Device info; saved as each hour ends.
+void CamWeb::healthLook(uint32_t now) {
+  if (healthLooked_ && now - healthLookedAt_ < 5000) return;
+  uint32_t span = healthLooked_ ? now - healthLookedAt_ : 0;
+  healthLooked_ = true;
+  healthLookedAt_ = now;
+  CamHealth h;
+  chip_->health(h);
+  if (health_.sample(chip_->wallTime(), h.freeHeap, h.wifiRssi, nvrListening(now), span)) {
+    std::string text = health_.text();
+    storage_.writeFile(HEALTH_FILE, text.data(), text.size());
+  }
 }
 
 void CamWeb::watch(fd_set& rd, fd_set& wr, int& maxFd) {

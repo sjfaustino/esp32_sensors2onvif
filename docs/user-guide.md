@@ -447,7 +447,9 @@ Keep the hub out of reach.
 
 **Maintenance** schedules a restart, updates the firmware from a `firmware.bin` file, dropped on the page or chosen, with
 the upload's progress, downloads and restores a settings backup, and makes and restores a full backup, both sealed with a
-passphrase you choose. What stops the hub or cannot be undone is together at the foot, under **Danger zone**: restarting
+passphrase you choose. When a newer release is out, **Firmware update** says so, with a link to what is new and to
+the file for this hub's board, to download and drop in. The browser asks GitHub at most once a day; the hub itself never
+reaches the internet. What stops the hub or cannot be undone is together at the foot, under **Danger zone**: restarting
 the hub now, making new keys, and resetting the settings; each asks first.
 A scheduled restart waits while an alert is on, so it never cuts an NVR record short; if the alert has not ended within
 30 minutes, that restart is skipped until the next time.
@@ -488,6 +490,10 @@ a power cut, so the hub then reads the time once from the NTP server if it can r
 **Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status,
 and the least free memory since the last daily check: when, and with how many connections open, as a fall that
 recovered leaves nothing else to see.
+**The last week** draws the hub's health an hour to a bar: the least free memory in each hour, the weakest Wi-Fi
+signal, and how much of the hour the NVR was listening for alerts. A memory that keeps falling, a Wi-Fi that fades at
+night, or an NVR that was off for hours shows at a glance. The hub keeps it once its clock is set, and saves it as each
+hour ends, so a restart loses at most the hour under way.
 **Print a label for the hub** prints a small label to stick on it: its page's address and name, its setup network and
 when that opens, the fingerprint nodes are paired against, and its serial number, so whoever finds the hub later knows
 what it is and how to reach it.

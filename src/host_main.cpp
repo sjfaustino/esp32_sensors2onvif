@@ -306,7 +306,8 @@ int main(int argc, char** argv) {
   cfg.snapshotSecret = "test-snapshot-secret";
   cfg.sealStart = 0x5EA10000;
   storageFolder = argv[2];
-  cfg.firmwareVersion = "test";
+  cfg.firmwareVersion = "v0.6.0-3-gabcdef0";  // a build after a release, as a test of the update check
+  cfg.board = "esp32_16mb";
   // The public half of test/firmware-test-key.pem, which signs the test's updates; never the release key.
   cfg.firmwareKey = "dfc5cbdf9e1c75ed681052835e1c02e0bb2f93d37916b9b9b445764120d03407";
   cfg.firmwareRelease = 4000;  // as if release 0.4.0; the test sends older and newer ones

@@ -5,6 +5,11 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+- Device info draws the last week of the hub's health, an hour to a bar: the least free memory, the weakest Wi-Fi
+  signal, and how much of each hour the NVR was listening. Kept across restarts.
+- The Maintenance page says when a newer release is out, and links its file for this hub's board. The browser asks
+  GitHub at most once a day; the hub does not reach the internet.
+
 ## [0.7.0] - 2026-11-23
 
 Update from 0.6.0. The pages and the notifications can be in Portuguese, from translation files any gettext tool edits;

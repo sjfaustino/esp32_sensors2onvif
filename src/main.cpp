@@ -200,6 +200,9 @@ static CamConfig makeConfig() {
   c.backupAt = settings.backupAt;
   c.backupPaired = settings.backupPaired;
   c.firmwareVersion = FIRMWARE_VERSION;
+#ifdef HUB_BOARD
+  c.board = HUB_BOARD;
+#endif
   c.firmwareKey = FIRMWARE_PUBLIC_KEY;
   c.firmwareRelease = FIRMWARE_RELEASE;
   c.serial = macSerial();

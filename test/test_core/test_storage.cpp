@@ -2,6 +2,16 @@
 #include <algorithm>
 #include "tests.h"
 #include "cam_node_files.h"
+#include "cam_health_history.h"
+
+static int at_most_hour(const std::string& text, long long hour) {  // the lines, after checking none is later than hour
+  int lines = 0;
+  for (size_t at = 0; at < text.size(); at = text.find('\n', at) + 1) {
+    if (atoll(text.c_str() + at) > hour) return -1;
+    lines++;
+  }
+  return lines;
+}
 
 static void classifies_storage_paths() {
   const char* mac = "AA-BB-CC-DD-EE-01";
@@ -505,7 +515,49 @@ static void the_older_firmwares_history_is_kept() {
   TEST_ASSERT_TRUE(download(later) == expect);
 }
 
+// A week of the hub's health, an hour at a time: each hour's least memory, weakest signal and NVR minutes, kept across a
+// restart, a week long, and nothing before the clock is set.
+static void the_health_history_keeps_a_week_by_the_hour() {
+  CamHealthHistory h;
+  const time_t T = 1790000000 - 1790000000 % 3600;             // an hour's start in 2026
+  TEST_ASSERT_FALSE(h.sample(1000, 100000, -50, true, 5000));  // the clock not set: nothing kept
+  TEST_ASSERT_FALSE(h.sample(T, 120 * 1024, -60, true, 0));
+  for (int s = 5; s < 3600; s += 5) h.sample(T + s, (s == 1800 ? 80 : 120) * 1024, s == 900 ? -75 : -60, s < 1800, 5000);
+  TEST_ASSERT_TRUE(h.sample(T + 3600, 120 * 1024, -60, true, 5000));  // the hour has ended
+  TEST_ASSERT_EQUAL(1, h.ended());
+  std::string out;
+  {
+    CamJson j(out);
+    j.array();
+    h.hours(j);
+    j.finish();
+  }
+  char want[96];
+  snprintf(want, sizeof(want), "[[%lld,80,-75,59,29],[%lld,120,-60,0,0]]\n", (long long)T, (long long)T + 3600);
+  TEST_ASSERT_EQUAL_STRING(want, out.c_str());
+  CamHealthHistory again;  // after a restart, from what was saved
+  again.read(h.text() + "nonsense\n1 2 3\n");
+  TEST_ASSERT_EQUAL(1, again.ended());
+  TEST_ASSERT_EQUAL_STRING(h.text().c_str(), again.text().c_str());
+  for (int i = 2; i <= 200; i++) h.sample(T + i * 3600, 100 * 1024, -60, true, 5000);  // more than a week
+  TEST_ASSERT_EQUAL(CamHealthHistory::HOURS, h.ended());
+  out.clear();
+  {
+    CamJson j(out);
+    j.array();
+    h.hours(j);
+    j.finish();
+  }
+  int rows = 0;
+  for (size_t i = 1; i < out.size(); i++) rows += out[i] == '[';
+  TEST_ASSERT_EQUAL(CamHealthHistory::HOURS, rows);       // the week up to the hour under way, which is one of them
+  h.sample(T + 100 * 3600, 100 * 1024, -60, true, 5000);  // the clock set back: the later hours go
+  h.sample(T + 101 * 3600, 100 * 1024, -60, true, 5000);
+  TEST_ASSERT_EQUAL(69, at_most_hour(h.text(), T / 3600 + 100));  // hours 32 to 100
+}
+
 void runStorageTests() {
+  RUN_TEST(the_health_history_keeps_a_week_by_the_hour);
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);
   RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);
   RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);

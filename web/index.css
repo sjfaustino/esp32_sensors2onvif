@@ -35,6 +35,7 @@
   --week-line: #eef0f2; /* a sensor's week */
   --chart-grid: #dde1e5; /* the battery chart */
   --chart-text: #1b1f24;
+  --chart-bar: #1f5fbf; /* the health charts on Device info */
   --away-bg: #fbe4e2; /* the alarm armed away: its panel, words and button */
   --away-border: #e0b4b0;
   --away-text: #9c1f18;
@@ -95,6 +96,7 @@
     --week-line: #2a2f35;
     --chart-grid: #3c434b;
     --chart-text: #9aa1a9;
+    --chart-bar: #6d9eeb;
     --away-bg: #45201d;
     --away-border: #6b2f2a;
     --away-text: #f6aea9;
@@ -320,6 +322,19 @@ summary {
 .first.open::after {
   content: "\25B4";
 }
+/* A newer release, at the top of Firmware update. */
+.newRelease {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--wizard-bg);
+  border: 1px solid var(--wizard-border);
+  font-size: 14px;
+}
+.newRelease p {
+  margin: 4px 0 0;
+}
+
 /* The hub's label, on Device info: about 62 mm wide, and printed alone. */
 .hubLabel {
   width: 62mm;
@@ -685,6 +700,19 @@ svg.chart .line {
   fill: none;
   stroke: #1f5fbf;
   stroke-width: 2;
+}
+svg.chart .bar {
+  fill: var(--chart-bar);
+}
+svg.chart .bar.warn {
+  fill: var(--danger);
+}
+figure.healthChart {
+  margin: 0 0 12px;
+}
+figure.healthChart figcaption {
+  font-size: 13px;
+  color: var(--muted-text);
 }
 dialog.guide {
   max-width: min(92vw, 560px);

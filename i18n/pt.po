@@ -3740,3 +3740,36 @@ msgstr "{n} KB às {time}, com {web} ligações web e {video} de vídeo abertas"
 
 msgid "{n} KB, with {web} web and {video} video connections open"
 msgstr "{n} KB, com {web} ligações web e {video} de vídeo abertas"
+
+msgid "This page asks GitHub, from your browser, once a day, whether a newer release is out; the hub itself does not reach the internet."
+msgstr "Esta página pergunta ao GitHub, a partir do seu navegador, uma vez por dia, se saiu uma versão mais recente; a própria central não chega à internet."
+
+msgid "Version {version} is out; this hub runs {runs}."
+msgstr "Saiu a versão {version}; esta central tem a {runs}."
+
+msgid "What is new"
+msgstr "O que há de novo"
+
+msgid "Download {file}, then drop it below."
+msgstr "Descarregue {file}, e depois largue-o abaixo."
+
+msgid "Its release has no file for this hub's board."
+msgstr "Essa versão não tem ficheiro para a placa desta central."
+
+msgid "The last week"
+msgstr "A última semana"
+
+msgid "An hour to each bar, the newest on the right: the least free memory in it, the weakest Wi-Fi signal, and how much of it the NVR was listening for alerts. A gap is an hour the hub was off or its clock not set."
+msgstr "Uma hora por barra, a mais recente à direita: a menor memória livre nela, o sinal Wi-Fi mais fraco, e quanto dela o NVR esteve à escuta de alertas. Um espaço vazio é uma hora em que a central esteve desligada ou sem o relógio acertado."
+
+msgid "Nothing yet: the hub keeps it once its clock is set."
+msgstr "Ainda nada: a central guarda-o quando o relógio estiver acertado."
+
+msgid "Least free memory"
+msgstr "Menor memória livre"
+
+msgid "Weakest Wi-Fi signal"
+msgstr "Sinal Wi-Fi mais fraco"
+
+msgid "NVR listening"
+msgstr "NVR à escuta"

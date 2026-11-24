@@ -75,6 +75,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   webhook_.weeklyStep(now);
   events_.subs().expire(now);
   web_.servicePolls(now);
+  web_.healthLook(now);
   events_.tick(now, web_.sharedSockets() - events_.pushCount(), CamWeb::MAX_HTTP);
   webhook_.tick(now, web_.sharedSockets() < CamWeb::MAX_HTTP);  // leaves one for an event push
   try {                                                         // on its own, so running out of memory there still leaves the picture to be sent

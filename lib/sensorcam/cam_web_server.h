@@ -13,6 +13,7 @@
 #include "cam_mqtt_client.h"
 #include "cam_nodes.h"
 #include "cam_onvif_events.h"
+#include "cam_health_history.h"
 #include "cam_storage.h"
 #include "cam_video.h"
 #include "cam_webhook.h"
@@ -48,6 +49,7 @@ class CamWeb {
   bool begin();  // opens the ONVIF, web and setup ports; false when the ONVIF or web port could not be opened
   void watch(fd_set& rd, fd_set& wr, int& maxFd);
   void serve(fd_set& rd, fd_set& wr, uint32_t now);
+  void healthLook(uint32_t now);                               // every few seconds, for the week of health on Device info
   void servicePolls(uint32_t now);                             // answers each held PullMessages once there is news or its wait is over
   int sharedSockets() const;                                   // web connections, event pushes, the webhook and MQTT
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
@@ -233,6 +235,9 @@ class CamWeb {
   CamMemoryFailures& failures_;
   std::function<std::string()> localIp_;
   std::function<uint32_t()> millis_;
+  CamHealthHistory health_;
+  uint32_t healthLookedAt_ = 0;
+  bool healthLooked_ = false;
   int onvifListen_ = -1, webListen_ = -1, captiveListen_ = -1;
   HttpConn http_[MAX_HTTP];
   uint32_t accepted_ = 0;

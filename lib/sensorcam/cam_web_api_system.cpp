@@ -101,6 +101,9 @@ void CamWeb::getDevice(const ApiRequest& r) {
     row("Event subscribers", std::to_string(events_.subs().count()));
     if (alarm_.log().saveFailed()) row("Event history", "Could not be saved; storage may be full");
     j.end().num("crash", chip_->crashSize());
+    j.array("history");  // the last week, an hour at a time: see CamHealthHistory::hours
+    health_.hours(j);
+    j.end();
   }));
 }
 
@@ -142,7 +145,9 @@ void CamWeb::getInfo(const ApiRequest& r) {
         .flag("onvifLogin", !onvifPassword_.empty())
         .str("ip", localIp_())
         .str("name", cfg_.hostName)
-        .str("setupName", cfg_.setupName);
+        .str("setupName", cfg_.setupName)
+        .str("version", cfg_.firmwareVersion)
+        .str("board", cfg_.board);
     j.num("onvifPort", cfg_.onvifPort)
         .num("webPort", cfg_.webPort)
         .num("rtspPort", cfg_.rtspPort)

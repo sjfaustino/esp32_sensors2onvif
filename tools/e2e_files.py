@@ -190,6 +190,11 @@ def device_info_and_crash_report(s):
     code, device = api('GET', '/api/device')
     rows = dict(json.loads(device)['rows']) if code == 200 else {}
     check('device info is served', 'Firmware version' in rows and 'Picture storage' in rows and 'Sensors' in rows, rows)
+    history = json.loads(device).get('history') if code == 200 else None
+    hour = int(time.time()) // 3600 * 3600
+    check("with the week of the hub's health, the hour under way last",
+          bool(history) and all(len(h) == 5 and h[0] % 3600 == 0 and 0 <= h[4] <= h[3] <= 60 for h in history)
+          and history[-1][0] in (hour, hour - 3600) and history[-1][1] > 0, history and history[-3:])
     check('time settings are served', api('GET', '/api/time')[0] == 200 and 'local' in get_json('/api/time'))
     code, sched = api('GET', '/api/schedule')
     check('restart schedule is served', code == 200 and 'minute' in json.loads(sched), code)

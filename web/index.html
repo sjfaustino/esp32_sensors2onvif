@@ -165,7 +165,9 @@
 <p class="hint">The restart waits while an alert is on, and is skipped until the next time if the alert lasts over 30 minutes.</p>
 <div class="acts"><button id="saveRb" class="primary">Save</button></div><div class="portMsg" id="rbMsg"></div></section>
 <section class="card"><h2>Firmware update</h2>
+<div class="newRelease" id="fwNew" hidden></div>
 <p class="note">Use the <code>.bin</code> for this board from a release, the one without <code>-full</code>. The hub takes only firmware signed for it, and keeps what it has if the file is anything else. The video stops until it has restarted, about a minute.</p>
+<p class="hint">This page asks GitHub, from your browser, once a day, whether a newer release is out; the hub itself does not reach the internet.</p>
 <label class="drop"><input id="fwFile" type="file" accept=".bin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span><span class="dropText">Drop the firmware <code>.bin</code> here, or <u>choose it</u></span><span class="dropFile"></span></span></label>
 <div class="progress" id="fwProg" hidden><div class="bar"><div id="fwBar"></div></div><span id="fwPct"></span></div>
 <div class="acts"><button id="fwSend" class="primary">Update firmware</button></div>
@@ -204,6 +206,7 @@
 <div class="acts"><button id="saveTime" class="primary">Save</button><button id="tmFromPc">Read from this PC</button></div>
 <div class="portMsg" id="tmMsg"></div></section></div>
 <div class="view" id="view-device" hidden><h1>Device info</h1><section class="card"><table class="info" id="devInfo"></table><p id="crashActs"></p></section>
+<section class="card"><h2>The last week</h2><p class="note">An hour to each bar, the newest on the right: the least free memory in it, the weakest Wi-Fi signal, and how much of it the NVR was listening for alerts. A gap is an hour the hub was off or its clock not set.</p><div id="devHistory"></div></section>
 <section class="card"><h2>The hub's label</h2><p class="note">A label to stick on the hub: where its page is, how its setup network opens, and the fingerprint a node is paired against. Whoever finds the hub later knows what it is and how to reach it.</p>
 <div class="acts"><button id="labelPrint">Print a label for the hub</button></div>
 <div id="hubLabel" class="hubLabel" hidden><div id="lbQr"></div><b id="lbName"></b><div id="lbPage"></div><div id="lbSetup"></div><div id="lbFp"></div><div id="lbSerial"></div><div class="lbFoot">Alarm hub for ONVIF NVRs. Log in as admin with the hub password, kept elsewhere.</div></div></section></div>

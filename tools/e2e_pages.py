@@ -430,6 +430,10 @@ def test_the_hubs_label(page):
     its serial number, and the printed page holds the label alone."""
     page.goto(URL + '#device')
     page.wait_for_selector('#labelPrint', state='visible')
+    check("Device info draws the week of the hub's health, three charts with the hour under way",
+          page_wait(page, lambda: page.locator('#devHistory figure.healthChart').count() == 3
+                    and page.locator('#devHistory figure.healthChart').first.locator('rect').count() >= 1),
+          page.inner_html('#devHistory')[:300])
     page.evaluate('() => { window.printed = 0; window.print = () => window.printed++; }')  # a function, as one, so not called by itself
     page.click('#labelPrint')
     check('the label is printed', page_wait(page, lambda: page.evaluate('window.printed') == 1), page.text_content('#toast'))
@@ -458,6 +462,34 @@ def test_the_hubs_label(page):
     check('printed, only the label shows', page.evaluate("getComputedStyle(document.querySelector('h1')).visibility") == 'hidden'
           and page.evaluate("getComputedStyle(document.getElementById('lbName')).visibility") == 'visible')
 
+
+def test_a_newer_release_is_offered(page):
+    """The Maintenance page says when a newer release is out, as GitHub lists it, and links the file for this hub's
+    board; a release no newer, or the internet out of reach, says nothing."""
+    release = {'tag_name': 'v0.9.0', 'html_url': 'https://github.com/sjfaustino/esp32_sensors2onvif/releases/tag/v0.9.0',
+               'assets': [{'name': f'sensors2onvif-v0.9.0-{b}.bin', 'browser_download_url': f'https://example.invalid/{b}.bin'}
+                          for b in ('esp32_16mb', 'esp32dev', 'esp32s3')]}
+    asked = []
+
+    def answer(route):
+        asked.append(route.request.url)
+        route.fulfill(status=200, content_type='application/json', body=json.dumps(release), headers={'Access-Control-Allow-Origin': '*'})
+    page.route('https://api.github.com/**', answer)
+    page.goto(URL + '#maintenance')
+    page.wait_for_selector('#fwNew', state='visible', timeout=10000)
+    text = page.text_content('#fwNew')
+    check('a newer release is offered, saying what the hub runs', 'v0.9.0' in text and get_json('/api/info')['version'] in text, text)
+    link = page.get_attribute('#fwNew a[href$=".bin"]', 'href')
+    check("with the file for this hub's board", link == 'https://example.invalid/esp32_16mb.bin', link)
+    page.reload()
+    page.wait_for_selector('#fwNew', state='visible', timeout=10000)
+    check('and GitHub is asked once a day, not on each visit', len(asked) == 1, asked)
+    page.evaluate("localStorage.removeItem('release')")
+    release['tag_name'] = 'v0.6.0'
+    page.reload()
+    page.wait_for_timeout(1500)
+    check('a release no newer than the hub is not offered', not page.is_visible('#fwNew'))
+    page.evaluate("localStorage.removeItem('release')")
 
 def test_quiet_when_hidden(browser):
     """A page left open in a tab that is not shown asks the hub nothing, and asks again once it is shown; and the
@@ -757,10 +789,17 @@ class Tab:
 
 def in_english(browser):
     """Every page the tests open in English, whatever the language of the PC they run on, as Chromium otherwise takes
-    it from there and the pages follow it. A test that wants another language says so."""
+    it from there and the pages follow it; a test that wants another language says so. And none asks GitHub for the
+    newest release, as the Maintenance page does: the tests do not depend on the internet, and the one that checks it
+    answers in GitHub's place."""
+    def opening(opened):
+        def run(*a, **k):
+            made = opened(*a, **{'locale': 'en-GB', **k})
+            made.route('https://api.github.com/**', lambda r: r.abort())
+            return made
+        return run
     for name in ('new_context', 'new_page'):
-        opened = getattr(browser, name)
-        setattr(browser, name, lambda *a, _opened=opened, **k: _opened(*a, **{'locale': 'en-GB', **k}))
+        setattr(browser, name, opening(getattr(browser, name)))
 
 def page_cases(nvr, storage):
     """Each test by name, given a fresh page, or the browser for those that open their own."""
@@ -787,6 +826,7 @@ def page_cases(nvr, storage):
         ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),
         ('the_hubs_label', on_page(test_the_hubs_label)),
+        ('a_newer_release_is_offered', on_page(test_a_newer_release_is_offered)),
         ('every_page_opens', test_every_page_opens),
         ('dark_and_narrow', test_dark_and_narrow),
         ('the_pages_in_portuguese', test_the_pages_in_portuguese),
