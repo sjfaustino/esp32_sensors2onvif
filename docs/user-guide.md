@@ -29,6 +29,23 @@ network has no password, so anyone in range could set the hub up as their own. T
 which only someone holding the hub can press. A board without that button can be built with `SETUP_BUTTON_PIN` set to
 `-1` in `include/config.h`; its setup network then opens at once, so set it up as soon as it first starts.
 
+### Status lights
+
+Two LEDs, a green and a red, tell someone standing by the hub how it is without a phone. Wire each from its pin through
+a resistor of about 330 ohm to ground: on an ESP32, green on GPIO 32 and red on GPIO 33; on an ESP32-S3, green on
+GPIO 4 and red on GPIO 5. Other pins, or LEDs wired from 3.3 V to the pin, are set in `include/config.h`
+(`STATUS_LED_GREEN_PIN`, `STATUS_LED_RED_PIN`, `STATUS_LED_ON`), and -1 leaves one out.
+
+| Light | Means |
+| --- | --- |
+| Green, steady | Armed away, and protecting |
+| Green, blinking slowly | Armed home |
+| Green, a short flash every 3 s | Disarmed: running, but raising no alerts |
+| Red, flashing fast | A sensor is firing now |
+| Red, steady | Not protecting: off Wi-Fi, or the NVR not set or not listening, so alerts are not recorded. Green is off. |
+| Red, blinking slowly | The setup network is open |
+| Red, a short flash every 2 s | A sensor has a problem: silent, a low battery, a weak signal |
+
 ### From source
 
 1. Copy `include/secrets.example.h` to `include/secrets.h`. Everything in it may stay empty, and the hub then starts as

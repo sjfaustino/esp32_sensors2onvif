@@ -552,7 +552,42 @@ static void no_sealed_message_without_a_number_saved_as_reserved() {
   TEST_ASSERT_FALSE(r.alarm.testTakeSeal(n));  // the next block not saved: no number past the last saved
 }
 
+// The status LEDs: green says armed, red says not protecting, or a sensor firing now; never green while not protecting.
+static void the_status_leds_say_what_the_hub_is_doing() {
+  CamLedState s;
+  s.online = s.nvrSet = s.nvrListening = true;
+  s.mode = CAM_ARMED_AWAY;
+  auto lit = [&](uint32_t ms, bool green, bool red) {
+    CamLeds l = camStatusLeds(s, ms);
+    return l.green == green && l.red == red;
+  };
+  TEST_ASSERT_TRUE(lit(0, true, false) && lit(1500, true, false));  // armed away, protecting: green steady
+  s.mode = CAM_ARMED_HOME;
+  TEST_ASSERT_TRUE(lit(500, true, false) && lit(1500, false, false));  // armed home: green blinks
+  s.mode = CAM_DISARMED;
+  TEST_ASSERT_TRUE(lit(50, true, false) && lit(1500, false, false));  // disarmed: a short green flash
+  s.problems = true;
+  TEST_ASSERT_TRUE(lit(50, true, true) && lit(1500, false, false));  // a sensor problem: a short red flash too
+  s.problems = false;
+  s.mode = CAM_ARMED_AWAY;
+  s.nvrListening = false;
+  TEST_ASSERT_TRUE(lit(0, false, true) && lit(1500, false, true));  // the NVR not listening: red steady, no green
+  s.nvrListening = true;
+  s.nvrSet = false;
+  TEST_ASSERT_TRUE(lit(0, false, true));  // no NVR at all: the same
+  s.nvrSet = true;
+  s.online = false;
+  TEST_ASSERT_TRUE(lit(0, false, true));  // off Wi-Fi: the same
+  s.setupOpen = true;
+  TEST_ASSERT_TRUE(lit(100, false, true) && lit(600, false, false));  // the setup network open: red blinks
+  s.online = true;
+  s.setupOpen = false;
+  s.firing = true;
+  TEST_ASSERT_TRUE(lit(50, true, true) && lit(200, true, false));  // a sensor firing: red flashes fast, still armed
+}
+
 void runAlarmTests() {
+  RUN_TEST(the_status_leds_say_what_the_hub_is_doing);
   RUN_TEST(sealed_message_numbers_never_repeat_and_are_reserved_ahead);
   RUN_TEST(no_sealed_message_without_a_number_saved_as_reserved);
   RUN_TEST(an_alert_from_a_known_sensor_is_raised_logged_and_sent);

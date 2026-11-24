@@ -139,6 +139,21 @@ bool SensorCamServer::nvrListening(uint32_t now) const { return events_.nvrListe
 
 bool SensorCamServer::downloadingHistory() const { return web_.downloadingHistory(); }
 
+CamLedState SensorCamServer::ledState(bool online, bool setupOpen) const {
+  CamLedState s;
+  s.online = online;
+  s.setupOpen = setupOpen;
+  s.nvrSet = !events_.nvrIp().empty();
+  s.nvrListening = nvrListening(millis_());
+  s.mode = alarm_.armMode();
+  s.firing = alarm_.busy();
+  for (int id = 1; id <= alarm_.board().count() && !s.problems; id++) {
+    const CamSensorTable::Health& h = table_.healthOf(id);
+    s.problems = table_.slotOf(id).used && (h.silent || h.lowBattery || h.weak || h.refused);
+  }
+  return s;
+}
+
 void SensorCamServer::sensorReset(int id) { mqtt_.sensorReset(id); }
 
 void SensorCamServer::sensorsRescanned(bool listChanged) {

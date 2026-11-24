@@ -10,6 +10,7 @@
 //   CamMqttClient     Home Assistant
 //   CamWebhookSender  messages to a web address of the user's choosing
 #pragma once
+#include "cam_status_leds.h"
 #include <stdint.h>
 #include <functional>
 #include <string>
@@ -52,6 +53,7 @@ class SensorCamServer : private CamAlarmOutside {
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
   int webOpen() const { return web_.openCount(); }                     // web connections open now
   int videoOpen() const { return video_.openCount(); }                 // video connections open now
+  CamLedState ledState(bool online, bool setupOpen) const;             // for the status LEDs; see cam_status_leds.h
 #ifdef CAM_TEST_HOOKS                                                  // only in the PC builds, for the tests
   CamAlarm& alarm() { return alarm_; }                                 // its test hooks, such as setMinuteMs, and its arm mode
 #endif

@@ -288,6 +288,24 @@ static void printHeartbeat() {
       (unsigned)lastRestartCause(), (unsigned)pingReplies(), (unsigned)pingLost(), setupIsOpen() ? "open" : "off", server->debugLine().c_str());
 }
 
+// The status LEDs, set ten times a second from what the hub is doing; see cam_status_leds.h.
+static void showStatus(bool connected) {
+  static uint32_t shownAt = 0;
+  static bool begun = false;
+  if (!server || (begun && millis() - shownAt < 100)) return;
+  shownAt = millis();
+  int pins[2] = {STATUS_LED_GREEN_PIN, STATUS_LED_RED_PIN};
+  if (!begun) {
+    for (int pin : pins)
+      if (pin >= 0) pinMode(pin, OUTPUT);
+    begun = true;
+  }
+  CamLeds l = camStatusLeds(server->ledState(connected, setupIsOpen()), shownAt);
+  bool on[2] = {l.green, l.red};
+  for (int i = 0; i < 2; i++)
+    if (pins[i] >= 0) digitalWrite(pins[i], on[i] ? STATUS_LED_ON : !STATUS_LED_ON);
+}
+
 void loop() {
   bool connected = WiFi.status() == WL_CONNECTED;
   bool justLost = !connected && wasConnected;
@@ -304,6 +322,7 @@ void loop() {
   restartForRule(rule);
   printHeartbeat();
   runRadioTest();
+  showStatus(connected);
 
   // Sensor messages first, so the server saves them together and then confirms them, in the same pass.
   espNowDeliver(*server);
