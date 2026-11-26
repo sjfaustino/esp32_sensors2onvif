@@ -8,6 +8,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Reading the code is all it needs, whatever the repository's default; pull requests run it too.
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: windows-latest
