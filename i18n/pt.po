@@ -3863,3 +3863,6 @@ msgstr "Menor memória livre desde a verificação diária"
 
 msgid "When the free memory was lowest"
 msgstr "Quando a memória livre esteve mais baixa"
+
+msgid "{a} MB, {b} KB free, the largest free block {c} KB"
+msgstr "{a} MB, {b} KB livres, o maior bloco livre com {c} KB"

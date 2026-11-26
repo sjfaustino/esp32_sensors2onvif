@@ -23,8 +23,10 @@ void memoryDayStart();
 uint32_t memoryLowTaken();       // the least free memory since the last call
 uint32_t memoryLowSinceStart();  // and since the start
 
-// What malloc can really hand out. ESP.getMaxAllocHeap() also counts instruction RAM, which strings cannot use.
+// The largest piece of the chip's own memory malloc can hand out. ESP.getMaxAllocHeap() also counts instruction RAM,
+// which strings cannot use. PSRAM is apart, as its 8 MB in one piece would hide how cut up the chip's memory is.
 uint32_t largestBlock();
+uint32_t largestAnyBlock();    // and of all the memory, PSRAM too, which takes the allocations of 4 KB and more
 uint32_t worstLargestBlock();  // the smallest largestBlock() has been since the start, checked each second
 std::string macSerial();
 

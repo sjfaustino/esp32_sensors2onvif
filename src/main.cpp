@@ -81,7 +81,7 @@ class HubChip : public CamChip {
     return true;
   }
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
-  bool canAllocate(size_t n) override { return largestBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; }
+  bool canAllocate(size_t n) override { return largestAnyBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; }
   bool hasHeadroom() override { return ESP.getFreeHeap() >= 10 * 1024; }
   bool firmwareBegin(size_t size) override {
     confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request

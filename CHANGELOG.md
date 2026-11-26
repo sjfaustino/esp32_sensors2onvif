@@ -21,7 +21,8 @@ before that, a new minor version may change settings or the messages.
 - The ESP32-S3 build is for boards with 16 MB of flash and 8 MB of octal PSRAM (N16R8): the same layout as the 16 MB
   ESP32, and the PSRAM in use. On one, the hub starts with some 245 KB of free memory, against some 130 KB on an
   ESP32, and the PSRAM takes allocations of 4 KB and more. An S3 with less flash no longer fits, and one without PSRAM is
-  untested.
+  untested. Device info's largest free block and memory pieces are of the chip's own memory, as the PSRAM's 8 MB in
+  one piece would hide how cut up it is; the PSRAM row says how much of it is free.
 
 - Two status LEDs, green and red, can say whether the hub is armed and protecting, and when a sensor is firing, to
   someone standing by it. They are a choice: their pins are set under Device info > Status lights, from a list of the

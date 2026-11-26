@@ -10,7 +10,9 @@
 #include "config.h"
 #include "hub_settings.h"
 
-uint32_t largestBlock() { return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT); }
+static const uint32_t CHIP_MEMORY = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;  // the chip's own, as malloc uses it
+uint32_t largestBlock() { return heap_caps_get_largest_free_block(CHIP_MEMORY); }
+uint32_t largestAnyBlock() { return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT); }
 
 std::string macSerial() {
   uint64_t mac = ESP.getEfuseMac();
@@ -189,7 +191,11 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Chip", String(ESP.getChipModel()) + " revision " + ESP.getChipRevision());
   add("CPU", String(ESP.getChipCores()) + " cores at " + ESP.getCpuFreqMHz() + " MHz");
   add("Flash size", String(ESP.getFlashChipSize() / (1024 * 1024)) + " MB");
-  add("PSRAM", ESP.getPsramSize() ? String(ESP.getPsramSize() / (1024 * 1024)) + " MB" : String("None"));
+  if (ESP.getPsramSize())
+    add("PSRAM", String(ESP.getPsramSize() / (1024 * 1024)) + " MB, " + ESP.getFreePsram() / 1024 + " KB free, the largest free block " +
+                     ESP.getMaxAllocPsram() / 1024 + " KB");
+  else
+    add("PSRAM", String("None"));
   add("Program size", String(programBytes / 1024) + " KB of " + esp_ota_get_running_partition()->size / 1024 + " KB");
   add("Arduino core", ESP_ARDUINO_VERSION_STR);
   add("ESP-IDF", esp_get_idf_version());
@@ -221,7 +227,7 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Largest free block", String(largestBlock() / 1024) + " KB");
   add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");
   HeapPieces pieces;
-  heap_caps_walk(MALLOC_CAP_DEFAULT, countPiece, &pieces);
+  heap_caps_walk(CHIP_MEMORY, countPiece, &pieces);  // the chip's own memory, as the rows above
   add("Free memory pieces", String(pieces.freeCount) + "; the largest " + pieceList(pieces.freeTop));
   add("Memory in use", String(pieces.usedCount) + " pieces, " + pieces.usedFrom1k + " of 1 KB or more; the largest " + pieceList(pieces.usedTop));
   add("Memory in use by size", String("under 64 B: ") + pieces.bucketCount[0] + " = " + pieces.bucketBytes[0] / 1024 +
