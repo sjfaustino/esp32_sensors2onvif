@@ -88,12 +88,17 @@ void CamWebhookSender::queue(const std::string& title, int priority, const std::
 }
 
 void CamWebhookSender::tick(uint32_t now, bool mayConnect) {
-  if (post_.idle() && hooks_.count() && mayConnect) start(now);
+  if (post_.idle() && hooks_.ready(now) && mayConnect) start(now);
 }
 
 void CamWebhookSender::serve(fd_set& rd, fd_set& wr, uint32_t now) {
-  if (!post_.idle() && post_.service(FD_ISSET(post_.fd(), &rd), FD_ISSET(post_.fd(), &wr), now))
+  if (!post_.idle() && post_.service(FD_ISSET(post_.fd(), &rd), FD_ISSET(post_.fd(), &wr), now)) {
+    if (post_.delivered())
+      hooks_.takeOldest();
+    else
+      hooks_.failed(now);                                  // as while its server restarts: sent again shortly
     hooks_.noteResult(post_.result(), chip_->wallTime());  // last, as the one step that needs memory: running out then loses only the note
+  }
 }
 
 void CamWebhookSender::start(uint32_t now) {
@@ -121,8 +126,10 @@ void CamWebhookSender::start(uint32_t now) {
   out.append(body, bodyLen);
   CamPost::Start started = post_.start(url, out, CAM_HOOK_WAIT_MS, CAM_HOOK_WAIT_MS, now);
   if (started == CamPost::NO_SOCKET) return;  // still queued, so it is tried again on the next pass
-  hooks_.takeOldest();
-  if (started == CamPost::REFUSED) hooks_.noteResult("could not connect", chip_->wallTime());
+  if (started == CamPost::REFUSED) {          // kept until its server takes it, or it has had its tries
+    hooks_.failed(now);
+    hooks_.noteResult("could not connect", chip_->wallTime());
+  }
 }
 
 std::string CamWebhookSender::pageJson() {

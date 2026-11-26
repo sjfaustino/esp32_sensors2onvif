@@ -139,11 +139,21 @@ CamSensorTable::Changes CamSensorTable::rescan(uint32_t now) {
     if (!storage_.readFile(s.name + "/battery.txt", text, 8192) || !camParseBatteryLog(text, battery)) battery.clear();
     node->batteryAt = battery.empty() ? 0 : battery.back().t;
     node->daysLeft = camBatteryDaysLeft(battery);
-    // A damaged pairing file leaves the node unpaired, so its reports are checked with the shared key and refused: it
-    // shows on the Nodes and pairing page as refused, rather than being trusted with a key that may not be its own.
-    uint8_t nodeKey[CAM_NODE_KEY_LEN];
-    node->paired = storage_.readFile(s.name + "/pairing.txt", text, 256) && camParsePairing(text, node->publicKey, nodeKey);
-    node->key = node->paired ? std::string((const char*)nodeKey, CAM_NODE_KEY_LEN) : std::string();
+    // Only a deleted pairing file unpairs the node. One that cannot be read this time, as while memory is short, or that
+    // is damaged, keeps the key already in memory: forgetting it would refuse every alert the node signs with it until
+    // the next rescan. A node first seen with a damaged file stays unpaired, so its reports are checked with the shared
+    // key and refused: it shows on the Nodes and pairing page as refused, rather than being trusted with a key that may
+    // not be its own.
+    uint8_t nodeKey[CAM_NODE_KEY_LEN], nodePublic[CAM_X25519_LEN];
+    std::string pairing = s.name + "/pairing.txt";
+    if (storage_.readFile(pairing, text, 256) && camParsePairing(text, nodePublic, nodeKey)) {
+      node->paired = true;
+      memcpy(node->publicKey, nodePublic, CAM_X25519_LEN);
+      node->key = std::string((const char*)nodeKey, CAM_NODE_KEY_LEN);
+    } else if (!storage_.exists(pairing)) {
+      node->paired = false;
+      node->key.clear();
+    }
     for (const CamFsEntry& e : inputs) {
       if (!e.dir || camClassifyPath(s.name + "/" + e.name) != CAM_PATH_SENSOR) continue;
       uint8_t input = 0;

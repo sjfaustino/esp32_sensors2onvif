@@ -34,6 +34,10 @@ const uint32_t CAM_HTTP_DRAIN_MS = 60000;
 const uint32_t CAM_RTSP_IDLE_MS = 120000;  // chosen: a video connection not yet playing
 const uint32_t CAM_RTSP_STALL_MS = 30000;  // chosen: a playing video connection that takes nothing
 const uint32_t CAM_HOOK_WAIT_MS = 5000;    // chosen: for the webhook to connect, and again for its reply
+// A notification its server did not take, as while Home Assistant restarts, is sent again this soon, this many times in
+// all, before it is dropped; the ones after it wait their turn.
+const uint32_t CAM_HOOK_RETRY_MS = 10000;  // chosen
+const int CAM_HOOK_TRIES = 3;              // chosen
 
 // ---- MQTT ----
 const uint16_t CAM_MQTT_KEEPALIVE_S = 60;   // chosen: the broker announces the hub gone after 1.5 times this without a word

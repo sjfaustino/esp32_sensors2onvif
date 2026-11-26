@@ -265,7 +265,9 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 
 ![The Notifications page](images/notify.png)
 
-**Sensors > Notifications** sends each alert, and optionally each node problem, to a server on your network.
+**Sensors > Notifications** sends each alert, and optionally each node problem, to a server on your network. A message
+its server does not take, as while Home Assistant restarts, is sent again 10 seconds later, three tries in all, and the
+ones after it wait their turn; up to eight wait at a time.
 **Send to** chooses how:
 
 - **ntfy**: a self-hosted [ntfy](https://ntfy.sh) server passes each message to the ntfy app on your phone. The address

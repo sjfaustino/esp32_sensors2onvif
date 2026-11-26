@@ -30,6 +30,11 @@ before that, a new minor version may change settings or the messages.
   included. Hubs with a fixed address, as most are set up for the NVR, were not affected on that network.
 - A hub that joins a network but has no address counts as off it, so it tries its backup network and then opens the
   setup network, as when a network cannot be joined.
+- A paired node's key is forgotten only when its pairing file is deleted. One that could not be read for a moment, as
+  while memory was short, or was damaged, used to unpair the node until the next rescan, so its signed alerts were
+  refused meanwhile.
+- A notification its server did not take, as while Home Assistant restarts, is sent again 10 seconds later, three
+  tries in all, before it is dropped. It used to be sent once, whatever happened to it.
 - An event push the listener answers with an HTTP error now counts as not delivered, so the hub sends it again and,
   until one is taken, treats the NVR as not listening, keeping its alerts to replay. It used to count any push it had
   sent. A listener that closes without a reply, as NVRs do, is unchanged.

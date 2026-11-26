@@ -6,14 +6,24 @@ import e2e_common as common
 class HookCatcher:
     """A pretend webhook receiver on this PC: each message's type and body (received), and its path and headers (heads)."""
 
-    def __init__(self):
+    def __init__(self, refuse=0):
         self.received, self.heads = [], []
+        self.refuse = refuse  # how many messages to answer with HTTP 500, as a server that is restarting
+        self.refused = []
         catcher = self
 
         class Hook(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                body = self.rfile.read(int(self.headers['Content-Length']))
+                if catcher.refuse > 0:
+                    catcher.refuse -= 1
+                    catcher.refused.append(body)
+                    self.send_response(500)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
                 catcher.heads.append((self.path, dict(self.headers)))
-                catcher.received.append((self.headers.get('Content-Type'), self.rfile.read(int(self.headers['Content-Length']))))
+                catcher.received.append((self.headers.get('Content-Type'), body))
                 self.send_response(200)
                 self.send_header('Content-Length', '0')
                 self.end_headers()
@@ -237,6 +247,25 @@ def webhook(s):
               and get_json('/api/webhook')['language'] == 'pt')
     finally:
         api('POST', '/api/webhook', 'url=&alerts=1&problems=1&language=en')
+        hook.close()
+
+
+@case(pc=True)
+def a_notification_its_server_refuses_is_sent_again(s):
+    """A notification its server answers with an error, as while Home Assistant restarts, is kept and sent again, and
+    the one after it waits its turn."""
+    hook = HookCatcher(refuse=1)
+    try:
+        check('the webhook is saved', api('POST', '/api/webhook', f'url={hook.url}&alerts=1&problems=1')[0] == 200)
+        api('POST', '/api/webhook/test', 'x=1')
+        get(f'/sensor?{sid(1)}')
+        check('the first try was refused', bool(wait_until(lambda: hook.refused, timeout=5)), hook.refused)
+        arrived = wait_until(lambda: len(hook.received) >= 2, timeout=20)  # the next try comes 10 s later
+        events = [json.loads(b)['event'] for _, b in hook.received]
+        check('it is sent again, and arrives before the one after it', bool(arrived) and events[:2] == ['test', 'alert'], events)
+        check('the refused one was the test message', json.loads(hook.refused[0])['event'] == 'test', hook.refused)
+        clear(1)
+    finally:
         hook.close()
 
 

@@ -248,6 +248,26 @@ static void an_http_report_does_not_keep_a_paired_node_alive() {
   TEST_ASSERT_EQUAL(80, plain.table.healthOf(plain.id()).battery);
 }
 
+// Only deleting a node's pairing file unpairs it: one damaged, or unreadable for a moment, keeps the key the hub has,
+// so the node's signed alerts are not refused meanwhile.
+static void a_damaged_pairing_file_keeps_the_key_and_a_deleted_one_unpairs() {
+  Rig r("cam_alarm_pairing_kept");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  std::string pairing = "public=" + std::string(2 * CAM_X25519_LEN, '1') + "\nkey=" + std::string(2 * CAM_NODE_KEY_LEN, '2') + "\n";
+  r.storage.writeFile("AA-BB-CC-DD-EE-01/pairing.txt", pairing.data(), pairing.size());
+  r.start();
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).paired);
+  std::string key = r.table.nodeOf(r.id()).key;
+  r.storage.writeFile("AA-BB-CC-DD-EE-01/pairing.txt", "public=zz\n", 10);
+  r.alarm.rescan();
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).paired);
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).key == key);
+  r.storage.removeTree("AA-BB-CC-DD-EE-01/pairing.txt");
+  r.alarm.rescan();
+  TEST_ASSERT_FALSE(r.table.nodeOf(r.id()).paired);
+  TEST_ASSERT_TRUE(r.table.nodeOf(r.id()).key.empty());
+}
+
 // A sender without a folder is listed for the page only when its report is correctly signed, so made-up senders cannot
 // fill the list and push a real new node off it.
 static void only_a_correctly_signed_stranger_is_listed() {
@@ -646,6 +666,7 @@ void runAlarmTests() {
   RUN_TEST(a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards);
   RUN_TEST(the_alarm_is_busy_while_an_alert_is_on);
   RUN_TEST(an_http_report_does_not_keep_a_paired_node_alive);
+  RUN_TEST(a_damaged_pairing_file_keeps_the_key_and_a_deleted_one_unpairs);
   RUN_TEST(only_a_correctly_signed_stranger_is_listed);
   RUN_TEST(a_sensor_never_heard_is_reported_silent_once);
   RUN_TEST(a_silent_sensor_can_raise_the_alarm_when_asked_to);
