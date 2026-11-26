@@ -55,6 +55,7 @@ bool CamWeb::begin() {
   if (leds_.rgb >= 0) {
     ledTesting_ = 3;
     ledTestFromFirst_ = true;
+    ledTestStepMs_ = 250;
   }
   return onvifListen_ >= 0 && webListen_ >= 0;
 }

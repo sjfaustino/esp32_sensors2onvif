@@ -268,6 +268,8 @@ void CamWeb::postLedsTest(const ApiRequest& r) {
   } else {
     ledTesting_ = which;
     ledTestAt_ = millis_();
+    ledTestFromFirst_ = false;
+    ledTestStepMs_ = 1000;
     c.out = jsonOk(JSON_OK);
   }
 }
@@ -278,11 +280,11 @@ void CamWeb::ledTest(uint32_t now, CamLeds& l) {
     ledTestAt_ = now;
     ledTestFromFirst_ = false;
   }
-  if (now - ledTestAt_ >= 3000) {
+  if (now - ledTestAt_ >= 3 * ledTestStepMs_) {
     ledTesting_ = 0;
     return;
   }
-  uint32_t second = (now - ledTestAt_) / 1000;
+  uint32_t second = (now - ledTestAt_) / ledTestStepMs_;  // which of the three steps
   l.green = ledTesting_ == 1 || (ledTesting_ == 3 && second == 1);
   l.red = ledTesting_ == 2 || (ledTesting_ == 3 && second == 0);
   l.blue = ledTesting_ == 3 && second == 2;

@@ -268,6 +268,7 @@ class CamWeb {
   int ledTesting_ = 0;         // 1 green, 2 red, 3 the RGB LED: what the page's Test lights, from ledTestAt_
   uint32_t ledTestAt_ = 0;
   bool ledTestFromFirst_ = false;  // the start's test, timed from the first time the LEDs are set, not from begin()
+  uint32_t ledTestStepMs_ = 1000;  // each colour's time: a second from the page, to be seen; a quarter at the start
   CamSchedule schedule_;           // the restart schedule, as the page shows it
   std::string unsupported_[6];     // the ONVIF requests the hub could not answer, shown on the ONVIF page
   HttpConn* firmwareOwner_ = nullptr;
