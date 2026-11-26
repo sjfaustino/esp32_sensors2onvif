@@ -203,6 +203,12 @@ void CamAlarm::networkLost(uint32_t seconds) {
   hubEvent(CAM_EVENT_NETWORK_LOST, "", seconds, camEventMessage(CAM_EVENT_NETWORK_LOST, cfg_.hostName, "", seconds, false));
 }
 
+// A faked time could move quiet hours over an alert, so a reading refused for it is the hub's problem to report.
+void CamAlarm::timeRefused(int64_t stepS) {
+  std::string detail = (stepS > 0 ? "+" : "") + std::to_string((long long)stepS) + " s";
+  hubEvent(CAM_EVENT_TIME_REFUSED, detail, CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_TIME_REFUSED, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
+}
+
 // Logged once the network is up, and once the clock is set or has had long enough to be.
 void CamAlarm::noteHubStart(uint32_t now) {
   time_t t = chip_->wallTime();

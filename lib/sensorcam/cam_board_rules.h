@@ -43,6 +43,12 @@ class CamWifiPlan {
   bool hadGuest_ = false;
 };
 
+// ---- the clock ----
+
+// Whether an NTP reading is taken: always while the clock is not set, or when told to trust the next one, as after the
+// Time page saves NTP; otherwise only one within CAM_NTP_MOST_STEP_S of the clock.
+bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext);
+
 // ---- the setup network's password ----
 
 enum CamSetupKey {

@@ -332,6 +332,8 @@ void loop() {
   bool guest = keepOnNetwork(connected, justLost);
   serveSetupNetwork();
   keepTime();
+  int64_t refusedStep = 0;
+  if (server && takeTimeRefused(refusedStep)) server->timeRefused(refusedStep);
   restartWhenAsked();
   sampleMemory(server ? server->webOpen() : 0, server ? server->videoOpen() : 0);  // for Device Info and the daily check
   CamRestartRules::Pass pass = rulesPass(connected, guest);

@@ -61,6 +61,17 @@ static void a_network_that_says_come_back_is_tried_again_first() {
   TEST_ASSERT_EQUAL(CamWifiPlan::TRY_MAIN, w.at(t + 2 * CAM_WIFI_TRY_MS + 10 + CAM_WIFI_SAME_AFTER_MS));
 }
 
+// An NTP reading is taken while the clock is not set, and when told to trust it; otherwise only near the clock.
+static void a_far_ntp_reading_is_refused_once_the_clock_is_set() {
+  const int64_t set = 1790000000;
+  TEST_ASSERT_TRUE(camNtpTaken(5, set, false));  // not set yet: anything
+  TEST_ASSERT_TRUE(camNtpTaken(set, set + CAM_NTP_MOST_STEP_S, false));
+  TEST_ASSERT_TRUE(camNtpTaken(set, set - 2, false));
+  TEST_ASSERT_FALSE(camNtpTaken(set, set + CAM_NTP_MOST_STEP_S + 1, false));
+  TEST_ASSERT_FALSE(camNtpTaken(set, set - 3 * 3600, false));
+  TEST_ASSERT_TRUE(camNtpTaken(set, set - 3 * 3600, true));  // after the Time page saved NTP
+}
+
 static void the_backup_that_joins_becomes_the_main_network_and_the_setup_network_closes() {
   Wifi w;
   w.at(1001 + CAM_WIFI_TRY_MS);  // trying the backup
@@ -188,6 +199,7 @@ static void the_scheduled_restart_minute_is_its_day_and_minute_with_the_clock_se
 void runBoardTests() {
   RUN_TEST(the_hub_tries_the_main_network_then_the_backup_then_opens_the_setup_network);
   RUN_TEST(a_network_that_says_come_back_is_tried_again_first);
+  RUN_TEST(a_far_ntp_reading_is_refused_once_the_clock_is_set);
   RUN_TEST(the_backup_that_joins_becomes_the_main_network_and_the_setup_network_closes);
   RUN_TEST(a_hub_with_no_network_saved_opens_the_setup_network_and_tries_nothing);
   RUN_TEST(someone_on_the_setup_network_stops_the_tries_until_they_leave);

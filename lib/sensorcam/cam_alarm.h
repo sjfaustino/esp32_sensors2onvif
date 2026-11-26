@@ -44,6 +44,7 @@ class CamAlarm {
   void tick(uint32_t now);  // alerts, health checks, saving and confirming: once a pass, before serving the network
   void networkUp() { networkSeen_ = true; }
   void networkLost(uint32_t seconds);  // on rejoining Wi-Fi after being off it, without a restart
+  void timeRefused(int64_t stepS);     // an NTP reading that would have moved the clock this far was refused
   void saveNow();                      // writes any events not yet saved; before a restart
   // A report, node info, or a sealed one of those, from ESP-NOW; anything else is left alone. From the task that calls tick().
   // sealed: how it came, inside a sealed message: CAM_SEALED, CAM_SEALED_OLD, or 0 as it is.

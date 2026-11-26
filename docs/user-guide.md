@@ -284,7 +284,7 @@ A saved token is never shown again; leave the field blank to keep it, or tick **
 internet, such as Telegram, Pushover or ntfy.sh itself, need https, which the hub does not have: reach them through
 a server on your network, such as Home Assistant or a self-hosted ntfy that forwards to ntfy.sh. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
 `node restarted by a fault`, `battery running out`, `possible jamming`, `firing often`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
-`NVR listening again`, `hub started`, `network lost`, `armed`, `disarmed` and `test`.
+`NVR listening again`, `hub started`, `network lost`, `time refused`, `armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 **Daily check at** sends one message a day at that local time, as event `daily check` from `"sensor":"hub"`: how many
@@ -401,7 +401,7 @@ conditions:
     value_template: >-
       {{ trigger.to_state.attributes.event_type in ['went silent', 'low battery', 'weak signal',
          'node restarted by a fault', 'battery running out', 'possible jamming', 'firing often',
-         'alert not delivered', 'delayed alert not delivered', 'NVR not listening'] }}
+         'alert not delivered', 'delayed alert not delivered', 'NVR not listening', 'time refused'] }}
 actions:
   - action: notify.mobile_app_phone
     data:
@@ -512,6 +512,12 @@ keys, and restarts the hub. Use **New keys** if a backup and its passphrase may 
 **Time** sets the timezone, daylight saving, and NTP or manual time, and can read the time from the PC. The NVR always
 receives UTC, so these only change the time shown on the page and the scheduled restart. A manual time does not survive
 a power cut, so the hub then reads the time once from the NTP server if it can reach it; otherwise set it again.
+Up to three NTP servers go comma-separated, tried in turn; a new hub uses `ntp04.oal.ul.pt` and `ntp02.oal.ul.pt`, Portugal's
+legal time from the Observatório Astronómico de Lisboa, then `pt.pool.ntp.org`. NTP readings are not signed, so anyone on
+the network can fake one, and quiet hours, the scheduled restart and the re-arm timer go by the clock. Once its clock is
+set, the hub therefore refuses a reading that would move it by more than 5 minutes, keeps its own time, and logs **time
+refused**, sent with node problems. If the clock really is wrong, save the Time page: the next reading is then taken,
+whatever it says.
 
 **Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status,
 and the least free memory since the last daily check, or since the start on a hub without one: when, and with how many

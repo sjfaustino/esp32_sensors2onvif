@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "cam_events.h"  // CAM_CLOCK_VALID_AFTER
 #include "cam_timing.h"
 
 // ---- Wi-Fi ----
@@ -50,6 +51,14 @@ int CamWifiPlan::step(const Pass& p) {
     }
   }
   return act;
+}
+
+// ---- the clock ----
+
+bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext) {
+  if (trustNext || clockNow < (int64_t)CAM_CLOCK_VALID_AFTER) return true;
+  int64_t step = reading - clockNow;
+  return (step < 0 ? -step : step) <= CAM_NTP_MOST_STEP_S;
 }
 
 // ---- the setup network's password ----

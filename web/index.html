@@ -200,9 +200,10 @@
 <label class="netRow"><span>Timezone</span><select id="tmZone"></select></label>
 <label class="netRow"><span>Daylight saving</span><select id="tmDst"><option value="0">None</option><option value="1">Europe</option><option value="2">United States</option></select></label>
 <label class="netRow"><span>Set time by</span><select id="tmMode"><option value="ntp">NTP server</option><option value="manual">Manual</option></select></label>
-<label class="netRow"><span>NTP server</span><input id="tmServer" maxlength="63" autocapitalize="none"></label>
+<label class="netRow"><span>NTP servers</span><input id="tmServer" maxlength="200" autocapitalize="none"></label>
 <label class="netRow"><span>Date and time</span><input id="tmManual" type="datetime-local" step="1"></label>
 <p class="hint">The NVR always receives UTC, so these settings only change the time shown here and the scheduled restart. After a power cut, a manual time is read once from the NTP server if the hub can reach it; otherwise set it again.</p>
+<p class="hint">Up to three NTP servers, comma-separated, tried in turn. Once its clock is set, the hub refuses a reading that would move it by more than 5 minutes, and logs it as time refused, so a faked time cannot shift quiet hours; saving here takes the next reading whatever it says.</p>
 <div class="acts"><button id="saveTime" class="primary">Save</button><button id="tmFromPc">Read from this PC</button></div>
 <div class="portMsg" id="tmMsg"></div></section></div>
 <div class="view" id="view-device" hidden><h1>Device info</h1><section class="card"><table class="info" id="devInfo"></table><p id="crashActs"></p></section>

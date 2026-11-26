@@ -49,11 +49,28 @@ bool validAddress(const CamAddress& a) {
 // A plain whole number and nothing else.
 bool wholeNumber(const std::string& s, long long& out) { return camNumber(s, out); }
 
+int camNtpServers(const std::string& s, std::string out[3]) {
+  if (s.empty() || s.size() > 200) return 0;
+  int n = 0;
+  size_t at = 0;
+  while (at <= s.size()) {
+    size_t comma = s.find(',', at);
+    if (comma == std::string::npos) comma = s.size();
+    std::string name = s.substr(at, comma - at);
+    while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (name.empty() || name.size() > 63 || n == 3) return 0;
+    for (char ch : name)
+      if (!isalnum((unsigned char)ch) && ch != '.' && ch != '-') return 0;
+    out[n++] = name;
+    at = comma + 1;
+  }
+  return n;
+}
+
 bool validNtpServer(const std::string& s) {
-  if (s.empty() || s.size() > 63) return false;
-  for (char ch : s)
-    if (!isalnum((unsigned char)ch) && ch != '.' && ch != '-') return false;
-  return true;
+  std::string names[3];
+  return camNtpServers(s, names) > 0;
 }
 
 // Also the hub's network name, so letters, digits and inner hyphens only.

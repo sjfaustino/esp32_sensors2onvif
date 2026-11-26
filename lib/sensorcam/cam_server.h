@@ -43,6 +43,7 @@ class SensorCamServer : private CamAlarmOutside {
   void espNowPacket(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi = 0);  // a raw ESP-NOW message; call from the same task as poll()
   void saveNow() { alarm_.saveNow(); }                                                     // writes any events not yet saved; call before a restart
   void networkLost(uint32_t seconds) { alarm_.networkLost(seconds); }  // call on rejoining Wi-Fi after being off it, without a restart
+  void timeRefused(int64_t stepS) { alarm_.timeRefused(stepS); }       // an NTP reading too far from the clock was refused
   bool updating() const { return web_.updating(); }                    // a firmware upload is under way
   std::string routes() { return web_.routesText(); }                   // for the PC tests
   void setDrainMs(uint32_t ms) { web_.setDrainMs(ms); }                // for the PC tests

@@ -119,6 +119,10 @@ static void messages_can_be_in_portuguese() {
       "central: 3 nós deixaram de comunicar ao mesmo tempo. As baterias falham uma de cada vez, por isso algo pode estar a "
       "bloquear o rádio, como um bloqueador",
       camEventMessage(CAM_EVENT_JAMMING, "central", "3 nodes", CAM_AGE_UNKNOWN, false).c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "central: uma leitura NTP teria atrasado o relógio 3 h 0 min, por isso foi recusada. Alguém pode estar a falsificar a hora; se o "
+      "relógio estiver errado, guarde a página Hora para aceitar a leitura seguinte",
+      camEventMessage(CAM_EVENT_TIME_REFUSED, "central", "-10800 s", CAM_AGE_UNKNOWN, false).c_str());
   TEST_ASSERT_EQUAL_STRING("5 dias 2 h", camDurationText(5 * 86400 + 2 * 3600).c_str());
   camSetTextLanguage("en");
   TEST_ASSERT_EQUAL_STRING("Gate (X/1): alert", camEventMessage(CAM_EVENT_REPORT, "Gate (X/1)", "", CAM_AGE_UNKNOWN, false).c_str());

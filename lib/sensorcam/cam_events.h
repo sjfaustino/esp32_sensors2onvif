@@ -35,6 +35,7 @@ enum CamEventKind : uint8_t {
   CAM_EVENT_BATTERY_RUNNING_OUT = 18,  // a node's battery is forecast to run out within a week
   CAM_EVENT_JAMMING = 19,              // a hub event: several nodes stopped reporting together; the detail says how many
   CAM_EVENT_BUSY_SENSOR = 20,          // a sensor fired CAM_BUSY_ALERTS times within an hour
+  CAM_EVENT_TIME_REFUSED = 21,         // a hub event: an NTP reading too far from the clock; the detail is the step, as "+3600 s"
   CAM_EVENT_KIND_COUNT                 // not a kind: one more than the last, so code can go through them all
 };
 // The one name for each event, used by the history, the CSV file, the web page and the webhook.

@@ -1,5 +1,6 @@
 #include "cam_events.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "cam_soap.h"
 #include "cam_text.h"
@@ -37,6 +38,7 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_BATTERY_RUNNING_OUT: return "battery running out";
     case CAM_EVENT_JAMMING: return "possible jamming";
     case CAM_EVENT_BUSY_SENSOR: return "firing often";
+    case CAM_EVENT_TIME_REFUSED: return "time refused";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -103,6 +105,18 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
           "{0}: {1} nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a "
           "jammer",
           {who, std::to_string(leadingNumber(detail))});
+    case CAM_EVENT_TIME_REFUSED: {
+      long long step = atoll(detail.c_str());
+      std::string by = camDurationText((uint32_t)(step < 0 ? -step : step));
+      return step < 0 ? camText(
+                            "{0}: an NTP reading would have put the clock back by {1}, so it was refused. Someone may be faking the "
+                            "time; if the clock is wrong, save the Time page to take the next reading",
+                            {who, by})
+                      : camText(
+                            "{0}: an NTP reading would have put the clock forward by {1}, so it was refused. Someone may be faking the "
+                            "time; if the clock is wrong, save the Time page to take the next reading",
+                            {who, by});
+    }
     case CAM_EVENT_BUSY_SENSOR:
       return camText("{0}: fired {1} times within an hour. Every alert still goes to the NVR, but check the sensor's aim and wiring",
                      {who, std::to_string(CAM_BUSY_ALERTS)});

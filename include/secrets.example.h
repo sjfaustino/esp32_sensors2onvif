@@ -12,7 +12,7 @@
 // Password of the hub's own setup network, at least 8 characters. Empty keeps the setup network off.
 #define SETUP_AP_PASSWORD ""
 
-#define NTP_SERVER "pool.ntp.org"
+#define NTP_SERVER "ntp04.oal.ul.pt,ntp02.oal.ul.pt,pt.pool.ntp.org"
 
 // Sensors must add &token=<value> to HTTP reports. Left empty, the hub makes one and shows it on the HTTP page.
 #define SENSOR_TOKEN ""

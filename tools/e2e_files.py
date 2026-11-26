@@ -236,9 +236,11 @@ def status_light_pins(s):
 def time_schedule_restart_and_reset(s):
     """The clock, the restart schedule, a restart, new keys and a reset, each refused unless confirmed."""
     zone = 'offset=60&dst=1'
-    for good in (f'mode=ntp&server=pool.ntp.org&{zone}', f'mode=manual&epoch=1790000000&{zone}', f'mode=manual&{zone}', 'mode=ntp&server=time.local&offset=345&dst=0', 'mode=ntp&server=a.b&offset=-720&dst=2'):
+    for good in (f'mode=ntp&server=pool.ntp.org&{zone}', f'mode=manual&epoch=1790000000&{zone}', f'mode=manual&{zone}', 'mode=ntp&server=time.local&offset=345&dst=0', 'mode=ntp&server=a.b&offset=-720&dst=2',
+                 f'mode=ntp&server=ntp04.oal.ul.pt,ntp02.oal.ul.pt,%20pt.pool.ntp.org&{zone}'):
         check(f'time is accepted: {good[:34]}', api('POST', '/api/time', good)[0] == 200)
-    for bad in (f'mode=ntp&server=&{zone}', f'mode=ntp&server=bad%20name&{zone}', f'mode=manual&epoch=100&{zone}', f'mode=manual&epoch=abc&{zone}', 'mode=ntp&server=a.b&offset=61&dst=0',
+    for bad in (f'mode=ntp&server=&{zone}', f'mode=ntp&server=bad%20name&{zone}', f'mode=ntp&server=a.b,,c.d&{zone}',
+                f'mode=ntp&server=a.b,c.d,e.f,g.h&{zone}', f'mode=manual&epoch=100&{zone}', f'mode=manual&epoch=abc&{zone}', 'mode=ntp&server=a.b&offset=61&dst=0',
                 'mode=ntp&server=a.b&offset=900&dst=0', 'mode=ntp&server=a.b&offset=0&dst=3', 'mode=ntp&server=a.b&dst=0'):
         check(f'time is refused: {bad[:34]}', api('POST', '/api/time', bad)[0] == 400)
     check('time settings need the web password', api('POST', '/api/time', f'mode=ntp&server=a.b&{zone}', auth=False)[0] == 401)

@@ -3881,3 +3881,24 @@ msgstr "O LED RGB mostra vermelho, verde e depois azul, um segundo cada."
 
 msgid "the RGB LED needs a pin of its own"
 msgstr "o LED RGB precisa de um pino só para ele"
+
+msgid "NTP servers"
+msgstr "Servidores NTP"
+
+msgid "Up to three NTP servers, comma-separated, tried in turn. Once its clock is set, the hub refuses a reading that would move it by more than 5 minutes, and logs it as time refused, so a faked time cannot shift quiet hours; saving here takes the next reading whatever it says."
+msgstr "Até três servidores NTP, separados por vírgulas, tentados por ordem. Com o relógio acertado, a central recusa uma leitura que o mudaria mais de 5 minutos, e regista-a como hora recusada, para que uma hora falsificada não desloque as horas de silêncio; guardar aqui aceita a leitura seguinte, seja ela qual for."
+
+msgid "time refused"
+msgstr "hora recusada"
+
+msgctxt "message"
+msgid "time refused"
+msgstr "hora recusada"
+
+msgctxt "message"
+msgid "{0}: an NTP reading would have put the clock back by {1}, so it was refused. Someone may be faking the time; if the clock is wrong, save the Time page to take the next reading"
+msgstr "{0}: uma leitura NTP teria atrasado o relógio {1}, por isso foi recusada. Alguém pode estar a falsificar a hora; se o relógio estiver errado, guarde a página Hora para aceitar a leitura seguinte"
+
+msgctxt "message"
+msgid "{0}: an NTP reading would have put the clock forward by {1}, so it was refused. Someone may be faking the time; if the clock is wrong, save the Time page to take the next reading"
+msgstr "{0}: uma leitura NTP teria adiantado o relógio {1}, por isso foi recusada. Alguém pode estar a falsificar a hora; se o relógio estiver errado, guarde a página Hora para aceitar a leitura seguinte"

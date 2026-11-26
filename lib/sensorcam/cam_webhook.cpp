@@ -241,7 +241,7 @@ void CamWebhookSender::weeklyStep(uint32_t now) {
   static const uint8_t PROBLEMS[] = {CAM_EVENT_SILENT,        CAM_EVENT_LOW_BATTERY, CAM_EVENT_WEAK_SIGNAL,
                                      CAM_EVENT_NOT_DELIVERED, CAM_EVENT_NVR_GONE,    CAM_EVENT_NETWORK_LOST,
                                      CAM_EVENT_RESTART_LOOP,  CAM_EVENT_NODE_FAULT,  CAM_EVENT_BATTERY_RUNNING_OUT,
-                                     CAM_EVENT_JAMMING,       CAM_EVENT_BUSY_SENSOR};
+                                     CAM_EVENT_JAMMING,       CAM_EVENT_BUSY_SENSOR, CAM_EVENT_TIME_REFUSED};
   WeeklyWork& w = *weekly_;
   try {
     bool over = alarm_.log().scanStep(w.scan, 32, [&](const CamEvent& e) {

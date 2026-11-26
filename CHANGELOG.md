@@ -19,6 +19,9 @@ before that, a new minor version may change settings or the messages.
   request the hub sends there.
 - A video client that sends requests without reading the answers no longer piles them up in memory; it needed no
   login for that.
+- Once its clock is set, the hub refuses an NTP reading that would move it by more than 5 minutes, and logs it as
+  **time refused**, sent with node problems: NTP is not signed, and a faked time could move quiet hours over an alert.
+  Saving the Time page takes the next reading, however far off.
 
 ### Fixes
 
@@ -33,6 +36,8 @@ before that, a new minor version may change settings or the messages.
 
 ### Changes
 
+- Up to three NTP servers, tried in turn. A new hub uses Portugal's legal time from the Observatório Astronómico de
+  Lisboa, `ntp04.oal.ul.pt` and `ntp02.oal.ul.pt`, then `pt.pool.ntp.org`.
 - Device info and the week of health take the least free memory as the memory itself keeps it, at every allocation,
   so a fall that lasts a moment, as a web request's, is seen. The row that said "today" says since the daily check,
   or, on a hub without one, since the start.
