@@ -23,10 +23,13 @@ static void tryNetwork(int i) {
   IPAddress ip, mask, gateway, dns;
   usingStatic = settings.staticFor.length() && settings.staticFor == settings.wifiSsid[i] && ip.fromString(settings.staticIp) &&
                 mask.fromString(settings.staticMask) && gateway.fromString(settings.staticGateway);
+  // DHCP is asked for with the empty address, 0.0.0.0. Not INADDR_NONE: after the network headers that is lwIP's,
+  // 255.255.255.255, which Wi-Fi took as a fixed address, so the hub joined a network without one and was never given
+  // an address.
   if (usingStatic)
     WiFi.config(ip, gateway, mask, dns.fromString(settings.staticDns) ? dns : gateway);
   else
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.config(IPAddress(), IPAddress(), IPAddress());
   WiFi.begin(settings.wifiSsid[i].c_str(), settings.wifiPassword[i].c_str());
 }
 
@@ -158,6 +161,22 @@ bool keepOnNetwork(bool connected, bool justLost) {
 
 void serveSetupNetwork() {
   if (setupOpen) dnsServer.processNextRequest();
+}
+
+// Joined, and with an address to be reached at. Joined without one, the hub can reach neither the NVR nor anything
+// else, so it counts as off the network: the plan then tries the backup and opens the setup network, as for a network
+// that cannot be joined.
+bool onNetwork() {
+  static bool told = false;
+  if (WiFi.status() != WL_CONNECTED) {
+    told = false;
+    return false;
+  }
+  uint32_t ip = WiFi.localIP();
+  bool addressed = ip != 0 && ip != 0xFFFFFFFF;
+  if (!addressed && !told) Serial.printf("Joined %s, but without an address; trying on as if off the network.\n", WiFi.SSID().c_str());
+  told = !addressed;
+  return addressed;
 }
 
 bool setupIsOpen() { return setupOpen; }

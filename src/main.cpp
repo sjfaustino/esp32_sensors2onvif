@@ -325,7 +325,7 @@ static void showStatus(bool connected) {
 }
 
 void loop() {
-  bool connected = WiFi.status() == WL_CONNECTED;
+  bool connected = onNetwork();
   bool justLost = !connected && wasConnected;
   if (connected && !wasConnected) onConnected();  // before keepOnNetwork, which forgets when the network went
   wasConnected = connected;

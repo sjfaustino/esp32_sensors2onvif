@@ -12,6 +12,14 @@ before that, a new minor version may change settings or the messages.
   used up its tries keeps its place for the day, and once all eight are such, the others share one count.
 - The Maintenance page follows a newer release's links only when they are GitHub's own.
 
+### Fixes
+
+- A hub on a network without a fixed address was never given one: it asked for 255.255.255.255 as a fixed address in
+  place of DHCP. It joined, so it opened no setup network and tried no backup, yet could reach nothing, the NVR
+  included. Hubs with a fixed address, as most are set up for the NVR, were not affected on that network.
+- A hub that joins a network but has no address counts as off it, so it tries its backup network and then opens the
+  setup network, as when a network cannot be joined.
+
 ### Changes
 
 - Device info and the week of health take the least free memory as the memory itself keeps it, at every allocation,

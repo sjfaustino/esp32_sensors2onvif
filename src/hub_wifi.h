@@ -11,6 +11,7 @@ void wifiBegin();  // in setup(): the radio's settings, and the first try at the
 bool keepOnNetwork(bool connected, bool justLost);
 void serveSetupNetwork();  // once a pass: its name lookups, which send every name to the setup page
 
+bool onNetwork();  // joined, and with an address: joined without one counts as off
 bool setupIsOpen();
 bool usingStaticAddress();  // a fixed address, not DHCP, on the network the hub is on
 uint32_t wifiDrops();       // since the start, for the heartbeat and the radio test
