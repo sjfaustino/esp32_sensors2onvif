@@ -106,7 +106,9 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
           "jammer",
           {who, std::to_string(leadingNumber(detail))});
     case CAM_EVENT_TIME_REFUSED: {
-      long long step = atoll(detail.c_str());
+      char* end = nullptr;
+      long long step = strtoll(detail.c_str(), &end, 10);  // "+10800 s"
+      if (end == detail.c_str()) step = 0;                 // no number: said as no time, never a wrong one
       std::string by = camDurationText((uint32_t)(step < 0 ? -step : step));
       return step < 0 ? camText(
                             "{0}: an NTP reading would have put the clock back by {1}, so it was refused. Someone may be faking the "
