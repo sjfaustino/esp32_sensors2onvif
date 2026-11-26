@@ -244,5 +244,6 @@ to: something that answered its first hello in the hub's place could otherwise t
 that the node starts reporting: one that paired with something else stays "Not heard yet" on the hub.
 
 The hub's key pair is made once and kept by a settings reset and in backups; the page shows its fingerprint. The node's
-key is in `pairing.txt` in its folder, which a full backup includes, and deleting the node's folder unpairs it. Nodes set
+key is in `pairing.txt` in its folder; a full backup leaves that file out and keeps the key in its sealed settings
+instead, so the key is never in a backup unsealed. Deleting the node's folder unpairs it. Nodes set
 up with the shared ESP-NOW key keep working as before.

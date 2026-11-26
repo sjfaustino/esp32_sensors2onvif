@@ -720,7 +720,8 @@ mounting it, and make sure it reports to yours afterwards, as step 4 says. A nod
 fingerprint once paired: compare it with the one on the Nodes and pairing page.
 
 The hub's key pair is made once and kept by a settings reset and in backups; the page shows its fingerprint. The node's
-key is in `pairing.txt` in its folder, which a full backup includes, and deleting the node's folder unpairs it. Nodes set
+key is in `pairing.txt` in its folder; a full backup leaves that file out and keeps the key in its sealed settings
+instead, so the key is never in a backup unsealed. Deleting the node's folder unpairs it. Nodes set
 up with the shared ESP-NOW key keep working as before. How pairing works on the air is in
 [docs/protocol.md](protocol.md#pairing-a-node).
 
