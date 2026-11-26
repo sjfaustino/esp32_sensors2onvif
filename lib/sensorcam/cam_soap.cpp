@@ -488,8 +488,16 @@ static std::string endpointFields(const std::string& ip, uint16_t port, const st
          ip + ":" + std::to_string(port) + "/onvif/device_service</d:XAddrs><d:MetadataVersion>1</d:MetadataVersion>";
 }
 
+// The prober's message ID goes back as it came only when it is plain, as a uuid or urn is: anything else could put its
+// own XML in the hub's answer.
+static std::string plainId(const std::string& id) {
+  bool plain = id.size() <= 128;
+  for (char ch : id) plain = plain && (isalnum((unsigned char)ch) || ch == ':' || ch == '-' || ch == '.' || ch == '_');
+  return plain ? id : "";
+}
+
 std::string discoveryProbeMatch(const std::string& relatesTo, const std::string& ip, uint16_t port, const std::string& serial, uint32_t no) {
-  return discoveryEnvelope("<a:MessageID>" + messageUuid(no) + "</a:MessageID><a:RelatesTo>" + relatesTo +
+  return discoveryEnvelope("<a:MessageID>" + messageUuid(no) + "</a:MessageID><a:RelatesTo>" + plainId(relatesTo) +
                                "</a:RelatesTo><a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>"
                                "<a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action>",
                            "<d:ProbeMatches><d:ProbeMatch>" + endpointFields(ip, port, serial) + "</d:ProbeMatch></d:ProbeMatches>");

@@ -268,7 +268,17 @@ static void mqtt_packets_match_the_standard() {
   TEST_ASSERT_FALSE(camBackupValueValid("net.mqpw", std::string(65, 'a')));
 }
 
+// A prober's message ID goes back in the answer only when plain, so it cannot put its own XML in the hub's answer.
+static void a_probe_cannot_write_into_the_answer() {
+  std::string plain = discoveryProbeMatch("urn:uuid:1b4e28ba-2fa1-11d2-883f-0016d3cca427", "192.168.1.50", 8899, "abc", 1);
+  TEST_ASSERT_TRUE(plain.find("<a:RelatesTo>urn:uuid:1b4e28ba-2fa1-11d2-883f-0016d3cca427</a:RelatesTo>") != std::string::npos);
+  std::string odd = discoveryProbeMatch("x</a:RelatesTo><a:To>http://elsewhere</a:To>", "192.168.1.50", 8899, "abc", 2);
+  TEST_ASSERT_TRUE(odd.find("elsewhere") == std::string::npos);
+  TEST_ASSERT_TRUE(odd.find("<a:RelatesTo></a:RelatesTo>") != std::string::npos);
+}
+
 void runOnvifTests() {
+  RUN_TEST(a_probe_cannot_write_into_the_answer);
   RUN_TEST(xml_is_read_as_xml);
   RUN_TEST(same_consumer_is_one_subscription);
   RUN_TEST(subscription_lives_while_peer_talks);

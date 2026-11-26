@@ -11,6 +11,7 @@
 #include "cam_frames.h"
 #include "cam_net.h"
 #include "cam_soap.h"
+#include "cam_web_checks.h"
 #include "cam_server_internal.h"
 
 CamWeb::CamWeb(const CamWebParts& p)
@@ -300,7 +301,9 @@ std::string CamWeb::handleOnvif(HttpConn& c, const std::string& headers, const s
   if (action == "Subscribe") {
     std::string consumer = soapConsumerAddress(body);
     HttpUrl url;
-    if (consumer.empty() || !parseHttpUrl(consumer, url) || inet_addr(url.host.c_str()) == INADDR_NONE) {
+    // The webhook's rule: http:// to an IPv4 host, and nothing, such as a line break read from &#10;, that could add a
+    // line to the request the hub then sends there.
+    if (consumer.empty() || !validHookUrl(consumer) || !parseHttpUrl(consumer, url)) {
       status = 400;
       return soapFault("Subscribe needs an http consumer address with an IPv4 host");
     }

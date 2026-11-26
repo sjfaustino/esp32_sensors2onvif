@@ -215,15 +215,17 @@ uint32_t CamLoginGuard::lockMs(uint16_t failures) {
 }
 
 // Where an address's wrong passwords are counted: its own entry; else a free one; else the one quiet longest of those
-// that have not used up their free tries; else, every entry holding an address shut out today, the shared one.
+// that have not used up their free tries; else, every entry holding an address shut out today, the shared one. The
+// NVR's address is never put in the shared one: it takes the entry quiet longest, whatever that holds.
 int CamLoginGuard::slotFor(uint32_t peer, uint32_t now) const {
   for (int i = 0; i < ENTRIES; i++)
     if (kept(entries_[i], now) && entries_[i].peer == peer) return i;
   for (int i = 0; i < ENTRIES; i++)
     if (!kept(entries_[i], now)) return i;
+  bool nvr = peer && peer == protected_;
   int spare = -1;
   for (int i = 0; i < ENTRIES; i++)
-    if (entries_[i].failures < FREE_TRIES && (spare < 0 || now - entries_[i].lastAt > now - entries_[spare].lastAt)) spare = i;
+    if ((nvr || entries_[i].failures < FREE_TRIES) && (spare < 0 || now - entries_[i].lastAt > now - entries_[spare].lastAt)) spare = i;
   return spare >= 0 ? spare : ENTRIES;
 }
 

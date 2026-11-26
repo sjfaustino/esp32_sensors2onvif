@@ -125,6 +125,23 @@ static void many_addresses_do_not_get_fresh_tries() {
   TEST_ASSERT_TRUE(g.allowed(777, t + 2 * CamLoginGuard::LONGEST_LOCK_MS));
 }
 
+// Others' wrong passwords never shut the NVR out: it gets an entry of its own even when every entry and the shared one
+// are used up. Its own wrong passwords still count.
+static void others_cannot_shut_the_nvr_out() {
+  CamLoginGuard g;
+  const uint32_t nvr = 0x0A08A8C0;
+  g.protect(nvr);
+  uint32_t t = 5000;
+  for (uint32_t peer = 1; peer <= 9; peer++)  // eight entries, then the shared one
+    for (int i = 0; i < CamLoginGuard::FREE_TRIES; i++) g.note(peer, false, t);
+  TEST_ASSERT_FALSE(g.allowed(9, t));
+  TEST_ASSERT_TRUE(g.allowed(nvr, t));
+  g.note(nvr, true, t);
+  TEST_ASSERT_TRUE(g.allowed(nvr, t + 10));
+  for (int i = 0; i < CamLoginGuard::FREE_TRIES; i++) g.note(nvr, false, t + 20);
+  TEST_ASSERT_FALSE(g.allowed(nvr, t + 30));
+}
+
 static void only_the_hubs_own_names_are_served() {
   const char* ip = "192.168.1.50";
   TEST_ASSERT_TRUE(camKnownHost("", ip, "esp-alarmhub.local", "192.168.4.1:8080", ""));
@@ -317,6 +334,7 @@ void runCryptoTests() {
   RUN_TEST(only_the_hubs_own_names_are_served);
   RUN_TEST(wrong_passwords_lock_out_quick_and_slow_guessing);
   RUN_TEST(many_addresses_do_not_get_fresh_tries);
+  RUN_TEST(others_cannot_shut_the_nvr_out);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(base64_matches_known_values);
   RUN_TEST(hmac_sha1_matches_rfc_2202);

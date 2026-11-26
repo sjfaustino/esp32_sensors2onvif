@@ -9,8 +9,16 @@ before that, a new minor version may change settings or the messages.
 
 - Guessing the hub password from many addresses no longer gets ten tries for each. The hub has room to count eight
   addresses, and a new one used to push out the one quiet longest, which then started again; now an address that has
-  used up its tries keeps its place for the day, and once all eight are such, the others share one count.
+  used up its tries keeps its place for the day, and once all eight are such, the others share one count. The NVR's
+  address always keeps a count of its own: in the shared one, others' wrong passwords could have shut it out, and
+  its alerts would have stopped.
 - The Maintenance page follows a newer release's links only when they are GitHub's own.
+- An ONVIF discovery probe's message number goes back in the answer only when it is plain, so a probe cannot put its
+  own XML in the hub's answer.
+- An NVR's event address follows the webhook's rule, so a line break written into it cannot add a line to the
+  request the hub sends there.
+- A video client that sends requests without reading the answers no longer piles them up in memory; it needed no
+  login for that.
 
 ### Fixes
 

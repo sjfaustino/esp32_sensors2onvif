@@ -168,6 +168,9 @@ void CamVideo::serviceConn(RtspConn& c, bool readable, bool writable, uint32_t n
           c.in.erase(0, 4 + size);
           continue;
         }
+        // A client sending requests without reading the replies would pile them up in memory, and needs no login for
+        // that. The rest waits until it reads; should it go on sending, the requests grow past MAX_HEADERS and it is closed.
+        if (c.out.size() - c.outPos > MAX_UNREAD_REPLIES) break;
         size_t end = c.in.find("\r\n\r\n");
         if (end == std::string::npos) break;
         try {

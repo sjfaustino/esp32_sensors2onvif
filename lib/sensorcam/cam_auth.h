@@ -47,8 +47,11 @@ bool camHostListValid(const std::string& names);
 // slowly both get at most about 100 tries a day.
 // An address that has used up its free tries keeps its entry for that day. Once every entry holds one, any other address
 // is counted in one entry they all share, so taking more addresses than there are entries does not start the count again.
+// But the NVR's address always gets an entry of its own, taking the quietest: in the shared one, others' wrong passwords
+// would shut the NVR out, and its alerts would stop.
 class CamLoginGuard {
  public:
+  void protect(uint32_t peer) { protected_ = peer; }  // the NVR's address, 0 for none
   static const int FREE_TRIES = CAM_LOGIN_FREE_TRIES;
   static const uint32_t FIRST_LOCK_MS = CAM_LOGIN_FIRST_LOCK_MS, LONGEST_LOCK_MS = CAM_LOGIN_LONGEST_LOCK_MS, FORGET_MS = CAM_LOGIN_FORGET_MS;
   bool allowed(uint32_t peer, uint32_t now) const;
@@ -65,4 +68,5 @@ class CamLoginGuard {
   bool kept(const Entry& e, uint32_t now) const { return e.failures && now - e.lastAt < FORGET_MS; }
   int slotFor(uint32_t peer, uint32_t now) const;
   Entry entries_[ENTRIES + 1];
+  uint32_t protected_ = 0;
 };
