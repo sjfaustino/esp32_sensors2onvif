@@ -12,7 +12,7 @@ messages between the hub and its nodes.
 
 1. Download `sensors2onvif-<version>-<board>-full.bin` from the
    [releases](https://github.com/sjfaustino/esp32_sensors2onvif/releases): `esp32_16mb` for an ESP32 with 16 MB of
-   flash, `esp32dev` for one with 4 MB, `esp32s3` for an ESP32-S3.
+   flash, `esp32dev` for one with 4 MB, `esp32s3` for an ESP32-S3 with 16 MB of flash and 8 MB of PSRAM (N16R8).
 2. Write it to the board at address 0 with [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge:
    connect, press **Erase Flash**, add the file at address `0x0`, and press **Program**. `esptool.py write_flash 0x0
    <file>` does the same from a PC.
@@ -54,7 +54,7 @@ a backup from another board cannot set a pin this one needs. Choose **Low** for 
    one from a release does. `WIFI_SSID` and `WIFI_PASSWORD` give the first network to try, `WEB_PASSWORD` the hub
    password, and `SETUP_AP_PASSWORD` a fixed password for the setup network instead of the hub password.
 2. Flash with `pio run -t upload`, which targets a regular ESP32 with 16 MB of flash. Add `-e esp32dev` for one with
-   4 MB, or `-e esp32s3` for an ESP32-S3. Build from VS Code or PowerShell, because the pioarduino toolchain setup
+   4 MB, or `-e esp32s3` for an ESP32-S3 with 16 MB of flash and 8 MB of PSRAM. Build from VS Code or PowerShell, because the pioarduino toolchain setup
    refuses to run under Git Bash.
 
 A 4 MB board keeps a shorter event history, about 650 events, so that it always fits beside a few pictures; should

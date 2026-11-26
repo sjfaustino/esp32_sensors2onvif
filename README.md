@@ -22,8 +22,8 @@ flowchart LR
 
 ## What you need
 
-- **A hub:** an ESP32 board with 16 MB of flash, powered by USB, ideally from the same UPS as the NVR. One with 4 MB, or an
-  ESP32-S3, works too.
+- **A hub:** an ESP32 board with 16 MB of flash, powered by USB, ideally from the same UPS as the NVR. One with 4 MB works too, and
+  an ESP32-S3 with 16 MB of flash and 8 MB of PSRAM (N16R8) has the most memory.
 - **An NVR** that takes ONVIF cameras, with a free channel.
 - **Sensors:** [sensor nodes](https://github.com/sjfaustino/esp32_sensor_node) on ESP32-C3, ESP32-C6 or classic ESP32
   boards, with a radar or infrared sensor, on a battery or mains power; or any device that can make an HTTP request.

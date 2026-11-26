@@ -78,7 +78,7 @@ jobs:
           ### Updating a hub
 
           Download the `.bin` for your board, the one without `-full`: `esp32_16mb` for an ESP32 with 16 MB of flash, `esp32dev` for one with 4 MB,
-          `esp32s3` for an ESP32-S3. On the hub's page, open System > Maintenance, choose the file under Firmware
+          `esp32s3` for an ESP32-S3 with 16 MB of flash and 8 MB of PSRAM. On the hub's page, open System > Maintenance, choose the file under Firmware
           update and press Update firmware. The hub keeps the new firmware only once it has proved itself, and otherwise
           goes back to the one before. Its settings, sensors and history are kept.
 
