@@ -41,7 +41,7 @@ a backup from another board cannot set a pin this one needs. Choose **Low** for 
 An RGB LED, a WS2812 such as many ESP32-S3 boards carry on GPIO 48 or 38, can show the same in one light: choose its pin
 under **RGB LED**. It is red while the red would be lit, otherwise green while the green would be, and dim. **Test RGB**
 shows red, green and then blue, a second each, so a board with its colours in another order shows it. The hub shows
-the same, quicker, a quarter of a second each, every time it starts, so an RGB LED that has failed, or lost a colour,
+the same, quicker, 0.4 seconds each, every time it starts, so an RGB LED that has failed, or lost a colour,
 is seen then. It can be used with the
 two LEDs or alone.
 

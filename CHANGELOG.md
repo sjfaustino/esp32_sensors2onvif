@@ -35,8 +35,8 @@ before that, a new minor version may change settings or the messages.
 - Two status LEDs, green and red, can say whether the hub is armed and protecting, and when a sensor is firing, to
   someone standing by it. They are a choice: their pins are set under Device info > Status lights, from a list of the
   pins the board can spare, with a test for each. See Status lights in the user guide. An RGB LED, as many ESP32-S3
-  boards have on GPIO 48 or 38, can show the same in one light. It shows red, green and blue as the hub starts, a quarter
-  of a second each, as a test of itself.
+  boards have on GPIO 48 or 38, can show the same in one light. It shows red, green and blue as the hub starts, 0.4
+  seconds each, as a test of itself.
 
 - Device info draws the last week of the hub's health, an hour to a bar: the least free memory, the weakest Wi-Fi
   signal, and how much of each hour the NVR was listening. Kept across restarts.
