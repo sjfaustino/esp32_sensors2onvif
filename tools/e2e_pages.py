@@ -437,8 +437,13 @@ def test_status_lights(page):
         check('their pins are saved', page_wait(page, lambda: get_json('/api/leds')['red'] == 33), page.text_content('#ledMsg'))
         page.click('#testGreen')
         check('and the test says what it lights', page_wait(page, lambda: 'green LED' in page.text_content('#ledMsg')), page.text_content('#ledMsg'))
+        page.select_option('#ledRgb', '25')
+        page.click('#saveLeds')
+        check('an RGB LED is saved too', page_wait(page, lambda: get_json('/api/leds')['rgb'] == 25), page.text_content('#ledMsg'))
+        page.click('#testRgb')
+        check('and its test says its colours', page_wait(page, lambda: 'RGB LED' in page.text_content('#ledMsg')), page.text_content('#ledMsg'))
     finally:
-        api('POST', '/api/leds', 'green=-1&red=-1&lowOn=0')
+        api('POST', '/api/leds', 'green=-1&red=-1&rgb=-1&lowOn=0')
 
 def test_the_hubs_label(page):
     """Device info prints a label for the hub, with its page's address, its setup network, its pairing fingerprint and

@@ -602,10 +602,36 @@ static void the_status_leds_go_only_on_pins_the_board_can_spare() {
   c = camLedPinsChecked("esp32_16mb", p);
   TEST_ASSERT_TRUE(c.green == -1 && c.red == 33);
   TEST_ASSERT_TRUE(camLedPinsChecked("esp32s3", CamLedPins()).green == -1);  // none unless set
+  // An RGB LED: also on 48 on an ESP32-S3, where boards put theirs, and never on a pin of the other two.
+  TEST_ASSERT_TRUE(camRgbPinAllowed("esp32s3", 48) && camRgbPinAllowed("esp32s3", 38) && camRgbPinAllowed("esp32_16mb", 25));
+  TEST_ASSERT_FALSE(camRgbPinAllowed("esp32_16mb", 48) || camLedPinAllowed("esp32s3", 48) || camRgbPinAllowed("esp32s3", 35));
+  p = CamLedPins();
+  p.green = 4;
+  p.rgb = 4;
+  TEST_ASSERT_EQUAL(-1, camLedPinsChecked("esp32s3", p).rgb);
+  p.rgb = 48;
+  TEST_ASSERT_EQUAL(48, camLedPinsChecked("esp32s3", p).rgb);
+  TEST_ASSERT_EQUAL(-1, camLedPinsChecked("esp32_16mb", p).rgb);
+}
+
+// The RGB LED shows red while red is lit, otherwise green, dim; blue only in its test.
+static void the_rgb_led_shows_red_over_green() {
+  CamLeds l;
+  TEST_ASSERT_TRUE(camRgbFor(l) == CamRgb());
+  l.green = true;
+  CamRgb c = camRgbFor(l);
+  TEST_ASSERT_TRUE(c.g > 0 && c.g < 128 && c.r == 0 && c.b == 0);
+  l.red = true;
+  c = camRgbFor(l);
+  TEST_ASSERT_TRUE(c.r > 0 && c.g == 0);
+  l = CamLeds();
+  l.blue = true;
+  TEST_ASSERT_TRUE(camRgbFor(l).b > 0);
 }
 
 void runAlarmTests() {
   RUN_TEST(the_status_leds_go_only_on_pins_the_board_can_spare);
+  RUN_TEST(the_rgb_led_shows_red_over_green);
   RUN_TEST(the_status_leds_say_what_the_hub_is_doing);
   RUN_TEST(sealed_message_numbers_never_repeat_and_are_reserved_ahead);
   RUN_TEST(no_sealed_message_without_a_number_saved_as_reserved);

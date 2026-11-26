@@ -38,6 +38,11 @@ red** light each alone for 3 seconds, to check the wiring. The list offers only 
 the chip reads as it starts or that its flash, PSRAM, USB or serial port use, and the hub checks again as it starts, so
 a backup from another board cannot set a pin this one needs. Choose **Low** for LEDs wired from 3.3 V to the pin.
 
+An RGB LED, a WS2812 such as many ESP32-S3 boards carry on GPIO 48 or 38, can show the same in one light: choose its pin
+under **RGB LED**. It is red while the red would be lit, otherwise green while the green would be, and dim. **Test RGB**
+shows red, green and then blue, a second each, so a board with its colours in another order shows it. It can be used
+with the two LEDs or alone.
+
 | Light | Means |
 | --- | --- |
 | Green, steady | Armed away, and protecting |

@@ -219,10 +219,15 @@ def status_light_pins(s):
           leds['green'] == -1 and leds['red'] == -1 and 32 in leds['pins'] and 6 not in leds['pins'] and 0 not in leds['pins'], leds)
     check("a pin the board needs, such as the flash's, is refused", api('POST', '/api/leds', 'green=6&red=-1&lowOn=0')[0] == 400)
     check('so are both LEDs on one pin', api('POST', '/api/leds', 'green=32&red=32&lowOn=0')[0] == 400)
+    check('and the RGB LED on one of theirs', api('POST', '/api/leds', 'green=32&red=-1&rgb=32&lowOn=0')[0] == 400)
+    check('the RGB LED is offered the same pins here', leds.get('rgbPins') == leds.get('pins'), leds)
     check('a test needs the pin saved first', api('POST', '/api/leds/test', 'led=green')[0] == 400)
     check('pins from the list are saved', api('POST', '/api/leds', 'green=32&red=33&lowOn=1')[0] == 200
           and get_json('/api/leds') == {**leds, 'green': 32, 'red': 33, 'lowOn': True}, get_json('/api/leds'))
     check('and each LED can be lit alone', api('POST', '/api/leds/test', 'led=red')[0] == 200)
+    check('the RGB LED, once it has a pin', api('POST', '/api/leds/test', 'led=rgb')[0] == 400
+          and api('POST', '/api/leds', 'green=32&red=33&rgb=25&lowOn=1')[0] == 200 and get_json('/api/leds')['rgb'] == 25
+          and api('POST', '/api/leds/test', 'led=rgb')[0] == 200, get_json('/api/leds'))
     check('the LEDs can be taken out again', api('POST', '/api/leds', 'green=-1&red=-1&lowOn=0')[0] == 200
           and get_json('/api/leds') == leds, get_json('/api/leds'))
 

@@ -250,13 +250,14 @@
   async function loadLeds() {
     try {
       const l = await call("GET", "/api/leds");
-      for (const [id, pin] of [
-        ["ledGreen", l.green],
-        ["ledRed", l.red],
+      for (const [id, pin, pins] of [
+        ["ledGreen", l.green, l.pins],
+        ["ledRed", l.red, l.pins],
+        ["ledRgb", l.rgb, l.rgbPins || []],
       ]) {
         $(id).replaceChildren(
           el("option", { value: "-1", textContent: tr("None") }),
-          ...l.pins.map((p) => el("option", { value: String(p), textContent: "GPIO " + p })),
+          ...pins.map((p) => el("option", { value: String(p), textContent: "GPIO " + p })),
         );
         $(id).value = String(pin);
       }
@@ -267,13 +268,22 @@
     send(
       $("ledMsg"),
       "/api/leds",
-      "green=" + $("ledGreen").value + "&red=" + $("ledRed").value + "&lowOn=" + $("ledLow").value,
+      "green=" +
+        $("ledGreen").value +
+        "&red=" +
+        $("ledRed").value +
+        "&rgb=" +
+        $("ledRgb").value +
+        "&lowOn=" +
+        $("ledLow").value,
       tr("Saved."),
     );
   $("testGreen").onclick = () =>
     send($("ledMsg"), "/api/leds/test", "led=green", tr("The green LED is lit alone for 3 seconds."));
   $("testRed").onclick = () =>
     send($("ledMsg"), "/api/leds/test", "led=red", tr("The red LED is lit alone for 3 seconds."));
+  $("testRgb").onclick = () =>
+    send($("ledMsg"), "/api/leds/test", "led=rgb", tr("The RGB LED shows red, green, then blue, a second each."));
   async function loadDevice() {
     try {
       const j = await (await fetch("/api/device")).json();

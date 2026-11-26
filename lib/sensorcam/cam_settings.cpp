@@ -153,6 +153,7 @@ const CamSetting CAM_SETTINGS[] = {
     // The status LEDs' pins, -1 for none; the hub checks them against its own board as it starts.
     {"net", "ledg", 'i', -1, 48, nullptr},
     {"net", "ledr", 'i', -1, 48, nullptr},
+    {"net", "ledrgb", 'i', -1, 48, nullptr},
     {"net", "ledlo", 'b', 0, 1, nullptr},
 };
 const size_t CAM_SETTING_COUNT = sizeof(CAM_SETTINGS) / sizeof(CAM_SETTINGS[0]);

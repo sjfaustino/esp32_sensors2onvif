@@ -117,6 +117,7 @@ void loadSettings() {
     s.schedule.minute = p.getInt("rbmin", 0);
     s.leds.green = p.getInt("ledg", -1);
     s.leds.red = p.getInt("ledr", -1);
+    s.leds.rgb = p.getInt("ledrgb", -1);
     s.leds.lowOn = p.getBool("ledlo", false);
     s.staticFor = p.getString("ipfor", "");
     s.staticIp = p.getString("ip", "");
@@ -217,8 +218,9 @@ bool storeSchedule(const CamSchedule& s) {
 }
 
 bool storeLeds(const CamLedPins& l) {
-  bool ok = withPrefs(
-      "net", [&](Preferences& p) { return p.putInt("ledg", l.green) == 4 && p.putInt("ledr", l.red) == 4 && p.putBool("ledlo", l.lowOn) == 1; });
+  bool ok = withPrefs("net", [&](Preferences& p) {
+    return p.putInt("ledg", l.green) == 4 && p.putInt("ledr", l.red) == 4 && p.putInt("ledrgb", l.rgb) == 4 && p.putBool("ledlo", l.lowOn) == 1;
+  });
   if (ok) settings.leds = l;
   return ok;
 }

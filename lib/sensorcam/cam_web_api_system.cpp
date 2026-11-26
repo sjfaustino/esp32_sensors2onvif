@@ -222,9 +222,13 @@ void CamWeb::getLeds(const ApiRequest& r) {
   HttpConn& c = r.c;
   const int* pins;
   int n = camLedPinChoices(cfg_.board, pins);
+  const int* rgbPins;
+  int rgbCount = camRgbPinChoices(cfg_.board, rgbPins);
   c.out = jsonOk(jsonObject([&](CamJson& j) {
-    j.num("green", leds_.green).num("red", leds_.red).flag("lowOn", leds_.lowOn).array("pins");
+    j.num("green", leds_.green).num("red", leds_.red).num("rgb", leds_.rgb).flag("lowOn", leds_.lowOn).array("pins");
     for (int i = 0; i < n; i++) j.num(pins[i]);
+    j.end().array("rgbPins");
+    for (int i = 0; i < rgbCount; i++) j.num(rgbPins[i]);
     j.end();
   }));
 }
@@ -232,16 +236,20 @@ void CamWeb::getLeds(const ApiRequest& r) {
 void CamWeb::postLeds(const ApiRequest& r) {
   HttpConn& c = r.c;
   CamLedPins p;
-  auto pin = [&](const char* name, int& out) {
+  auto pin = [&](const char* name, int& out, bool (*allowed)(const std::string&, int)) {
     long long v = 0;
-    if (!camNumber(r.field(name), v) || (v != -1 && !camLedPinAllowed(cfg_.board, (int)v))) return false;
+    if (!camNumber(r.field(name), v) || (v != -1 && !allowed(cfg_.board, (int)v))) return false;
     out = (int)v;
     return true;
   };
-  if (!pin("green", p.green) || !pin("red", p.red)) {
+  // The RGB LED may be left out of the request, as by a page from before it, and is then none.
+  bool rgbOk = r.field("rgb").empty() || pin("rgb", p.rgb, camRgbPinAllowed);
+  if (!pin("green", p.green, camLedPinAllowed) || !pin("red", p.red, camLedPinAllowed) || !rgbOk) {
     c.out = jsonFail(400, "choose each LED's pin from the list");
   } else if (p.green >= 0 && p.green == p.red) {
     c.out = jsonFail(400, "the two LEDs need different pins");
+  } else if (p.rgb >= 0 && (p.rgb == p.green || p.rgb == p.red)) {
+    c.out = jsonFail(400, "the RGB LED needs a pin of its own");
   } else {
     p.lowOn = r.field("lowOn") == "1";
     bool ok = store_->ledsSave(p);
@@ -250,11 +258,12 @@ void CamWeb::postLeds(const ApiRequest& r) {
   }
 }
 
-// Lights one LED alone for 3 seconds, so its wiring can be checked from the page.
+// Lights one LED alone for 3 seconds, so its wiring can be checked from the page; the RGB LED red, green, then blue.
 void CamWeb::postLedsTest(const ApiRequest& r) {
   HttpConn& c = r.c;
-  int which = r.field("led") == "red" ? 2 : 1;
-  if ((which == 1 ? leds_.green : leds_.red) < 0) {
+  std::string led = r.field("led");
+  int which = led == "red" ? 2 : led == "rgb" ? 3 : 1;
+  if ((which == 1 ? leds_.green : which == 2 ? leds_.red : leds_.rgb) < 0) {
     c.out = jsonFail(400, "save a pin for that LED first");
   } else {
     ledTesting_ = which;
@@ -269,8 +278,10 @@ void CamWeb::ledTest(uint32_t now, CamLeds& l) {
     ledTesting_ = 0;
     return;
   }
-  l.green = ledTesting_ == 1;
-  l.red = ledTesting_ == 2;
+  uint32_t second = (now - ledTestAt_) / 1000;
+  l.green = ledTesting_ == 1 || (ledTesting_ == 3 && second == 1);
+  l.red = ledTesting_ == 2 || (ledTesting_ == 3 && second == 0);
+  l.blue = ledTesting_ == 3 && second == 2;
 }
 
 void CamWeb::radioTest(const ApiRequest& r) {

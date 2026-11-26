@@ -69,9 +69,10 @@ struct CamTime {
 };
 
 // The status LEDs' pins, -1 for none, as the page sets them: a hub has none until someone wires them and says where.
-// lowOn for LEDs wired from 3.3 V to the pin, lit when it is low. See cam_status_leds.h.
+// lowOn for LEDs wired from 3.3 V to the pin, lit when it is low. rgb for one RGB LED (a WS2812, as on many ESP32-S3
+// boards), which shows the same in colour. See cam_status_leds.h.
 struct CamLedPins {
-  int green = -1, red = -1;
+  int green = -1, red = -1, rgb = -1;
   bool lowOn = false;
 };
 

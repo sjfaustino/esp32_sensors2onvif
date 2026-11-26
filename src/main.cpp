@@ -292,13 +292,20 @@ static void printHeartbeat() {
 }
 
 // The status LEDs, if the page says where they are, set ten times a second from what the hub is doing; see
-// cam_status_leds.h. A pin the page moves an LED off is let go, as an input, for whatever else is wired to it.
+// cam_status_leds.h. A pin the page moves an LED off is let go, as an input, for whatever else is wired to it. The RGB
+// LED is sent its colour only when it changes, as each sending takes the RMT peripheral a moment.
 static void showStatus(bool connected) {
   static uint32_t shownAt = 0;
   static CamLedPins driven;  // none at first
   if (!server || millis() - shownAt < 100) return;
   shownAt = millis();
+  static CamRgb colour;
   CamLedPins want = server->ledPins();
+  bool rgbMoved = want.rgb != driven.rgb;
+  if (rgbMoved && driven.rgb >= 0) {
+    rgbLedWrite(driven.rgb, 0, 0, 0);
+    pinMode(driven.rgb, INPUT);
+  }
   if (want.green != driven.green || want.red != driven.red) {
     for (int pin : {driven.green, driven.red})
       if (pin >= 0) pinMode(pin, INPUT);
@@ -312,6 +319,9 @@ static void showStatus(bool connected) {
   };
   light(want.green, l.green);
   light(want.red, l.red);
+  CamRgb c = camRgbFor(l);
+  if (want.rgb >= 0 && (rgbMoved || !(c == colour))) rgbLedWrite(want.rgb, c.r, c.g, c.b);
+  colour = c;
 }
 
 void loop() {

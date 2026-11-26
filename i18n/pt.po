@@ -3866,3 +3866,18 @@ msgstr "Quando a memória livre esteve mais baixa"
 
 msgid "{a} MB, {b} KB free, the largest free block {c} KB"
 msgstr "{a} MB, {b} KB livres, o maior bloco livre com {c} KB"
+
+msgid "RGB LED"
+msgstr "LED RGB"
+
+msgid "An RGB LED, such as the one many ESP32-S3 boards have on GPIO 48 or 38, shows the same in one light: red while red is lit, otherwise green."
+msgstr "Um LED RGB, como o que muitas placas ESP32-S3 têm no GPIO 48 ou 38, mostra o mesmo numa só luz: vermelho enquanto o vermelho está aceso, senão verde."
+
+msgid "Test RGB"
+msgstr "Testar RGB"
+
+msgid "The RGB LED shows red, green, then blue, a second each."
+msgstr "O LED RGB mostra vermelho, verde e depois azul, um segundo cada."
+
+msgid "the RGB LED needs a pin of its own"
+msgstr "o LED RGB precisa de um pino só para ele"

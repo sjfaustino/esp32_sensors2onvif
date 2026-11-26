@@ -8,7 +8,8 @@
 //   green, steady          armed away
 //   green, blinking slowly armed home
 //   green, a short flash   disarmed: running, but not raising alerts
-// Green is off while red is steady, so the hub never looks fine while it is not.
+// Green is off while red is steady, so the hub never looks fine while it is not. An RGB LED shows the same in one
+// light: red while red is lit, otherwise green while green is.
 //
 // The LEDs are a choice: none is lit until the page is told which pins they are on, from a list of pins the board can
 // spare (camLedPinChoices).
@@ -37,6 +38,24 @@ inline int camLedPinChoices(const std::string& board, const int*& pins) {
   return 0;  // a board this does not know: no LEDs, rather than a guess
 }
 
+// The pins the page offers for an RGB LED: the same, and on an ESP32-S3 also 47 and 48, as boards put theirs on 48 or 38.
+inline int camRgbPinChoices(const std::string& board, const int*& pins) {
+  static const int ESP32S3[] = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48};
+  if (board == "esp32s3") {
+    pins = ESP32S3;
+    return (int)(sizeof(ESP32S3) / sizeof(ESP32S3[0]));
+  }
+  return camLedPinChoices(board, pins);
+}
+
+inline bool camRgbPinAllowed(const std::string& board, int pin) {
+  const int* pins;
+  int n = camRgbPinChoices(board, pins);
+  for (int i = 0; i < n; i++)
+    if (pins[i] == pin) return true;
+  return false;
+}
+
 inline bool camLedPinAllowed(const std::string& board, int pin) {
   const int* pins;
   int n = camLedPinChoices(board, pins);
@@ -45,10 +64,11 @@ inline bool camLedPinAllowed(const std::string& board, int pin) {
   return false;
 }
 
-// The pins as saved, with any the board cannot spare, and a red on the green's pin, left out.
+// The pins as saved, with any the board cannot spare, and a red on the green's pin, or an RGB on either's, left out.
 inline CamLedPins camLedPinsChecked(const std::string& board, CamLedPins p) {
   if (!camLedPinAllowed(board, p.green)) p.green = -1;
   if (!camLedPinAllowed(board, p.red) || p.red == p.green) p.red = -1;
+  if (!camRgbPinAllowed(board, p.rgb) || p.rgb == p.green || p.rgb == p.red) p.rgb = -1;
   return p;
 }
 
@@ -64,7 +84,25 @@ struct CamLedState {
 
 struct CamLeds {
   bool green = false, red = false;
+  bool blue = false;  // only in the RGB LED's test, to show its colours are in the right order
 };
+
+// The RGB LED's colour for those, dim, as these LEDs are bright enough to light a room at full.
+struct CamRgb {
+  uint8_t r = 0, g = 0, b = 0;
+  bool operator==(const CamRgb& o) const { return r == o.r && g == o.g && b == o.b; }
+};
+inline CamRgb camRgbFor(const CamLeds& l) {
+  const uint8_t ON = 40;
+  CamRgb c;
+  if (l.red)
+    c.r = ON;
+  else if (l.green)
+    c.g = ON;
+  else if (l.blue)
+    c.b = ON;
+  return c;
+}
 
 // Which LEDs are lit at this moment; ms is any running count of milliseconds, which sets the blinking.
 inline CamLeds camStatusLeds(const CamLedState& s, uint32_t ms) {
