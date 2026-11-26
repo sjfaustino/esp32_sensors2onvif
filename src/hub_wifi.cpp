@@ -17,9 +17,11 @@ static bool setupOpen = false;
 static bool usingStatic = false;
 static volatile uint32_t drops = 0;
 static volatile uint8_t dropReason = 0;
+static uint32_t dropsAtTry = 0;  // so a drop since the last try can be told from one before it
 
 static void tryNetwork(int i) {
   WiFi.disconnect(false);
+  dropsAtTry = drops;
   IPAddress ip, mask, gateway, dns;
   usingStatic = settings.staticFor.length() && settings.staticFor == settings.wifiSsid[i] && ip.fromString(settings.staticIp) &&
                 mask.fromString(settings.staticMask) && gateway.fromString(settings.staticGateway);
@@ -134,6 +136,7 @@ bool keepOnNetwork(bool connected, bool justLost) {
   p.now = millis();
   p.connected = connected;
   p.justLost = justLost;
+  p.turnedAway = drops != dropsAtTry && dropReason == WIFI_REASON_ASSOC_COMEBACK_TIME_TOO_LONG;
   p.haveMain = settings.wifiSsid[0].length() > 0;
   p.haveBackup = settings.wifiSsid[1].length() > 0;
   p.setupOpen = setupOpen;

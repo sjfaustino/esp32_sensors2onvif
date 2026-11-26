@@ -39,6 +39,28 @@ static void the_hub_tries_the_main_network_then_the_backup_then_opens_the_setup_
   TEST_ASSERT_TRUE(w.p.setupOpen);
 }
 
+// A router that turns the hub away for a moment, as after a restart, gets it back soon, a few times, before the backup.
+static void a_network_that_says_come_back_is_tried_again_first() {
+  Wifi w;
+  w.p.turnedAway = true;
+  TEST_ASSERT_EQUAL(0, w.at(1000 + CAM_WIFI_SAME_AFTER_MS - 1));
+  TEST_ASSERT_EQUAL(CamWifiPlan::TRY_MAIN, w.at(1000 + CAM_WIFI_SAME_AFTER_MS));
+  TEST_ASSERT_EQUAL(0, w.plan.trying());
+  uint32_t t = 1000 + CAM_WIFI_SAME_AFTER_MS;
+  for (int i = 1; i < CAM_WIFI_SAME_TRIES; i++) TEST_ASSERT_EQUAL(CamWifiPlan::TRY_MAIN, w.at(t += CAM_WIFI_SAME_AFTER_MS));
+  TEST_ASSERT_EQUAL(0, w.at(t += CAM_WIFI_SAME_AFTER_MS));  // tried enough: it waits out its time as any try
+  TEST_ASSERT_EQUAL(CamWifiPlan::TRY_BACKUP, w.at(t - CAM_WIFI_SAME_AFTER_MS + CAM_WIFI_TRY_MS + 1));
+  TEST_ASSERT_EQUAL(1, w.plan.trying());
+  w.p.turnedAway = false;
+  w.p.connected = true;
+  w.at(t + 2 * CAM_WIFI_TRY_MS);
+  w.p.connected = false;
+  w.p.justLost = true;
+  w.p.turnedAway = true;
+  TEST_ASSERT_EQUAL(CamWifiPlan::TRY_MAIN, w.at(t + 2 * CAM_WIFI_TRY_MS + 10));  // a new loss: its own tries again
+  TEST_ASSERT_EQUAL(CamWifiPlan::TRY_MAIN, w.at(t + 2 * CAM_WIFI_TRY_MS + 10 + CAM_WIFI_SAME_AFTER_MS));
+}
+
 static void the_backup_that_joins_becomes_the_main_network_and_the_setup_network_closes() {
   Wifi w;
   w.at(1001 + CAM_WIFI_TRY_MS);  // trying the backup
@@ -165,6 +187,7 @@ static void the_scheduled_restart_minute_is_its_day_and_minute_with_the_clock_se
 
 void runBoardTests() {
   RUN_TEST(the_hub_tries_the_main_network_then_the_backup_then_opens_the_setup_network);
+  RUN_TEST(a_network_that_says_come_back_is_tried_again_first);
   RUN_TEST(the_backup_that_joins_becomes_the_main_network_and_the_setup_network_closes);
   RUN_TEST(a_hub_with_no_network_saved_opens_the_setup_network_and_tries_nothing);
   RUN_TEST(someone_on_the_setup_network_stops_the_tries_until_they_leave);

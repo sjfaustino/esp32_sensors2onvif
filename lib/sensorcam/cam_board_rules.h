@@ -25,7 +25,8 @@ class CamWifiPlan {
   struct Pass {
     uint32_t now = 0;
     bool connected = false;
-    bool justLost = false;  // the connection went since the last pass
+    bool justLost = false;    // the connection went since the last pass
+    bool turnedAway = false;  // the network being tried said to come back in a moment, since that try
     bool haveMain = false, haveBackup = false;
     bool setupOpen = false;  // as the board has it: opening it can fail
     int setupStations = 0;   // devices on it
@@ -37,6 +38,7 @@ class CamWifiPlan {
 
  private:
   int trying_ = 0;
+  int sameTries_ = 0;  // the network being tried, tried again after turning the hub away
   uint32_t tryAt_ = 0;
   bool hadGuest_ = false;
 };

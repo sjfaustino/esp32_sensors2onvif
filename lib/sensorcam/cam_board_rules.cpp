@@ -15,6 +15,7 @@ int CamWifiPlan::step(const Pass& p) {
   int act = 0;
   if (p.connected) {
     hadGuest_ = false;
+    sameTries_ = 0;
     if (trying_ == 1) {
       act |= PROMOTE_BACKUP;
       trying_ = 0;
@@ -26,12 +27,20 @@ int CamWifiPlan::step(const Pass& p) {
     act |= i ? TRY_BACKUP : TRY_MAIN;
     trying_ = i;
     tryAt_ = p.now;
+    sameTries_ = 0;
   };
   if (!p.haveMain && !p.setupOpen) act |= OPEN_SETUP;
   if (p.justLost && p.haveMain) tryNetwork(0);
   bool guest = p.setupOpen && p.setupStations > 0;
   if (guest && !hadGuest_) act |= STOP_TRYING;
   hadGuest_ = guest;
+  // Turned away for a moment, as by a router that still holds the connection from before a restart: the same network
+  // again shortly, rather than the next one and the setup network.
+  if (!guest && p.haveMain && p.turnedAway && sameTries_ < CAM_WIFI_SAME_TRIES && p.now - tryAt_ >= CAM_WIFI_SAME_AFTER_MS) {
+    int tries = sameTries_ + 1;
+    tryNetwork(trying_);
+    sameTries_ = tries;
+  }
   if (!guest && p.haveMain && p.now - tryAt_ > CAM_WIFI_TRY_MS) {
     if (trying_ == 0 && p.haveBackup) {
       tryNetwork(1);

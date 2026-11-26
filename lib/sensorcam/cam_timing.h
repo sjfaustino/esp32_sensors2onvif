@@ -60,7 +60,11 @@ const uint32_t CAM_LOGIN_LONGEST_LOCK_MS = 15UL * 60000;  // chosen
 const uint32_t CAM_LOGIN_FORGET_MS = 24UL * 3600 * 1000;  // chosen: how long wrong ones are remembered
 
 // ---- the hub's network, in src/main.cpp ----
-const uint32_t CAM_WIFI_TRY_MS = 30000;         // chosen: how long each saved network gets before moving on to the next
+const uint32_t CAM_WIFI_TRY_MS = 30000;  // chosen: how long each saved network gets before moving on to the next
+// A router that still holds the hub's connection from before a restart turns it away for a moment (Wi-Fi's "comeback
+// time"): the same network is tried again this soon, this many times, before the next one.
+const uint32_t CAM_WIFI_SAME_AFTER_MS = 2000;   // chosen
+const int CAM_WIFI_SAME_TRIES = 3;              // chosen
 const uint32_t CAM_ROUTER_PING_MS = 20000;      // chosen: how often the router is pinged, to tell a dead network from a quiet one
 const uint32_t CAM_ROUTER_PING_WAIT_MS = 3000;  // chosen: how long each ping waits for its reply
 const uint32_t CAM_RESTART_REPLY_MS = 1500;     // chosen: a restart asked for on the page waits this long, for the reply to reach the browser
