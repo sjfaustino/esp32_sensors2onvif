@@ -18,13 +18,14 @@ class CamPost {
   int fd() const { return fd_; }  // -1 while idle
   void watch(fd_set& rd, fd_set& wr, int& maxFd) const;
   // True when it has just ended: result() says how, an HTTP status or what went wrong, and delivered() whether the
-  // whole request was sent first. An NVR closes without replying, so for it sent is delivered.
+  // whole request was sent first and not then refused. An NVR closes without replying, so for it sent is delivered; but a
+  // listener that answers with an HTTP error, 300 or more, did not take the message, and it counts as not delivered.
   bool service(bool readable, bool writable, uint32_t now);
   const char* result() const { return result_; }
   bool delivered() const { return delivered_; }
 
  private:
-  void finish(const char* result);
+  void finish(const char* result, bool taken = true);
   State state_ = IDLE;
   int fd_ = -1;
   std::string out_;

@@ -475,6 +475,20 @@ def a_hung_listener(s):
 
 
 @case(pc=True)
+def a_push_answered_with_an_error_is_sent_again(s):
+    """A listener that answers a push with an HTTP error did not take it, so the hub counts it failed and sends it again,
+    as it would one that could not connect. One that closes without a reply, as the NVR does, gets it once."""
+    refusing = FakeNvrListener(reply=b'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+    reply = soap('Subscribe', DEVICE_SERVICE, f'<ConsumerReference><Address>http://{LOCAL}:{refusing.port}/x</Address></ConsumerReference>')[1]
+    try:
+        wait_until(lambda: refusing.events)
+        wait_until(lambda: len(refusing.events) >= 2, timeout=40)  # the hub tries a failed push again every 30 s
+        check('a push answered with HTTP 500 is sent again', len(refusing.events) >= 2, len(refusing.events))
+    finally:
+        unsubscribe(reply)
+
+
+@case(pc=True)
 def pushes_wait_for_sockets(s):
     """Web connections and pushes share a few sockets, so a push may have to wait for one. It must still go out."""
     second = FakeNvrListener()

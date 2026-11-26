@@ -267,9 +267,10 @@ class PullingNvr:
 
 
 class FakeNvrListener:
-    """Records each Notify and, like the real NVR, closes without an HTTP reply."""
+    """Records each Notify and, like the real NVR, closes without an HTTP reply; or answers with reply, if given."""
 
-    def __init__(self):
+    def __init__(self, reply=None):
+        self.reply = reply
         self.sock = socket.socket()
         self.sock.bind((LOCAL, 0))
         self.sock.listen(16)
@@ -289,6 +290,11 @@ class FakeNvrListener:
                         break
                     data += chunk
             except socket.timeout:
+                pass
+            try:
+                if self.reply:
+                    conn.sendall(self.reply)
+            except OSError:
                 pass
             conn.close()
             self.events.append((time.time(), data.decode(errors='replace')))

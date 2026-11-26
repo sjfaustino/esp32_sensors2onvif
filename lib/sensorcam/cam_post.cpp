@@ -28,8 +28,8 @@ void CamPost::watch(fd_set& rd, fd_set& wr, int& maxFd) const {
   netWatch(fd_, state_ == WAIT_CLOSE ? rd : wr, maxFd);
 }
 
-void CamPost::finish(const char* result) {
-  delivered_ = state_ == WAIT_CLOSE;  // once sent, waiting for the close is all that is left
+void CamPost::finish(const char* result, bool taken) {
+  delivered_ = state_ == WAIT_CLOSE && taken;  // once sent, waiting for the close is all that is left, unless it says no
   snprintf(result_, sizeof(result_), "%s", result);
   if (fd_ >= 0) netClose(fd_);
   fd_ = -1;
@@ -69,11 +69,13 @@ bool CamPost::service(bool readable, bool writable, uint32_t now) {
     if (got >= 0 || !netWouldBlock()) {
       char code[16];
       const char* result = "closed without a reply";
+      bool taken = true;
       if (got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0) {
         snprintf(code, sizeof(code), "HTTP %.3s", buf + 9);
         result = code;
+        taken = buf[9] < '3';  // 1xx and 2xx; a redirect or an error did not take it
       }
-      finish(result);
+      finish(result, taken);
       return true;
     }
   }

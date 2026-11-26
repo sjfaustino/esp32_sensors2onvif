@@ -30,6 +30,9 @@ before that, a new minor version may change settings or the messages.
   included. Hubs with a fixed address, as most are set up for the NVR, were not affected on that network.
 - A hub that joins a network but has no address counts as off it, so it tries its backup network and then opens the
   setup network, as when a network cannot be joined.
+- An event push the listener answers with an HTTP error now counts as not delivered, so the hub sends it again and,
+  until one is taken, treats the NVR as not listening, keeping its alerts to replay. It used to count any push it had
+  sent. A listener that closes without a reply, as NVRs do, is unchanged.
 - A router that still holds the hub's connection from before a restart, and so turns it away for a moment, gets the
   hub back two seconds later, up to three times, before the hub moves on to its backup network and the setup network.
   Back in a few seconds after a restart, not a minute.
