@@ -265,10 +265,11 @@ class CamWeb {
   std::string extraHosts_;     // other names the pages answer to; changed on the HTTP page without a restart
   std::string onvifPassword_;  // ONVIF needs the user admin and this, when set
   CamLedPins leds_;            // the status LEDs' pins, as checked for this board
-  int ledTesting_ = 0;         // 1 green, 2 red: the LED the page's Test lights, from ledTestAt_
+  int ledTesting_ = 0;         // 1 green, 2 red, 3 the RGB LED: what the page's Test lights, from ledTestAt_
   uint32_t ledTestAt_ = 0;
-  CamSchedule schedule_;        // the restart schedule, as the page shows it
-  std::string unsupported_[6];  // the ONVIF requests the hub could not answer, shown on the ONVIF page
+  bool ledTestFromFirst_ = false;  // the start's test, timed from the first time the LEDs are set, not from begin()
+  CamSchedule schedule_;           // the restart schedule, as the page shows it
+  std::string unsupported_[6];     // the ONVIF requests the hub could not answer, shown on the ONVIF page
   HttpConn* firmwareOwner_ = nullptr;
   S2oFirmwareSig firmwareSig_;                              // the signature on the update under way, checked before it is kept
   S2oFirmwareSig nodeSig_;                                  // the same for a node's firmware file, before the nodes are offered it

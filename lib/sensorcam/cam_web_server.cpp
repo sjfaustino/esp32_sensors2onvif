@@ -51,6 +51,11 @@ bool CamWeb::begin() {
     captiveListen_ = netListen(cfg_.captivePort, cfg_.loopbackOnly);
   std::string saved;
   if (storage_.readFile(HEALTH_FILE, saved, 16384)) health_.read(saved);
+  // An RGB LED shows its three colours as the hub starts, so one that has failed, or lost a colour, is seen at each start.
+  if (leds_.rgb >= 0) {
+    ledTesting_ = 3;
+    ledTestFromFirst_ = true;
+  }
   return onvifListen_ >= 0 && webListen_ >= 0;
 }
 

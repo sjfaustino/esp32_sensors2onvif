@@ -274,6 +274,10 @@ void CamWeb::postLedsTest(const ApiRequest& r) {
 
 void CamWeb::ledTest(uint32_t now, CamLeds& l) {
   if (!ledTesting_) return;
+  if (ledTestFromFirst_) {
+    ledTestAt_ = now;
+    ledTestFromFirst_ = false;
+  }
   if (now - ledTestAt_ >= 3000) {
     ledTesting_ = 0;
     return;
