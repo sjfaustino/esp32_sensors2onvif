@@ -25,6 +25,8 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- tools/update_hub.py refused to update a hub while alerts waited for the NVR, so an NVR out of reach blocked every
+  update. The hub keeps those alerts in flash and replays them after a restart, so now only an active alert stops it.
 - A hub on a network without a fixed address was never given one: it asked for 255.255.255.255 as a fixed address in
   place of DHCP. It joined, so it opened no setup network and tried no backup, yet could reach nothing, the NVR
   included. Hubs with a fixed address, as most are set up for the NVR, were not affected on that network.

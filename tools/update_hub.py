@@ -9,7 +9,8 @@ It refuses, before sending anything:
   - a build with changes not committed, or a commit not pushed, as nobody could tell later what the hub runs;
   - a commit whose CI checks have not passed, unless --untested: the PC tests cannot show the board's limits, and CI
     is the least a build must pass before it goes on a hub that guards a home;
-  - while an alert is active or waiting to be sent, as an update pauses the video the NVR records.
+  - while an alert is active, as an update pauses the video the NVR records. Alerts waiting their turn, as while the
+    NVR is away, do not stop it: the hub keeps them in flash and replays them after the restart, as after any other.
 
 Then it builds the 16 MB board's firmware (--env for another), signs it with the project's key (tools/sign_firmware.py),
 sends it to the hub's /api/firmware, and waits for it to come back with the new version. A new firmware is only on
@@ -184,8 +185,10 @@ def main():
         s = hub.status()
     except OSError as e:
         fail(f'the hub at {args.host} did not answer: {e}')
-    if s.get('active') or s.get('delayed_waiting'):
-        fail('an alert is active or waiting to be sent; an update would pause the video the NVR records. Try again once it is over')
+    if s.get('active'):
+        fail('an alert is active; an update would pause the video the NVR records. Try again once it is over')
+    if s.get('delayed_waiting'):
+        print(f"note: {s['delayed_waiting']} alert(s) wait for the NVR; the hub keeps them and replays them after the update")
     print(f"the hub runs {before.get('Firmware version')}; {health_line(hub)}")
 
     version, data = released(args.release, args.env) if args.release else built(args.env)
