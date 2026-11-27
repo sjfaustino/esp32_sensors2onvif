@@ -209,6 +209,21 @@ void CamAlarm::timeRefused(int64_t stepS) {
   hubEvent(CAM_EVENT_TIME_REFUSED, detail, CAM_AGE_UNKNOWN, camEventMessage(CAM_EVENT_TIME_REFUSED, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
 }
 
+int CamAlarm::clearWaiting() {
+  if (sensors_.anyActive()) return -1;
+  int n = 0;
+  CamDelayed gone;
+  while (delayed_.take(gone)) n++;
+  while (delivery_.takeMissed(gone)) n++;
+  for (int id = 1; id <= CAM_MAX_SENSORS; id++) n += delivery_.pending(id).on;
+  delivery_.forgetChecks();
+  waitingDirty_ = true;  // saved on the next pass, so a restart does not bring them back
+  std::string detail = std::to_string(n);
+  hubEvent(CAM_EVENT_WAITING_CLEARED, detail, CAM_AGE_UNKNOWN,
+           camEventMessage(CAM_EVENT_WAITING_CLEARED, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));
+  return n;
+}
+
 // Logged once the network is up, and once the clock is set or has had long enough to be.
 void CamAlarm::noteHubStart(uint32_t now) {
   time_t t = chip_->wallTime();

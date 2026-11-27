@@ -45,7 +45,10 @@ class CamAlarm {
   void networkUp() { networkSeen_ = true; }
   void networkLost(uint32_t seconds);  // on rejoining Wi-Fi after being off it, without a restart
   void timeRefused(int64_t stepS);     // an NTP reading that would have moved the clock this far was refused
-  void saveNow();                      // writes any events not yet saved; before a restart
+  // The alerts waiting for an NVR record, such as test alerts the NVR was away for, dropped and logged as such: how many,
+  // or -1 while an alert is on, whose record would then go unchecked.
+  int clearWaiting();
+  void saveNow();  // writes any events not yet saved; before a restart
   // A report, node info, or a sealed one of those, from ESP-NOW; anything else is left alone. From the task that calls tick().
   // sealed: how it came, inside a sealed message: CAM_SEALED, CAM_SEALED_OLD, or 0 as it is.
   void espNowReport(const uint8_t mac[6], const uint8_t* data, int len, int8_t rssi, uint8_t sealed = 0);

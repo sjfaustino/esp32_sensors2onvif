@@ -198,6 +198,7 @@ class CamWeb {
   void postSensorSettings(const ApiRequest& r);
   void postSettings(const ApiRequest& r);
   void postTestAlert(const ApiRequest& r);
+  void postWaitingClear(const ApiRequest& r);
   void postTime(const ApiRequest& r);
   void postWalkTest(const ApiRequest& r);
   void postWebhook(const ApiRequest& r);

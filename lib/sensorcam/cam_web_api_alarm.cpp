@@ -193,6 +193,16 @@ void CamWeb::postTestAlert(const ApiRequest& r) {
   c.out = alarm_.testAlert(table_.slotForPath(queryParam(r.target, "path"))) ? jsonOk(JSON_OK) : jsonFail(404, "no such sensor");
 }
 
+// The alerts waiting for the NVR, dropped: for test alerts it was away for, which it would otherwise record as past events.
+void CamWeb::postWaitingClear(const ApiRequest& r) {
+  HttpConn& c = r.c;
+  int n = alarm_.clearWaiting();
+  if (n < 0)
+    c.out = jsonFail(409, "an alert is on; clear the waiting ones once it is over");
+  else
+    c.out = jsonOk(jsonObject([&](CamJson& j) { j.num("cleared", n); }));
+}
+
 void CamWeb::getOverview(const ApiRequest& r) {
   HttpConn& c = r.c;
   reply(c, 200, JSON_TYPE, overviewJson(millis_()));

@@ -39,6 +39,7 @@ const char* camEventName(uint8_t kind, bool active, bool delayed) {
     case CAM_EVENT_JAMMING: return "possible jamming";
     case CAM_EVENT_BUSY_SENSOR: return "firing often";
     case CAM_EVENT_TIME_REFUSED: return "time refused";
+    case CAM_EVENT_WAITING_CLEARED: return "waiting alerts cleared";
     default: return !active ? "clear" : delayed ? "delayed alert" : "alert";
   }
 }
@@ -105,6 +106,9 @@ std::string camEventMessage(uint8_t kind, const std::string& who, const std::str
           "{0}: {1} nodes stopped reporting at the same time. Batteries fail one at a time, so something may be blocking the radio, such as a "
           "jammer",
           {who, std::to_string(leadingNumber(detail))});
+    case CAM_EVENT_WAITING_CLEARED:
+      return camText("{0}: {1} alerts waiting for the NVR were cleared on the web page, so it will not record them",
+                     {who, std::to_string(leadingNumber(detail))});
     case CAM_EVENT_TIME_REFUSED: {
       char* end = nullptr;
       long long step = strtoll(detail.c_str(), &end, 10);  // "+10800 s"

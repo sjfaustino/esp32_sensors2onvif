@@ -80,6 +80,10 @@
       tr("A time server gave a time far from the hub's clock, by the step shown, so the hub kept its own time."),
       tr("If this repeats, check the time servers on the Time page: a wrong clock would misdate every alert."),
     ],
+    22: [
+      tr("Alerts that were waiting for the NVR were cleared on purpose, so it will not record them."),
+      tr("If nobody here cleared them, change the hub password: whoever did could also disarm the hub."),
+    ],
   };
   function explain(e) {
     if (e.kind == 0 && !e.active)
@@ -190,7 +194,7 @@
   }
   // Filtered here, from the list the hub sends, so the hub builds nothing more for it.
   const ALERT_KINDS = [0, 3, 5, 10, 13, 15],
-    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20, 21];
+    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20, 21, 22];
   // Each event's label in the colour of what it is: red an alert, amber a problem, green the NVR back, the arm modes in
   // their own colours, grey the rest.
   function kindChip(e, what) {

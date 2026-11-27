@@ -153,7 +153,9 @@ The hub checks that each alert reached the NVR. If the NVR was not listening, th
 and Notifications sends it; the alert is kept, and once the NVR listens again it plays as a past event, so the NVR
 still records that something happened. Set the NVR's address on the NVR page, or any device subscribed to the hub's
 events counts as the NVR; the page warns at the top until you do. Past events, and alerts kept for the NVR, play only while the NVR is listening, so after a power cut they wait for it to
-reconnect instead of being logged as missed. When the NVR has not been listening for 3 minutes,
+reconnect instead of being logged as missed. Alerts waiting for the NVR that were only tests can be dropped with
+`POST /api/waiting/clear`, logged in; it is refused while an alert is on, and logged as **waiting alerts cleared**.
+When the NVR has not been listening for 3 minutes,
 the hub logs **NVR stopped listening**, and **NVR listening again** when it is back. If the hub rejoins its Wi-Fi after
 losing it, it logs **network lost** with how long, because someone may be keeping it off on purpose.
 
@@ -286,7 +288,7 @@ A saved token is never shown again; leave the field blank to keep it, or tick **
 internet, such as Telegram, Pushover or ntfy.sh itself, need https, which the hub does not have: reach them through
 a server on your network, such as Home Assistant or a self-hosted ntfy that forwards to ntfy.sh. Events are `alert`, `delayed alert`, `went silent`, `low battery`, `weak signal`,
 `node restarted by a fault`, `battery running out`, `possible jamming`, `firing often`, `alert not delivered`, `delayed alert not delivered`, `NVR not listening`,
-`NVR listening again`, `hub started`, `network lost`, `time refused`, `armed`, `disarmed` and `test`.
+`NVR listening again`, `hub started`, `network lost`, `time refused`, `waiting alerts cleared`, `armed`, `disarmed` and `test`.
 The hub's own events have `"sensor":"hub"` and an empty name, and give the reason a hub started as `"detail"`. An alert not delivered is sent
 whenever alerts or node problems are; the hub's own events are sent with node problems.
 **Daily check at** sends one message a day at that local time, as event `daily check` from `"sensor":"hub"`: how many
@@ -404,7 +406,8 @@ conditions:
     value_template: >-
       {{ trigger.to_state.attributes.event_type in ['went silent', 'low battery', 'weak signal',
          'node restarted by a fault', 'battery running out', 'possible jamming', 'firing often',
-         'alert not delivered', 'delayed alert not delivered', 'NVR not listening', 'time refused'] }}
+         'alert not delivered', 'delayed alert not delivered', 'NVR not listening', 'time refused',
+         'waiting alerts cleared'] }}
 actions:
   - action: notify.mobile_app_phone
     data:

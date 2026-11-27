@@ -549,6 +549,33 @@ def alerts_the_nvr_missed(s):
 
 
 @case(pc=True)
+def alerts_waiting_for_the_nvr_can_be_cleared(s):
+    """Test alerts the NVR was away for can be cleared, so it does not record them later. Not while an alert is on, whose
+    record would go unchecked, and the clearing is logged, so it cannot pass unseen."""
+    api('POST', '/api/nvr', 'ip=192.0.2.8')  # nothing subscribes from there, so the NVR is not listening
+    try:
+        get(f'/sensor?{sid(1)}')
+        get(f'/sensor?{sid(2)}&age=500')
+        code, body = api('POST', '/api/waiting/clear', '')
+        check('waiting alerts are not cleared while an alert is on', code == 409, (code, body))
+        control('end-alerts')
+        poll(status, lambda st: not st['active'])
+        before = status()['delayed_waiting']
+        code, body = api('POST', '/api/waiting/clear', '')
+        cleared = json.loads(body).get('cleared') if code == 200 else None
+        check('then they are cleared, and the hub says how many', code == 200 and cleared is not None and cleared >= before >= 1, (code, body, before))
+        check('none waits after', status()['delayed_waiting'] == 0, status())
+        logged = poll(event_list, lambda l: l and any(e['kind'] == 22 for e in l[:3]))
+        check('the clearing is logged as a hub event', logged and any(e['kind'] == 22 and e['sensor'] == 'hub' for e in logged[:3]), (logged or [])[:3])
+        api('POST', '/api/nvr', 'ip=127.0.0.1')
+        time.sleep(3)  # time for the hub to wrongly play one that was cleared
+        check('nothing cleared plays once the NVR listens', name(2) not in status()['active'], status())
+    finally:
+        control('end-alerts')
+        api('POST', '/api/nvr', 'ip=')
+
+
+@case(pc=True)
 def a_report_waits_for_a_busy_hub(s):
     """A report that arrives while every web connection is busy waits for one, instead of being turned away."""
     idle = [socket.create_connection((HOST, WEB)) for _ in range(6)]

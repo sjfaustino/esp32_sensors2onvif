@@ -99,6 +99,7 @@ const CamWeb::Route* CamWeb::routes(size_t& count) {
       {"GET", "/api/arm", &CamWeb::getArm, LOGIN},
       {"POST", "/api/arm", &CamWeb::postArm, LOGIN},
       {"POST", "/api/test-alert", &CamWeb::postTestAlert, LOGIN},
+      {"POST", "/api/waiting/clear", &CamWeb::postWaitingClear, LOGIN},
       {"GET", "/api/overview", &CamWeb::getOverview, LOGIN},
       {"POST", "/api/arm/rearm", &CamWeb::postArmRearm, LOGIN},
       {"GET", "/api/mqtt", &CamWeb::getMqtt, LOGIN},

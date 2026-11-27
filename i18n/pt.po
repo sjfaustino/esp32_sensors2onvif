@@ -3901,6 +3901,26 @@ msgctxt "message"
 msgid "time refused"
 msgstr "hora recusada"
 
+msgid "waiting alerts cleared"
+msgstr "alertas em espera apagados"
+
+msgctxt "message"
+msgid "waiting alerts cleared"
+msgstr "alertas em espera apagados"
+
+msgctxt "message"
+msgid "{0}: {1} alerts waiting for the NVR were cleared on the web page, so it will not record them"
+msgstr "{0}: {1} alertas à espera do NVR foram apagados na página web, por isso não os gravará"
+
+msgid "an alert is on; clear the waiting ones once it is over"
+msgstr "há um alerta ativo; apague os que esperam quando terminar"
+
+msgid "Alerts that were waiting for the NVR were cleared on purpose, so it will not record them."
+msgstr "Os alertas que esperavam pelo NVR foram apagados de propósito, por isso não os gravará."
+
+msgid "If nobody here cleared them, change the hub password: whoever did could also disarm the hub."
+msgstr "Se ninguém aqui os apagou, mude a palavra-passe da central: quem o fez também poderia desarmá-la."
+
 msgctxt "message"
 msgid "{0}: an NTP reading would have put the clock back by {1}, so it was refused. Someone may be faking the time; if the clock is wrong, save the Time page to take the next reading"
 msgstr "{0}: uma leitura NTP teria atrasado o relógio {1}, por isso foi recusada. Alguém pode estar a falsificar a hora; se o relógio estiver errado, guarde a página Hora para aceitar a leitura seguinte"
