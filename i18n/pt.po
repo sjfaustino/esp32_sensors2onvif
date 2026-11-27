@@ -1755,6 +1755,12 @@ msgstr "O sensor disparou 20 vezes numa hora. Todos os alertas foram para o NVR,
 msgid "Check what it sees, such as moving plants, sun, pets or heating, and its wiring."
 msgstr "Veja o que ele vê, como plantas a mexer, sol, animais ou aquecimento, e as ligações."
 
+msgid "A time server gave a time far from the hub's clock, by the step shown, so the hub kept its own time."
+msgstr "Um servidor de hora deu uma hora longe do relógio da central, pelo salto indicado, por isso a central manteve a sua hora."
+
+msgid "If this repeats, check the time servers on the Time page: a wrong clock would misdate every alert."
+msgstr "Se isto se repetir, verifique os servidores de hora na página Hora: um relógio errado daria a hora errada a cada alerta."
+
 msgid "The sensor reports nothing in front of it any more. Its alert ends when the alert time runs out."
 msgstr "O sensor já não comunica nada à sua frente. O alerta acaba quando acabar o tempo de alerta."
 

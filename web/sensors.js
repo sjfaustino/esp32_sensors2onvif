@@ -883,4 +883,7 @@ $("addNode").onclick = () => {
     tr("Added node {mac}", { mac: m }),
   );
 };
-load();
+// Read each time the page shows, so a node paired or a sensor added elsewhere meanwhile, as on another device, is there.
+(window.viewHooks = window.viewHooks || []).push((view) => {
+  if (view == "sensors") load();
+});

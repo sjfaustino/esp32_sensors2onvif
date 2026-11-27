@@ -76,6 +76,10 @@
       ),
       tr("Check what it sees, such as moving plants, sun, pets or heating, and its wiring."),
     ],
+    21: [
+      tr("A time server gave a time far from the hub's clock, by the step shown, so the hub kept its own time."),
+      tr("If this repeats, check the time servers on the Time page: a wrong clock would misdate every alert."),
+    ],
   };
   function explain(e) {
     if (e.kind == 0 && !e.active)
@@ -186,7 +190,7 @@
   }
   // Filtered here, from the list the hub sends, so the hub builds nothing more for it.
   const ALERT_KINDS = [0, 3, 5, 10, 13, 15],
-    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20];
+    PROBLEM_KINDS = [1, 2, 4, 5, 6, 9, 16, 17, 18, 19, 20, 21];
   // Each event's label in the colour of what it is: red an alert, amber a problem, green the NVR back, the arm modes in
   // their own colours, grey the rest.
   function kindChip(e, what) {
@@ -214,6 +218,7 @@
   const PAGE = 25; // events shown at first, and added by Show more
   let events = [],
     showing = PAGE;
+  const opened = new Set(); // the events whose explanation is open, by eventKey
   async function loadEvents() {
     try {
       events = await call("GET", "/api/events");
@@ -247,7 +252,7 @@
     {
       $("evTable").replaceChildren(
         ...(list.length ? [headRow([tr("Time"), tr("Sensor"), tr("Event"), tr("Details"), tr("Battery")])] : []),
-        ...list.slice(0, showing).map((e) => {
+        ...list.slice(0, showing).flatMap((e) => {
           const when = e.happened || e.received,
             named = hubText(e.event), // the hub names every event
             what = named.charAt(0).toUpperCase() + named.slice(1);
@@ -277,12 +282,21 @@
             el("td", null, kindChip(e, what)),
             ...[details, e.battery == null ? "" : e.battery + "%"].map((v) => el("td", { textContent: v })),
           );
+          // Its explanation stays open through the refresh every few seconds, until tapped again.
+          const key = eventKey(e),
+            explanation = () =>
+              el("tr", { className: "explanation" }, el("td", { colSpan: 5, textContent: explain(e) }));
           row.onclick = () => {
             const next = row.nextElementSibling;
-            if (next && next.classList.contains("explanation")) next.remove();
-            else row.after(el("tr", { className: "explanation" }, el("td", { colSpan: 5, textContent: explain(e) })));
+            if (next && next.classList.contains("explanation")) {
+              next.remove();
+              opened.delete(key);
+            } else {
+              row.after(explanation());
+              opened.add(key);
+            }
           };
-          return row;
+          return opened.has(key) ? [row, explanation()] : [row];
         }),
       );
       const more = list.length - showing;
@@ -317,6 +331,7 @@
   (window.viewHooks = window.viewHooks || []).push((view) => {
     if (view == "events") {
       showing = PAGE;
+      opened.clear();
       loadEvents();
       repeat(loadEvents, 3000);
     }

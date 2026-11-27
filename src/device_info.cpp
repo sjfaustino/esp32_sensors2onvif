@@ -225,7 +225,7 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
       add("When the free memory was lowest", value);
   }
   add("Largest free block", String(largestBlock() / 1024) + " KB");
-  add("Smallest largest free block", String(smallestBlock / 1024) + " KB since the start, checked each second");
+  add("Smallest largest free block", String(worstLargestBlock() / 1024) + " KB since the start, checked each second");
   HeapPieces pieces;
   heap_caps_walk(CHIP_MEMORY, countPiece, &pieces);  // the chip's own memory, as the rows above
   add("Free memory pieces", String(pieces.freeCount) + "; the largest " + pieceList(pieces.freeTop));

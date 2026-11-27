@@ -8,13 +8,15 @@ const LANG = (() => {
   try {
     chosen = localStorage.getItem("lang") || "";
   } catch (e) {}
-  if (LANGUAGES[chosen]) return chosen;
+  // Its own languages only: a name such as "constructor", kept on this device, is not one, though the object has it.
+  const offered = (code) => Object.prototype.hasOwnProperty.call(LANGUAGES, code);
+  if (offered(chosen)) return chosen;
   const preferred =
     navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
   for (const p of preferred) {
     const code = String(p).toLowerCase();
-    if (LANGUAGES[code]) return code;
-    if (LANGUAGES[code.split("-")[0]]) return code.split("-")[0];
+    if (offered(code)) return code;
+    if (offered(code.split("-")[0])) return code.split("-")[0];
   }
   return "en";
 })();

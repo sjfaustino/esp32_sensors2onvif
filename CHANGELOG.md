@@ -33,6 +33,13 @@ before that, a new minor version may change settings or the messages.
 - A paired node's key is forgotten only when its pairing file is deleted. One that could not be read for a moment, as
   while memory was short, or was damaged, used to unpair the node until the next rescan, so its signed alerts were
   refused meanwhile.
+- The Events page explains a refused time, and lists it among the problems; it had no words for it.
+- An event's explanation on the Events page stays open until tapped again; the refresh every few seconds closed it.
+- The Sensors page reads the nodes again each time it is opened, so one paired from another device shows without
+  reloading the page.
+- Device info's smallest largest free block no longer shows a made-up size in the hub's first second.
+- A language name kept on the device that is not one of the pages' own, such as one changed by hand, falls back to
+  the browser's language instead of leaving the pages without words.
 - A notification its server did not take, as while Home Assistant restarts, is sent again 10 seconds later, three
   tries in all, before it is dropped. It used to be sent once, whatever happened to it.
 - An event push the listener answers with an HTTP error now counts as not delivered, so the hub sends it again and,
