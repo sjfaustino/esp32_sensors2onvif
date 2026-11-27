@@ -16,6 +16,7 @@ CamPost::Start CamPost::start(const HttpUrl& url, std::string& request, uint32_t
   }
   out_.swap(request);
   outPos_ = 0;
+  statusLen_ = 0;
   fd_ = fd;
   state_ = CONNECTING;
   deadline_ = now + connectMs;
@@ -66,14 +67,24 @@ bool CamPost::service(bool readable, bool writable, uint32_t now) {
   if (state_ == WAIT_CLOSE && readable) {
     char buf[256];
     int got = (int)recv(fd_, buf, sizeof(buf), 0);
-    if (got >= 0 || !netWouldBlock()) {
+    if (got > 0) {  // gathered, as the status line may come in more than one piece
+      size_t take = (size_t)got < sizeof(status_) - statusLen_ ? (size_t)got : sizeof(status_) - statusLen_;
+      memcpy(status_ + statusLen_, buf, take);
+      statusLen_ += take;
+    }
+    bool closed = got == 0 || (got < 0 && !netWouldBlock());
+    if (closed || statusLen_ == sizeof(status_)) {
+      // "HTTP/1.x " and three digits. Without them, as from the NVR, which closes without a reply, the push was taken.
+      bool isStatus = statusLen_ == sizeof(status_) && memcmp(status_, "HTTP/1.", 7) == 0 && status_[8] == ' ';
+      for (int i = 9; isStatus && i < 12; i++) isStatus = status_[i] >= '0' && status_[i] <= '9';
       char code[16];
       const char* result = "closed without a reply";
       bool taken = true;
-      if (got >= 12 && memcmp(buf, "HTTP/1.", 7) == 0) {
-        snprintf(code, sizeof(code), "HTTP %.3s", buf + 9);
+      if (isStatus) {
+        int status = (status_[9] - '0') * 100 + (status_[10] - '0') * 10 + (status_[11] - '0');
+        snprintf(code, sizeof(code), "HTTP %d", status);
         result = code;
-        taken = buf[9] < '3';  // 1xx and 2xx; a redirect or an error did not take it
+        taken = status < 300;  // a redirect or an error did not take it
       }
       finish(result, taken);
       return true;

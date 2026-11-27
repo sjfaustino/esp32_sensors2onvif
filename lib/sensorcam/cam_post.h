@@ -33,4 +33,6 @@ class CamPost {
   uint32_t deadline_ = 0, replyMs_ = 0;
   char result_[24] = "";
   bool delivered_ = false;
+  char status_[12];  // the reply's first bytes, "HTTP/1.1 200", gathered until there are enough to read its code
+  size_t statusLen_ = 0;
 };

@@ -9,7 +9,7 @@ table = open(os.path.join(ROOT, 'lib', 'sensorcam', 'cam_settings.cpp'), encodin
 code = open(os.path.join(ROOT, 'src', 'hub_settings.cpp'), encoding='utf-8').read()
 
 start = table.index('const CamSetting CAM_SETTINGS[] = {')
-settings = re.findall(r'\{"(\w+)", "(\w+)", \'([subi])\'', table[start:table.index('};', start)])
+settings = re.findall(r'\{"(\w+)", "(\w+)", (CAM_KIND_\w+)', table[start:table.index('};', start)])
 if len(settings) < 30:
     sys.exit(f'found only {len(settings)} settings in CAM_SETTINGS: has its layout changed?')
 

@@ -62,6 +62,14 @@ static void x25519_matches_rfc_7748() {
   TEST_ASSERT_EQUAL_STRING(camHex(s1, 32).c_str(), camHex(s2, 32).c_str());
 }
 
+static void base64_decode_refuses_what_is_not_base64() {
+  TEST_ASSERT_EQUAL_STRING("Man", camBase64Decode("TWFu").c_str());
+  TEST_ASSERT_EQUAL_STRING("Ma", camBase64Decode("TWE=").c_str());
+  TEST_ASSERT_EQUAL_STRING("Ma", camBase64Decode("TW\r\nE=\n").c_str());  // line breaks, as a wrapped backup has
+  TEST_ASSERT_EQUAL_STRING("", camBase64Decode("TW\x01Fu").c_str());      // not read as TWFu
+  TEST_ASSERT_EQUAL_STRING("", camBase64Decode("TW=Fu").c_str());         // = only at the end
+}
+
 static void base64_matches_known_values() {
   TEST_ASSERT_EQUAL_STRING("TWE=", base64((const uint8_t*)"Ma", 2).c_str());
   TEST_ASSERT_EQUAL_STRING("TWFu", base64((const uint8_t*)"Man", 3).c_str());
@@ -337,6 +345,7 @@ void runCryptoTests() {
   RUN_TEST(others_cannot_shut_the_nvr_out);
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(base64_matches_known_values);
+  RUN_TEST(base64_decode_refuses_what_is_not_base64);
   RUN_TEST(hmac_sha1_matches_rfc_2202);
   RUN_TEST(sha1_in_pieces_matches);
   RUN_TEST(x25519_matches_rfc_7748);

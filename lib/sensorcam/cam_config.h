@@ -10,10 +10,12 @@
 // kind is s for text, u a 16-bit number, i a number, b true or false. A number is good within min and max; a text when
 // check says so. The pages' checks of what they save, the backup's checks of what it restores, and the list of what a
 // backup holds all come from here; tools/check_settings.py checks that hub_settings.cpp loads and saves each one.
+// How a setting is kept. The letters are what the table was written with before.
+enum CamSettingKind : char { CAM_KIND_TEXT = 's', CAM_KIND_PORT = 'u', CAM_KIND_INT = 'i', CAM_KIND_FLAG = 'b' };
 struct CamSetting {
   const char* space;
   const char* key;
-  char kind;
+  CamSettingKind kind;
   long long min, max;
   bool (*check)(const std::string& value);
 };

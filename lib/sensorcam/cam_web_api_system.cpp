@@ -220,15 +220,12 @@ void CamWeb::postSchedule(const ApiRequest& r) {
 // The status LEDs: where they are, and the pins this board can spare for them.
 void CamWeb::getLeds(const ApiRequest& r) {
   HttpConn& c = r.c;
-  const int* pins;
-  int n = camLedPinChoices(cfg_.board, pins);
-  const int* rgbPins;
-  int rgbCount = camRgbPinChoices(cfg_.board, rgbPins);
+  CamPinList pins = camLedPinChoices(cfg_.board), rgbPins = camRgbPinChoices(cfg_.board);
   c.out = jsonOk(jsonObject([&](CamJson& j) {
     j.num("green", leds_.green).num("red", leds_.red).num("rgb", leds_.rgb).flag("lowOn", leds_.lowOn).array("pins");
-    for (int i = 0; i < n; i++) j.num(pins[i]);
+    for (int i = 0; i < pins.count; i++) j.num(pins.pins[i]);
     j.end().array("rgbPins");
-    for (int i = 0; i < rgbCount; i++) j.num(rgbPins[i]);
+    for (int i = 0; i < rgbPins.count; i++) j.num(rgbPins.pins[i]);
     j.end();
   }));
 }
@@ -238,7 +235,7 @@ void CamWeb::postLeds(const ApiRequest& r) {
   CamLedPins p;
   auto pin = [&](const char* name, int& out, bool (*allowed)(const std::string&, int)) {
     long long v = 0;
-    if (!camNumber(r.field(name), v) || (v != -1 && !allowed(cfg_.board, (int)v))) return false;
+    if (!camNumber(r.field(name), v) || v < -1 || v > 255 || (v != -1 && !allowed(cfg_.board, (int)v))) return false;
     out = (int)v;
     return true;
   };

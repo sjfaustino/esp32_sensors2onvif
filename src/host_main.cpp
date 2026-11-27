@@ -279,7 +279,7 @@ class TestStore : public CamStore {
   bool passwordSave(const std::string& password) override { return password == "first-password"; }
   bool healthSave(bool) override { return true; }
   std::string backupText() override { return std::string("sensorcam-backup 1\nnet.name=%68%75%62\n"); }
-  bool restoreText(const std::string& text) override { return text.compare(0, 19, "sensorcam-backup 1\n") == 0; }
+  bool restoreText(const std::string& text) override { return text.rfind("sensorcam-backup 1\n", 0) == 0; }
   bool scheduleSave(const CamSchedule&) override { return true; }
   bool webhookSave(const CamWebhook&) override { return true; }
   bool armedSave(CamArmMode, int64_t) override { return true; }

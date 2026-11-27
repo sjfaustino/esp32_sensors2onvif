@@ -28,6 +28,13 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- A reply to an event push or a notification is read from its whole status line, even when that comes in pieces; it
+  used to be judged by one character of the first piece.
+- Base64 with anything in it that is not base64, as in a login, is refused rather than read with the odd characters
+  left out. Comparing a secret no longer takes longer for a longer guess.
+- A refused time reading is passed from the network task to the loop under a lock, and the count of Wi-Fi drops is
+  kept as an atomic, as each is written on one core and read on the other.
+- A pin for an LED larger than the pins go is refused, rather than read as a smaller number that may be allowed.
 - An NVR whose first event push did not get through was sent the next as Changed, never as Initialized, which ONVIF
   says comes first. A subscription's first push now counts only once it gets there. A Subscribe that takes the place of
   another while a push to it is under way is no longer marked by that push's result.
@@ -59,6 +66,8 @@ before that, a new minor version may change settings or the messages.
 
 ### Changes
 
+- A settings backup writes letters, digits and `.-_` as they are, and only other characters as `%XX`, so it is about a
+  third the size and can be read. Backups written before, with every character as `%XX`, still restore.
 - Up to three NTP servers, tried in turn. A new hub uses Portugal's legal time from the Observatório Astronómico de
   Lisboa, `ntp04.oal.ul.pt` and `ntp02.oal.ul.pt`, then `pt.pool.ntp.org`.
 - Device info and the week of health take the least free memory as the memory itself keeps it, at every allocation,

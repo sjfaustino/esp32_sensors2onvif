@@ -84,18 +84,26 @@ std::string camMd5Hex(const std::string& data) {
   return camHex(bytes, sizeof(bytes));
 }
 
+// Spaces and line breaks are passed over, and = only ends it; anything else that is not base64 makes the whole of it
+// nothing, so "a\x01b" is not read as "ab".
 std::string camBase64Decode(const std::string& text) {
   std::string out;
   uint32_t bits = 0;
   int count = 0;
+  bool ended = false;  // by =
   for (char ch : text) {
+    if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') continue;
+    if (ch == '=') {
+      ended = true;
+      continue;
+    }
     int v = ch >= 'A' && ch <= 'Z'   ? ch - 'A'
             : ch >= 'a' && ch <= 'z' ? ch - 'a' + 26
             : ch >= '0' && ch <= '9' ? ch - '0' + 52
             : ch == '+'              ? 62
             : ch == '/'              ? 63
                                      : -1;
-    if (v < 0) continue;
+    if (v < 0 || ended) return std::string();
     bits = bits << 6 | (uint32_t)v;
     if (++count == 4) {
       out += (char)(bits >> 16);
@@ -114,10 +122,12 @@ std::string camBase64Decode(const std::string& text) {
   return out;
 }
 
-// Takes the same time however much of the two matches, so the time taken says nothing about a secret.
+// Takes the same time however much of the two matches, so the time taken says nothing about a secret. Their SHA-1s are
+// compared, not the texts, so the time does not follow the length of either.
 bool camSameText(const std::string& a, const std::string& b) {
-  uint8_t differ = a.size() != b.size();
-  for (size_t i = 0; i < a.size(); i++) differ |= (uint8_t)a[i] ^ (uint8_t)(i < b.size() ? b[i] : 0);
+  std::string ha = camSha1(a), hb = camSha1(b);
+  uint8_t differ = 0;
+  for (size_t i = 0; i < ha.size(); i++) differ |= (uint8_t)ha[i] ^ (uint8_t)hb[i];
   return !differ;
 }
 

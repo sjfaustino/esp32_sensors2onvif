@@ -3,6 +3,7 @@
 #include "hub_time.h"
 #include <esp_sntp.h>
 #include <sys/time.h>
+#include <atomic>
 #include "cam_board_rules.h"
 #include "cam_web_checks.h"
 #include "hub_settings.h"
@@ -10,16 +11,21 @@
 // The names the time library is given: it keeps pointers to them, not copies, so they live here, and change only while
 // it is stopped.
 static std::string servers[3];
-// Set on the network task, where readings arrive, and read in the loop, which logs a refusal.
-static volatile bool trustNext = false, refused = false;
-static volatile int64_t refusedStep = 0;
+// Set on the network task, where readings arrive, and read in the loop, which logs a refusal: on the other core, so the
+// refusal and its step are read and written together, under the lock.
+static std::atomic<bool> trustNext{false};
+static portMUX_TYPE refusalLock = portMUX_INITIALIZER_UNLOCKED;
+static bool refused = false;
+static int64_t refusedStep = 0;
 
 // Each NTP reading comes here, in place of the time library's own, which would take any time at all. See camNtpTaken.
 extern "C" void sntp_sync_time(struct timeval* tv) {
   time_t now = time(nullptr);
   if (!camNtpTaken((int64_t)now, (int64_t)tv->tv_sec, trustNext)) {
+    portENTER_CRITICAL(&refusalLock);
     refusedStep = (int64_t)tv->tv_sec - (int64_t)now;
     refused = true;
+    portEXIT_CRITICAL(&refusalLock);
     return;
   }
   trustNext = false;
@@ -28,10 +34,12 @@ extern "C" void sntp_sync_time(struct timeval* tv) {
 }
 
 bool takeTimeRefused(int64_t& stepS) {
-  if (!refused) return false;
+  portENTER_CRITICAL(&refusalLock);
+  bool was = refused;
   stepS = refusedStep;
   refused = false;
-  return true;
+  portEXIT_CRITICAL(&refusalLock);
+  return was;
 }
 
 bool clockSet() { return time(nullptr) > CAM_CLOCK_VALID_AFTER; }

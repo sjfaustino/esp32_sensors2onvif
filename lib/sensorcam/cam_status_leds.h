@@ -23,46 +23,35 @@
 // On an ESP32: not 0, 2, 5, 12 and 15 (read at start), 6 to 11 (flash), 16 and 17 (PSRAM on some boards), 1 and 3
 // (serial), 34 to 39 (input only). On an ESP32-S3: not 0, 3, 45 and 46 (read at start), 19 and 20 (USB), 26 to 37
 // (flash and octal PSRAM), 43 and 44 (serial).
-inline int camLedPinChoices(const std::string& board, const int*& pins) {
+// The RGB LED may also be on the last two of the ESP32-S3's, 47 and 48, as boards put theirs on 48 or 38.
+struct CamPinList {
+  const int* pins = nullptr;
+  int count = 0;  // 0 for a board this does not know: no LEDs, rather than a guess
+  bool has(int pin) const {
+    for (int i = 0; i < count; i++)
+      if (pins[i] == pin) return true;
+    return false;
+  }
+};
+
+inline CamPinList camPinList(const std::string& board, bool rgb) {
   static const int ESP32[] = {4, 13, 14, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
-  static const int ESP32S3[] = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42};
-  if (board == "esp32s3") {
-    pins = ESP32S3;
-    return (int)(sizeof(ESP32S3) / sizeof(ESP32S3[0]));
-  }
-  if (board == "esp32_16mb" || board == "esp32dev") {
-    pins = ESP32;
-    return (int)(sizeof(ESP32) / sizeof(ESP32[0]));
-  }
-  pins = nullptr;
-  return 0;  // a board this does not know: no LEDs, rather than a guess
-}
-
-// The pins the page offers for an RGB LED: the same, and on an ESP32-S3 also 47 and 48, as boards put theirs on 48 or 38.
-inline int camRgbPinChoices(const std::string& board, const int*& pins) {
   static const int ESP32S3[] = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48};
+  const int S3_RGB_ONLY = 2;  // 47 and 48, at the end
+  CamPinList l;
   if (board == "esp32s3") {
-    pins = ESP32S3;
-    return (int)(sizeof(ESP32S3) / sizeof(ESP32S3[0]));
+    l.pins = ESP32S3;
+    l.count = (int)(sizeof(ESP32S3) / sizeof(ESP32S3[0])) - (rgb ? 0 : S3_RGB_ONLY);
+  } else if (board == "esp32_16mb" || board == "esp32dev") {
+    l.pins = ESP32;
+    l.count = (int)(sizeof(ESP32) / sizeof(ESP32[0]));
   }
-  return camLedPinChoices(board, pins);
+  return l;
 }
-
-inline bool camRgbPinAllowed(const std::string& board, int pin) {
-  const int* pins;
-  int n = camRgbPinChoices(board, pins);
-  for (int i = 0; i < n; i++)
-    if (pins[i] == pin) return true;
-  return false;
-}
-
-inline bool camLedPinAllowed(const std::string& board, int pin) {
-  const int* pins;
-  int n = camLedPinChoices(board, pins);
-  for (int i = 0; i < n; i++)
-    if (pins[i] == pin) return true;
-  return false;
-}
+inline CamPinList camLedPinChoices(const std::string& board) { return camPinList(board, false); }
+inline CamPinList camRgbPinChoices(const std::string& board) { return camPinList(board, true); }
+inline bool camLedPinAllowed(const std::string& board, int pin) { return camLedPinChoices(board).has(pin); }
+inline bool camRgbPinAllowed(const std::string& board, int pin) { return camRgbPinChoices(board).has(pin); }
 
 // The pins as saved, with any the board cannot spare, and a red on the green's pin, or an RGB on either's, left out.
 inline CamLedPins camLedPinsChecked(const std::string& board, CamLedPins p) {
@@ -116,6 +105,12 @@ inline CamLeds camStatusLeds(const CamLedState& s, uint32_t ms) {
     l.red = true;
   else if (s.problems)
     l.red = ms % 2000 < 100;
-  if (!notProtecting) l.green = s.mode == CAM_ARMED_AWAY ? true : s.mode == CAM_ARMED_HOME ? ms % 2000 < 1000 : ms % 3000 < 100;
+  if (notProtecting) return l;
+  if (s.mode == CAM_ARMED_AWAY)
+    l.green = true;
+  else if (s.mode == CAM_ARMED_HOME)
+    l.green = ms % 2000 < 1000;
+  else
+    l.green = ms % 3000 < 100;
   return l;
 }

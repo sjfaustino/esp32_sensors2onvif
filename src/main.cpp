@@ -315,7 +315,9 @@ static void showStatus(bool connected) {
   driven = want;
   CamLeds l = server->leds(connected, setupIsOpen());
   auto light = [&](int pin, bool on) {
-    if (pin >= 0) digitalWrite(pin, on != want.lowOn ? HIGH : LOW);
+    if (pin < 0) return;
+    bool high = want.lowOn ? !on : on;  // an LED wired to light on a low pin
+    digitalWrite(pin, high ? HIGH : LOW);
   };
   light(want.green, l.green);
   light(want.red, l.red);

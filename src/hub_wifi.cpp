@@ -4,6 +4,7 @@
 #include <DNSServer.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <atomic>
 #include "cam_board_rules.h"
 #include "cam_timing.h"
 #include "config.h"
@@ -15,8 +16,9 @@ static CamSetupButton button;  // a blank hub's open setup network waits for it:
 static DNSServer dnsServer;
 static bool setupOpen = false;
 static bool usingStatic = false;
-static volatile uint32_t drops = 0;
-static volatile uint8_t dropReason = 0;
+// Counted on the Wi-Fi task, read in the loop.
+static std::atomic<uint32_t> drops{0};
+static std::atomic<uint8_t> dropReason{0};
 static uint32_t dropsAtTry = 0;  // so a drop since the last try can be told from one before it
 
 static void tryNetwork(int i) {
@@ -48,7 +50,7 @@ void wifiBegin() {
   WiFi.setHostname(settings.hubName.c_str());
   WiFi.onEvent(
       [](WiFiEvent_t, WiFiEventInfo_t info) {
-        drops = drops + 1;
+        drops++;
         dropReason = info.wifi_sta_disconnected.reason;
       },
       ARDUINO_EVENT_WIFI_STA_DISCONNECTED);

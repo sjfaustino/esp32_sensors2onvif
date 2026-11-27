@@ -9,7 +9,10 @@ static const char HEAD[] = "sensorcam-backup sealed 2 pbkdf2-sha256 ";
 static const size_t HEAD_LEN = sizeof(HEAD) - 1;
 static const size_t NONCE = 24, TAG = 16;
 
-bool camBackupIsSealed(const std::string& text) { return text.compare(0, 24, "sensorcam-backup sealed ") == 0; }
+bool camBackupIsSealed(const std::string& text) {
+  static const char SEALED[] = "sensorcam-backup sealed ";
+  return text.compare(0, sizeof(SEALED) - 1, SEALED) == 0;
+}
 
 static bool hexInto(const std::string& text, uint8_t* out, size_t n) {
   if (text.size() != 2 * n) return false;

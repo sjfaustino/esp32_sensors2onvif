@@ -92,8 +92,7 @@ void loadSettings() {
     s.webhook.alerts = p.getBool("hookal", true);
     s.webhook.problems = p.getBool("hookpr", true);
     s.webhook.dailyMinute = p.getInt("hookdy", -1);
-    // By its code; a hub that saved it as a number before, 1 for Portuguese, keeps it.
-    s.webhook.language = p.getString("hooklg", p.getInt("hookln", 0) == 1 ? "pt" : "en").c_str();
+    s.webhook.language = p.getString("hooklg", "en").c_str();  // by its code, as "pt"
     s.mqtt.host = p.getString("mqhost", "").c_str();
     s.mqtt.port = p.getUShort("mqport", 1883);
     s.mqtt.user = p.getString("mquser", "").c_str();
@@ -299,18 +298,29 @@ bool forgetKeys() {
 
 using BackupKey = CamSetting;  // the list, CAM_SETTINGS, is in cam_settings.cpp beside the check of each value
 
+static const char BACKUP_HEADER[] = "sensorcam-backup 1\n";
+static const size_t BACKUP_HEADER_LEN = sizeof(BACKUP_HEADER) - 1;
+
+// Kept as written in a backup: letters, digits and these few. Anything else is written as %XX, so a value can hold an
+// = or a line break, and the file stays readable where it can.
+static bool plainInBackup(char ch) { return isalnum((unsigned char)ch) || ch == '.' || ch == '-' || ch == '_'; }
+
 std::string backupText() {
-  std::string out = "sensorcam-backup 1\n";
+  std::string out = BACKUP_HEADER;
   for (const BackupKey& k : camSettings()) {
     withPrefs(k.space, [&](Preferences& p) {
       if (!p.isKey(k.key)) return true;
-      String value = k.kind == 's'   ? p.getString(k.key, "")
-                     : k.kind == 'u' ? String(p.getUShort(k.key, 0))
-                     : k.kind == 'i' ? String(p.getInt(k.key, 0))
-                                     : String(p.getBool(k.key, false) ? 1 : 0);
+      String value = k.kind == CAM_KIND_TEXT   ? p.getString(k.key, "")
+                     : k.kind == CAM_KIND_PORT ? String(p.getUShort(k.key, 0))
+                     : k.kind == CAM_KIND_INT  ? String(p.getInt(k.key, 0))
+                                               : String(p.getBool(k.key, false) ? 1 : 0);
       out += std::string(k.space) + "." + k.key + "=";
       char hex[4];
       for (size_t i = 0; i < value.length(); i++) {
+        if (plainInBackup(value[i])) {
+          out += value[i];
+          continue;
+        }
         snprintf(hex, sizeof(hex), "%%%02X", (uint8_t)value[i]);
         out += hex;
       }
@@ -328,8 +338,8 @@ struct BackupLine {
 
 // False for a damaged file, and for one with no settings in it.
 static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines) {
-  if (text.compare(0, 19, "sensorcam-backup 1\n") != 0) return false;
-  for (size_t at = 19; at < text.size();) {
+  if (text.compare(0, BACKUP_HEADER_LEN, BACKUP_HEADER) != 0) return false;
+  for (size_t at = BACKUP_HEADER_LEN; at < text.size();) {
     size_t end = text.find('\n', at);
     if (end == std::string::npos) end = text.size();
     std::string line = text.substr(at, end - at);
@@ -339,13 +349,22 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
     size_t eq = line.find('=');
     if (eq == std::string::npos) return false;
     const BackupKey* found = nullptr;
-    for (const BackupKey& k : camSettings())
-      if (line.compare(0, eq, std::string(k.space) + "." + k.key) == 0) found = &k;
+    size_t dot = line.find('.');
+    for (const BackupKey& k : camSettings()) {
+      size_t spaceLen = strlen(k.space);
+      if (dot == spaceLen && dot < eq && line.compare(0, dot, k.space) == 0 && line.compare(dot + 1, eq - dot - 1, k.key) == 0) found = &k;
+    }
     if (!found) return false;
+    // Plain characters as they are, others as %XX; a backup from before wrote every one as %XX.
     std::string value;
-    for (size_t i = eq + 1; i < line.size(); i += 3) {
+    for (size_t i = eq + 1; i < line.size();) {
+      if (plainInBackup(line[i])) {
+        value += line[i++];
+        continue;
+      }
       if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
       value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
+      i += 3;
     }
     std::string name = std::string(found->space) + "." + found->key;
     if (!camBackupValueValid(name, value)) return false;
@@ -356,9 +375,9 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
 
 static bool writeBackupLine(const BackupLine& l) {
   return withPrefs(l.key->space, [&](Preferences& p) {
-    if (l.key->kind == 's') return putText(p, l.key->key, l.value.c_str());
-    if (l.key->kind == 'u') return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
-    if (l.key->kind == 'i') return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
+    if (l.key->kind == CAM_KIND_TEXT) return putText(p, l.key->key, l.value.c_str());
+    if (l.key->kind == CAM_KIND_PORT) return p.putUShort(l.key->key, (uint16_t)atoi(l.value.c_str())) == 2;
+    if (l.key->kind == CAM_KIND_INT) return p.putInt(l.key->key, atoi(l.value.c_str())) == 4;
     return p.putBool(l.key->key, l.value == "1") == 1;
   });
 }

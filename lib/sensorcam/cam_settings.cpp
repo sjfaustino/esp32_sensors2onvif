@@ -116,62 +116,62 @@ static bool wifiPassword(const std::string& v) { return v.empty() || (v.size() >
 
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization): built before anything runs; no memory then is no hub at all
 const CamSetting CAM_SETTINGS[] = {
-    {"wifi", "ssid", 's', 0, 0, ssid},
-    {"wifi", "password", 's', 0, 0, wifiPassword},
-    {"wifi", "ssid2", 's', 0, 0, ssid},
-    {"wifi", "password2", 's', 0, 0, wifiPassword},
-    {"net", "onvif", 'u', 1, 65535, nullptr},
-    {"net", "web", 'u', 1, 65535, nullptr},
-    {"net", "rtsp", 'u', 1, 65535, nullptr},
-    {"net", "name", 's', 0, 0, [](const std::string& v) { return !v.empty() && validHubName(v); }},
+    {"wifi", "ssid", CAM_KIND_TEXT, 0, 0, ssid},
+    {"wifi", "password", CAM_KIND_TEXT, 0, 0, wifiPassword},
+    {"wifi", "ssid2", CAM_KIND_TEXT, 0, 0, ssid},
+    {"wifi", "password2", CAM_KIND_TEXT, 0, 0, wifiPassword},
+    {"net", "onvif", CAM_KIND_PORT, 1, 65535, nullptr},
+    {"net", "web", CAM_KIND_PORT, 1, 65535, nullptr},
+    {"net", "rtsp", CAM_KIND_PORT, 1, 65535, nullptr},
+    {"net", "name", CAM_KIND_TEXT, 0, 0, [](const std::string& v) { return !v.empty() && validHubName(v); }},
     // As the page requires; empty in a backup from before a password was required, which camBackupValueKept leaves out.
-    {"net", "webpw", 's', 0, 0, [](const std::string& v) { return v.empty() || (v.size() >= 8 && v.size() <= 63); }},
-    {"net", "token", 's', 0, 0, validToken},
-    {"net", "ipfor", 's', 0, 0, ssid},  // the network a fixed address is for
-    {"net", "ip", 's', 0, 0, anyIpv4},
-    {"net", "mask", 's', 0, 0, anyIpv4},
-    {"net", "gw", 's', 0, 0, anyIpv4},
-    {"net", "dns", 's', 0, 0, noneOrIpv4},
-    {"net", "nvrip", 's', 0, 0, noneOrIpv4},
-    {"net", "ntp", 'b', 0, 1, nullptr},
-    {"net", "ntpsrv", 's', 0, 0, validNtpServer},
-    {"net", "tzoff", 'i', -720, 840,
+    {"net", "webpw", CAM_KIND_TEXT, 0, 0, [](const std::string& v) { return v.empty() || (v.size() >= 8 && v.size() <= 63); }},
+    {"net", "token", CAM_KIND_TEXT, 0, 0, validToken},
+    {"net", "ipfor", CAM_KIND_TEXT, 0, 0, ssid},  // the network a fixed address is for
+    {"net", "ip", CAM_KIND_TEXT, 0, 0, anyIpv4},
+    {"net", "mask", CAM_KIND_TEXT, 0, 0, anyIpv4},
+    {"net", "gw", CAM_KIND_TEXT, 0, 0, anyIpv4},
+    {"net", "dns", CAM_KIND_TEXT, 0, 0, noneOrIpv4},
+    {"net", "nvrip", CAM_KIND_TEXT, 0, 0, noneOrIpv4},
+    {"net", "ntp", CAM_KIND_FLAG, 0, 1, nullptr},
+    {"net", "ntpsrv", CAM_KIND_TEXT, 0, 0, validNtpServer},
+    {"net", "tzoff", CAM_KIND_INT, -720, 840,
      [](const std::string& v) {
        long long n = 0;
        return camNumber(v, n) && validOffset(n);  // whole quarter hours
      }},
-    {"net", "tzdst", 'i', 0, 2, nullptr},
-    {"net", "rben", 'b', 0, 1, nullptr},
-    {"net", "rbday", 'i', -1, 6, nullptr},  // the scheduled restart's day, 0 for Sunday; -1 every day
-    {"net", "rbmin", 'i', 0, 1439, nullptr},
-    {"net", "hlth", 'b', 0, 1, nullptr},
-    {"net", "enkey", 's', 0, 0, [](const std::string& v) { return v.size() >= 16 && validToken(v); }},
-    {"net", "hook", 's', 0, 0, validHookUrl},
-    {"net", "hooktx", 'b', 0, 1, nullptr},  // plain text, from before the format; still saved beside it
-    {"net", "hookal", 'b', 0, 1, nullptr},
-    {"net", "hookpr", 'b', 0, 1, nullptr},
-    {"net", "hookdy", 'i', -1, 1439, nullptr},  // the daily check's minute; -1 for none
-    {"net", "hosts", 's', 0, 0, camHostListValid},
-    {"net", "pairkey", 's', 0, 0,
+    {"net", "tzdst", CAM_KIND_INT, 0, 2, nullptr},
+    {"net", "rben", CAM_KIND_FLAG, 0, 1, nullptr},
+    {"net", "rbday", CAM_KIND_INT, -1, 6, nullptr},  // the scheduled restart's day, 0 for Sunday; -1 every day
+    {"net", "rbmin", CAM_KIND_INT, 0, 1439, nullptr},
+    {"net", "hlth", CAM_KIND_FLAG, 0, 1, nullptr},
+    {"net", "enkey", CAM_KIND_TEXT, 0, 0, [](const std::string& v) { return v.size() >= 16 && validToken(v); }},
+    {"net", "hook", CAM_KIND_TEXT, 0, 0, validHookUrl},
+    {"net", "hooktx", CAM_KIND_FLAG, 0, 1, nullptr},  // plain text, from before the format; still saved beside it
+    {"net", "hookal", CAM_KIND_FLAG, 0, 1, nullptr},
+    {"net", "hookpr", CAM_KIND_FLAG, 0, 1, nullptr},
+    {"net", "hookdy", CAM_KIND_INT, -1, 1439, nullptr},  // the daily check's minute; -1 for none
+    {"net", "hosts", CAM_KIND_TEXT, 0, 0, camHostListValid},
+    {"net", "pairkey", CAM_KIND_TEXT, 0, 0,
      [](const std::string& v) {
        uint8_t k[CAM_X25519_LEN];
        return camParseHex(v, k, sizeof(k));
      }},
-    {"net", "rearm", 'u', 0, CAM_MAX_DISARM_MINUTES, nullptr},
-    {"net", "mqhost", 's', 0, 0, noneOrIpv4},
-    {"net", "mqport", 'u', 1, 65535, nullptr},
-    {"net", "mquser", 's', 0, 0, validMqttText},
-    {"net", "mqpw", 's', 0, 0, validMqttText},
-    {"net", "hookfm", 'i', CAM_HOOK_JSON, CAM_HOOK_GOTIFY, nullptr},
-    {"net", "hooktk", 's', 0, 0, [](const std::string& v) { return v.empty() || validToken(v); }},
-    {"net", "hookwd", 'i', -1, 6, nullptr},  // the weekly summary's day, 0 for Sunday; -1 for none
-    {"net", "hookwm", 'i', 0, 1439, nullptr},
-    {"net", "hooklg", 's', 0, 0, camTextLanguageKnown},  // the messages' language, as "pt"; "en" for English
+    {"net", "rearm", CAM_KIND_PORT, 0, CAM_MAX_DISARM_MINUTES, nullptr},
+    {"net", "mqhost", CAM_KIND_TEXT, 0, 0, noneOrIpv4},
+    {"net", "mqport", CAM_KIND_PORT, 1, 65535, nullptr},
+    {"net", "mquser", CAM_KIND_TEXT, 0, 0, validMqttText},
+    {"net", "mqpw", CAM_KIND_TEXT, 0, 0, validMqttText},
+    {"net", "hookfm", CAM_KIND_INT, CAM_HOOK_JSON, CAM_HOOK_GOTIFY, nullptr},
+    {"net", "hooktk", CAM_KIND_TEXT, 0, 0, [](const std::string& v) { return v.empty() || validToken(v); }},
+    {"net", "hookwd", CAM_KIND_INT, -1, 6, nullptr},  // the weekly summary's day, 0 for Sunday; -1 for none
+    {"net", "hookwm", CAM_KIND_INT, 0, 1439, nullptr},
+    {"net", "hooklg", CAM_KIND_TEXT, 0, 0, camTextLanguageKnown},  // the messages' language, as "pt"; "en" for English
     // The status LEDs' pins, -1 for none; the hub checks them against its own board as it starts.
-    {"net", "ledg", 'i', -1, 48, nullptr},
-    {"net", "ledr", 'i', -1, 48, nullptr},
-    {"net", "ledrgb", 'i', -1, 48, nullptr},
-    {"net", "ledlo", 'b', 0, 1, nullptr},
+    {"net", "ledg", CAM_KIND_INT, -1, 48, nullptr},
+    {"net", "ledr", CAM_KIND_INT, -1, 48, nullptr},
+    {"net", "ledrgb", CAM_KIND_INT, -1, 48, nullptr},
+    {"net", "ledlo", CAM_KIND_FLAG, 0, 1, nullptr},
 };
 const size_t CAM_SETTING_COUNT = sizeof(CAM_SETTINGS) / sizeof(CAM_SETTINGS[0]);
 
@@ -184,7 +184,7 @@ const CamSetting* camSetting(const std::string& key) {
 bool camSettingNumber(const std::string& key, const std::string& value, long long& out) {
   const CamSetting* s = camSetting(key);
   long long n = 0;
-  if (!s || s->kind == 's' || !wholeNumber(value, n) || n < s->min || n > s->max || (s->check && !s->check(value))) return false;
+  if (!s || s->kind == CAM_KIND_TEXT || !wholeNumber(value, n) || n < s->min || n > s->max || (s->check && !s->check(value))) return false;
   out = n;
   return true;
 }
@@ -192,9 +192,9 @@ bool camSettingNumber(const std::string& key, const std::string& value, long lon
 bool camSettingValid(const std::string& key, const std::string& value) {
   const CamSetting* s = camSetting(key);
   if (!s) return false;
-  if (s->kind == 'b') return zeroOrOne(value);
+  if (s->kind == CAM_KIND_FLAG) return zeroOrOne(value);
   long long n;
-  if (s->kind != 's') return camSettingNumber(key, value, n);
+  if (s->kind != CAM_KIND_TEXT) return camSettingNumber(key, value, n);
   return s->check && s->check(value);
 }
 
