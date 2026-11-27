@@ -484,6 +484,8 @@ def a_push_answered_with_an_error_is_sent_again(s):
         wait_until(lambda: refusing.events)
         wait_until(lambda: len(refusing.events) >= 2, timeout=40)  # the hub tries a failed push again every 30 s
         check('a push answered with HTTP 500 is sent again', len(refusing.events) >= 2, len(refusing.events))
+        # Its first message never got there, so the one sent again is still the subscription's first.
+        check('a first push that was refused is sent again as Initialized', 'PropertyOperation="Initialized"' in refusing.events[1][1])
     finally:
         unsubscribe(reply)
 

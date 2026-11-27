@@ -15,7 +15,7 @@ struct CamSub {
   uint32_t peer = 0;     // address the subscriber connects from
   uint32_t heardAt = 0;
   bool pending = false;      // push: a notification should be sent
-  bool initialized = false;  // push: first message (PropertyOperation "Initialized") was sent
+  bool initialized = false;  // push: the first message (PropertyOperation "Initialized") got there
   int lastPull = -1;         // pull: last state delivered, -1 for none
   uint32_t pulledAt = 0;     // pull: when it last asked for events, which is what shows it is listening
   bool pushFailed = false;   // push: the last notification could not be delivered

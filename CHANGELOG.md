@@ -25,6 +25,9 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- An NVR whose first event push did not get through was sent the next as Changed, never as Initialized, which ONVIF
+  says comes first. A subscription's first push now counts only once it gets there. A Subscribe that takes the place of
+  another while a push to it is under way is no longer marked by that push's result.
 - tools/update_hub.py refused to update a hub while alerts waited for the NVR, so an NVR out of reach blocked every
   update. The hub keeps those alerts in flash and replays them after a restart, so now only an active alert stops it.
 - A hub on a network without a fixed address was never given one: it asked for 255.255.255.255 as a fixed address in

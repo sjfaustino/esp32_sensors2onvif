@@ -52,8 +52,13 @@ void CamOnvifEvents::serve(fd_set& rd, fd_set& wr, uint32_t now) {
   if (udp_ >= 0 && FD_ISSET(udp_, &rd)) serviceDiscovery();
   for (int i = 0; i < SubTable::SIZE; i++) {
     CamPost& n = notify_[i];
-    // Ended before the whole message was sent, the NVR did not get it.
-    if (!n.idle() && n.service(FD_ISSET(n.fd(), &rd), FD_ISSET(n.fd(), &wr), now)) subs_.at(i).pushFailed = !n.delivered();
+    // Ended before the whole message was sent, the NVR did not get it. Only a first message that got there counts as the
+    // subscription's Initialized: one that failed is sent again as the first.
+    if (n.idle() || !n.service(FD_ISSET(n.fd(), &rd), FD_ISSET(n.fd(), &wr), now)) continue;
+    CamSub& s = subs_.at(i);
+    if (!s.used || s.id != pushFor_[i]) continue;
+    s.pushFailed = !n.delivered();
+    if (n.delivered() && pushFirst_[i]) s.initialized = true;
   }
 }
 
@@ -121,7 +126,8 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
     sub.pushFailed = true;
     return;
   }
-  sub.initialized = true;
+  pushFor_[i] = sub.id;
+  pushFirst_[i] = !sub.initialized;
 }
 
 // ---- WS-Discovery ----

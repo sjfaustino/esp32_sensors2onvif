@@ -44,6 +44,10 @@ class CamOnvifEvents {
   SubTable subs_;
   MotionSignal signal_;
   CamPost notify_[SubTable::SIZE];  // the event pushes, one for each subscription
-  int udp_ = -1;                    // discovery
+  // Which subscription each push is for, and whether it is its first: a Subscribe that takes the entry meanwhile is
+  // another subscription, and the end of a push to the one before tells nothing of it.
+  uint32_t pushFor_[SubTable::SIZE] = {0};
+  bool pushFirst_[SubTable::SIZE] = {false};
+  int udp_ = -1;  // discovery
   uint32_t messageNo_ = 1;
 };
