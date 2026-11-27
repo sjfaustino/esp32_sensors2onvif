@@ -70,7 +70,8 @@ These are limits of the design, or of the hardware, and the owner can lessen eac
   try slow, but a short or common passphrase still falls. Choose a few words nobody would guess.
 - **A board built without the setup button** (`SETUP_BUTTON_PIN` -1). Its setup network opens with no password as soon
   as it cannot join a network, until a hub password is chosen. Set such a hub up as soon as it first starts.
-- **The MQTT broker.** Anything that can publish to it can arm and disarm the hub. Give the broker a login.
+- **The MQTT broker.** Anything that can publish to it can arm the hub, and, if the hub logs in to it, disarm it or
+  move it from away to home. Without a login the hub takes neither. Give the broker a login.
 - **Nodes on old firmware.** A node running firmware from before node signing takes any firmware its hub offers; once it
   runs a signed one, it checks every update after. One from before its info carried the hub's number can still have
   its info played back, until it runs firmware that sends the number.

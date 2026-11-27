@@ -7,6 +7,9 @@ before that, a new minor version may change settings or the messages.
 
 ### Security
 
+- Through an MQTT broker the hub does not log in to, anyone on the network could move it from armed away to armed home,
+  which stops the interior sensors' alerts as a disarm would; only the disarm itself was refused. Now that is refused
+  too. Arming home from disarmed is still taken.
 - Guessing the hub password from many addresses no longer gets ten tries for each. The hub has room to count eight
   addresses, and a new one used to push out the one quiet longest, which then started again; now an address that has
   used up its tries keeps its place for the day, and once all eight are such, the others share one count. The NVR's

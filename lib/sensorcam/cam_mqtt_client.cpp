@@ -131,12 +131,13 @@ void CamMqttClient::packet(const uint8_t* p, size_t len, uint32_t now) {
     }
     if (topic != "armed/set") return;
     std::string command(m.payload, m.payloadLen);
-    // ON and OFF are what the Armed switch of earlier firmware sent.
-    if (command == "ARM_AWAY" || command == "ON") alarm_.setArmMode(CAM_ARMED_AWAY, "Home Assistant");
-    if (command == "ARM_HOME") alarm_.setArmMode(CAM_ARMED_HOME, "Home Assistant");
-    // Only through a broker the hub logs in to: one that lets anyone in would let anyone on the network disarm it.
-    // Arming, and a test alert, cannot open the house, so they are taken either way.
+    // Only through a broker the hub logs in to: one that lets anyone in would let anyone on the network disarm it, or
+    // move it from away to home, which stops the interior sensors' alerts as a disarm would. Arming from disarmed, and a
+    // test alert, cannot open the house, so they are taken either way. ON and OFF are what the Armed switch of earlier
+    // firmware sent.
     bool mayDisarm = !settings_.user.empty();
+    if (command == "ARM_AWAY" || command == "ON") alarm_.setArmMode(CAM_ARMED_AWAY, "Home Assistant");
+    if (command == "ARM_HOME" && (mayDisarm || alarm_.armMode() == CAM_DISARMED)) alarm_.setArmMode(CAM_ARMED_HOME, "Home Assistant");
     if ((command == "DISARM" || command == "OFF") && mayDisarm) alarm_.setArmMode(CAM_DISARMED, "Home Assistant", alarm_.rearmMinutes());
     io_.hubTold = false;  // sent again either way, so a switch whose command failed shows the real state
   } else if (type == CAM_MQTT_PUBACK && len >= 4) {

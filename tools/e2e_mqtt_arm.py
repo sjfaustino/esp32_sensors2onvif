@@ -120,6 +120,9 @@ def home_assistant(s):
     broker.send(f'{base}/armed/set', b'DISARM')
     time.sleep(0.5)  # time for the hub to wrongly obey it
     check('without a login to the broker, a disarm from it is refused', get_json('/api/arm')['armed'] is True)
+    broker.send(f'{base}/armed/set', b'ARM_HOME')
+    time.sleep(0.5)  # time for the hub to wrongly obey it
+    check('nor a move from away to home, which stops the interior alerts', get_json('/api/arm')['mode'] == 'away', get_json('/api/arm'))
     check('and the page can say why, as it is told there is no login', mqtt_page().get('user') == '', mqtt_page())
     api('POST', '/api/mqtt', f'host={LOCAL}&port={broker.port}&user=hub&password=' + urllib.parse.quote('s3cret pw'))
     wait_until(lambda: mqtt_page()['state'] == 'connected' and broker.connects[-1].get('user') == 'hub')
