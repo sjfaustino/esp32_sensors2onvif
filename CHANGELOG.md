@@ -66,11 +66,11 @@ before that, a new minor version may change settings or the messages.
 
 ### Changes
 
-- Alerts waiting for the NVR, such as test alerts it was away for, can be cleared with `POST /api/waiting/clear`.
+- Alerts waiting for the NVR, such as test alerts it was away for, can be cleared from the Overview, which shows them while they wait, or with `POST /api/waiting/clear`.
   It is refused while an alert is on, and logged as waiting alerts cleared, so a cleared queue cannot pass unseen.
 - A settings backup writes letters, digits and `.-_` as they are, and only other characters as `%XX`, so it is about a
   third the size and can be read. Backups written before, with every character as `%XX`, still restore.
-- Up to three NTP servers, tried in turn. A new hub uses Portugal's legal time from the Observatório Astronómico de
+- Up to three NTP servers, tried in turn. A new hub uses Portugal's legal time from the ObservatÃ³rio AstronÃ³mico de
   Lisboa, `ntp04.oal.ul.pt` and `ntp02.oal.ul.pt`, then `pt.pool.ntp.org`.
 - Device info and the week of health take the least free memory as the memory itself keeps it, at every allocation,
   so a fall that lasts a moment, as a web request's, is seen. The row that said "today" says since the daily check,

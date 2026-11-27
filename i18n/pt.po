@@ -3912,6 +3912,27 @@ msgctxt "message"
 msgid "{0}: {1} alerts waiting for the NVR were cleared on the web page, so it will not record them"
 msgstr "{0}: {1} alertas à espera do NVR foram apagados na página web, por isso não os gravará"
 
+msgid "Clear"
+msgstr "Apagar"
+
+msgid "Clear the {n} alerts waiting for the NVR?"
+msgstr "Apagar os {n} alertas à espera do NVR?"
+
+msgid "Clear them only if they were tests: the NVR will not record them. The hub logs that they were cleared."
+msgstr "Apague-os só se foram testes: o NVR não os gravará. A central regista que foram apagados."
+
+msgid "Cleared {n} waiting alerts"
+msgstr "Apagados {n} alertas em espera"
+
+msgid "Not cleared: {why}"
+msgstr "Não apagados: {why}"
+
+msgid "Waiting for the NVR"
+msgstr "À espera do NVR"
+
+msgid "{n} alerts, played once it listens"
+msgstr "{n} alertas, enviados quando voltar a escutar"
+
 msgid "an alert is on; clear the waiting ones once it is over"
 msgstr "há um alerta ativo; apague os que esperam quando terminar"
 

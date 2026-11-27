@@ -115,7 +115,8 @@ std::string CamWeb::overviewJson(uint32_t now) {
     for (int id = 1; id <= alarm_.board().count(); id++)
       if (table_.slotOf(id).used && alarm_.board().active(id))
         j.object().str("sensor", table_.slotName(id)).str("name", table_.slotOf(id).name).flag("past", alarm_.board().pastEvent(id)).end();
-    j.end().object("nvr").flag("set", !events_.nvrIp().empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount()).end();
+    j.end().object("nvr").flag("set", !events_.nvrIp().empty()).flag("listening", nvrListening(now)).num("streams", video_.streamCount());
+    j.num("waiting", alarm_.waitingCount()).end();
     j.str("mqtt", mqtt_.state())
         .object("webhook")
         .flag("set", !webhook_.settings().url.empty())

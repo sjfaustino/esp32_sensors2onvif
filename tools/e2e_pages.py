@@ -250,6 +250,30 @@ def test_alerts(page, dialogs, nvr):
     end_alert(nvr)
 
 
+def test_clearing_alerts_waiting_for_the_nvr(page, dialogs):
+    """The Overview shows alerts kept for an NVR that is away, and clears them, asking first, as tests would otherwise
+    be recorded later."""
+    api('POST', '/api/nvr', 'ip=192.0.2.8')  # nothing subscribes from there, so the NVR is not listening
+    try:
+        page.goto(URL + '#overview')
+        page.wait_for_selector('#ovInfo')
+        check('nothing waiting, no row for it', 'Waiting for the NVR' not in page.text_content('#ovInfo'), page.text_content('#ovInfo'))
+        get(f'/sensor?{sid(1)}&age=500')  # a past event, which waits while the NVR is away
+        check('the Overview shows the alert waiting', page_wait(page, lambda: 'Waiting for the NVR' in page.text_content('#ovInfo'), timeout=8),
+              page.text_content('#ovInfo'))
+        page.click('#ovInfo button:has-text("Clear")')
+        words = answer(page, accept=False)
+        check('it asks before clearing', 'were tests' in words, words)
+        check('a cancelled clear keeps it', status()['delayed_waiting'] == 1, status())
+        page.click('#ovInfo button:has-text("Clear")')
+        answer(page)
+        check('the page says it cleared it', notice(page, 'Cleared 1 waiting alerts'), page.text_content('#toast'))
+        check('and nothing waits', status()['delayed_waiting'] == 0, status())
+        check('the row goes', page_wait(page, lambda: 'Waiting for the NVR' not in page.text_content('#ovInfo')), page.text_content('#ovInfo'))
+    finally:
+        api('POST', '/api/nvr', 'ip=')
+
+
 def test_the_first_steps(page):
     # The hub here has no notifications set up, so the Overview shows the next step, with what to do and a way there.
     page.goto(URL + '#overview')
@@ -844,6 +868,7 @@ def page_cases(nvr, storage):
         ('a_refused_change_shows_the_truth', on_page(test_a_refused_change_shows_the_truth, 'dialogs')),
         ('alerts', on_page(test_alerts, 'dialogs', nvr)),
         ('a_refused_alarm_switch_goes_back', on_page(test_a_refused_alarm_switch_goes_back, 'dialogs')),
+        ('clearing_alerts_waiting_for_the_nvr', on_page(test_clearing_alerts_waiting_for_the_nvr, 'dialogs')),
         ('the_first_steps', on_page(test_the_first_steps)),
         ('notifications_page', on_page(test_notifications_page)),
         ('settings_pages', on_page(test_settings_pages)),

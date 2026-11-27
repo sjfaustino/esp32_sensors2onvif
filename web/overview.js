@@ -199,6 +199,8 @@
               ? chip(o.nvr.streams ? tr("Listening, watching the video") : tr("Listening"), "ok")
               : chip(tr("Not listening: alerts are not reaching it"), "bad"),
         ],
+        // Only while alerts wait: kept for it, as while it is away, and played to it once it listens again.
+        ...(o.nvr.waiting ? [[tr("Waiting for the NVR"), waitingCell(o.nvr.waiting)]] : []),
         [
           tr("Notifications"),
           !o.webhook.set
@@ -289,6 +291,33 @@
       notice(tr("Not changed: {why}", { why: e.message }), { err: true });
     }
     loadArm();
+  }
+  // Alerts waiting for the NVR, with a button to clear them, as test alerts it was away for would otherwise be recorded
+  // later as past events. The hub logs the clearing.
+  function waitingCell(n) {
+    const clear = el("button", {
+      className: "del",
+      textContent: tr("Clear"),
+      onclick: async () => {
+        if (
+          !(await ask(
+            tr(
+              "Clear them only if they were tests: the NVR will not record them. The hub logs that they were cleared.",
+            ),
+            { title: tr("Clear the {n} alerts waiting for the NVR?", { n }), ok: tr("Clear") },
+          ))
+        )
+          return;
+        try {
+          const r = await call("POST", "/api/waiting/clear", "x=1");
+          notice(tr("Cleared {n} waiting alerts", { n: r.cleared }));
+        } catch (e) {
+          notice(tr("Not cleared: {why}", { why: e.message }), { err: true });
+        }
+        loadOverview(true);
+      },
+    });
+    return el("span", null, tr("{n} alerts, played once it listens", { n }) + " ", clear);
   }
   $("armAway").onclick = () => setMode("away");
   $("armHome").onclick = () => setMode("home");
