@@ -263,6 +263,9 @@ struct CamConfig {
   uint16_t discoveryPort = 3702;
   bool loopbackOnly = false;  // PC test build: nothing leaves this machine
   uint32_t holdMs = 10000;
+  // The picture buffer, reserved at the start: CAM_MAX_PICTURE where PSRAM can hold it, for moving pictures, else
+  // CAM_MAX_FRAME, one still frame (cam_storage.h).
+  size_t pictureMax = 32 * 1024;
   uint32_t silentMs = 3UL * 3600UL * 1000UL;  // a known sensor quiet for this long is reported as silent
   std::string sensorToken;                    // when set, /sensor requires token=<value>
   std::string serial = "000000000000";

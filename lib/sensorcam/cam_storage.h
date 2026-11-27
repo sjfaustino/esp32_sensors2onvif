@@ -12,7 +12,12 @@
 #include <vector>
 #include "cam_frames.h"
 
-const size_t CAM_MAX_FRAME = 32 * 1024;  // the one picture buffer, reserved at boot; video and downloads read from it or from storage
+const size_t CAM_MAX_FRAME = 32 * 1024;  // one frame of a picture; on a board without PSRAM, the whole picture buffer
+// A moving picture: up to this many frames, each a keyframe made as a still picture is, played at CAM_FPS, so its
+// frames reach the NVR as today's still pictures do, one after another. They fit a buffer this size, on a board with
+// PSRAM; without it, the buffer is CAM_MAX_FRAME and a picture has one frame (CamConfig::pictureMax).
+const int CAM_MAX_FRAMES = 20;
+const size_t CAM_MAX_PICTURE = CAM_MAX_FRAMES * CAM_MAX_FRAME + 1024;
 
 // CAM_PATH_TEXT is text.json, which remembers the words typed on the web page for each picture set, and a sensor's
 // sensor.txt, and a node's node.txt; and name.txt and settings.txt, which they replaced (cam_node_files.h). A node's
@@ -32,6 +37,14 @@ std::string camStateFile(int direction, bool delayed);  // e.g. "approaching-del
 
 // Splits an Annex-B file into out[0..2] = SPS, PPS, IDR, pointing into data.
 bool camParseFrame(const uint8_t* data, size_t len, CamNal out[3]);
+// A picture of one or more frames: out[0] the SPS, then for each frame its PPS and its IDR, out[1 + 2k] and out[2 + 2k],
+// pointing into data; at most room units. A frame's PPS is the last one before its IDR, so a file may give one PPS for
+// all, as a still picture does, or one for each, as the page makes a moving one: each frame encoded as a still picture
+// is, at the quality that fits it. Gives the number of frames, or 0 for anything else: an SPS that is not first or comes
+// twice, an IDR with no PPS before it, a frame that is not a keyframe, or more frames than fit. Other units, as SEI, are
+// passed over.
+int camParsePicture(const uint8_t* data, size_t len, CamNal* out, int room);
+inline int camPictureUnits(int frames) { return 1 + 2 * frames; }
 bool camSameNal(const CamNal& a, const CamNal& b);
 
 // True when two baseline SPS units match in everything that affects decoding. Encoder builds can

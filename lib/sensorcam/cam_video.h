@@ -51,7 +51,8 @@ class CamVideo {
   // Changes whenever the loaded picture is about to be overwritten, so a reply reading it stops. Only a loaded picture
   // changes; the built-in ones never do.
   uint32_t gen() const { return pictureGen_; }
-  bool isLoaded(const CamFrame* f) const { return f == &loadedFrame_; }
+  bool isLoaded(const CamFrame* f) const { return f >= frames_ && f < frames_ + frameCount_; }
+  int frames() const { return frame_ && isLoaded(frame_) ? frameCount_ : 1; }  // of the picture shown
   void changed() { frameKey_.clear(); }  // the sensors or their pictures changed: chosen again for the next frame
   // A picture upload borrows the one picture buffer, so it never needs a second block that size. The built-in pictures
   // are shown meanwhile.
@@ -118,6 +119,11 @@ class CamVideo {
   std::string frameData_;  // the picture loaded from storage, in one buffer reserved at boot
   uint32_t pictureGen_ = 0;
   bool lent_ = false;
-  CamNal frameNals_[3];
-  CamFrame loadedFrame_{frameNals_, 3};
+  // The loaded picture: its SPS, then each frame's PPS and IDR, pointing into frameData_; and for each frame, SPS, PPS
+  // and its IDR, which is what is sent, as a still picture's are, so every frame stands alone.
+  CamNal pictureNals_[1 + 2 * CAM_MAX_FRAMES];
+  CamNal frameNals_[CAM_MAX_FRAMES][3];
+  CamFrame frames_[CAM_MAX_FRAMES];
+  int frameCount_ = 0;
+  int frameAt_ = 0;  // the frame of a moving picture shown now
 };

@@ -116,6 +116,46 @@ bool camParseFrame(const uint8_t* d, size_t len, CamNal out[3]) {
   return seen[0] && seen[1] && seen[2];
 }
 
+int camParsePicture(const uint8_t* d, size_t len, CamNal* out, int room) {
+  if (room < 3) return 0;
+  int frames = 0;
+  bool sps = false;
+  CamNal pps{nullptr, 0};
+  size_t i = 0;
+  while (i + 3 <= len) {
+    if (!(d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1)) {
+      i++;
+      continue;
+    }
+    size_t begin = i + 3, end = begin;
+    while (end < len && !(end + 3 <= len && d[end] == 0 && d[end + 1] == 0 && d[end + 2] == 1)) end++;
+    size_t stop = end;
+    if (end < len)
+      while (stop > begin && d[stop - 1] == 0) stop--;
+    if (stop > begin) {
+      int type = d[begin] & 31;
+      CamNal n{d + begin, stop - begin};
+      if (type == 7) {
+        if (sps || pps.len) return 0;  // one, first
+        sps = true;
+        out[0] = n;
+      } else if (type == 8) {
+        if (!sps) return 0;
+        pps = n;
+      } else if (type == 5) {
+        if (!pps.len || camPictureUnits(frames + 1) > room) return 0;
+        out[1 + 2 * frames] = pps;
+        out[2 + 2 * frames] = n;
+        frames++;
+      } else if (type >= 1 && type <= 4) {
+        return 0;  // a frame that needs the one before: not taken yet, as the NVR has only ever had keyframes
+      }
+    }
+    i = end;
+  }
+  return frames;
+}
+
 bool camSameNal(const CamNal& a, const CamNal& b) { return a.len == b.len && memcmp(a.data, b.data, a.len) == 0; }
 
 namespace {

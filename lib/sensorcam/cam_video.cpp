@@ -14,7 +14,12 @@
 bool CamVideo::begin(int listenFd) {
   listen_ = listenFd;
   nextFrameAt_ = millis_();
-  frameData_.reserve(CAM_MAX_FRAME);
+  try {
+    frameData_.reserve(cfg_.pictureMax);
+  } catch (const std::bad_alloc&) {  // never a reason not to start: a picture larger than what was reserved is refused
+    failures_.note();
+    frameData_.reserve(CAM_MAX_FRAME);
+  }
   return listen_ >= 0;
 }
 
@@ -197,7 +202,16 @@ void CamVideo::serviceConn(RtspConn& c, bool readable, bool writable, uint32_t n
 void CamVideo::tick(uint32_t now) {
   if ((int32_t)(now - nextFrameAt_) < 0) return;
   nextFrameAt_ = now + 1000 / CAM_FPS;
-  const CamFrame& frame = show(now);
+  uint32_t seq = liveSeq_;
+  show(now);
+  // A moving picture's next frame, unless it was chosen just now and starts at its first. Its frames are keyframes, at
+  // the same rate as a still picture's, so the NVR gets what it always has, only changing.
+  if (seq == liveSeq_ && frame_ && isLoaded(frame_) && frameCount_ > 1) {
+    frameAt_ = (frameAt_ + 1) % frameCount_;
+    frame_ = &frames_[frameAt_];
+    liveSeq_++;
+  }
+  const CamFrame& frame = *frame_;
   if (!chip_->hasHeadroom()) return;  // every frame stands alone, so skipping some lets the network stack drain
   for (RtspConn& c : rtsp_) {
     // Every frame is independently decodable, so a viewer still sending the last one just skips this one.
@@ -219,8 +233,18 @@ std::string& CamVideo::lend() {
 bool CamVideo::loadFrame(const std::string& path) {
   // frameData_ is one fixed buffer reserved at boot. Allocating per picture is what exhausted RAM.
   releasePicture();
-  if (!storage_.readFile(path, frameData_, CAM_MAX_FRAME)) return false;
-  return camParseFrame((const uint8_t*)frameData_.data(), frameData_.size(), frameNals_) && camSameNal(frameNals_[0], CAM_FRAMES[0].nals[0]);
+  frameCount_ = frameAt_ = 0;
+  if (!storage_.readFile(path, frameData_, frameData_.capacity())) return false;  // what was reserved, so never a new block
+  int n = camParsePicture((const uint8_t*)frameData_.data(), frameData_.size(), pictureNals_, camPictureUnits(CAM_MAX_FRAMES));
+  if (!n || !camSameNal(pictureNals_[0], CAM_FRAMES[0].nals[0])) return false;
+  for (int i = 0; i < n; i++) {
+    frameNals_[i][0] = pictureNals_[0];
+    frameNals_[i][1] = pictureNals_[1 + 2 * i];
+    frameNals_[i][2] = pictureNals_[2 + 2 * i];
+    frames_[i] = CamFrame{frameNals_[i], 3};
+  }
+  frameCount_ = n;
+  return true;
 }
 
 // A missing picture falls back to the nearest one that exists, then to the built-in pictures.
@@ -257,7 +281,7 @@ const CamFrame& CamVideo::show(uint32_t now) {
   frame_ = &CAM_FRAMES[builtinFrame(on, delayed)];
   for (const std::string& path : candidates) {
     if (loadFrame(path)) {
-      frame_ = &loadedFrame_;
+      frame_ = &frames_[0];
       frameFile_ = path;
       break;
     }
@@ -270,7 +294,7 @@ const CamFrame& CamVideo::show(uint32_t now) {
 void CamVideo::releasePicture() {
   pictureGen_++;
   for (RtspConn& c : rtsp_)
-    if (c.video.frame == &loadedFrame_) c.video.frame = nullptr;  // the packet already made is a copy, and still goes out whole
+    if (isLoaded(c.video.frame)) c.video.frame = nullptr;  // the packet already made is a copy, and still goes out whole
 }
 
 void CamVideo::closeConn(RtspConn& c) {

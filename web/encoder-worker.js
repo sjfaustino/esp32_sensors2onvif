@@ -1,4 +1,5 @@
-// Runs ffmpeg.wasm in a worker for web/pictures.js: loads it, encodes a PNG as one H.264 picture, or decodes one.
+// Runs ffmpeg.wasm in a worker for web/pictures.js: loads it, encodes a PNG as one H.264 picture, decodes one, or
+// takes the frames out of a moving image or a video, 2 a second as the hub plays them, as PNGs.
 let core;
 self.onmessage = async (e) => {
   const m = e.data;
@@ -9,6 +10,31 @@ self.onmessage = async (e) => {
         mainScriptUrlOrBlob: m.load.js + "#" + btoa(JSON.stringify({ wasmURL: m.load.wasm })),
       });
       postMessage({ id: m.id });
+      return;
+    }
+    if (m.frames) {
+      const input = "in." + m.ext;
+      core.FS.writeFile(input, m.frames);
+      core.setTimeout(-1);
+      // No wider than 1280: the page fits each into 640x360, and a phone's video would otherwise fill the memory.
+      core.exec("-y", "-i", input, "-vf", "fps=2,scale='min(1280,iw)':-2", "-frames:v", String(m.most), "f%02d.png");
+      const done = core.ret;
+      core.reset();
+      const frames = [];
+      for (let i = 1; i <= m.most; i++) {
+        const name = "f" + String(i).padStart(2, "0") + ".png";
+        try {
+          frames.push(core.FS.readFile(name));
+          core.FS.unlink(name);
+        } catch (e) {
+          break; // no more
+        }
+      }
+      core.FS.unlink(input);
+      postMessage(
+        { id: m.id, frames, ret: done },
+        frames.map((f) => f.buffer),
+      );
       return;
     }
     if (m.decode) {

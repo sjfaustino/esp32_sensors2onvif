@@ -66,6 +66,11 @@ before that, a new minor version may change settings or the messages.
 
 ### Changes
 
+- **Moving pictures.** On a hub with PSRAM, such as the ESP32-S3 N16R8, a sensor state's picture can be a GIF, an
+  animated WebP or PNG, or a short video: up to 20 frames, 2 a second, each made and sent as a still picture is, so the
+  NVR gets the same video as before, only changing. **Make it from an image** takes them, adds the text to each frame
+  and previews them playing. A picture file is now the SPS, then each frame's PPS and keyframe; a still picture is the
+  one-frame case, so pictures from before work as they are. A hub without PSRAM keeps still pictures only.
 - Alerts waiting for the NVR, such as test alerts it was away for, can be cleared from the Overview, which shows them while they wait, or with `POST /api/waiting/clear`.
   It is refused while an alert is on, and logged as waiting alerts cleared, so a cleared queue cannot pass unseen.
 - A settings backup writes letters, digits and `.-_` as they are, and only other characters as `%XX`, so it is about a

@@ -2800,9 +2800,6 @@ msgstr "Texto opcional por cima, até 3 linhas"
 msgid "Encoded picture"
 msgstr "Imagem codificada"
 
-msgid "Choose an image. Any shape or size is fine."
-msgstr "Escolha uma imagem. Qualquer forma ou tamanho serve."
-
 msgid "Encode and preview"
 msgstr "Codificar e pré-visualizar"
 
@@ -3911,6 +3908,36 @@ msgstr "alertas em espera apagados"
 msgctxt "message"
 msgid "{0}: {1} alerts waiting for the NVR were cleared on the web page, so it will not record them"
 msgstr "{0}: {1} alertas à espera do NVR foram apagados na página web, por isso não os gravará"
+
+msgid "Choose an image, or a GIF or a short video for a moving picture. Any shape or size is fine."
+msgstr "Escolha uma imagem, ou um GIF ou um vídeo curto para uma imagem animada. Qualquer forma ou tamanho serve."
+
+msgid "Add text if you like, then encode. A moving image keeps up to {n} frames, 2 a second."
+msgstr "Acrescente texto se quiser e depois codifique. Uma imagem animada guarda até {n} fotogramas, 2 por segundo."
+
+msgid "Encoding frame {n} of {total}"
+msgstr "A codificar o fotograma {n} de {total}"
+
+msgid "That file is over 100 MB. Try a shorter clip."
+msgstr "Esse ficheiro tem mais de 100 MB. Experimente um vídeo mais curto."
+
+msgid "The encoder could not read that file"
+msgstr "O codificador não conseguiu ler esse ficheiro"
+
+msgid "This hub holds still pictures only, so it keeps the first frame."
+msgstr "Esta central só guarda imagens fixas, por isso fica com o primeiro fotograma."
+
+msgid "{n} frames, shown 2 a second."
+msgstr "{n} fotogramas, mostrados 2 por segundo."
+
+msgid "not an H.264 picture of SPS, PPS and up to {n} keyframes"
+msgstr "não é uma imagem H.264 com SPS, PPS e até {n} fotogramas-chave"
+
+msgid "the picture is larger than this hub can hold"
+msgstr "a imagem é maior do que esta central consegue guardar"
+
+msgid "a frame is larger than 32 KB"
+msgstr "um fotograma tem mais de 32 KB"
 
 msgid "Clear"
 msgstr "Apagar"

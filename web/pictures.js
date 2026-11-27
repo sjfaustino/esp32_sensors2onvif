@@ -155,6 +155,78 @@ async function encode(colour, lines) {
   paint(c, colour, lines);
   return (await encodeCanvas(c)).pic;
 }
+// ---- moving pictures ----
+// A GIF, an animated WebP or PNG, or a video, becomes a moving picture: its frames, 2 a second, each drawn as a still
+// picture is, with the same text, and encoded as one, so each reaches the NVR as today's still pictures do. A hub
+// without PSRAM holds one frame, and takes the first.
+const MOVING_TYPES = ["image/gif", "image/webp", "image/apng", "image/png"];
+const isMoving = (f) => MOVING_TYPES.includes(f.type) || f.type.startsWith("video/");
+const MOST_SOURCE = 100 * 1024 * 1024; // larger, and the browser runs out of memory taking it apart
+let framesAllowed = null;
+async function hubFrames() {
+  if (framesAllowed === null) {
+    try {
+      framesAllowed = (await call("GET", "/api/info")).pictureFrames || 1;
+    } catch (e) {
+      return 1; // asked again next time
+    }
+  }
+  return framesAllowed;
+}
+// The frames of a moving image as PNGs, at most most of them; one for a still image.
+async function sourceFrames(file, most) {
+  const w = await getEncoder(),
+    data = new Uint8Array(await file.arrayBuffer()),
+    ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+  const r = await talk(w, { frames: data, ext, most }, [data.buffer]);
+  if (!r.frames.length) throw new Error(tr("The encoder could not read that file"));
+  return r.frames;
+}
+// The units of an encoded picture, by type: SPS 7, PPS 8, IDR 5.
+function unitsOf(d) {
+  const units = {};
+  const starts = [];
+  for (let i = 0; i + 3 <= d.length; i++)
+    if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1) {
+      starts.push(i);
+      i += 2;
+    }
+  starts.forEach((s, k) => {
+    let end = k + 1 < starts.length ? starts[k + 1] : d.length;
+    if (k + 1 < starts.length) while (end > s + 3 && d[end - 1] == 0) end--;
+    units[d[s + 3] & 31] = d.subarray(s + 3, end);
+  });
+  return units;
+}
+// One file of the frames: the SPS, then each frame's PPS and IDR, as the hub reads it. Each frame keeps its own PPS, as
+// each is encoded at the quality that fits it, which the PPS carries.
+function joinFrames(pics) {
+  const each = pics.map(unitsOf),
+    parts = [each[0][7], ...each.flatMap((u) => [u[8], u[5]])];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length + 4, 0));
+  let at = 0;
+  for (const p of parts) {
+    out[at + 3] = 1;
+    out.set(p, at + 4);
+    at += p.length + 4;
+  }
+  return out;
+}
+// Encodes each frame, drawn with the text, as a still picture; progress says how far it has got.
+async function encodeFrames(frames, canvas, lines, progress) {
+  const pics = [];
+  let lowered = 0;
+  for (let i = 0; i < frames.length; i++) {
+    progress(i + 1, frames.length);
+    const image = await createImageBitmap(new Blob([frames[i]], { type: "image/png" }));
+    paintImage(canvas, image, lines);
+    const r = await encodeCanvas(canvas);
+    lowered = Math.max(lowered, r.step);
+    pics.push(r.pic);
+  }
+  return { pics, pic: joinFrames(pics), step: lowered };
+}
+
 // Shows the picture exactly as it will be streamed, by decoding the encoded result.
 async function decoded(pic) {
   const w = await getEncoder(),
@@ -165,11 +237,13 @@ async function decoded(pic) {
 }
 function imageDialog(path) {
   const VIEW = "width:100%;max-width:480px;display:block;margin:8px 0;border-radius:4px;background:#000";
-  const chooser = el("input", { type: "file", accept: "image/*" });
+  const chooser = el("input", { type: "file", accept: "image/*,video/*" });
   const words = el("textarea", { rows: 3, cols: 30, placeholder: tr("Optional text on top, up to 3 lines") });
   const source = el("canvas", { width: 640, height: 360, style: VIEW });
   const result = el("img", { alt: tr("Encoded picture"), style: VIEW + ";display:none" });
-  const note = el("p", { textContent: tr("Choose an image. Any shape or size is fine.") });
+  const note = el("p", {
+    textContent: tr("Choose an image, or a GIF or a short video for a moving picture. Any shape or size is fine."),
+  });
   const make = el("button", { textContent: tr("Encode and preview"), disabled: true });
   const keep = el("button", { textContent: tr("Save to the hub"), disabled: true });
   const dlg = el(
@@ -184,7 +258,15 @@ function imageDialog(path) {
     el("p", null, make, " ", keep, " ", el("button", { textContent: tr("Close"), onclick: () => dlg.close() })),
   );
   let image = null,
-    pic = null;
+    file = null,
+    pic = null,
+    playing = null; // the timer that plays a moving picture's preview, and its frames' addresses
+  const stopPlaying = () => {
+    if (!playing) return;
+    clearInterval(playing.timer);
+    playing.urls.forEach((u) => URL.revokeObjectURL(u));
+    playing = null;
+  };
   const lines = () =>
     words.value
       .split("\n")
@@ -193,6 +275,7 @@ function imageDialog(path) {
       .slice(0, 3);
   const redraw = () => {
     pic = null;
+    stopPlaying();
     keep.disabled = true;
     result.style.display = "none";
     if (image) paintImage(source, image, lines());
@@ -201,15 +284,31 @@ function imageDialog(path) {
   chooser.onchange = async () => {
     const f = chooser.files[0];
     if (!f) return;
+    file = null;
     try {
-      image = await createImageBitmap(f);
+      if (f.size > MOST_SOURCE) throw new Error("too large");
+      // A video's first frame is drawn here only once the encoder has taken it apart, so a placeholder meanwhile.
+      image = f.type.startsWith("video/") ? null : await createImageBitmap(f);
+      file = isMoving(f) ? f : null;
       make.disabled = false;
-      note.textContent = tr("Add text if you like, then encode.");
+      note.textContent = file
+        ? tr("Add text if you like, then encode. A moving image keeps up to {n} frames, 2 a second.", {
+            n: (await hubFrames()) > 1 ? await hubFrames() : 1,
+          })
+        : tr("Add text if you like, then encode.");
+      if (!image) {
+        const g = source.getContext("2d");
+        g.fillStyle = "#000";
+        g.fillRect(0, 0, 640, 360);
+      }
       redraw();
     } catch (e) {
       image = null;
       make.disabled = true;
-      note.textContent = tr("This browser cannot open that file.");
+      note.textContent =
+        f.size > MOST_SOURCE
+          ? tr("That file is over 100 MB. Try a shorter clip.")
+          : tr("This browser cannot open that file.");
     }
   };
   make.onclick = async () => {
@@ -219,20 +318,52 @@ function imageDialog(path) {
     keep.disabled = true;
     try {
       note.textContent = tr("Encoding. The first time, this downloads about 30 MB.");
-      const r = await encodeCanvas(source);
+      stopPlaying();
+      let r,
+        frames = [];
+      if (file) {
+        const most = await hubFrames();
+        frames = await sourceFrames(file, most);
+        if (frames.length > 1)
+          r = await encodeFrames(frames, source, lines(), (n, total) => {
+            note.textContent = tr("Encoding frame {n} of {total}", { n, total });
+          });
+        else image = await createImageBitmap(new Blob([frames[0]], { type: "image/png" }));
+      }
+      if (!r) {
+        paintImage(source, image, lines());
+        r = await encodeCanvas(source);
+        r.pics = [r.pic];
+      }
       pic = r.pic;
-      const size = (pic.length / 1024).toFixed(1) + " KB";
-      note.textContent = r.step
+      const size = (pic.length / 1024).toFixed(1) + " KB",
+        count = r.pics.length;
+      const how = r.step
         ? tr("{size}. Quality was lowered {n} of {steps} steps to fit 32 KB.", {
             size,
             n: r.step,
             steps: QUALITY.length - 1,
           })
         : tr("{size} at full quality.", { size });
+      note.textContent = count > 1 ? tr("{n} frames, shown 2 a second.", { n: count }) + " " + how : how;
+      if (file && frames.length > 1 && (await hubFrames()) == 1)
+        note.textContent += " " + tr("This hub holds still pictures only, so it keeps the first frame.");
       try {
         if (result.src) URL.revokeObjectURL(result.src);
-        result.src = await decoded(pic);
+        const urls = [];
+        for (const one of r.pics) urls.push(await decoded(one));
+        result.src = urls[0];
         result.style.display = "block";
+        if (urls.length > 1) {
+          let at = 0;
+          playing = {
+            urls,
+            timer: setInterval(() => {
+              at = (at + 1) % urls.length;
+              result.src = urls[at];
+            }, 500),
+          };
+        } else urls.slice(1).forEach((u) => URL.revokeObjectURL(u));
       } catch (e) {
         note.textContent += " " + tr("The preview could not be shown, but the picture can still be saved.");
       }
@@ -262,6 +393,8 @@ function imageDialog(path) {
     }
   };
   dlg.onclose = () => {
+    if (playing) result.removeAttribute("src"); // its frames' addresses go with the timer
+    stopPlaying();
     if (result.src) URL.revokeObjectURL(result.src);
     dlg.remove();
   };

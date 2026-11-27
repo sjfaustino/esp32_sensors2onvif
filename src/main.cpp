@@ -183,6 +183,7 @@ static CamConfig makeConfig() {
   c.setupName = SETUP_AP_NAME;
   c.rtspPort = settings.rtspPort;
   c.holdMs = SENSOR_HOLD_MS;
+  c.pictureMax = ESP.getPsramSize() ? CAM_MAX_PICTURE : CAM_MAX_FRAME;  // moving pictures where PSRAM can hold them
   c.sensorToken = settings.sensorToken.c_str();
   c.webPassword = settings.webPassword.c_str();
   c.onvifPassword = settings.webPassword.c_str();

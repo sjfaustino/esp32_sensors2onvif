@@ -83,6 +83,36 @@ static void splits_picture_files() {
   TEST_ASSERT_FALSE(camParseFrame(garbage, sizeof(garbage), n));
 }
 
+static void splits_moving_pictures_into_their_frames() {
+  // One PPS for all three frames, with an SEI passed over.
+  const uint8_t three[] = {0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 1, 0x06, 9, 0, 0, 1, 0x65, 4, 0, 0, 1, 0x65, 5, 5, 0, 0, 1, 0x65, 6};
+  CamNal n[1 + 2 * 4];
+  TEST_ASSERT_EQUAL(3, camParsePicture(three, sizeof(three), n, camPictureUnits(4)));
+  TEST_ASSERT_EQUAL_HEX8(0x67, n[0].data[0]);
+  for (int k = 0; k < 3; k++) TEST_ASSERT_EQUAL_HEX8(0x68, n[1 + 2 * k].data[0]);  // each frame has the one PPS
+  TEST_ASSERT_EQUAL(2, n[2].len);
+  TEST_ASSERT_EQUAL(3, n[4].len);
+  TEST_ASSERT_EQUAL_HEX8(6, n[6].data[1]);
+  TEST_ASSERT_EQUAL(0, camParsePicture(three, sizeof(three), n, camPictureUnits(2)));  // only two frames fit
+  // A PPS of its own for each frame, as the page makes them.
+  const uint8_t own[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x68, 7, 0, 0, 1, 0x65, 4};
+  TEST_ASSERT_EQUAL(2, camParsePicture(own, sizeof(own), n, camPictureUnits(4)));
+  TEST_ASSERT_EQUAL_HEX8(2, n[1].data[1]);
+  TEST_ASSERT_EQUAL_HEX8(7, n[3].data[1]);
+  const uint8_t one[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3};
+  TEST_ASSERT_EQUAL(1, camParsePicture(one, sizeof(one), n, camPictureUnits(1)));  // a still picture, as before
+  const uint8_t inter[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x41, 4};
+  TEST_ASSERT_EQUAL(0, camParsePicture(inter, sizeof(inter), n, camPictureUnits(4)));  // a frame that is not a keyframe
+  const uint8_t twoSps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 4};
+  TEST_ASSERT_EQUAL(0, camParsePicture(twoSps, sizeof(twoSps), n, camPictureUnits(4)));
+  const uint8_t ppsFirst[] = {0, 0, 1, 0x68, 2, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 3};
+  TEST_ASSERT_EQUAL(0, camParsePicture(ppsFirst, sizeof(ppsFirst), n, camPictureUnits(4)));
+  const uint8_t noPps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 3};
+  TEST_ASSERT_EQUAL(0, camParsePicture(noPps, sizeof(noPps), n, camPictureUnits(4)));
+  const uint8_t garbage[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  TEST_ASSERT_EQUAL(0, camParsePicture(garbage, sizeof(garbage), n, camPictureUnits(4)));
+}
+
 static void accepts_sps_differing_only_in_vui() {
   uint8_t hub[] = {0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x2f, 0xf9, 0x70, 0x11, 0x00, 0x00,
                    0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x02, 0x0f, 0x16, 0x2e, 0x48};
@@ -571,6 +601,7 @@ void runStorageTests() {
   RUN_TEST(parses_and_prints_macs);
   RUN_TEST(names_state_files);
   RUN_TEST(splits_picture_files);
+  RUN_TEST(splits_moving_pictures_into_their_frames);
   RUN_TEST(accepts_sps_differing_only_in_vui);
   RUN_TEST(builtin_pictures_are_valid);
   RUN_TEST(backup_values_follow_the_page_rules);

@@ -129,6 +129,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     case 15: {
       CamNal nals[3];
       camParseFrame(d, in.size(), nals);
+      CamNal picture[1 + 2 * CAM_MAX_FRAMES];
+      camParsePicture(d, in.size(), picture, camPictureUnits(CAM_MAX_FRAMES));  // a moving picture's frames
       break;
     }
     case 16: camClassifyPath(text); break;

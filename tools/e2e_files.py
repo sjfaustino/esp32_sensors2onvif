@@ -434,6 +434,50 @@ def sensor_folders(s):
         api('DELETE', f'/api/file?path={node}')
 
 
+@case(pc=True)
+def moving_pictures(s):
+    """A picture of several frames, each a keyframe made as a still picture is: checked, stored, and streamed one frame
+    after another at the still pictures' rate, so the NVR gets what it always has, only changing."""
+    check('the PC build takes moving pictures, as a board with PSRAM does', get_json('/api/info').get('pictureFrames') == 20, get_json('/api/info'))
+    steps = [(make_frames.RED, ['MOVING', 'ONE']), (make_frames.GREEN, ['MOVING', 'TWO']), (make_frames.AMBER, ['MOVING', 'THREE'])]
+    moving = make_frames.moving(steps)
+    units = make_frames.nals(moving)
+    path = f'{name(4)}/active.h264'
+    kept = api('GET', f'/api/file?path={path}')
+    try:
+        check('a moving picture is accepted', api('PUT', f'/api/file?path={path}', moving)[0] == 200)
+        check('it reads back unchanged', api('GET', f'/api/file?path={path}')[1] == moving)
+        too_many = make_frames.annexb(units[:1] + units[1:3] * 21)  # units: the SPS, then each frame's PPS and IDR
+        check('more than 20 frames are refused', api('PUT', f'/api/file?path={path}', too_many)[0] == 422)
+        big = units[2] + b'\x11' * 33000
+        check('a frame over 32 KB is refused', api('PUT', f'/api/file?path={path}', make_frames.annexb(units[:3] + [units[1], big]))[0] == 413)
+        inter = bytes([0x41]) + units[4][1:]  # the same slice, marked as one that needs the frame before
+        check('a frame that is not a keyframe is refused', api('PUT', f'/api/file?path={path}', make_frames.annexb(units[:4] + [inter]))[0] == 422)
+        check('the moving picture is still there after the refusals', api('GET', f'/api/file?path={path}')[1] == moving)
+
+        get(f'/sensor?{sid(4)}')
+        login = f'admin:{urllib.parse.quote(BOARD_LOGIN, safe="")}@' if BOARD_LOGIN else ''
+        out = subprocess.run(['ffmpeg', '-v', 'error', '-rtsp_transport', 'tcp', '-i', f'rtsp://{login}{HOST}:{RTSP}/stream', '-frames:v', '8',
+                              '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, timeout=40)
+        size = 640 * 360 * 3
+        colours = []
+        for at in range(0, len(out.stdout) - size + 1, size):
+            frame = out.stdout[at:at + size]
+            r, g = sum(frame[0::3]), sum(frame[1::3])
+            colours.append('green' if g > r else 'amber' if g > 0.3 * r else 'red')
+        changes = sum(a != b for a, b in zip(colours, colours[1:]))
+        check('the stream plays its frames in turn', len(colours) == 8 and set(colours) == {'red', 'green', 'amber'} and changes >= 5, colours)
+        order = {'red': 'green', 'green': 'amber', 'amber': 'red'}
+        check('in their order, looping', all(b == a or b == order[a] for a, b in zip(colours, colours[1:])), colours)
+        clear(4)
+    finally:
+        control('end-alerts')
+        if kept[0] == 200:
+            api('PUT', f'/api/file?path={path}', kept[1])
+        else:
+            api('DELETE', f'/api/file?path={path}')
+
+
 @case()
 def pictures(s):
     """Pictures for sensor 4: checked, stored, streamed, with thumbnails, and refused when they would not play."""
@@ -462,7 +506,9 @@ def pictures(s):
     check('stored picture carries the hub header', api('GET', f'/api/file?path={path}')[1] == good)
     # A browser shows a broken connection as a bare "failed to fetch", so a refusal has to arrive as a reply.
     uptime = status()['uptime_s']
-    for size in (32769, 40000, 60000, 100000):
+    # The most the hub takes: one frame of 32 KB, or, with PSRAM, a moving picture's frames.
+    most = 32768 if get_json('/api/info').get('pictureFrames', 1) == 1 else 20 * 32768 + 1024
+    for size in (most + 1, most + 7231, most + 60000, 2 * most):
         check(f'oversize upload ({size} bytes) gets a clear refusal', api('PUT', f'/api/file?path={path}', b'\x55' * size)[0] == 413)
     largest = good + b'\x00' * (32768 - len(good))
     check('picture at the 32 KB limit is accepted', api('PUT', f'/api/file?path={path}', largest)[0] == 200)

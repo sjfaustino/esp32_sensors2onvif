@@ -154,7 +154,8 @@ void CamWeb::getInfo(const ApiRequest& r) {
         .str("name", cfg_.hostName)
         .str("setupName", cfg_.setupName)
         .str("version", cfg_.firmwareVersion)
-        .str("board", cfg_.board);
+        .str("board", cfg_.board)
+        .num("pictureFrames", cfg_.pictureMax >= CAM_MAX_PICTURE ? CAM_MAX_FRAMES : 1);
     j.num("onvifPort", cfg_.onvifPort)
         .num("webPort", cfg_.webPort)
         .num("rtspPort", cfg_.rtspPort)

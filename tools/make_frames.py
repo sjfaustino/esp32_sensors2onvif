@@ -95,6 +95,14 @@ def annexb(units):
     return b''.join(b'\x00\x00\x00\x01' + n for n in units)
 
 
+def moving(steps):
+    """A moving picture: each (colour, lines) a frame, encoded as a still picture is; one SPS, then each frame's PPS and
+    IDR, as the web page makes them."""
+    with tempfile.TemporaryDirectory() as tmp:
+        frames = [encode(colour, lines, tmp) for colour, lines in steps]
+    return annexb([frames[0][0]] + [u for f in frames for u in f[1:]])
+
+
 def sensor_files(label):
     """Returns {file name: bytes} for one sensor."""
     if not 0 < len(label) <= MAX_LABEL:

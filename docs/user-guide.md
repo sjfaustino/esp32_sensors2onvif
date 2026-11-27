@@ -656,8 +656,9 @@ saved in a notice at the foot of the page.
 
 The page can add and delete nodes and sensors, and upload, download and delete pictures. Changes apply at once,
 without a reboot. Pictures cannot use the last of the storage, which is kept for the event history; the Sensors page
-shows how much. Files must be a single H.264 picture of at most 32 KB in the hub's video format, and are stored with the hub's own header. Others are
-refused, because the NVR cannot follow a format change mid-stream.
+shows how much. Files must be H.264 in the hub's video format, and are stored with the hub's own header: one picture
+of at most 32 KB, or, on a hub with PSRAM such as the ESP32-S3 N16R8, a moving picture of up to 20 frames of at most
+32 KB each. Others are refused, because the NVR cannot follow a format change mid-stream.
 
 To change the words, open **Change the words** under a sensor, or under the all clear picture, and save. Your browser makes the
 pictures and uploads them, so it needs internet access: it downloads the ffmpeg.wasm encoder from jsDelivr, about 30 MB
@@ -668,6 +669,12 @@ To use a photo or drawing instead, click **Change** on any picture, then **Make 
 step by step until they fit the 32 KB limit, and a preview shows the result before you save. Only the finished picture
 is stored on the hub, not the original. Saving **Change the words** replaces all 10 of that sensor's pictures,
 including any images.
+
+A GIF, an animated WebP or PNG, or a short video makes a **moving picture**: the browser takes up to 20 of its frames,
+2 a second, so the first 10 seconds, and makes each as it would a still picture, with the same text. The hub plays
+them in turn, looping, while that picture is shown. Each frame reaches the NVR exactly as a still picture does, at the
+same rate, so nothing about the video the NVR records changes but what it shows. The preview plays the frames as they
+will be sent. A hub without PSRAM holds still pictures only, and keeps the first frame.
 
 Without internet, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
 appear in `data/`, ready to upload one by one, or all together with `pio run -t uploadfs`, which replaces everything

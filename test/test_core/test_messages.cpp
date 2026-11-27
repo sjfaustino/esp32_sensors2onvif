@@ -290,6 +290,8 @@ static void parsers_survive_any_input() {
         camMqttReadPublish(d, in.size(), msg);
         CamNal nals[3];
         camParseFrame(d, in.size(), nals);
+        CamNal picture[1 + 2 * CAM_MAX_FRAMES];
+        camParsePicture(d, in.size(), picture, camPictureUnits(CAM_MAX_FRAMES));
         S2oPart part;
         s2oReadPart(d, len, part);
         uint8_t state, channel;

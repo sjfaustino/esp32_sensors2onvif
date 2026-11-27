@@ -278,19 +278,27 @@ void CamWeb::apiFiles(const ApiRequest& r) {
       if (path.find('/') != std::string::npos && !note) alarm_.rescan();                 // a name or settings
     }
   } else if (fileRoute && method == "PUT" && isFile) {
-    CamNal nals[3];
-    if (!camParseFrame((const uint8_t*)body, bodyLen, nals)) {
-      c.out = jsonFail(422, "not a single H.264 picture with SPS, PPS and IDR");
-    } else if (!camCompatibleSps(nals[0], CAM_FRAMES[0].nals[0])) {
+    // One frame, or a moving picture's frames, each a keyframe; as many as this board's picture buffer holds.
+    CamNal parts[1 + 2 * CAM_MAX_FRAMES];
+    int most = cfg_.pictureMax >= CAM_MAX_PICTURE ? CAM_MAX_FRAMES : 1;
+    int frames = camParsePicture((const uint8_t*)body, bodyLen, parts, camPictureUnits(most));
+    size_t total = 0, largest = 0;  // largest: a frame's PPS and IDR
+    for (int i = 0; i < camPictureUnits(frames); i++) total += parts[i].len + 4;
+    for (int k = 0; k < frames; k++)
+      if (parts[1 + 2 * k].len + parts[2 + 2 * k].len > largest) largest = parts[1 + 2 * k].len + parts[2 + 2 * k].len;
+    if (!frames) {
+      c.out = most > 1 ? jsonFail(422, "not an H.264 picture of SPS, PPS and up to {n} keyframes", {{"n", std::to_string(most)}})
+                       : jsonFail(422, "not a single H.264 picture with SPS, PPS and IDR");
+    } else if (!camCompatibleSps(parts[0], CAM_FRAMES[0].nals[0])) {
       c.out = jsonFail(422, "wrong video format: make it with tools/make_frames.py");
+    } else if (largest + parts[0].len + 12 > CAM_MAX_FRAME) {
+      c.out = frames > 1 ? jsonFail(413, "a frame is larger than 32 KB") : jsonFail(413, "file is larger than 32 KB");
+    } else if (total > cfg_.pictureMax) {
+      c.out = jsonFail(413, "the picture is larger than this hub can hold");
     } else {
       // Stored with the hub's own SPS, so the NVR sees one unchanging format whichever encoder made the picture.
-      const CamNal parts[3] = {CAM_FRAMES[0].nals[0], nals[1], nals[2]};
-      if (parts[0].len + parts[1].len + parts[2].len + 12 > CAM_MAX_FRAME) {
-        c.out = jsonFail(413, "file is larger than 32 KB");
-        return;
-      }
-      bool ok = storage_.writeNals(path, parts, 3);
+      parts[0] = CAM_FRAMES[0].nals[0];
+      bool ok = storage_.writeNals(path, parts, camPictureUnits(frames));
       if (ok) {
         if (storage_.exists(camPreviewPath(path))) storage_.removeTree(camPreviewPath(path));  // it shows the old picture
         alarm_.rescan();
