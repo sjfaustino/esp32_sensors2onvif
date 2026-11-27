@@ -70,6 +70,23 @@ static void base64_decode_refuses_what_is_not_base64() {
   TEST_ASSERT_EQUAL_STRING("", camBase64Decode("TW=Fu").c_str());         // = only at the end
 }
 
+static void a_backup_value_keeps_plain_characters_and_escapes_the_rest() {
+  TEST_ASSERT_EQUAL_STRING("my-net_2.4%3D%20x%0A%25", camBackupEscape("my-net_2.4= x\n%").c_str());
+  std::string v;
+  TEST_ASSERT_TRUE(camBackupUnescape("my-net_2.4%3D%20x%0A%25", v));
+  TEST_ASSERT_EQUAL_STRING("my-net_2.4= x\n%", v.c_str());
+  TEST_ASSERT_TRUE(camBackupUnescape("%68%75%62", v));  // as backups before wrote every byte
+  TEST_ASSERT_EQUAL_STRING("hub", v.c_str());
+  TEST_ASSERT_TRUE(camBackupUnescape("", v));
+  TEST_ASSERT_FALSE(camBackupUnescape("a b", v));  // a space should have been %20
+  TEST_ASSERT_FALSE(camBackupUnescape("%6", v));   // cut short
+  TEST_ASSERT_FALSE(camBackupUnescape("%G1", v));  // not hex
+  std::string every;
+  for (int i = 0; i < 256; i++) every += (char)i;
+  TEST_ASSERT_TRUE(camBackupUnescape(camBackupEscape(every), v));
+  TEST_ASSERT_TRUE(v == every);
+}
+
 static void base64_matches_known_values() {
   TEST_ASSERT_EQUAL_STRING("TWE=", base64((const uint8_t*)"Ma", 2).c_str());
   TEST_ASSERT_EQUAL_STRING("TWFu", base64((const uint8_t*)"Man", 3).c_str());
@@ -346,6 +363,7 @@ void runCryptoTests() {
   RUN_TEST(xml_text_is_unescaped_and_secrets_compared_whole);
   RUN_TEST(base64_matches_known_values);
   RUN_TEST(base64_decode_refuses_what_is_not_base64);
+  RUN_TEST(a_backup_value_keeps_plain_characters_and_escapes_the_rest);
   RUN_TEST(hmac_sha1_matches_rfc_2202);
   RUN_TEST(sha1_in_pieces_matches);
   RUN_TEST(x25519_matches_rfc_7748);

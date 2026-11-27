@@ -2,6 +2,7 @@
 #include <Preferences.h>
 #include <bootloader_random.h>
 #include <vector>
+#include "cam_backup.h"
 #include "config.h"
 
 HubSettings settings;
@@ -301,10 +302,6 @@ using BackupKey = CamSetting;  // the list, CAM_SETTINGS, is in cam_settings.cpp
 static const char BACKUP_HEADER[] = "sensorcam-backup 1\n";
 static const size_t BACKUP_HEADER_LEN = sizeof(BACKUP_HEADER) - 1;
 
-// Kept as written in a backup: letters, digits and these few. Anything else is written as %XX, so a value can hold an
-// = or a line break, and the file stays readable where it can.
-static bool plainInBackup(char ch) { return isalnum((unsigned char)ch) || ch == '.' || ch == '-' || ch == '_'; }
-
 std::string backupText() {
   std::string out = BACKUP_HEADER;
   for (const BackupKey& k : camSettings()) {
@@ -314,16 +311,7 @@ std::string backupText() {
                      : k.kind == CAM_KIND_PORT ? String(p.getUShort(k.key, 0))
                      : k.kind == CAM_KIND_INT  ? String(p.getInt(k.key, 0))
                                                : String(p.getBool(k.key, false) ? 1 : 0);
-      out += std::string(k.space) + "." + k.key + "=";
-      char hex[4];
-      for (size_t i = 0; i < value.length(); i++) {
-        if (plainInBackup(value[i])) {
-          out += value[i];
-          continue;
-        }
-        snprintf(hex, sizeof(hex), "%%%02X", (uint8_t)value[i]);
-        out += hex;
-      }
+      out += std::string(k.space) + "." + k.key + "=" + camBackupEscape(value.c_str());
       out += "\n";
       return true;
     });
@@ -355,17 +343,8 @@ static bool parseBackup(const std::string& text, std::vector<BackupLine>& lines)
       if (dot == spaceLen && dot < eq && line.compare(0, dot, k.space) == 0 && line.compare(dot + 1, eq - dot - 1, k.key) == 0) found = &k;
     }
     if (!found) return false;
-    // Plain characters as they are, others as %XX; a backup from before wrote every one as %XX.
     std::string value;
-    for (size_t i = eq + 1; i < line.size();) {
-      if (plainInBackup(line[i])) {
-        value += line[i++];
-        continue;
-      }
-      if (line[i] != '%' || i + 2 >= line.size() || !isxdigit((unsigned char)line[i + 1]) || !isxdigit((unsigned char)line[i + 2])) return false;
-      value += (char)strtol(line.substr(i + 1, 2).c_str(), nullptr, 16);
-      i += 3;
-    }
+    if (!camBackupUnescape(line.substr(eq + 1), value)) return false;
     std::string name = std::string(found->space) + "." + found->key;
     if (!camBackupValueValid(name, value)) return false;
     if (camBackupValueKept(name, value)) lines.push_back({found, value});

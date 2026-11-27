@@ -1,4 +1,5 @@
 #include "cam_backup.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include "cam_auth.h"
@@ -8,6 +9,40 @@
 static const char HEAD[] = "sensorcam-backup sealed 2 pbkdf2-sha256 ";
 static const size_t HEAD_LEN = sizeof(HEAD) - 1;
 static const size_t NONCE = 24, TAG = 16;
+
+static bool plainInBackup(char ch) { return isalnum((unsigned char)ch) || ch == '.' || ch == '-' || ch == '_'; }
+
+std::string camBackupEscape(const std::string& value) {
+  std::string out;
+  char hex[4];
+  for (char ch : value) {
+    if (plainInBackup(ch)) {
+      out += ch;
+      continue;
+    }
+    snprintf(hex, sizeof(hex), "%%%02X", (uint8_t)ch);
+    out += hex;
+  }
+  return out;
+}
+
+bool camBackupUnescape(const std::string& text, std::string& value) {
+  value.clear();
+  auto hexDigit = [](char ch) {
+    return ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
+  };
+  for (size_t i = 0; i < text.size();) {
+    if (plainInBackup(text[i])) {
+      value += text[i++];
+      continue;
+    }
+    int hi = text[i] == '%' && i + 2 < text.size() ? hexDigit(text[i + 1]) : -1, lo = hi >= 0 ? hexDigit(text[i + 2]) : -1;
+    if (lo < 0) return false;
+    value += (char)(hi * 16 + lo);
+    i += 3;
+  }
+  return true;
+}
 
 bool camBackupIsSealed(const std::string& text) {
   static const char SEALED[] = "sensorcam-backup sealed ";

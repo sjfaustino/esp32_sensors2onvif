@@ -16,6 +16,12 @@ const uint32_t CAM_BACKUP_ROUNDS = 600000;  // what the page uses, as OWASP advi
 const uint32_t CAM_BACKUP_MIN_ROUNDS = 100000, CAM_BACKUP_MAX_ROUNDS = 10000000;
 const size_t CAM_BACKUP_KEY = 32, CAM_BACKUP_SALT = 16;
 
+// A value as a plain backup's line holds it: letters, digits and .-_ as they are, every other byte as %XX, so a value
+// can hold an = or a line break. Unescaping takes either, as backups before wrote every byte as %XX; false for a
+// broken %XX or a byte that should have been one.
+std::string camBackupEscape(const std::string& value);
+bool camBackupUnescape(const std::string& text, std::string& value);
+
 bool camBackupIsSealed(const std::string& text);
 // What the browser sends: the key and salt in hex, and the rounds; false for anything else.
 bool camBackupKeyFrom(const std::string& keyHex, uint8_t key[CAM_BACKUP_KEY]);
