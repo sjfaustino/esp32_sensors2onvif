@@ -1,5 +1,6 @@
 # Runs the unit tests and the end-to-end test of the PC build, checks the code with clang-tidy, builds the firmware for
-# every board, measures the tests' coverage, and fuzzes the parsers, on each push.
+# every board, measures the tests' coverage, and fuzzes the parsers, on each push. The jobs run side by side, so a run
+# takes as long as its slowest job, not all of them in a row.
 # Windows, because the PC build links Winsock (-lws2_32 in platformio.ini).
 name: Checks
 
@@ -13,13 +14,14 @@ permissions:
   contents: read
 
 jobs:
+  # The quick checks, clang-tidy and the unit tests: what fails most often, so it is told first.
   checks:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
-          fetch-depth: 0  # tools/version.py names the firmware with git describe
+          fetch-depth: 0  # tools/version.py names the build with git describe
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -34,10 +36,8 @@ jobs:
       - name: The build platform is the one recorded
         run: python tools/check_platform.py
 
-      - name: Install PlatformIO and ffmpeg
-        run: |
-          pip install platformio cryptography
-          choco install ffmpeg --no-progress -y
+      - name: Install PlatformIO
+        run: pip install platformio cryptography
 
       # The same quick checks as the pre-push hook: node --check and Prettier on the pages, clang-format on the C++,
       # every setting loaded and saved, and every colour of the pages named.
@@ -56,16 +56,60 @@ jobs:
       - name: Unit tests
         run: pio test -e native
 
+  end-to-end:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0  # tools/version.py names the build with git describe
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO and ffmpeg
+        run: |
+          pip install platformio cryptography
+          choco install ffmpeg --no-progress -y
+
       - name: End-to-end test of the PC build
         run: |
           pio run -e host
           python tools/e2e_test.py
 
+  pages:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO, the browser and ffmpeg
+        run: |
+          pip install platformio cryptography playwright==1.52.0 segno==1.6.1 pillow==13.0.0
+          python -m playwright install chromium
+          choco install ffmpeg --no-progress -y
+
       # In a real browser: arming, disarming and the test alerts, on the pages, the hub and a pretend NVR.
       - name: The web pages in a browser
         run: |
-          pip install playwright==1.52.0 segno==1.6.1
-          python -m playwright install chromium
+          pio run -e host
           python tools/e2e_pages.py
 
       # The user guide's pictures can still be taken; they are kept here to compare with the ones in docs/images.
@@ -74,9 +118,7 @@ jobs:
 
       # A page that changed without its pictures being taken again would leave the user guide showing the old one.
       - name: The pictures match the pages
-        run: |
-          pip install pillow==13.0.0
-          python tools/compare_pictures.py
+        run: python tools/compare_pictures.py
 
       - name: Keep the pictures
         if: always()
@@ -87,10 +129,39 @@ jobs:
             docs/images/*.png
             .pio/picture-changes/*.png
 
-      - name: Firmware for every board
-        run: pio run -e esp32_16mb -e esp32dev -e esp32s3
+  # Each board on a machine of its own.
+  firmware:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false  # one board failing still shows whether the others build
+      matrix:
+        board: [esp32_16mb, esp32dev, esp32s3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0  # tools/version.py names the firmware with git describe
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: The build platform is the one recorded
+        run: python tools/check_platform.py
+
+      - name: Install PlatformIO
+        run: pip install platformio cryptography
+
+      - name: Firmware for ${{ matrix.board }}
+        run: pio run -e ${{ matrix.board }}
 
       - name: Keep the 16 MB firmware and its .elf
+        if: matrix.board == 'esp32_16mb'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: firmware-esp32_16mb
