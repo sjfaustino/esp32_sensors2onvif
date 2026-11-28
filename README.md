@@ -32,8 +32,8 @@ flowchart LR
 
 ## Quick start
 
-1. Write the release's `-full.bin` for your board to the hub, as the
-   [user guide](docs/user-guide.md#setting-up-a-hub) says.
+1. Plug the board in and press **Install** for it on the [install page](https://sjfaustino.github.io/esp32_sensors2onvif/), in Chrome or Edge; or write the
+   release's `-full.bin` yourself, as the [user guide](docs/user-guide.md#setting-up-a-hub) says.
 2. Press the board's BOOT button, join the hub's network, `esp-alarmhub-setup`, and choose the hub password and your
    Wi-Fi network on the page that opens.
 3. Open the hub's page, `http://esp-alarmhub.local`.

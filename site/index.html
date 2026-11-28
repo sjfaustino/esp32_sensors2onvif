@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the sensors2onvif hub</title>
+<meta name="description" content="Put the sensors2onvif hub's firmware on a blank ESP32 board from the browser.">
+<!-- The board's firmware goes on over USB with ESP Web Tools; tools/install_site.py puts the release's files beside this page. -->
+<script type="module" src="https://unpkg.com/esp-web-tools@10.5.2/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5a6475; --line: #dde1e8; --accent: #2f5fc4; --on-accent: #ffffff;
+    --warn-bg: #fff5d6; --warn-text: #5c4400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #a3acbb; --line: #2e3542; --accent: #7aa2ff; --on-accent: #0b1020;
+      --warn-bg: #3a3014; --warn-text: #f3dc9a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.7rem; margin: 0 0 6px; }
+  h2 { font-size: 1.15rem; margin: 28px 0 10px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); margin-bottom: 20px; }
+  .boards { display: grid; gap: 12px; }
+  .board { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .board b { display: block; }
+  .board span { color: var(--muted); font-size: 0.92rem; }
+  esp-web-install-button button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  .note { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 14px; }
+  ol { padding-left: 22px; margin: 0 0 12px; }
+  li { margin-bottom: 6px; }
+  code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 0.92em; }
+  a { color: var(--accent); }
+  footer { color: var(--muted); font-size: 0.88rem; margin-top: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Install the sensors2onvif hub</h1>
+  <p class="lead">Puts the hub's firmware, release <b id="version">RELEASE</b>, on a blank board over its USB cable, from this page.
+    Later updates go on from the hub's own page, under System &gt; Maintenance.</p>
+
+  <p class="note" id="unsupported" hidden>This browser cannot reach a USB board. Use Chrome or Edge on a computer.</p>
+
+  <h2>1. Plug the board in, and choose it</h2>
+  <div class="boards">
+    <div class="board">
+      <div><b>ESP32-S3 with 16 MB of flash and 8 MB of PSRAM</b><span>N16R8: moving pictures, up to 20 frames</span></div>
+      <esp-web-install-button manifest="manifest-esp32s3.json"><button slot="activate">Install</button></esp-web-install-button>
+    </div>
+    <div class="board">
+      <div><b>ESP32 with 16 MB of flash</b><span>Still pictures</span></div>
+      <esp-web-install-button manifest="manifest-esp32_16mb.json"><button slot="activate">Install</button></esp-web-install-button>
+    </div>
+    <div class="board">
+      <div><b>ESP32 with 4 MB of flash</b><span>Still pictures, and a shorter event history</span></div>
+      <esp-web-install-button manifest="manifest-esp32dev.json"><button slot="activate">Install</button></esp-web-install-button>
+    </div>
+  </div>
+  <p style="margin-top:12px">The browser asks which port: choose the board's. Installing erases the whole board, so use this
+    for a new hub; a hub already running keeps its settings only when updated from its own page.</p>
+
+  <h2>2. Set it up</h2>
+  <ol>
+    <li>Once it has restarted, press the board's <b>BOOT</b> button. A new hub has no password yet, so it opens its setup
+      network only after that, for 15 minutes: a Wi-Fi network called <code>esp-alarmhub-setup</code>. Join it from a phone or a computer.</li>
+    <li>The page that opens asks for the hub password, 8 to 63 characters that only you know; the NVR will need it too.</li>
+    <li>Choose your Wi-Fi network. The hub joins it, and its page tells you what to do next, one step at a time.</li>
+  </ol>
+
+  <h2>Checking the files</h2>
+  <p>The files on this page are copied from the <a id="release" href="https://github.com/sjfaustino/esp32_sensors2onvif/releases">release</a>,
+    checked against its <code>SHA256SUMS</code> first. Each was built by the repository's release workflow from the tagged commit,
+    which <code>gh attestation verify &lt;file&gt; --repo sjfaustino/esp32_sensors2onvif</code> confirms.</p>
+
+  <footer>sensors2onvif: sensor alerts recorded by an ONVIF NVR. <a href="https://github.com/sjfaustino/esp32_sensors2onvif">The project</a>,
+    and its <a href="https://github.com/sjfaustino/esp32_sensors2onvif/blob/main/docs/user-guide.md">user guide</a>.</footer>
+</main>
+<script>
+  // Web Serial is in Chrome and Edge on a computer only; elsewhere the buttons cannot work, so the page says so.
+  if (!("serial" in navigator)) document.getElementById("unsupported").hidden = false;
+</script>
+</body>
+</html>

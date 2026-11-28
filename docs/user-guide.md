@@ -10,12 +10,14 @@ messages between the hub and its nodes.
 
 ### From a release
 
-1. Download `sensors2onvif-<version>-<board>-full.bin` from the
-   [releases](https://github.com/sjfaustino/esp32_sensors2onvif/releases): `esp32_16mb` for an ESP32 with 16 MB of
-   flash, `esp32dev` for one with 4 MB, `esp32s3` for an ESP32-S3 with 16 MB of flash and 8 MB of PSRAM (N16R8).
-2. Write it to the board at address 0 with [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge:
-   connect, press **Erase Flash**, add the file at address `0x0`, and press **Program**. `esptool.py write_flash 0x0
-   <file>` does the same from a PC.
+1. Plug the board into a computer, open the [install page](https://sjfaustino.github.io/esp32_sensors2onvif/) in Chrome or Edge, and press **Install** for your
+   board: the ESP32-S3 with 16 MB of flash and 8 MB of PSRAM (N16R8), or an ESP32 with 16 MB or 4 MB of flash. It
+   writes the newest release to the whole board, checked against the release's `SHA256SUMS`.
+2. Or by hand: download `sensors2onvif-<version>-<board>-full.bin` from the
+   [releases](https://github.com/sjfaustino/esp32_sensors2onvif/releases) (`esp32s3`, `esp32_16mb` or `esp32dev`), and
+   write it to the board at address 0 with [ESP Tool](https://espressif.github.io/esptool-js/): connect, press **Erase
+   Flash**, add the file at address `0x0`, and press **Program**. `esptool.py write_flash 0x0 <file>` does the same
+   from a PC.
 3. Press the board's **BOOT** button once. The hub then opens its own Wi-Fi network, `esp-alarmhub-setup`, for 15
    minutes, and for as long as someone stays on it. Join it from a phone or laptop, and the setup page opens by itself,
    or browse to `http://192.168.4.1`. If the 15 minutes run out, press the button again.

@@ -1,0 +1,43 @@
+# The install page, on GitHub Pages: a blank board gets the hub's firmware from the browser, with ESP Web Tools. Built
+# from the newest release's -full.bin files, checked against its SHA256SUMS, each time a release is published, or by
+# hand from the Actions tab. See tools/install_site.py.
+name: Install page
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write     # to publish the site
+  id-token: write  # the deployment's proof it came from this workflow
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: The newest release's files, as the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --json tagName --jq .tagName)
+          gh release download "$tag" --pattern '*-full.bin' --pattern SHA256SUMS --dir assets
+          python3 tools/install_site.py "$tag" assets _site
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

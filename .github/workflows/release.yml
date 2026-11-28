@@ -110,8 +110,9 @@ jobs:
 
           ### A new hub
 
-          Write the `-full.bin` for your board to the whole of a blank board at address 0, with
-          [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge, or with
+          Press **Install** for your board on the [install page](https://sjfaustino.github.io/esp32_sensors2onvif/), in Chrome or Edge, which has this release
+          within a few minutes of it being published. Or write the `-full.bin` for your board to the whole of a blank
+          board at address 0, with [ESP Tool](https://espressif.github.io/esptool-js/) in Chrome or Edge, or with
           `esptool.py write_flash 0x0 <file>`. The hub then opens a Wi-Fi network called `esp-alarmhub-setup`: join it,
           choose the hub password and your Wi-Fi network on the page that opens, and the hub joins that network. The
           README's Setup section goes on from there.

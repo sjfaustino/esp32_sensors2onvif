@@ -26,6 +26,12 @@ before that, a new minor version may change settings or the messages.
   **time refused**, sent with node problems: NTP is not signed, and a faked time could move quiet hours over an alert.
   Saving the Time page takes the next reading, however far off.
 
+### Added
+
+- An [install page](https://sjfaustino.github.io/esp32_sensors2onvif/): a blank board gets the newest release from the browser, with one button for each board,
+  in Chrome or Edge. It is rebuilt from each release's files, checked against its `SHA256SUMS`, as the release is
+  published.
+
 ### Fixes
 
 - Storage that will not mount is no longer erased. The hub formatted it after any failure to mount, as after a fault
