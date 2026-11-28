@@ -545,9 +545,31 @@ bool CamAlarm::updateReady(int id) const {
   const CamNodeInfo& info = table_.nodeOf(id).info;
   const CamNodeImage* f = images_.forChip(info.chip);
   if (!f || info.version.empty() || info.version == f->version || info.refused == f->number || info.saving) return false;
-  // Tried on one node first: the others wait until it has run it for a day, by the hub's clock.
+  // Tried on one node first: the others wait until it has run it for a day, by the hub's clock, and is still well.
   time_t t = chip_->wallTime();
-  return f->passed(t >= CAM_CLOCK_VALID_AFTER ? (uint32_t)t : 0) || f->pilot == camMacText(table_.slotOf(id).mac);
+  if (f->pilot == camMacText(table_.slotOf(id).mac)) return true;
+  return f->passed(t >= CAM_CLOCK_VALID_AFTER ? (uint32_t)t : 0) && !pilotTrouble(*f);
+}
+
+// The day alone says nothing of the pilot: one the firmware broke goes silent, and a day later every node would get it.
+// So it must still be on the hub, still run it, not have had it undone, and be heard, not silent, as the others go on.
+const char* CamAlarm::pilotTrouble(const CamNodeImage& f) const {
+  uint8_t mac[6];
+  if (f.pilot.empty()) return nullptr;
+  int id = camParseMac(f.pilot, mac) ? table_.findNode(mac) : 0;
+  if (!id) return "gone";
+  const CamNodeInfo& info = table_.nodeOf(id).info;
+  if (info.refused == f.number) return "undone";
+  if (!f.pilotRan) return nullptr;  // its day has not begun, so there is nothing to hold yet
+  if (info.version != f.version) return "not-running";
+  bool heard = false, silent = true;  // silent: every sensor of it is
+  for (int i = 1; i <= CAM_MAX_SENSORS; i++) {
+    const Slot& s = table_.slotOf(i);
+    if (!s.used || memcmp(s.mac, mac, 6) != 0) continue;
+    heard = heard || table_.healthOf(i).heard;
+    silent = silent && table_.healthOf(i).silent;
+  }
+  return silent ? "silent" : !heard ? "not-heard" : nullptr;
 }
 
 // A reading every few hours goes to battery.txt in the node's folder, and from those comes how long the battery will last.

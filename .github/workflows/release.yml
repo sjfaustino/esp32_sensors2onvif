@@ -1,6 +1,12 @@
 # Publishes a release when a version is tagged on main, such as v0.2.0: the firmware for every board, named after the
 # version, and that version's part of CHANGELOG.md as the notes. Each firmware.bin is the file the hub's own page takes
-# under System > Maintenance, signed with the FIRMWARE_SIGNING_KEY secret (tools/sign_firmware.py); each -full.bin sets up a blank\n# board; each .elf reads a crash report from that build. SHA256SUMS, the SBOM and GitHub's build attestations let anyone\n# check what they downloaded.
+# under System > Maintenance, signed with the FIRMWARE_SIGNING_KEY secret (tools/sign_firmware.py); each -full.bin sets
+# up a blank board; each .elf reads a crash report from that build. SHA256SUMS, the SBOM and GitHub's build attestations
+# let anyone check what they downloaded.
+#
+# Every hub takes what this signs, so it signs only a commit that is on main and whose Checks passed: a tag pushed by
+# mistake on a working branch fails here, before the key is used. The key is kept in the release environment, which
+# only a v* tag may use.
 name: Release
 
 on:
@@ -11,15 +17,26 @@ permissions:
   contents: write
   id-token: write      # the build attestation's signing certificate
   attestations: write
+  actions: read        # whether the commit's Checks passed
 
 jobs:
   release:
     runs-on: windows-latest
     timeout-minutes: 60
+    environment: release
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
-          fetch-depth: 0  # tools/version.py names the firmware after the tag with git describe
+          fetch-depth: 0  # tools/version.py names the firmware after the tag with git describe; and main, for the check below
+
+      - name: The tagged commit is on main, and its Checks passed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main"; exit 1; }
+          passed=$(gh run list --commit "$GITHUB_SHA" --workflow Checks --status success --json databaseId --jq length)
+          [ "$passed" -gt 0 ] || { echo "Checks has not passed on $GITHUB_SHA; wait for it, or fix it, and tag again"; exit 1; }
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:

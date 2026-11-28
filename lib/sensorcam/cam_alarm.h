@@ -73,7 +73,10 @@ class CamAlarm {
   // ---- the sensors, as CamSensorTable holds them. A sensor's id runs from 1, as 0 means none. ----
   void rescan();                   // reads the table again from the folders on storage, and lets go of sensors gone
   bool updateReady(int id) const;  // a firmware update waits for this sensor's node
-  void refuseSignature(int id);    // a message from this sensor's node had the wrong signature
+  // Why a firmware tried on a pilot node is held from the others, whatever its day says: "gone", "undone", "not-running",
+  // "silent" or "not-heard" (since the hub started); nullptr when nothing holds it.
+  const char* pilotTrouble(const CamNodeImage& f) const;
+  void refuseSignature(int id);  // a message from this sensor's node had the wrong signature
   // A walk test on the node, until that time in seconds since 1970, or 0 to stop it. False for a node without a folder.
   bool setWalkTest(const uint8_t mac[6], uint32_t until);
   void updateAsked(int id, uint32_t size);      // sensor id's node asked for a part of a firmware image this size

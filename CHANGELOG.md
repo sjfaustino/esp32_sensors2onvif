@@ -28,6 +28,13 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- The main loop has a 16 KB stack. Its 8 KB came within 1.1 KB of running out on the ESP32-S3, as Device info's new
+  figure showed, and running out restarts the hub. Device info shows the least free with the size.
+- A node firmware tried on one node first reaches the others only while that node is well: still on the hub, still
+  running it, not undone, and heard, not silent. A day on it was enough before, so one the firmware broke would have
+  let it out to every node. The Nodes and pairing page says why it waits.
+- A release is signed only from a commit on main whose Checks passed, so a tag pushed by mistake on a working branch
+  publishes nothing. The release runs in the release environment, which only a v* tag may use.
 - After a start, as after a power cut, the hub refuses an NTP reading earlier than the last time it knew it was running,
   and logs it as **time refused**: someone answering its NTP could otherwise move its quiet hours over the alerts that
   follow. A later time is still taken, as how long the hub was off is not known.

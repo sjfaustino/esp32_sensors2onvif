@@ -4,6 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
+#include <functional>
 #include <string>
 #include <vector>
 #include "cam_json.h"
@@ -23,7 +24,8 @@ class CamNodeImages {
   // The pilot runs it now: kept with the description, so a restart of the hub does not start the day again. Const, as
   // the alarm, which only reads the files otherwise, hears the node say so.
   void notePilotRan(uint16_t chip, uint32_t now) const;
-  void json(CamJson& j, uint32_t now) const;  // "nodeFirmware": [{chip, name, version, size, pilot, pilotLeft}]
+  // "nodeFirmware": [{chip, name, version, size, pilot, pilotLeft, pilotHeld}]; held says why the others wait on the pilot.
+  void json(CamJson& j, uint32_t now, const std::function<const char*(const CamNodeImage&)>& held) const;
 
   // An upload, streamed to a file beside the others as it arrives, then checked whole.
   enum Result { SAVED, NOT_AN_IMAGE, NOT_SAVED };

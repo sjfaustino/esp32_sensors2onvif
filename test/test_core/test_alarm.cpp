@@ -217,6 +217,37 @@ static void an_alert_never_shown_to_a_listening_nvr_is_missed() {
   TEST_ASSERT_TRUE(r.past());
 }
 
+// A firmware tried on one node first reaches the others only while that node is well: still on the hub, still running
+// it, not undone, and heard, not silent. A day of it alone is no proof, as one it broke goes silent.
+static void a_pilot_the_firmware_broke_holds_it_from_the_others() {
+  Rig r("cam_alarm_pilot");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  r.start();
+  CamNodeImage f;
+  f.chip = 13;
+  f.version = "4b5c6d7";
+  f.number = 77;
+  TEST_ASSERT_NULL(r.alarm.pilotTrouble(f));  // no pilot: every node at once
+  f.pilot = "02-00-00-00-00-55";
+  TEST_ASSERT_EQUAL_STRING("gone", r.alarm.pilotTrouble(f));
+  f.pilot = "AA-BB-CC-DD-EE-01";
+  TEST_ASSERT_NULL(r.alarm.pilotTrouble(f));  // its day has not begun
+  f.pilotRan = 1794000000;
+  CamNodeInfo& info = r.table.nodeOf(r.id()).info;
+  info.version = "4a00000";
+  TEST_ASSERT_EQUAL_STRING("not-running", r.alarm.pilotTrouble(f));
+  info.version = f.version;
+  r.table.healthOf(r.id()).heard = false;
+  TEST_ASSERT_EQUAL_STRING("not-heard", r.alarm.pilotTrouble(f));
+  r.report(DOOR, 1, false);
+  TEST_ASSERT_NULL(r.alarm.pilotTrouble(f));  // well
+  r.table.healthOf(r.id()).silent = true;
+  TEST_ASSERT_EQUAL_STRING("silent", r.alarm.pilotTrouble(f));
+  r.table.healthOf(r.id()).silent = false;
+  info.refused = f.number;
+  TEST_ASSERT_EQUAL_STRING("undone", r.alarm.pilotTrouble(f));
+}
+
 static void a_late_report_plays_as_a_past_event_of_its_own() {
   Rig r("cam_alarm_late");
   r.sensor("AA-BB-CC-DD-EE-01/1");
@@ -681,6 +712,7 @@ void runAlarmTests() {
   RUN_TEST(a_timed_disarm_arms_away_again_by_itself);
   RUN_TEST(an_alert_the_nvr_missed_is_logged_and_replayed_once_it_listens);
   RUN_TEST(an_alert_never_shown_to_a_listening_nvr_is_missed);
+  RUN_TEST(a_pilot_the_firmware_broke_holds_it_from_the_others);
   RUN_TEST(a_late_report_plays_as_a_past_event_of_its_own);
   RUN_TEST(a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards);
   RUN_TEST(the_alarm_is_busy_while_an_alert_is_on);

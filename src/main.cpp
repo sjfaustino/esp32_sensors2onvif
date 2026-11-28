@@ -21,6 +21,11 @@
 #include "hub_time.h"
 #include "hub_wifi.h"
 
+// The main loop serves every request and takes every alert. Its 8 KB default came within 1.1 KB of running out on the
+// S3, measured with Device info's least free stack, and an overflow restarts the hub. 16 KB costs 8 KB of the 220 KB
+// free, and leaves room for what is added later; see loopStackLeast.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
 static SensorCamServer* server = nullptr;
 static std::string localIp() { return WiFi.localIP().toString().c_str(); }
 static uint32_t nowMs() { return millis(); }

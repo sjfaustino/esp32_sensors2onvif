@@ -2444,6 +2444,18 @@ msgstr "Oferecido a todos os nós deste chip."
 msgid "{name} had it undone, so it is not offered to the others."
 msgstr "{name} desfê-lo, por isso não é oferecido aos outros."
 
+msgid "{name} has gone silent since it took it, so it is not offered to the others."
+msgstr "{name} ficou em silêncio desde que o recebeu, por isso não é oferecido aos outros."
+
+msgid "{name} has not been heard since the hub started, so the others wait until it is."
+msgstr "{name} não foi ouvido desde que a central arrancou, por isso os outros esperam até que seja."
+
+msgid "{name} is no longer on the hub, so it is not offered to the others. Choose another node to try it on."
+msgstr "{name} já não está na central, por isso não é oferecido aos outros. Escolha outro nó para o experimentar."
+
+msgid "{name} no longer runs it, so it is not offered to the others."
+msgstr "{name} já não o usa, por isso não é oferecido aos outros."
+
 msgid "Tried on {name} first; the others get it a day after it runs it."
 msgstr "Experimentado primeiro em {name}; os outros recebem-no um dia depois de ele o usar."
 

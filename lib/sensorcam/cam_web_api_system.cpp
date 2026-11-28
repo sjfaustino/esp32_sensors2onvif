@@ -70,7 +70,7 @@ std::string CamWeb::espNowJson() {
   }
   j.end();
   time_t wall = chip_->wallTime();
-  nodes_.images().json(j, wall >= CAM_CLOCK_VALID_AFTER ? (uint32_t)wall : 0);
+  nodes_.images().json(j, wall >= CAM_CLOCK_VALID_AFTER ? (uint32_t)wall : 0, [&](const CamNodeImage& f) { return alarm_.pilotTrouble(f); });
   j.array("unknown");
   for (const UnknownSender& u : table_.unknown()) {
     if (!u.used || table_.findSlot(u.mac, u.input)) continue;  // added since it was last heard

@@ -79,12 +79,14 @@ bool CamNodeImages::remove(uint16_t chip) {
   return ok;
 }
 
-void CamNodeImages::json(CamJson& j, uint32_t now) const {
+void CamNodeImages::json(CamJson& j, uint32_t now, const std::function<const char*(const CamNodeImage&)>& held) const {
   j.array("nodeFirmware");
   for (const CamNodeImage& i : images_) {
     uint32_t left = i.pilotRan && now < i.pilotRan + CAM_PILOT_S ? i.pilotRan + CAM_PILOT_S - now : 0;
     j.object().num("chip", i.chip).str("name", camChipName(i.chip)).str("version", i.version).num("size", i.size);
-    j.str("pilot", i.pilot).flag("pilotRuns", i.pilotRan != 0).num("pilotLeft", !i.pilot.empty() && i.pilotRan, left).end();
+    const char* why = held(i);
+    j.str("pilot", i.pilot).flag("pilotRuns", i.pilotRan != 0).num("pilotLeft", !i.pilot.empty() && i.pilotRan, left);
+    j.str("pilotHeld", why ? why : "").end();
   }
   j.end();
 }

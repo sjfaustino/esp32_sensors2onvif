@@ -101,16 +101,34 @@
         if (!f.pilot) return counted + " " + tr("Offered to every node of this chip.");
         const pilot = nodes.find((n) => n.node == f.pilot) || {},
           name = nameOf(f.pilot);
+        // Why the hub holds it from the others, by the word it says, whatever the pilot's day says.
+        const held = {
+          undone: () => tr("{name} had it undone, so it is not offered to the others.", { name }),
+          gone: () =>
+            tr(
+              "{name} is no longer on the hub, so it is not offered to the others. Choose another node to try it on.",
+              {
+                name,
+              },
+            ),
+          "not-running": () => tr("{name} no longer runs it, so it is not offered to the others.", { name }),
+          silent: () => tr("{name} has gone silent since it took it, so it is not offered to the others.", { name }),
+          // Shown once its day is over: until then, how long is left says more.
+          "not-heard": () =>
+            f.pilotLeft
+              ? ""
+              : tr("{name} has not been heard since the hub started, so the others wait until it is.", { name }),
+        };
+        const reason = (held[pilot.update == "update undone" ? "undone" : f.pilotHeld] || (() => ""))(); // not words: as the hub says it
         return (
           counted +
           " " +
-          (pilot.update == "update undone" // not words: as the hub says it
-            ? tr("{name} had it undone, so it is not offered to the others.", { name })
-            : !f.pilotRuns
+          (reason ||
+            (!f.pilotRuns
               ? tr("Tried on {name} first; the others get it a day after it runs it.", { name })
               : f.pilotLeft
                 ? tr("{name} runs it; the others get it in {n} h.", { name, n: Math.ceil(f.pilotLeft / 3600) })
-                : tr("{name} ran it for a day, so the others get it too.", { name }))
+                : tr("{name} ran it for a day, so the others get it too.", { name })))
         );
       };
       const key = JSON.stringify([j.nodeFirmware, j.nodes.map((n) => [n.node, n.chip, n.version, n.update, n.name])]);

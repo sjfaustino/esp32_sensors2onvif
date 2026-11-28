@@ -210,7 +210,7 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Last crash", crashSummary);
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(memoryLowSinceStart() / 1024) + " KB");
-  add("Least free stack of the main loop", String(loopStackLeast()) + " bytes");
+  add("Least free stack of the main loop", String(loopStackLeast()) + " of " + getArduinoLoopTaskStackSize() + " bytes");
   {
     uint32_t low;
     int64_t at;
