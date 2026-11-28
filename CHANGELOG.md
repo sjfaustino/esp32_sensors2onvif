@@ -5,6 +5,8 @@ before that, a new minor version may change settings or the messages.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-28
+
 ### Security
 
 - Through an MQTT broker the hub does not log in to, anyone on the network could move it from armed away to armed home,
@@ -448,7 +450,8 @@ The first numbered release.
 - 111 unit tests, an end-to-end test of 617 checks playing the NVR's part, and the pages in a real browser, all run on
   every push.
 
-[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/sjfaustino/esp32_sensors2onvif/compare/v0.4.0...v0.5.0
