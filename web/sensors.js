@@ -80,8 +80,11 @@ function say(t, err) {
   $("msg").className = err ? "err" : "";
   if (!err) notice(t);
 }
-async function call(method, url, body) {
-  const r = await fetch(url, { method, body });
+// opts.timeout: ms after which it is given up, for the requests asked again and again, so one left hanging by a hub that
+// has gone cannot hold back the next.
+async function call(method, url, body, opts) {
+  const signal = opts && opts.timeout && AbortSignal.timeout ? AbortSignal.timeout(opts.timeout) : undefined;
+  const r = await fetch(url, { method, body, signal });
   let j = {};
   try {
     j = await r.json();

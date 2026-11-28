@@ -820,6 +820,23 @@ def test_a_moving_image_on_each_kind_of_hub(browser, storage):
         common.HUB.stdout.readline()
 
 
+def test_a_hub_that_stops_answering_is_not_shown_as_all_good(page):
+    """A page left open, as on a tablet by the door, must not go on saying all is well once the hub stops answering:
+    the bar says how long it has not answered, on the Overview and on any other page."""
+    for view in ('overview', 'device'):
+        page.unroute('**/api/overview')
+        page.goto(URL + '#' + view)
+        check(f'on {view}, the bar first shows how things stand',
+              page_wait(page, lambda: not page.locator('#status').is_hidden() and 'not answered' not in page.text_content('#status')))
+        page.route('**/api/overview', lambda route: route.abort())
+        page.evaluate('() => { const real = Date.now; Date.now = () => real() + 20000; }')  # as if 20 s have gone by
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")  # asked again at once, as when the tab shows
+        check(f'on {view}, once the hub has not answered for a while, the bar says so',
+              page_wait(page, lambda: 'has not answered since' in page.text_content('#status')
+                        and 'bad' in page.get_attribute('#status', 'class')), page.text_content('#status'))
+    page.unroute('**/api/overview')
+
+
 def test_a_moving_picture_plays_when_shown(page):
     """Show it on a moving picture plays its frames, 2 a second, as the hub does, not just the first. The stored picture
     is the hub's own shape: one SPS, then each frame's PPS and IDR; each frame goes to the decoder as a picture of its own."""
@@ -1003,6 +1020,7 @@ def page_cases(nvr, storage):
         ('a_sensor_camera', on_page(test_a_sensor_camera)),
         ('sensor_pictures', on_page(test_sensor_pictures)),
         ('a_moving_picture_plays_when_shown', on_page(test_a_moving_picture_plays_when_shown)),
+        ('a_hub_that_stops_answering_is_not_shown_as_all_good', on_page(test_a_hub_that_stops_answering_is_not_shown_as_all_good)),
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
         ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),

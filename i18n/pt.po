@@ -495,6 +495,9 @@ msgstr "A central e cada sensor aparecem sozinhos no Home Assistant, através de
 msgid "The hub answers only to its address, its name, and these names, such as one your router gives it, separated by commas. That stops a website from reaching it through your browser."
 msgstr "A central só responde ao seu endereço, ao seu nome e a estes nomes, como um que o router lhe dê, separados por vírgulas. Isso impede um site de lhe chegar através do seu navegador."
 
+msgid "The hub has not answered since {time}: what this page shows may be out of date."
+msgstr "A central não responde desde as {time}: o que esta página mostra pode estar desatualizado."
+
 msgid "The hub is disarmed: alerts are logged but not sent to the NVR, so nothing is recorded. Arm it on the Overview page."
 msgstr "A central está desarmada: os alertas ficam registados mas não são enviados ao NVR, por isso nada é gravado. Arme-a na página Resumo."
 

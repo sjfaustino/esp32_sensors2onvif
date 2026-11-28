@@ -233,7 +233,23 @@
     ];
   }
   // One line at the top of every page: protecting, something needs attention, or not protecting, and why.
+  // The bar must never go on saying all is well for a hub that has stopped answering, as a page left open on a tablet
+  // would: after a while without an answer, it says so, and since when.
+  const LOST_MS = 15000;
+  let heardAt = Date.now();
+  function statusLost() {
+    if (Date.now() - heardAt < LOST_MS) return;
+    const s = $("status");
+    s.className = "status bad";
+    s.href = "#overview";
+    s.dataset.steps = "";
+    s.textContent = tr("The hub has not answered since {time}: what this page shows may be out of date.", {
+      time: new Date(heardAt).toLocaleTimeString(),
+    });
+    s.hidden = false;
+  }
   function showStatus(o) {
+    heardAt = Date.now();
     const bad = [],
       attention = [];
     if (o.nvr.set && !o.nvr.listening) bad.push(tr("the NVR is not listening, so alerts are not recorded"));
@@ -258,8 +274,10 @@
   async function loadStatus() {
     if (shown == "overview") return; // the Overview shows the status from its own, more frequent, refresh
     try {
-      showStatus(await call("GET", "/api/overview"));
-    } catch (e) {}
+      showStatus(await call("GET", "/api/overview", undefined, { timeout: 10000 }));
+    } catch (e) {
+      statusLost();
+    }
   }
   // "5 min ago", from a time the hub gave, by this device's clock.
   function ago(iso) {
@@ -344,6 +362,7 @@
     sensorLink,
     readyItems,
     showStatus,
+    statusLost,
     loadStatus,
     repeat,
     empty,

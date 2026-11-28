@@ -28,6 +28,9 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- A page left open no longer goes on saying all is well once the hub stops answering, as when it is unplugged: after
+  15 seconds without an answer, the bar at the top says so, in red, with the time it last answered. Its requests are
+  given up after 10 seconds, so one left hanging cannot put that off.
 - The main loop has a 16 KB stack. Its 8 KB came within 1.1 KB of running out on the ESP32-S3, as Device info's new
   figure showed, and running out restarts the hub. Device info shows the least free with the size.
 - A node firmware tried on one node first reaches the others only while that node is well: still on the hub, still

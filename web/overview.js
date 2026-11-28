@@ -1,7 +1,7 @@
 // The Overview: arming and disarming, what happened since the hub was armed, the hub at a glance, and Getting
 // started.
 (() => {
-  const { fill, chip, readyItems, sensorLink, showStatus, showMode, MODE_WORDS, repeat } = window.hub;
+  const { fill, chip, readyItems, sensorLink, showStatus, statusLost, showMode, MODE_WORDS, repeat } = window.hub;
   // The panel's icon for each mode: a closed lock, a house, an open lock. Fixed markup, never from the hub.
   const ICONS = {
     away: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -146,8 +146,14 @@
   let changeKey = "",
     fullAt = 0;
   async function loadOverview(force) {
+    let o;
     try {
-      const o = await call("GET", "/api/overview");
+      o = await call("GET", "/api/overview", undefined, { timeout: 10000 });
+    } catch (e) {
+      statusLost(); // the rest of the page keeps what it had, and the bar says how old that is
+      return;
+    }
+    try {
       const key = JSON.stringify([o.mode, o.last, o.active.length]),
         full = force === true || key != changeKey || Date.now() - fullAt > 30000;
       if (full) {
