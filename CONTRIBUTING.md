@@ -18,6 +18,10 @@ needs a paired node pairs one of its own (`PairedNode` in `tools/e2e_nodes.py`),
 a test can run alone or in any order, and a failure names the tests to run again. Run only one test or a few while
 working on them, and the whole set before a commit. Don't run two of these at once: they use the same ports.
 
+On CI the end-to-end test runs with `S2O_MILLIS_START=4294667296`, so the PC build's millisecond count starts five
+minutes before it wraps, as the board's does after 49.7 days of uptime, which no other test reaches: a comparison of
+times that does not survive the wrap fails there. Set it the same way to run it so here.
+
 ```
 pio test -e native            # the unit tests
 pio run -e host               # the PC build that the next two drive

@@ -36,3 +36,7 @@ class CamPost {
   char status_[12];  // the reply's first bytes, "HTTP/1.1 200", gathered until there are enough to read its code
   size_t statusLen_ = 0;
 };
+
+#ifdef CAM_TEST_HOOKS
+extern int camPostSocketsFail;  // PC builds only: that many sockets are refused, as when the network stack has none left
+#endif

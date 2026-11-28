@@ -44,7 +44,8 @@ std::string SensorCamServer::debugLine() {
   int web = web_.openCount(), video = video_.openCount(), push = events_.pushCount();
   return "wait errors " + std::to_string(waitErrors_) + " (errno " + std::to_string(lastWaitErrno_) + "), accepted " +
          std::to_string(web_.accepted()) + ", refused " + std::to_string(web_.refused()) + ", open web " + std::to_string(web) + " video " +
-         std::to_string(video) + " push " + std::to_string(push) + ", short of memory " + std::to_string(memoryFailures());
+         std::to_string(video) + " push " + std::to_string(push) + ", closed for a push " + std::to_string(web_.pushRoom()) + ", short of memory " +
+         std::to_string(memoryFailures());
 }
 
 void SensorCamServer::networkUp() {
@@ -77,6 +78,7 @@ void SensorCamServer::housekeeping(uint32_t now) {
   web_.servicePolls(now);
   web_.healthLook(now);
   events_.tick(now, web_.sharedSockets() - events_.pushCount(), CamWeb::MAX_HTTP);
+  if (events_.takeStarved()) web_.makeRoomForPush(now);         // the push goes on the next pass
   webhook_.tick(now, web_.sharedSockets() < CamWeb::MAX_HTTP);  // leaves one for an event push
   try {                                                         // on its own, so running out of memory there still leaves the picture to be sent
     mqtt_.tick(now, web_.sharedSockets() < CamWeb::MAX_HTTP && !web_.updating());

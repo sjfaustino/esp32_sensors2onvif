@@ -252,6 +252,12 @@
     heardAt = Date.now();
     const bad = [],
       attention = [];
+    if (o.storageFailed)
+      bad.push(
+        tr(
+          "its storage could not be read, so it knows no sensors: restart it, and if that does not help, restore a backup",
+        ),
+      );
     if (o.nvr.set && !o.nvr.listening) bad.push(tr("the NVR is not listening, so alerts are not recorded"));
     if (o.mode == "disarmed") attention.push(tr("disarmed"));
     if (o.problems.length) attention.push(trCount(o.problems.length, "{n} sensor problem", "{n} sensor problems"));

@@ -505,6 +505,29 @@ def a_push_answered_with_an_error_is_sent_again(s):
 
 
 @case(pc=True)
+def an_alert_push_takes_a_socket_from_a_page(s):
+    """The board has 16 sockets, and a browser alone holds six. A push that finds none takes the place of the oldest web
+    connection that is not the NVR's: an alert outranks a page."""
+    idle = socket.create_connection((HOST, WEB), timeout=5)  # as a browser keeps one open
+    try:
+        time.sleep(0.2)  # the hub takes it, so it is the oldest
+        before = len(s.nvr.events)
+        control('push-no-socket')
+        get(f'/sensor?{sid(1)}')
+        check('a push that found no socket still reaches the NVR', wait_until(lambda: len(s.nvr.events) > before, timeout=5),
+              (len(s.nvr.events), before))
+        idle.settimeout(3)
+        try:
+            closed = idle.recv(1) == b''
+        except OSError:
+            closed = True  # reset, which is closed too
+        check('and the oldest web connection made room for it', closed)
+        clear(1)
+    finally:
+        idle.close()
+
+
+@case(pc=True)
 def pushes_wait_for_sockets(s):
     """Web connections and pushes share a few sockets, so a push may have to wait for one. It must still go out."""
     second = FakeNvrListener()

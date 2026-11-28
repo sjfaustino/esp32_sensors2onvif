@@ -66,6 +66,9 @@ two LEDs or alone.
 
 A 4 MB board keeps a shorter event history, about 650 events, so that it always fits beside a few pictures; should
 storage still fill, the older half of the history gives way, since a report that cannot be saved cannot be confirmed.
+The hub sets its storage up only when it is blank, as on a new board. Storage that will not mount is never erased, as
+it holds the nodes' keys, the sensors and the history: the hub runs on its built-in pictures, knows no sensors, and the
+bar at the top of every page says it is not protecting. Restart it; if that does not help, restore a backup.
 
 ### Finding the hub
 

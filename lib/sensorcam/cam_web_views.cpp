@@ -137,7 +137,7 @@ std::string CamWeb::overviewJson(uint32_t now) {
     } else {
       j.null("last");
     }
-    j.num("dropped", memoryFailures()).num("uptime_s", now / 1000);
+    j.num("dropped", memoryFailures()).num("uptime_s", now / 1000).flag("storageFailed", cfg_.storageFailed);
     // For the Overview's checklist: what must be right before the hub can be trusted.
     time_t t = chip_->wallTime(), lastTest = alarm_.lastTestAt();
     for (int n = 0; n < alarm_.log().count(); n++)

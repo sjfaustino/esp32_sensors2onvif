@@ -52,15 +52,19 @@ class CamWeb {
   void serve(fd_set& rd, fd_set& wr, uint32_t now);
   void healthLook(uint32_t now);  // every few seconds, for the week of health on Device info
   CamLedPins ledPins() const { return leds_; }
-  void ledTest(uint32_t now, CamLeds& l);                      // while the page's Test is on, lights that LED alone
-  void servicePolls(uint32_t now);                             // answers each held PullMessages once there is news or its wait is over
-  int sharedSockets() const;                                   // web connections, event pushes, the webhook and MQTT
+  void ledTest(uint32_t now, CamLeds& l);  // while the page's Test is on, lights that LED alone
+  void servicePolls(uint32_t now);         // answers each held PullMessages once there is news or its wait is over
+  int sharedSockets() const;               // web connections, event pushes, the webhook and MQTT
+  // The network stack has 16 sockets, and a browser alone opens six: when an event push finds none, the oldest web
+  // connection that is not the NVR's, and not an upload, is closed for it, as an alert outranks a page. True if one was.
+  bool makeRoomForPush(uint32_t now);
   bool updating() const { return firmwareOwner_ != nullptr; }  // a firmware upload is under way
   bool downloadingHistory() const;
   int openCount() const;  // web connections open
   uint32_t accepted() const { return accepted_; }
   uint32_t refused() const { return refused_; }
   uint32_t nvrLetIn() const { return nvrLetIn_; }  // times the NVR took the place of another connection, all being busy
+  uint32_t pushRoom() const { return pushRoom_; }  // web connections closed for an event push; see makeRoomForPush
   void setOnvifPassword(const std::string& password) { onvifPassword_ = password; }  // for the PC tests
   void setDrainMs(uint32_t ms) { drainMs_ = ms; }                                    // for the PC tests
   // A blank hub's first password, from its setup page: it guards the pages, ONVIF and the video at once, rather than
@@ -278,6 +282,7 @@ class CamWeb {
   S2oFirmwareSig firmwareSig_;                              // the signature on the update under way, checked before it is kept
   S2oFirmwareSig nodeSig_;                                  // the same for a node's firmware file, before the nodes are offered it
   HttpConn* nodeImageOwner_ = nullptr;                      // the upload of a node firmware file under way
+  uint32_t pushRoom_ = 0;                                   // web connections closed to make room for an event push, for the heartbeat
   HttpConn* uploading_ = nullptr;                           // the upload borrowing the picture buffer (CamVideo::lend)
   std::function<size_t(size_t, char*, size_t)> csvRead_;    // streams the whole history for a download
   std::function<bool(size_t, char*, size_t)> crashReader_;  // reads the chip's crash report for a download

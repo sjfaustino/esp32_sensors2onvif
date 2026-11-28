@@ -352,6 +352,8 @@ bool CamStorage::writeWith(const std::string& path, const std::function<bool(FIL
   return ok;
 }
 
+FILE* CamStorage::openRead(const std::string& path) const { return fopen(full(path).c_str(), "rb"); }
+
 FILE* CamStorage::openWrite(const std::string& path) const {
   size_t slash = path.rfind('/');
   if (slash != std::string::npos && !makeDirs(path.substr(0, slash))) return nullptr;
@@ -382,8 +384,12 @@ bool CamStorage::readAt(const std::string& path, size_t offset, char* out, size_
   return ok;
 }
 
+// LittleFS's rename replaces the target in one step, so a power cut leaves the one or the other; Windows's will not
+// replace one, so the PC build removes it first, as writeWith does.
 bool CamStorage::renameFile(const std::string& from, const std::string& to) const {
+#ifdef _WIN32
   (void)remove(full(to).c_str());  // there may be none; the rename says if it worked
+#endif
   return rename(full(from).c_str(), full(to).c_str()) == 0;
 }
 

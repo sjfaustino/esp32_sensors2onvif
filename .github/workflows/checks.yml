@@ -78,7 +78,11 @@ jobs:
           pip install platformio cryptography
           choco install ffmpeg --no-progress -y
 
+      # Across the millisecond count's wrap, which the board reaches after 49.7 days and no other test runs for: the PC
+      # build starts five minutes before it, and again at each restart a test makes.
       - name: End-to-end test of the PC build
+        env:
+          S2O_MILLIS_START: '4294667296'
         run: |
           pio run -e host
           python tools/e2e_test.py

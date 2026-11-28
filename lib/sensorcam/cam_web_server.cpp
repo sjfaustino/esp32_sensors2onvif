@@ -135,6 +135,19 @@ void CamWeb::closeHttp(HttpConn& c) {
   c = HttpConn();
 }
 
+bool CamWeb::makeRoomForPush(uint32_t now) {
+  uint32_t nvr = events_.nvrIp().empty() ? 0 : inet_addr(events_.nvrIp().c_str());
+  HttpConn* oldest = nullptr;
+  for (HttpConn& c : http_) {
+    bool busy = c.firmwareActive || c.toFrameBuffer || &c == uploading_;  // never an upload: it would be lost part way
+    if (c.fd >= 0 && !busy && (!nvr || c.peer != nvr) && (!oldest || now - c.openedAt > now - oldest->openedAt)) oldest = &c;
+  }
+  if (!oldest) return false;
+  closeHttp(*oldest);
+  pushRoom_++;
+  return true;
+}
+
 int CamWeb::sharedSockets() const {
   int open = 0;
   for (const HttpConn& c : http_) open += c.fd >= 0;

@@ -277,8 +277,11 @@ struct CamConfig {
   std::string startReason;     // why the hub last started, for the "hub started" event
   bool startPlanned = false;   // asked for: an update, the restart button, new settings; not a crash or a power cut
   std::string snapshotSecret;  // random and kept on the hub; keys the snapshot address's token
-  uint32_t sealStart = 0;      // the first number of the hub's sealed messages: where the last start's left off, see sealReserve
-  bool sealStartKept = true;   // false when the start could not save the block it reserved: nothing is sealed until one is
-  std::string extraHosts;      // other names the web port answers to, comma-separated, such as a router's name for it
-  bool watchNvr = true;        // log and send alerts the NVR was not listening for
+  // The storage would not mount and was not blank, so it was left as it is rather than erased: it holds the nodes' keys,
+  // the sensors and the history. The hub then knows no sensors, so the pages say it is not protecting.
+  bool storageFailed = false;
+  uint32_t sealStart = 0;     // the first number of the hub's sealed messages: where the last start's left off, see sealReserve
+  bool sealStartKept = true;  // false when the start could not save the block it reserved: nothing is sealed until one is
+  std::string extraHosts;     // other names the web port answers to, comma-separated, such as a router's name for it
+  bool watchNvr = true;       // log and send alerts the NVR was not listening for
 };

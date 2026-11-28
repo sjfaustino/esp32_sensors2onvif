@@ -113,9 +113,18 @@ CamNodeImages::Result CamNodeImages::finish(bool complete, CamNodeImage& image) 
     storage_.removeTree(UPLOAD);
     return NOT_SAVED;
   }
-  const CamStorage* storage = &storage_;
-  auto reader = [storage](size_t offset, char* out, size_t len) { return storage->readAt(UPLOAD, offset, out, len); };
-  if (!camCheckNodeImage(reader, storage_.fileSize(UPLOAD), image)) {
+  // Read through one open file, front to back. Opened for each piece, as a node's firmware is read when it asks, a file of
+  // up to 3 MB took thousands of opens, on the loop that also takes alerts, close to its watchdog's 5 seconds.
+  FILE* f = storage_.openRead(UPLOAD);
+  size_t at = 0;
+  auto reader = [&](size_t offset, char* out, size_t len) {
+    if (!f || (offset != at && fseek(f, (long)offset, SEEK_SET) != 0) || fread(out, 1, len, f) != len) return false;
+    at = offset + len;
+    return true;
+  };
+  bool isImage = camCheckNodeImage(reader, storage_.fileSize(UPLOAD), image);
+  if (f) (void)fclose(f);  // only read: nothing to lose
+  if (!isImage) {
     storage_.removeTree(UPLOAD);
     return NOT_AN_IMAGE;
   }

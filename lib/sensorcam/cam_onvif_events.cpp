@@ -139,7 +139,10 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   out += body;
   std::string().swap(body);
   CamPost::Start started = notify_[i].start(url, out, CAM_NOTIFY_SEND_MS, CAM_NOTIFY_CLOSE_MS, now);
-  if (started == CamPost::NO_SOCKET) return;  // still pending, so it is tried again on the next pass
+  if (started == CamPost::NO_SOCKET) {  // still pending, so it is tried again on the next pass, once room is made
+    starved_ = true;
+    return;
+  }
   sub.pending = false;
   // Told now, or missed and played again later as a past event: never pushed late as if it were happening now.
   onSince_[i] = false;

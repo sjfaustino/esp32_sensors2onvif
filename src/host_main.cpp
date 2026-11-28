@@ -66,6 +66,8 @@ static bool control(SensorCamServer& hub, const std::string& command, std::strin
   static uint32_t counter = 77;
   if (command == "setup-on" || command == "setup-off") {  // stands in for the board opening and closing its setup network
     setupOn = command == "setup-on";
+  } else if (command == "push-no-socket") {  // the next push finds no socket, as when the board's 16 are all taken
+    camPostSocketsFail = 1;
   } else if (command == "end-alerts") {  // so the test need not wait out each hold
     hub.alarm().endAlerts();
   } else if (command == "forget-waiting") {  // so a test need not wait out the past events another left
@@ -159,9 +161,14 @@ static void readCommands() {
   }
 }
 
+// S2O_MILLIS_START sets where the millisecond count starts, as 4294667296 for five minutes before it wraps: the board's
+// wraps after 49.7 days, which no test runs for, so the end-to-end test runs across it instead.
 static uint32_t nowMs() {
   using namespace std::chrono;
-  return (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+  static const uint64_t began = (uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+  static const uint32_t from = getenv("S2O_MILLIS_START") ? (uint32_t)strtoul(getenv("S2O_MILLIS_START"), nullptr, 10) : (uint32_t)began;
+  uint64_t now = (uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+  return from + (uint32_t)(now - began);
 }
 
 // ---- the PC build's pretend board, for tools/e2e_test.py ----

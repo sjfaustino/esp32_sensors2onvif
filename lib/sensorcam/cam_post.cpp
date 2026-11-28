@@ -2,7 +2,17 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef CAM_TEST_HOOKS
+int camPostSocketsFail = 0;
+#endif
+
 CamPost::Start CamPost::start(const HttpUrl& url, std::string& request, uint32_t connectMs, uint32_t replyMs, uint32_t now) {
+#ifdef CAM_TEST_HOOKS
+  if (camPostSocketsFail > 0) {
+    camPostSocketsFail--;
+    return NO_SOCKET;
+  }
+#endif
   int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return NO_SOCKET;
   netNonblock(fd);

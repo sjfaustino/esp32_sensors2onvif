@@ -28,6 +28,16 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- Storage that will not mount is no longer erased. The hub formatted it after any failure to mount, as after a fault
+  from a power cut, which would have erased the nodes' keys, the sensors, the history and the alerts waiting for the
+  NVR, and left the nodes' alerts ignored as from unknown senders. It now sets up only a blank storage; otherwise it
+  leaves it as it is, runs on its built-in pictures, and every page says it is not protecting.
+- An event push that finds no socket left, as when a browser holds six of the board's 16 and the NVR and a viewer
+  watch the video, makes room by closing the oldest web connection that is not the NVR's or an upload. It used to wait
+  for one to close by itself, up to 10 seconds, long enough to count its alert as missed.
+- A node firmware file is checked through one open file rather than a fresh open for each kilobyte: one of 3 MB took
+  thousands of opens on the loop that takes alerts, close to its watchdog's 5 seconds.
+- The end-to-end test runs on CI across the millisecond count's wrap, which the board reaches after 49.7 days.
 - A page left open no longer goes on saying all is well once the hub stops answering, as when it is unplugged: after
   15 seconds without an answer, the bar at the top says so, in red, with the time it last answered. Its requests are
   given up after 10 seconds, so one left hanging cannot put that off.

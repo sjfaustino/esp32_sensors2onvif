@@ -32,7 +32,9 @@ a moment instead of being lost. A large reply is sent from its own string, never
 that still finds no block big enough fails alone with a 507: an out-of-memory abort would restart the hub, and in the
 first minutes after an update would undo it. Running out of memory anywhere else also drops only the work that needed
 it: an event push, a reply to the NVR's poll or a webhook message waits for a later pass, and the NVR's poll is still
-owed the change it was not told of. Checking, starting, logging and confirming an ESP-NOW alert use no heap at all, so
+owed the change it was not told of. The board's network stack has 16 sockets, and a browser alone opens six to the
+hub: an event push that finds none closes the oldest web connection that is not the NVR's and not an upload, and goes
+on the next pass, as an alert outranks a page (`CamWeb::makeRoomForPush`). Checking, starting, logging and confirming an ESP-NOW alert use no heap at all, so
 an alert gets through even with no memory left; Device Info counts the work dropped. The Events page's list carries a
 tag, so the page's request every 3 seconds is answered "not changed" until an event is added, and a list that has
 changed is built at its exact size. Video is sent a packet at a time straight from the picture, and files and snapshots are read from storage as they are

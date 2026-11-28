@@ -23,6 +23,12 @@ class CamOnvifEvents {
   void watch(fd_set& rd, fd_set& wr, int& maxFd) const;
   void serve(fd_set& rd, fd_set& wr, uint32_t now);
   int pushCount() const;  // pushes under way, each holding a socket
+  // A push could not have a socket, as the network stack had none left, since the last call: see CamWeb::makeRoomForPush.
+  bool takeStarved() {
+    bool was = starved_;
+    starved_ = false;
+    return was;
+  }
   // The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
   // pulls events, it asked for events within the last minute. With no NVR address set, any subscriber counts.
   bool nvrListening(uint32_t now) const;
@@ -55,7 +61,8 @@ class CamOnvifEvents {
   // An alert began since the last push to it began. An alert shorter than the wait for a push before it would else end
   // before its push went, which would then say no alert, and the NVR would never record it.
   bool onSince_[SubTable::SIZE] = {false};
-  bool wasOn_ = false;  // an alert was on at the last tick
-  int udp_ = -1;        // discovery
+  bool wasOn_ = false;    // an alert was on at the last tick
+  bool starved_ = false;  // see takeStarved
+  int udp_ = -1;          // discovery
   uint32_t messageNo_ = 1;
 };

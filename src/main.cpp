@@ -8,6 +8,7 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include "cam_restart_rules.h"
 #include "cam_server.h"
 #include "cam_timing.h"
@@ -57,6 +58,31 @@ static bool maintenance(const std::string& action) {
   bool ok = resetSettings();
   if (ok) requestRestart(RESTART_SETTINGS_RESET);
   return ok;
+}
+
+// Formats only a blank partition, as a new board has. Storage that will not mount otherwise holds the nodes' keys, the
+// sensors, the history and the alerts waiting for the NVR: formatting it, as LittleFS.begin(true) would after any
+// failure, would erase all that, and the nodes' alerts would then be ignored as from unknown senders. So it is left as
+// it is, for a restart or a person to recover, and the hub runs on its built-in pictures and says so.
+static bool storageMounted = false;
+static bool storageBegin() {
+  for (int i = 0; i < 3; i++) {
+    if (LittleFS.begin(false)) return true;
+    delay(100);
+  }
+  const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "spiffs");
+  bool blank = part != nullptr;
+  uint8_t buf[256];
+  for (size_t at = 0; blank && at < 8192 && at < part->size; at += sizeof(buf)) {  // LittleFS's two superblocks
+    blank = esp_partition_read(part, at, buf, sizeof(buf)) == ESP_OK;
+    for (size_t i = 0; blank && i < sizeof(buf); i++) blank = buf[i] == 0xFF;
+  }
+  if (blank && LittleFS.begin(true)) {
+    Serial.println("The storage was blank, and is set up.");
+    return true;
+  }
+  Serial.println("The storage would not mount and is not blank, so it was left as it is; the hub runs on its built-in pictures.");
+  return false;
 }
 
 static bool restoreBackup(const std::string& text) {
@@ -214,6 +240,7 @@ static CamConfig makeConfig() {
 #ifdef HUB_BOARD
   c.board = HUB_BOARD;
 #endif
+  c.storageFailed = !storageMounted;
   c.firmwareKey = FIRMWARE_PUBLIC_KEY;
   c.firmwareRelease = FIRMWARE_RELEASE;
   c.serial = macSerial();
@@ -229,8 +256,7 @@ void setup() {
   wifiBegin();
   applyTime();
 
-  // Formats on first use. Without storage the hub still runs, using its built-in pictures.
-  if (!LittleFS.begin(true)) Serial.println("LittleFS could not start; using built-in pictures.");
+  storageMounted = storageBegin();
 
   server = new SensorCamServer(makeConfig(), localIp, nowMs);
   if (!server->begin()) {

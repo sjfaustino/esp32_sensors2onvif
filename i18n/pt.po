@@ -1077,6 +1077,9 @@ msgstr "Uma vez por dia a central envia uma mensagem curta. Se deixar de chegar,
 msgid "the NVR is not listening, so alerts are not recorded"
 msgstr "o NVR não está a ouvir, por isso os alertas não são gravados"
 
+msgid "its storage could not be read, so it knows no sensors: restart it, and if that does not help, restore a backup"
+msgstr "o armazenamento não pôde ser lido, por isso não conhece nenhum sensor: reinicie-a e, se não resolver, reponha uma cópia de segurança"
+
 msgid "{n} sensor problem"
 msgid_plural "{n} sensor problems"
 msgstr[0] "{n} problema num sensor"
