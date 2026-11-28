@@ -45,9 +45,11 @@ class CamWifiPlan {
 
 // ---- the clock ----
 
-// Whether an NTP reading is taken: always while the clock is not set, or when told to trust the next one, as after the
-// Time page saves NTP; otherwise only one within CAM_NTP_MOST_STEP_S of the clock.
-bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext);
+// Whether an NTP reading is taken: always when told to trust the next one, as after the Time page saves NTP. While the
+// clock is not set, as after a start, any reading no earlier than notBefore, the last time the hub knew it was running
+// (0 when not known), give or take CAM_NTP_MOST_STEP_S: time does not go back, and after a power cut someone may answer
+// the hub's NTP. Otherwise only one within CAM_NTP_MOST_STEP_S of the clock.
+bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext, int64_t notBefore = 0);
 
 // ---- the setup network's password ----
 

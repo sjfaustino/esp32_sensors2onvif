@@ -364,18 +364,13 @@ summary {
   margin-top: 4px;
   color: var(--muted-text);
 }
+/* Left out of the print, not just hidden, so what is not printed takes no room: the label is on a sheet of its own. */
 @media print {
-  body * {
-    visibility: hidden;
+  body.printingLabel > :not(.hubLabel) {
+    display: none !important;
   }
-  .hubLabel,
-  .hubLabel * {
-    visibility: visible;
-  }
-  .hubLabel {
-    position: absolute;
-    left: 0;
-    top: 0;
+  body.printingLabel > .hubLabel {
+    margin: 0;
     border: 0;
   }
 }
@@ -1163,6 +1158,16 @@ button.danger {
 }
 .thumb.clear {
   background: var(--off-solid);
+}
+/* A thumbnail that opens its picture: only the thumbnail shows. */
+.thumbOpen {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
 }
 .thumb.past {
   background: var(--home-solid);

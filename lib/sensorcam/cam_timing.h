@@ -22,6 +22,7 @@ const uint32_t CAM_PAST_AFTER_S = 30;                    // chosen: an older rep
 const uint32_t CAM_RESEND_WINDOW_MS = 60000;             // chosen: the same ESP-NOW report again within this is a resend
 const uint32_t CAM_JAM_WINDOW_MS = 30UL * 60 * 1000;     // chosen: nodes overdue within this of each other went quiet together
 const uint32_t CAM_BUSY_WINDOW_MS = 3600UL * 1000;       // chosen: a sensor's alerts are counted over an hour
+const uint32_t CAM_STACK_LOW_WARN = 1024;                // chosen: the main loop's stack with less than this left is told in the daily check
 const uint32_t CAM_MEMORY_LOW_WARN = 40 * 1024;          // chosen: free memory below this in a day is told in the daily check
 const long long CAM_TEST_REMIND_AFTER_S = 30LL * 86400;  // chosen: the daily check asks for a test alert once the last is this old
 const int CAM_BUSY_ALERTS = 20;                          // chosen: this many in that hour is reported as firing often

@@ -115,7 +115,7 @@ struct CamHealth {
   uint32_t lowestFreeHeap = 0;     // since the start
   uint32_t largestBlock = 0;       // what one allocation can have now
   uint32_t worstLargestBlock = 0;  // the least that has been, since the start: how cut up the memory has got
-  uint32_t espNowDropped = 0;      // arrived while the hub was busy; their senders resend
+  uint32_t espNowDropped = 0;      // arrived while the hub was busy, as their senders resend, or too long for it to read
   int wifiRssi = 0;                // dBm; 0 when not connected
   uint64_t uptimeS = 0;
   // The least free memory since the last daily check, or the start: when, by the hub's clock (0 when not set), and how
@@ -123,6 +123,9 @@ struct CamHealth {
   uint32_t lowFree = 0;
   int64_t lowAt = 0;
   uint16_t lowWeb = 0, lowVideo = 0;
+  // The least the main loop's stack has had free since the start, in bytes; 0 when this build does not know. The PC
+  // build's stack is far larger than the board's, so only the board can tell how close a request comes to overflowing it.
+  uint32_t stackLeast = 0;
 };
 
 enum CamArmMode : uint8_t { CAM_DISARMED, CAM_ARMED_AWAY, CAM_ARMED_HOME };
@@ -155,6 +158,8 @@ class CamChip {
   virtual bool storageUsage(uint32_t& used, uint32_t& total) { return false; }  // false: not known, and nothing is limited by it
   virtual bool canAllocate(size_t bytes) { return true; }                       // lets large requests be refused before they exhaust RAM
   virtual bool hasHeadroom() { return true; }                                   // whether new connections and video frames are safe right now
+  // A new firmware still proving itself: an update now would write over the one it would go back to.
+  virtual bool firmwareOnTrial() { return false; }
   virtual bool firmwareBegin(size_t size) { return false; }
   virtual bool firmwareWrite(const uint8_t* data, size_t len) { return false; }
   virtual bool firmwareEnd(bool commit) { return false; }  // commit restarts the hub shortly after the reply

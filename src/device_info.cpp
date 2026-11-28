@@ -65,10 +65,16 @@ static uint32_t programBytes = 0;
 // not show it.
 static uint32_t smallestBlock = UINT32_MAX;
 
+static TaskHandle_t loopTask = nullptr;  // setup() runs on the loop's task, so this is it
+
 void deviceInfoBegin() {
+  loopTask = xTaskGetCurrentTaskHandle();
   programBytes = ESP.getSketchSize();  // verifies the whole firmware, which stalls the hub for 0.4 s, so only once
   loadCrash();
 }
+
+// FreeRTOS keeps the least since the task began; on the ESP32 it counts bytes.
+uint32_t loopStackLeast() { return loopTask ? (uint32_t)uxTaskGetStackHighWaterMark(loopTask) : 0; }
 
 uint32_t worstLargestBlock() { return smallestBlock == UINT32_MAX ? largestBlock() : smallestBlock; }
 
@@ -204,6 +210,7 @@ void deviceRows(CamJson& j, const DeviceStatus& status) {
   add("Last crash", crashSummary);
   add("Free memory", String(ESP.getFreeHeap() / 1024) + " KB");
   add("Lowest free memory", String(memoryLowSinceStart() / 1024) + " KB");
+  add("Least free stack of the main loop", String(loopStackLeast()) + " bytes");
   {
     uint32_t low;
     int64_t at;

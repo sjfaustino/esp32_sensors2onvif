@@ -70,6 +70,13 @@ static void a_far_ntp_reading_is_refused_once_the_clock_is_set() {
   TEST_ASSERT_FALSE(camNtpTaken(set, set + CAM_NTP_MOST_STEP_S + 1, false));
   TEST_ASSERT_FALSE(camNtpTaken(set, set - 3 * 3600, false));
   TEST_ASSERT_TRUE(camNtpTaken(set, set - 3 * 3600, true));  // after the Time page saved NTP
+  // After a start, the clock not set yet: never before the last time the hub knew it was running, as after a power cut
+  // someone may answer the hub's NTP to move its quiet hours. Later than that, any time, as how long it was off is not known.
+  TEST_ASSERT_FALSE(camNtpTaken(5, set - CAM_NTP_MOST_STEP_S - 1, false, set));
+  TEST_ASSERT_TRUE(camNtpTaken(5, set - CAM_NTP_MOST_STEP_S, false, set));
+  TEST_ASSERT_TRUE(camNtpTaken(5, set + 30 * 86400, false, set));
+  TEST_ASSERT_TRUE(camNtpTaken(5, set - 86400, true, set));  // the Time page saved NTP, so it is taken
+  TEST_ASSERT_TRUE(camNtpTaken(5, set - 86400, false, 0));   // the last time not known
 }
 
 static void the_backup_that_joins_becomes_the_main_network_and_the_setup_network_closes() {

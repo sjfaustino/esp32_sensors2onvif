@@ -10,4 +10,5 @@ int localWeekday();         // 0 for Sunday to 6, or -1 when the clock is not se
 bool scheduledMinute();     // the minute the page set for the scheduled restart
 void timeInfo(CamJson& j);  // the Time page's members
 bool saveTime(const CamTime& t);
+void setTimeNotBefore(int64_t t);      // the last time the hub knew it was running before this start; see camNtpTaken
 bool takeTimeRefused(int64_t& stepS);  // an NTP reading was refused since the last call, and how far it would have moved the clock

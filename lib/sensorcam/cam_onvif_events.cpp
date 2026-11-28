@@ -30,7 +30,11 @@ void CamOnvifEvents::networkUp() {
 }
 
 void CamOnvifEvents::tick(uint32_t now, int otherSockets, int maxShared) {
-  if (signal_.update(alarm_.board().anyActive(), now)) subs_.markAllPending();
+  bool on = alarm_.board().anyActive();
+  if (on && !wasOn_)
+    for (bool& b : onSince_) b = true;
+  wasOn_ = on;
+  if (signal_.update(on, now)) subs_.markAllPending();
   for (int i = 0; i < SubTable::SIZE; i++) {  // so one failed push cannot leave the NVR counted as not listening
     CamSub& s = subs_.at(i);
     if (!s.used || !s.push || !s.pushFailed || now - s.retryAt < CAM_PUSH_RETRY_MS) continue;
@@ -124,7 +128,8 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
   // and is tried again on the next pass.
-  bool active = alarm_.board().anyActive();
+  // The alert that began since this subscription's last push; a new subscription's first push says how things are now.
+  bool on = alarm_.board().anyActive(), active = on || (onSince_[i] && pushFor_[i] == sub.id);
   std::string body = soapNotify(active, !sub.initialized, chip_->wallTime());
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
                     "\r\nContent-Type: application/soap+xml; charset=utf-8; "
@@ -136,6 +141,9 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   CamPost::Start started = notify_[i].start(url, out, CAM_NOTIFY_SEND_MS, CAM_NOTIFY_CLOSE_MS, now);
   if (started == CamPost::NO_SOCKET) return;  // still pending, so it is tried again on the next pass
   sub.pending = false;
+  // Told now, or missed and played again later as a past event: never pushed late as if it were happening now.
+  onSince_[i] = false;
+  if (active && !on) sub.pending = true;  // an alert over already: its end goes next
   if (started == CamPost::REFUSED) {
     sub.pushFailed = true;
     return;

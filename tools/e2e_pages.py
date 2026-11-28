@@ -478,9 +478,33 @@ def test_the_hubs_label(page):
           page_wait(page, lambda: page.locator('#devHistory figure.healthChart').count() == 3
                     and page.locator('#devHistory figure.healthChart').first.locator('rect').count() >= 1),
           page.inner_html('#devHistory')[:300])
-    page.evaluate('() => { window.printed = 0; window.print = () => window.printed++; }')  # a function, as one, so not called by itself
-    page.click('#labelPrint')
-    check('the label is printed', page_wait(page, lambda: page.evaluate('window.printed') == 1), page.text_content('#toast'))
+    # A function, as one, so not called by itself. It notes what the sheet would hold, laid out for print, as the
+    # browser's print does, and then says the printing is over.
+    page.evaluate('''() => {
+      window.printed = 0;
+      window.print = () => {
+        window.printed++;
+        const label = document.getElementById("hubLabel");
+        window.sheet = {
+          height: label.getBoundingClientRect().height,
+          others: [...document.body.children].filter((e) => e != label && getComputedStyle(e).display != "none").map((e) => e.id || e.tagName),
+          text: document.body.innerText,
+        };
+        dispatchEvent(new Event("afterprint"));
+      };
+    }''')
+    page.emulate_media(media='print')
+    try:
+        page.click('#labelPrint')
+        check('the label is printed', page_wait(page, lambda: page.evaluate('window.printed') == 1), page.text_content('#toast'))
+    finally:
+        page.emulate_media(media='screen')
+    sheet = page.evaluate('window.sheet')
+    # Not hidden but laid out, as before, which ran the label onto a second sheet: nothing else takes room at all.
+    check('alone, on one sheet: nothing else on the page takes room', not sheet['others'] and 0 < sheet['height'] < 900
+          and 'Device info' not in sheet['text'] and 'Fingerprint' in sheet['text'],
+          {'others': sheet['others'], 'height': sheet['height'], 'text': sheet['text'][:120]})
+    check('and back in its place afterwards', page.evaluate("document.getElementById('hubLabel').closest('section') !== null"))
     label = page.text_content('#hubLabel')
     info = get_json('/api/info')
     check('with where the page is, the setup network and the serial number',
@@ -502,9 +526,6 @@ def test_the_hubs_label(page):
                   same and mine[0] == [[bool(v) for v in row] for row in ref.matrix], text)
     finally:
         enc.write_padding_bits = standard
-    page.emulate_media(media='print')
-    check('printed, only the label shows', page.evaluate("getComputedStyle(document.querySelector('h1')).visibility") == 'hidden'
-          and page.evaluate("getComputedStyle(document.getElementById('lbName')).visibility") == 'visible')
 
 
 def test_a_newer_release_is_offered(page):
@@ -799,6 +820,42 @@ def test_a_moving_image_on_each_kind_of_hub(browser, storage):
         common.HUB.stdout.readline()
 
 
+def test_a_moving_picture_plays_when_shown(page):
+    """Show it on a moving picture plays its frames, 2 a second, as the hub does, not just the first. The stored picture
+    is the hub's own shape: one SPS, then each frame's PPS and IDR; each frame goes to the decoder as a picture of its own."""
+    stored = bytes([0, 0, 0, 1, 0x67, 1])
+    for i in range(3):
+        stored += bytes([0, 0, 0, 1, 0x68, 2 + i, 0, 0, 0, 1, 0x65, 0x88, 1 + i])  # not ending in 0, which would be padding
+    page.route('**/api/file?path=moving-test.h264', lambda route: route.fulfill(status=200, body=stored))
+    page.goto(URL + '#sensors')
+    page.wait_for_function('() => typeof showPicture == "function"')
+    page.evaluate("""() => {
+      window.sent = [];
+      window.decoded = async (d) => {
+        sent.push(Array.from(d));
+        return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7#" + sent.length;
+      };
+    }""")
+    page.evaluate("showPicture('moving-test.h264', 'Moving')")
+    page.wait_for_function("() => document.querySelector('dialog img.pictureShown:not([hidden])')")
+    sent = page.evaluate('sent')
+    check('each frame is decoded on its own, with the SPS', len(sent) == 3 and all(s[:6] == [0, 0, 0, 1, 0x67, 1] and s[-1] == 1 + i for i, s in enumerate(sent)), sent)
+    shown = set()
+    for _ in range(30):
+        shown.add(page.evaluate("document.querySelector('dialog img.pictureShown').src.split('#')[1]"))
+        if len(shown) == 3:
+            break
+        page.wait_for_timeout(100)
+    check('and they play in turn', shown == {'1', '2', '3'}, shown)
+    page.click('dialog button:has-text("Close")')
+    # A picture's thumbnail opens it just as Show it does.
+    page.evaluate("document.body.append(opens(el('span', { className: 'thumb' }), 'moving-test.h264', 'Moving'))")
+    page.click('button.thumbOpen[aria-label="Show Moving"]')
+    check('a thumbnail opens its picture', page_wait(page, lambda: page.evaluate(
+        "!!document.querySelector('dialog img.pictureShown:not([hidden])')")))
+    page.click('dialog button:has-text("Close")')
+
+
 def own_hub(test):
     """The test, on a hub of its own with fresh storage and no password, as a hub flashed from a release starts; the
     hub the other tests use is started again afterwards, as it was."""
@@ -945,6 +1002,7 @@ def page_cases(nvr, storage):
         ('a_sealed_backup_from_the_page', on_page(test_a_sealed_backup_from_the_page)),
         ('a_sensor_camera', on_page(test_a_sensor_camera)),
         ('sensor_pictures', on_page(test_sensor_pictures)),
+        ('a_moving_picture_plays_when_shown', on_page(test_a_moving_picture_plays_when_shown)),
         ('the_wifi_page_frames_the_setup_page', on_page(test_the_wifi_page_frames_the_setup_page)),
         ('a_nodes_first_hour', on_page(test_a_nodes_first_hour, nvr)),
         ('the_floor_plan_by_signal', on_page(test_the_floor_plan_by_signal)),

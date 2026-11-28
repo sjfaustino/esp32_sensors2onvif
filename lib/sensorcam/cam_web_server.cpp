@@ -562,6 +562,12 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     // still sending as a bare network error, without the reason.
     if (!contentLength || contentLength > MAX_FIRMWARE) return refuse(413, "that file is not the right size for firmware", MAX_FIRMWARE);
     if (contentLength <= S2O_FW_TRAILER) return refuse(400, "that firmware is not signed for this hub, so nothing was changed", MAX_FIRMWARE);
+    // Not while a firmware just put on proves itself: the update would take its way back, before its signature is checked.
+    if (chip_->firmwareOnTrial())
+      return refuse(
+          409,
+          "the firmware put on last is still proving itself, and an update now would leave no way back to the one before; try again in a few minutes",
+          MAX_FIRMWARE);
     if (firmwareOwner_ || !chip_->firmwareBegin(contentLength - S2O_FW_TRAILER))
       return refuse(507, "could not start the update; the hub may be short of memory, so restart it and try again", MAX_FIRMWARE);
     firmwareOwner_ = &c;

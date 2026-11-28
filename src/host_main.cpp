@@ -187,6 +187,7 @@ class TestChip : public CamChip {
     total = diskTotal > used ? diskTotal : used;
     return true;
   }
+  bool firmwareOnTrial() override { return getenv("S2O_FIRMWARE_ON_TRIAL") != nullptr; }  // as a hub just updated
   bool firmwareBegin(size_t) override {
     firmwareGood = false;
     return !firmwareRefused;

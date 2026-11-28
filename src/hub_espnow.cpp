@@ -23,7 +23,11 @@ static bool running = false;
 // Runs on the Wi-Fi task, so it only queues.
 static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
   SensorMessage m;
-  if (len < 1 || len > (int)sizeof(m.data)) return;
+  if (len < 1) return;
+  if (len > (int)sizeof(m.data)) {  // counted too: a node sending what this hub cannot read would else look only silent
+    dropped = dropped + 1;
+    return;
+  }
   memcpy(m.data, data, len);
   m.len = (uint8_t)len;
   memcpy(m.mac, info->src_addr, 6);

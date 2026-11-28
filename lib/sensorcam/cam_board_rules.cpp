@@ -55,8 +55,9 @@ int CamWifiPlan::step(const Pass& p) {
 
 // ---- the clock ----
 
-bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext) {
-  if (trustNext || clockNow < (int64_t)CAM_CLOCK_VALID_AFTER) return true;
+bool camNtpTaken(int64_t clockNow, int64_t reading, bool trustNext, int64_t notBefore) {
+  if (trustNext) return true;
+  if (clockNow < (int64_t)CAM_CLOCK_VALID_AFTER) return notBefore <= 0 || reading >= notBefore - (int64_t)CAM_NTP_MOST_STEP_S;
   int64_t step = reading - clockNow;
   return (step < 0 ? -step : step) <= CAM_NTP_MOST_STEP_S;
 }

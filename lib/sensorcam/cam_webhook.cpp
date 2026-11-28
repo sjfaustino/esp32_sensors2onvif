@@ -78,12 +78,13 @@ void CamWebhookSender::queue(const std::string& title, int priority, const std::
     static const char* const TAGS[] = {"", "information_source", "information_source", "white_check_mark", "warning", "rotating_light"};
     std::string head = "Title: " + headerText(full) + "\r\nPriority: " + std::to_string(priority) + "\r\nTags: " + TAGS[priority] + "\r\n";
     if (!w.token.empty()) head += "Authorization: Bearer " + w.token + "\r\n";
-    hooks_.add('t' + head + '\0' + message);
+    hooks_.add('t' + head + '\0' + message, priority);
   } else if (w.format == CAM_HOOK_GOTIFY) {
     std::string head = w.token.empty() ? std::string() : "X-Gotify-Key: " + w.token + "\r\n";
-    hooks_.add('j' + head + '\0' + jsonObject([&](CamJson& j) { j.str("title", full).str("message", message).num("priority", priority * 2); }));
+    hooks_.add('j' + head + '\0' + jsonObject([&](CamJson& j) { j.str("title", full).str("message", message).num("priority", priority * 2); }),
+               priority);
   } else {
-    hooks_.add(std::string(w.format == CAM_HOOK_TEXT ? "t" : "j") + '\0' + (w.format == CAM_HOOK_TEXT ? message : json));
+    hooks_.add(std::string(w.format == CAM_HOOK_TEXT ? "t" : "j") + '\0' + (w.format == CAM_HOOK_TEXT ? message : json), priority);
   }
 }
 
@@ -187,6 +188,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
     CamHealth health;
     chip_->health(health);
     d.memoryLow = health.lowFree;
+    d.stackLeast = health.stackLeast;
     // The last test as the hub keeps it, too, which outlasts the events kept in memory, so a reminder is not sent early.
     time_t kept = alarm_.lastTestAt();
     if (kept >= CAM_CLOCK_VALID_AFTER && kept <= t && (d.testAgoS < 0 || (long long)(t - kept) < d.testAgoS)) d.testAgoS = (long long)(t - kept);
@@ -198,6 +200,7 @@ void CamWebhookSender::dailyCheck(uint32_t now) {
             j.end().num("alerts", d.alerts).flag("allCounted", d.allCounted).num("notDelivered", d.notDelivered);
             j.flag("nvrListening", d.nvrListening).str("mode", d.mode).num("testAgo_s", d.testAgoS >= 0, d.testAgoS);
             j.num("memoryLow_kb", d.memoryLow != 0, d.memoryLow / 1024).num("memoryLowWeb", health.lowWeb).num("memoryLowVideo", health.lowVideo);
+            j.num("stackLeast", d.stackLeast != 0, d.stackLeast);
             j.str("message", message);
           }));
     chip_->healthDayStart();  // told: the next daily check tells the low from here

@@ -52,6 +52,10 @@ class CamOnvifEvents {
   bool pushFirst_[SubTable::SIZE] = {false};
   bool pushActive_[SubTable::SIZE] = {false};  // the push says an alert is on
   uint32_t pushAt_[SubTable::SIZE] = {0};      // when it began
-  int udp_ = -1;                               // discovery
+  // An alert began since the last push to it began. An alert shorter than the wait for a push before it would else end
+  // before its push went, which would then say no alert, and the NVR would never record it.
+  bool onSince_[SubTable::SIZE] = {false};
+  bool wasOn_ = false;  // an alert was on at the last tick
+  int udp_ = -1;        // discovery
   uint32_t messageNo_ = 1;
 };

@@ -344,7 +344,26 @@
       $("lbSerial").textContent = tr("Serial number {serial}", { serial: i.serial });
       // A phone scans the address, as some do not find a name ending in .local.
       $("lbQr").replaceChildren(qrCode.svg("http://" + i.ip + at + "/") || "");
-      $("hubLabel").hidden = false;
+      // Printed alone: moved to the top of the page while printing, where everything else is left out of the print
+      // (see printingLabel in index.css), so the page's own length cannot run it onto a second sheet. Put back after.
+      const label = $("hubLabel");
+      label.hidden = false;
+      if (document.body.classList.contains("printingLabel")) {
+        print(); // asked again before the last print was over: the label is already alone
+        return;
+      }
+      const home = label.parentNode,
+        next = label.nextSibling;
+      document.body.append(label);
+      document.body.classList.add("printingLabel");
+      addEventListener(
+        "afterprint",
+        () => {
+          document.body.classList.remove("printingLabel");
+          home.insertBefore(label, next);
+        },
+        { once: true },
+      );
       print();
     } catch (e) {
       notice(e.message, { err: true });

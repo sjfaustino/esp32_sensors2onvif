@@ -10,13 +10,24 @@
 class CamHookQueue {
  public:
   static const int SIZE = 8;
-  // A full queue drops the new message, so a burst cannot use up memory.
-  void add(std::string message) {
+  // A full queue drops a message, so a burst cannot use up memory: the oldest of the lowest priority, if the new one
+  // outranks it, else the new one. So an alert from while the server was away is never lost to a note such as "armed".
+  // The oldest of all is never the one dropped, as it may be on its way.
+  void add(std::string message, int priority = 0) {
     if (count_ == SIZE) {
       dropped_++;
-      return;
+      int low = 0;  // as a place after the oldest
+      for (int n = 1; n < count_; n++)
+        if (!low || priority_[at(n)] < priority_[at(low)]) low = n;
+      if (!low || priority_[at(low)] >= priority) return;
+      for (int n = low; n < count_ - 1; n++) {
+        items_[at(n)] = std::move(items_[at(n + 1)]);
+        priority_[at(n)] = priority_[at(n + 1)];
+      }
+      count_--;
     }
-    items_[(head_ + count_) % SIZE] = std::move(message);
+    items_[at(count_)] = std::move(message);
+    priority_[at(count_)] = priority;
     count_++;
   }
   void dropOne() { dropped_++; }  // a message there was no memory for
@@ -57,7 +68,10 @@ class CamHookQueue {
   uint32_t dropped() const { return dropped_; }
 
  private:
+  int at(int n) const { return (head_ + n) % SIZE; }  // the place of the nth from the oldest
+
   std::string items_[SIZE];
+  int priority_[SIZE] = {0};
   int count_ = 0, head_ = 0;
   int tries_ = 0;  // of the oldest
   bool retrying_ = false;

@@ -14,6 +14,7 @@ static std::string servers[3];
 // Set on the network task, where readings arrive, and read in the loop, which logs a refusal: on the other core, so the
 // refusal and its step are read and written together, under the lock.
 static std::atomic<bool> trustNext{false};
+static std::atomic<int64_t> notBefore{0};  // the last time the hub knew it was running, before this start; see camNtpTaken
 static portMUX_TYPE refusalLock = portMUX_INITIALIZER_UNLOCKED;
 static bool refused = false;
 static int64_t refusedStep = 0;
@@ -21,9 +22,11 @@ static int64_t refusedStep = 0;
 // Each NTP reading comes here, in place of the time library's own, which would take any time at all. See camNtpTaken.
 extern "C" void sntp_sync_time(struct timeval* tv) {
   time_t now = time(nullptr);
-  if (!camNtpTaken((int64_t)now, (int64_t)tv->tv_sec, trustNext)) {
+  int64_t known = notBefore;
+  if (!camNtpTaken((int64_t)now, (int64_t)tv->tv_sec, trustNext, known)) {
     portENTER_CRITICAL(&refusalLock);
-    refusedStep = (int64_t)tv->tv_sec - (int64_t)now;
+    // From the clock, or, while it is not set, from the last time known, which the reading would have gone back past.
+    refusedStep = (int64_t)tv->tv_sec - (now >= CAM_CLOCK_VALID_AFTER ? (int64_t)now : known);
     refused = true;
     portEXIT_CRITICAL(&refusalLock);
     return;
@@ -32,6 +35,8 @@ extern "C" void sntp_sync_time(struct timeval* tv) {
   settimeofday(tv, nullptr);
   sntp_set_sync_status(SNTP_SYNC_STATUS_COMPLETED);
 }
+
+void setTimeNotBefore(int64_t t) { notBefore = t; }
 
 bool takeTimeRefused(int64_t& stepS) {
   portENTER_CRITICAL(&refusalLock);

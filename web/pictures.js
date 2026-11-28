@@ -182,9 +182,9 @@ async function sourceFrames(file, most) {
   if (!r.frames.length) throw new Error(tr("The encoder could not read that file"));
   return r.frames;
 }
-// The units of an encoded picture, by type: SPS 7, PPS 8, IDR 5.
-function unitsOf(d) {
-  const units = {};
+// The units of an encoded picture in order, each without its start code.
+function unitList(d) {
+  const list = [];
   const starts = [];
   for (let i = 0; i + 3 <= d.length; i++)
     if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1) {
@@ -194,9 +194,37 @@ function unitsOf(d) {
   starts.forEach((s, k) => {
     let end = k + 1 < starts.length ? starts[k + 1] : d.length;
     if (k + 1 < starts.length) while (end > s + 3 && d[end - 1] == 0) end--;
-    units[d[s + 3] & 31] = d.subarray(s + 3, end);
+    list.push(d.subarray(s + 3, end));
   });
+  return list;
+}
+// The units of an encoded picture, by type: SPS 7, PPS 8, IDR 5.
+function unitsOf(d) {
+  const units = {};
+  for (const u of unitList(d)) units[u[0] & 31] = u;
   return units;
+}
+// A picture as the hub stores it, as one picture for each of its frames: the SPS, and the frame's PPS and IDR. A still
+// picture is one frame; a file in any other shape is given back as it is.
+function framesOfPicture(d) {
+  const list = unitList(d),
+    sps = list.find((u) => (u[0] & 31) == 7);
+  const frames = [];
+  let pps = null;
+  for (const u of list) {
+    if ((u[0] & 31) == 8) pps = u;
+    if ((u[0] & 31) != 5 || !sps || !pps) continue;
+    const parts = [sps, pps, u],
+      out = new Uint8Array(parts.reduce((n, p) => n + p.length + 4, 0));
+    let at = 0;
+    for (const p of parts) {
+      out[at + 3] = 1;
+      out.set(p, at + 4);
+      at += p.length + 4;
+    }
+    frames.push(out);
+  }
+  return frames.length ? frames : [d];
 }
 // One file of the frames: the SPS, then each frame's PPS and IDR, as the hub reads it. Each frame keeps its own PPS, as
 // each is encoded at the quality that fits it, which the PPS carries.

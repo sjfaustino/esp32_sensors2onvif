@@ -44,8 +44,9 @@ class CamAlarm {
   void begin();             // reads the sensor table, the history and the alerts that were waiting
   void tick(uint32_t now);  // alerts, health checks, saving and confirming: once a pass, before serving the network
   void networkUp() { networkSeen_ = true; }
-  void networkLost(uint32_t seconds);  // on rejoining Wi-Fi after being off it, without a restart
-  void timeRefused(int64_t stepS);     // an NTP reading that would have moved the clock this far was refused
+  time_t lastAlive() const { return lastAlive_; }  // the last time the previous run knew it was running; 0 when unknown
+  void networkLost(uint32_t seconds);              // on rejoining Wi-Fi after being off it, without a restart
+  void timeRefused(int64_t stepS);                 // an NTP reading that would have moved the clock this far was refused
   // The alerts waiting for an NVR record, such as test alerts the NVR was away for, dropped and logged as such: how many,
   // or -1 while an alert is on, whose record would then go unchecked.
   int clearWaiting();

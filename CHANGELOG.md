@@ -28,6 +28,25 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- After a start, as after a power cut, the hub refuses an NTP reading earlier than the last time it knew it was running,
+  and logs it as **time refused**: someone answering its NTP could otherwise move its quiet hours over the alerts that
+  follow. A later time is still taken, as how long the hub was off is not known.
+- Device info shows the least free stack the main loop has had, and the daily check says when it came within 1 KB of
+  running out, which would restart the hub. Only the board can tell: the PC tests' stack is far larger.
+- An ESP-NOW message too long for the hub to read is counted with those dropped, so a node sending one shows.
+- While a firmware just put on is on trial, an update is refused, saying why. Starting one used to end the trial, before
+  the update's signature was checked, so even a file then refused left the hub with no way back to the firmware before.
+- A full webhook queue makes room for an alert by dropping its oldest message of lower priority, such as "armed". It
+  used to drop the new message, so the alerts from while the webhook's server was away were the ones lost.
+- An alert shorter than the wait for the push before it is still pushed to the NVR as an alert, and its end follows;
+  its push used to go out once it was over, saying there was none.
+- Show it, on the Sensors page, plays a moving picture as the hub does, 2 frames a second; it showed only the first.
+  A picture's thumbnail opens it too.
+- The hub's label prints on one sheet. The rest of Device info was hidden from the print but still took its room, so
+  the label came with a blank second page.
+- tools/update_hub.py takes --port, for a hub whose web page is not on port 80.
+- The hub's refusals of a request before reading it, such as a firmware of the wrong size or a request from another
+  site, are in Portuguese on a Portuguese page; the check of the translations never looked at them.
 - An alert counts as delivered only once the NVR has been shown it: a push saying an alert is on that got there after
   the alert began, or a pull answered while it was on. It used to count whenever the NVR seemed to be listening at
   the check, which trusted the push before this alert's own, still on its way, for an alert with a short hold, and an

@@ -86,6 +86,12 @@ static void the_daily_check_says_what_matters() {
   d.notDelivered = 0;
   d.alerts = 4;
   TEST_ASSERT_TRUE(camDailyMessage(d).find("at least 4 alerts in the last day, all delivered to the NVR") != std::string::npos);
+  // The main loop's stack, told only when it came close to running out.
+  d.stackLeast = 2400;
+  TEST_ASSERT_TRUE(camDailyMessage(d).find("stack") == std::string::npos);
+  d.stackLeast = 700;
+  TEST_ASSERT_TRUE(camDailyMessage(d).find("the main loop's stack came within 700 bytes of running out") != std::string::npos);
+  d.stackLeast = 0;  // not known
   // Over a month since the last test alert, the daily check asks for one, so the reminder reaches the phone.
   d.testAgoS = 31LL * 86400;
   TEST_ASSERT_TRUE(camDailyMessage(d).find("last test alert 31 days 0 h ago, over a month: send one from the hub's Overview") != std::string::npos);

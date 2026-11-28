@@ -4,6 +4,7 @@
     python tools/update_hub.py 192.168.1.50 --watch 10 # watch it for 10 minutes
     python tools/update_hub.py 192.168.1.50 --untested # a build CI has not passed, such as while finding a fault
     python tools/update_hub.py 192.168.1.50 --release v0.6.0  # a published release, as CI built and signed it
+    python tools/update_hub.py 192.168.1.50 --port 8080  # a hub whose web page is on another port
 
 It refuses, before sending anything:
   - a build with changes not committed, or a commit not pushed, as nobody could tell later what the hub runs;
@@ -59,12 +60,13 @@ def password():
 
 
 class Hub:
-    def __init__(self, host, secret):
+    def __init__(self, host, secret, port=80):
         self.host = host
+        self.port = port
         self.auth = {'Authorization': 'Basic ' + base64.b64encode(f'admin:{secret}'.encode()).decode()}
 
     def request(self, method, path, body=None, timeout=10):
-        c = http.client.HTTPConnection(self.host, 80, timeout=timeout)
+        c = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
         headers = dict(self.auth)
         if body is not None:
             headers['Content-Length'] = str(len(body))
@@ -175,9 +177,10 @@ def main():
     parser.add_argument('--watch', type=float, default=5, help='minutes it must run without restarting (default 5)')
     parser.add_argument('--untested', action='store_true', help="send a build CI has not passed, or not committed")
     parser.add_argument('--release', metavar='TAG', help='send a published release, such as v0.6.0, instead of a build')
+    parser.add_argument('--port', type=int, default=80, help="the hub's web port (default 80)")
     args = parser.parse_args()
 
-    hub = Hub(args.host, password())
+    hub = Hub(args.host, password(), args.port)
     if not args.release:  # a release was built by CI from a tag that passed it
         check_commit(args.untested)
     try:

@@ -173,6 +173,10 @@ std::string camDailyMessage(const CamDailyCheck& d) {
   // Told only when low, as a figure every day would be read past; the JSON has it every day.
   if (d.memoryLow && d.memoryLow < CAM_MEMORY_LOW_WARN)
     m += "; " + camText("free memory fell to {0} KB, which risks dropped work: see Device info", {std::to_string(d.memoryLow / 1024)});
+  // Every day while it stays so, as the least since the start cannot come back up; a stack overflow restarts the hub.
+  if (d.stackLeast && d.stackLeast < CAM_STACK_LOW_WARN)
+    m += "; " + camText("the main loop's stack came within {0} bytes of running out, which would restart the hub: see Device info",
+                        {std::to_string(d.stackLeast)});
   return m;
 }
 

@@ -432,6 +432,9 @@ msgstr "Definições"
 msgid "Show"
 msgstr "Mostrar"
 
+msgid "Show {what}"
+msgstr "Mostrar {what}"
+
 msgid "Show how well the hub hears each one"
 msgstr "Mostrar como a central ouve cada um"
 
@@ -621,6 +624,9 @@ msgstr "às"
 msgid "choose it"
 msgstr "escolha-o"
 
+msgid "could not start the update; the hub may be short of memory, so restart it and try again"
+msgstr "não foi possível começar a atualização; a central pode estar com pouca memória, por isso reinicie-a e tente de novo"
+
 msgid "every event"
 msgstr "todos os eventos"
 
@@ -633,8 +639,35 @@ msgstr "desta placa, de uma versão publicada, o que não tem"
 msgid "here, or"
 msgstr "para aqui, ou"
 
+msgid "not available on this port"
+msgstr "não disponível nesta porta"
+
 msgid "problems"
 msgstr "problemas"
+
+msgid "request from another site refused"
+msgstr "pedido de outro site recusado"
+
+msgid "request is too large"
+msgstr "o pedido é demasiado grande"
+
+msgid "that file is not the right size for a node's firmware"
+msgstr "esse ficheiro não tem o tamanho certo para o firmware de um nó"
+
+msgid "that file is not the right size for firmware"
+msgstr "esse ficheiro não tem o tamanho certo para firmware"
+
+msgid "the Content-Length is not a number"
+msgstr "o Content-Length não é um número"
+
+msgid "the hub does not answer to this name; open it by its IP address and add the name under Network > HTTP > Other names"
+msgstr "a central não responde a este nome; abra-a pelo endereço IP e acrescente o nome em Rede > HTTP > Outros nomes"
+
+msgid "the hub is busy with another update; try again"
+msgstr "a central está ocupada com outra atualização; tente de novo"
+
+msgid "the hub is busy with another upload; try again"
+msgstr "a central está ocupada com outro envio; tente de novo"
 
 msgid "the hub's own"
 msgstr "os da própria central"
@@ -833,6 +866,9 @@ msgstr "o nome da câmara tem de ter até 32 caracteres, numa só linha"
 
 msgid "the daily check's time must be 0 to 1439 minutes after midnight, or -1 for none"
 msgstr "a hora da verificação diária tem de ser de 0 a 1439 minutos depois da meia-noite, ou -1 para nenhuma"
+
+msgid "the firmware put on last is still proving itself, and an update now would leave no way back to the one before; try again in a few minutes"
+msgstr "o firmware instalado por último ainda está a provar que funciona, e uma atualização agora deixaria sem volta ao anterior; tente de novo dentro de alguns minutos"
 
 msgid "the format must be json, text, ntfy or gotify"
 msgstr "o formato tem de ser json, text, ntfy ou gotify"
@@ -3051,6 +3087,9 @@ msgstr "Tensão de alimentação baixa"
 msgid "Lowest free memory"
 msgstr "Menor memória livre"
 
+msgid "Least free stack of the main loop"
+msgstr "Menor pilha livre do ciclo principal"
+
 msgid "Memory in use"
 msgstr "Memória em uso"
 
@@ -3734,6 +3773,10 @@ msgstr "a central não tem esse idioma"
 msgctxt "message"
 msgid "free memory fell to {0} KB, which risks dropped work: see Device info"
 msgstr "a memória livre desceu a {0} KB, o que arrisca trabalho perdido: veja a Informação do aparelho"
+
+msgctxt "message"
+msgid "the main loop's stack came within {0} bytes of running out, which would restart the hub: see Device info"
+msgstr "a pilha do ciclo principal ficou a {0} bytes de se esgotar, o que reiniciaria a central: veja a Informação do aparelho"
 
 msgid "{n} KB at {time}, with {web} web and {video} video connections open"
 msgstr "{n} KB às {time}, com {web} ligações web e {video} de vídeo abertas"

@@ -189,6 +189,8 @@ def hub_phrases():
         text = open(os.path.join(LIB, name), encoding='utf-8').read()
         for m in re.finditer(r'jsonFail\(\s*\d+\s*,\s*' + STRING + r'\s*(?:\)|,\s*\{)', text):  # whole, or with its values
             found.add(unquote(m.group(1)))
+        for m in re.finditer(r'\brefuse\(\s*\d+\s*,\s*' + STRING + r'\s*[,)]', text):  # a request refused before its body is read
+            found.add(unquote(m.group(1)))
         for m in re.finditer(r'\bsaved\([^;]*?,\s*' + STRING + r'\s*\)', text):  # the message when saving fails
             found.add(unquote(m.group(1)))
     for path, where, which in HUB_WORDS:

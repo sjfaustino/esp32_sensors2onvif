@@ -215,7 +215,7 @@ function slot(base, state, delayed, files) {
   return el(
     "div",
     { className: "slot" },
-    thumb,
+    shown ? opens(thumb, own ? path : base + "/" + first, words) : thumb,
     el(
       "div",
       { className: "slotText" },
@@ -261,8 +261,14 @@ async function showPicture(path, name) {
     img,
     el("p", null, el("button", { textContent: tr("Close"), onclick: () => dlg.close() })),
   );
+  // A moving picture plays as the hub plays it, 2 frames a second, round and round.
+  const urls = [];
+  let timer = null,
+    open = true;
   dlg.onclose = () => {
-    if (img.src) URL.revokeObjectURL(img.src);
+    open = false;
+    clearInterval(timer);
+    urls.forEach((u) => URL.revokeObjectURL(u));
     dlg.remove();
   };
   document.body.append(dlg);
@@ -274,16 +280,44 @@ async function showPicture(path, name) {
     if (!r.ok) throw new Error(tr("The hub could not send this picture."));
     const pic = new Uint8Array(await r.arrayBuffer());
     status.textContent = tr("Getting the decoder ready. The first time, this downloads about 30 MB.");
-    img.src = await decoded(pic).catch(() => {
-      throw new Error(
-        tr("The decoder could not load or could not read this picture. It needs internet access the first time."),
-      );
-    });
+    for (const frame of framesOfPicture(pic)) {
+      const url = await decoded(frame).catch(() => {
+        throw new Error(
+          tr("The decoder could not load or could not read this picture. It needs internet access the first time."),
+        );
+      });
+      if (!open) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      urls.push(url);
+    }
+    img.src = urls[0];
     img.hidden = false;
     status.remove();
+    if (urls.length > 1) {
+      let at = 0;
+      timer = setInterval(() => {
+        at = (at + 1) % urls.length;
+        img.src = urls[at];
+      }, 500);
+    }
   } catch (e) {
     status.textContent = tr("Could not show this picture. {why}", { why: e.message });
   }
+}
+// A picture's thumbnail, which opens the picture as Show it does.
+function opens(thumb, path, name) {
+  return el(
+    "button",
+    {
+      type: "button",
+      className: "thumbOpen",
+      ariaLabel: tr("Show {what}", { what: name }),
+      onclick: () => showPicture(path, name),
+    },
+    thumb,
+  );
 }
 function field(v) {
   return el("input", { type: "text", value: v, maxLength: 24, size: 24 });
@@ -695,9 +729,15 @@ function render(t) {
     el(
       "div",
       { className: "slot" },
-      own && t.clearPreview
-        ? el("img", { className: "thumb", alt: "", src: "/api/file?path=clear.jpg" })
-        : el("span", { className: "thumb clear", textContent: own ? tr("YOUR PICTURE") : "ALL CLEAR" }), // not words
+      own
+        ? opens(
+            t.clearPreview
+              ? el("img", { className: "thumb", alt: "", src: "/api/file?path=clear.jpg" })
+              : el("span", { className: "thumb clear", textContent: tr("YOUR PICTURE") }),
+            "clear.h264",
+            tr("All clear"),
+          )
+        : el("span", { className: "thumb clear", textContent: "ALL CLEAR" }), // not words: the built-in picture's
       el(
         "div",
         { className: "slotText" },

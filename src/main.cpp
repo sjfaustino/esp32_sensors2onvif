@@ -69,6 +69,7 @@ static void hubHealth(CamHealth& h) {
   h.wifiRssi = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   h.uptimeS = esp_timer_get_time() / 1000000ULL;
   memoryDayLow(h.lowFree, h.lowAt, h.lowWeb, h.lowVideo);
+  h.stackLeast = loopStackLeast();
 }
 
 // ---- what the board does for the hub: the chip, the radio, and where settings are kept ----
@@ -83,8 +84,9 @@ class HubChip : public CamChip {
   // Wi-Fi and lwIP fail badly when RAM runs out, so a large request must leave them room.
   bool canAllocate(size_t n) override { return largestAnyBlock() >= n + 1024 && ESP.getFreeHeap() >= n + 16 * 1024; }
   bool hasHeadroom() override { return ESP.getFreeHeap() >= 10 * 1024; }
+  bool firmwareOnTrial() override { return firmwareUnproven(); }
   bool firmwareBegin(size_t size) override {
-    confirmFirmware();  // the update code refuses to run from an unconfirmed firmware, and this one has just answered a logged-in request
+    if (firmwareUnproven()) return false;  // the update code cannot write over the firmware this one would go back to
     noteUpdateStarting(server && server->nvrListeningNow());
     return Update.begin(size, U_FLASH);
   }
@@ -238,6 +240,7 @@ void setup() {
     ESP.restart();
   }
 
+  setTimeNotBefore(server->lastAlive());  // read by begin(); before Wi-Fi has had time to bring an NTP reading
   if (!espNowBegin()) Serial.println("ESP-NOW failed to start; HTTP sensor input still works.");
 
   enableLoopWDT();  // an unattended hub must restart itself if the main loop ever stalls

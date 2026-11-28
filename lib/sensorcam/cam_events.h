@@ -59,6 +59,7 @@ struct CamDailyCheck {
   bool nvrListening = false;
   long long testAgoS = -1;  // since the last test alert; -1 when none is among the events kept in memory
   uint32_t memoryLow = 0;   // the least free memory since the last daily check, in bytes; 0 when not known
+  uint32_t stackLeast = 0;  // the least the main loop's stack has had free since the start, in bytes; 0 when not known
 };
 std::string camDailyMessage(const CamDailyCheck& d);
 

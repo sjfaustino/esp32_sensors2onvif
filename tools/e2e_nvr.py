@@ -248,6 +248,20 @@ def hub_firmware_must_be_signed(s):
 
 
 @case(pc=True)
+def no_update_while_a_new_firmware_proves_itself(s):
+    """A firmware just put on is on trial, and goes back to the one before should it fail. An update then would write
+    over that one, and before the update's signature is checked, so it is refused, saying why."""
+    s.restart(env={'S2O_FIRMWARE_ON_TRIAL': '1'})
+    try:
+        code, reply = api('PUT', '/api/firmware', signed(b'\xe9' + b'\x01' * 9000))
+        check('an update is refused while the firmware is on trial', code == 409 and b'proving itself' in reply, (code, reply[:120]))
+        check('and the hub still answers', get_json('/api/info') is not None)
+    finally:
+        s.restart()
+    check('once it has proved itself, an update is taken', api('PUT', '/api/firmware', signed(b'\xe9' + b'\x01' * 9000))[0] == 200)
+
+
+@case(pc=True)
 def onvif_and_rtsp_logins(s):
     """ONVIF and RTSP with the login on: digest and plain, wrong passwords and users, and the snapshot's token."""
     control('auth-on')

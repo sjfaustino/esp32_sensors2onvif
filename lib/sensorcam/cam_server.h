@@ -50,6 +50,7 @@ class SensorCamServer : private CamAlarmOutside {
   uint32_t nvrLetIn() const { return web_.nvrLetIn(); }                // times the NVR took the place of another connection
   uint32_t nvrVideoLetIn() const { return video_.nvrLetIn(); }         // the same for its video
   bool alarmBusy() const { return alarm_.busy(); }                     // see CamAlarm::busy
+  time_t lastAlive() const { return alarm_.lastAlive(); }              // see CamAlarm::lastAlive
   bool nvrListeningNow() const { return nvrListening(millis_()); }     // see CamOnvifEvents::nvrListening
   uint32_t memoryFailures() const { return failures_.count(); }        // times memory ran out and only that piece of work was dropped
   int webOpen() const { return web_.openCount(); }                     // web connections open now

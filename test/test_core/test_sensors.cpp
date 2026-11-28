@@ -1,5 +1,6 @@
 // The sensor table, alerts and their holds, past events, delivery checks, and per-sensor and per-node settings.
 #include "tests.h"
+#include "cam_hook_queue.h"
 
 static void hold_expires_and_retrigger_extends() {
   SensorBoard b(3, 1000);
@@ -232,6 +233,32 @@ static void delivery_is_checked_and_missed_alerts_kept_once() {
   TEST_ASSERT_FALSE(w.takeMissed(d));
 }
 
+// A full webhook queue makes room for an alert by dropping the oldest note of lower priority, never the oldest of all,
+// which may be on its way; a message that outranks nothing waiting is the one dropped.
+static void a_full_webhook_queue_keeps_the_alerts() {
+  CamHookQueue q;
+  q.add("sending", 2);
+  for (int i = 0; i < CamHookQueue::SIZE - 1; i++) q.add("note " + std::to_string(i), i == 3 ? 4 : 2);
+  q.add("alert", 5);
+  TEST_ASSERT_EQUAL(CamHookQueue::SIZE, q.count());
+  TEST_ASSERT_EQUAL_UINT32(1, q.dropped());
+  std::vector<std::string> order;
+  for (int i = 0; i < CamHookQueue::SIZE; i++) {
+    order.push_back(q.oldest());
+    q.takeOldest();
+  }
+  TEST_ASSERT_EQUAL_STRING("sending", order[0].c_str());  // the oldest of all stays
+  TEST_ASSERT_EQUAL_STRING("note 1", order[1].c_str());   // note 0, the oldest of the lowest, made room
+  TEST_ASSERT_EQUAL_STRING("note 3", order[3].c_str());
+  TEST_ASSERT_EQUAL_STRING("alert", order.back().c_str());
+  for (int i = 0; i < CamHookQueue::SIZE; i++) q.add("alert " + std::to_string(i), 5);
+  q.add("armed", 2);  // outranks nothing waiting
+  TEST_ASSERT_EQUAL(CamHookQueue::SIZE, q.count());
+  TEST_ASSERT_EQUAL_UINT32(2, q.dropped());
+  for (int i = 0; i < CamHookQueue::SIZE - 1; i++) q.takeOldest();
+  TEST_ASSERT_EQUAL_STRING("alert 7", q.oldest().c_str());
+}
+
 // Batteries fail one node at a time; nodes stopping together are reported once, and only nodes that stopped recently
 // count, so two that died weeks apart do not.
 static void nodes_going_quiet_together_are_reported_once() {
@@ -328,6 +355,7 @@ static void a_timed_disarm_ends_safely_after_a_restart() {
 
 void runSensorsTests() {
   RUN_TEST(delivery_is_checked_and_missed_alerts_kept_once);
+  RUN_TEST(a_full_webhook_queue_keeps_the_alerts);
   RUN_TEST(a_replay_stays_one_only_while_nothing_new_joins_it);
   RUN_TEST(past_events_share_records_only_as_they_would_live);
   RUN_TEST(a_full_past_event_queue_still_records_every_sensor);
