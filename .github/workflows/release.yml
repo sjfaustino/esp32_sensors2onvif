@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 90  # with the wait for Checks, about 15 minutes, before the build
     environment: release
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0  # tools/version.py names the firmware after the tag with git describe; and main, for the check below
 
@@ -47,11 +47,11 @@ jobs:
           gh run watch "$run" --exit-status --interval 30 > /dev/null || { echo "Checks did not pass on $GITHUB_SHA: https://github.com/$GITHUB_REPOSITORY/actions/runs/$run"; exit 1; }
           echo "Checks passed on $GITHUB_SHA"
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
