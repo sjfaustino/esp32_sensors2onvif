@@ -211,6 +211,7 @@ void CamVideo::tick(uint32_t now) {
     frame_ = &frames_[frameAt_];
     liveSeq_++;
   }
+  if (!frame_) return;  // lent out for an upload
   const CamFrame& frame = *frame_;
   if (!chip_->hasHeadroom()) return;  // every frame stands alone, so skipping some lets the network stack drain
   for (RtspConn& c : rtsp_) {
