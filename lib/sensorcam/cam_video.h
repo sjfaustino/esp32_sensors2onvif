@@ -47,7 +47,9 @@ class CamVideo {
   // ---- the picture ----
   const CamFrame& current(uint32_t now) { return frame_ ? *frame_ : show(now); }
   const std::string& file() const { return frameFile_; }  // the file behind it; empty for a built-in picture
-  uint32_t seq() const { return liveSeq_; }               // changes whenever the picture changes, so the Live page fetches only new ones
+  // Changes whenever what is sent changes, so the Live page fetches only new pictures: a moving picture's every frame,
+  // which the Live page, asking once a second, shows every other one of.
+  uint32_t seq() const { return liveSeq_; }
   // Changes whenever the loaded picture is about to be overwritten, so a reply reading it stops. Only a loaded picture
   // changes; the built-in ones never do.
   uint32_t gen() const { return pictureGen_; }
@@ -56,6 +58,10 @@ class CamVideo {
   void changed() { frameKey_.clear(); }  // the sensors or their pictures changed: chosen again for the next frame
   // A picture upload borrows the one picture buffer, so it never needs a second block that size. The built-in pictures
   // are shown meanwhile.
+  // The picture buffer's room, as reserved at boot: CamConfig::pictureMax, or a single frame's if that much could not be
+  // had. Every limit on a picture is this, never the setting, so nothing larger is let in only to grow the buffer.
+  size_t room() const { return room_; }
+  int framesHeld() const { return room_ >= CAM_MAX_PICTURE ? CAM_MAX_FRAMES : 1; }
   bool lent() const { return lent_; }
   std::string& lend();
   std::string& buffer() { return frameData_; }
@@ -117,6 +123,7 @@ class CamVideo {
   uint32_t liveSeq_ = 0;
   const CamFrame* frame_ = nullptr;
   std::string frameData_;  // the picture loaded from storage, in one buffer reserved at boot
+  size_t room_ = CAM_MAX_FRAME;
   uint32_t pictureGen_ = 0;
   bool lent_ = false;
   // The loaded picture: its SPS, then each frame's PPS and IDR, pointing into frameData_; and for each frame, SPS, PPS

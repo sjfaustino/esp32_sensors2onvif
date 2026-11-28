@@ -291,11 +291,11 @@ function imageDialog(path) {
       image = f.type.startsWith("video/") ? null : await createImageBitmap(f);
       file = isMoving(f) ? f : null;
       make.disabled = false;
-      note.textContent = file
-        ? tr("Add text if you like, then encode. A moving image keeps up to {n} frames, 2 a second.", {
-            n: (await hubFrames()) > 1 ? await hubFrames() : 1,
-          })
-        : tr("Add text if you like, then encode.");
+      const held = file ? await hubFrames() : 1; // a hub of still pictures says so once the frames are taken out
+      note.textContent =
+        held > 1
+          ? tr("Add text if you like, then encode. A moving image keeps up to {n} frames, 2 a second.", { n: held })
+          : tr("Add text if you like, then encode.");
       if (!image) {
         const g = source.getContext("2d");
         g.fillStyle = "#000";
@@ -320,10 +320,14 @@ function imageDialog(path) {
       note.textContent = tr("Encoding. The first time, this downloads about 30 MB.");
       stopPlaying();
       let r,
-        frames = [];
+        frames = [],
+        stillOnly = false; // a moving image, for a hub that keeps its first frame
       if (file) {
-        const most = await hubFrames();
-        frames = await sourceFrames(file, most);
+        // At least two, so a hub of still pictures can say a moving image will not move.
+        const held = await hubFrames();
+        frames = await sourceFrames(file, Math.max(2, held));
+        stillOnly = held == 1 && frames.length > 1;
+        frames = frames.slice(0, held);
         if (frames.length > 1)
           r = await encodeFrames(frames, source, lines(), (n, total) => {
             note.textContent = tr("Encoding frame {n} of {total}", { n, total });
@@ -346,8 +350,7 @@ function imageDialog(path) {
           })
         : tr("{size} at full quality.", { size });
       note.textContent = count > 1 ? tr("{n} frames, shown 2 a second.", { n: count }) + " " + how : how;
-      if (file && frames.length > 1 && (await hubFrames()) == 1)
-        note.textContent += " " + tr("This hub holds still pictures only, so it keeps the first frame.");
+      if (stillOnly) note.textContent += " " + tr("This hub holds still pictures only, so it keeps the first frame.");
       try {
         if (result.src) URL.revokeObjectURL(result.src);
         const urls = [];
@@ -363,7 +366,7 @@ function imageDialog(path) {
               result.src = urls[at];
             }, 500),
           };
-        } else urls.slice(1).forEach((u) => URL.revokeObjectURL(u));
+        }
       } catch (e) {
         note.textContent += " " + tr("The preview could not be shown, but the picture can still be saved.");
       }

@@ -28,6 +28,14 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- A hub that could not reserve the room for moving pictures as it started still said it took 20 frames, and let in
+  pictures that size, which then had to grow its picture buffer. Every limit now follows the room it got: one frame.
+- A picture cut into several slices is refused, rather than taken as several frames, each a strip of it.
+- A picture that only just fits is measured as it is stored, with the hub's own SPS, so it is never stored too large
+  to play.
+- On a hub of still pictures, the page says a moving image keeps its first frame; that note never showed.
+- Clearing alerts waiting for the NVR counts only the alerts, and the Overview says "1 alert", not "1 alerts".
+- The video login's nonce comes from the chip's random source, not from the time and the serial number.
 - A reply to an event push or a notification is read from its whole status line, even when that comes in pieces; it
   used to be judged by one character of the first piece.
 - Base64 with anything in it that is not base64, as in a login, is refused rather than read with the odd characters

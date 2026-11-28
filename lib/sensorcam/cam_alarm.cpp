@@ -215,9 +215,8 @@ int CamAlarm::clearWaiting() {
   CamDelayed gone;
   while (delayed_.take(gone)) n++;
   while (delivery_.takeMissed(gone)) n++;
-  for (int id = 1; id <= CAM_MAX_SENSORS; id++) n += delivery_.pending(id).on;
-  delivery_.forgetChecks();
-  waitingDirty_ = true;  // saved on the next pass, so a restart does not bring them back
+  delivery_.forgetChecks();  // whether alerts already sent reached the NVR: not counted, as none is an alert waiting
+  waitingDirty_ = true;      // saved on the next pass, so a restart does not bring them back
   std::string detail = std::to_string(n);
   hubEvent(CAM_EVENT_WAITING_CLEARED, detail, CAM_AGE_UNKNOWN,
            camEventMessage(CAM_EVENT_WAITING_CLEARED, cfg_.hostName, detail, CAM_AGE_UNKNOWN, false));

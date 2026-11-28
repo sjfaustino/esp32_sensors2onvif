@@ -8,7 +8,7 @@ Needs Playwright and its Chromium:
     pip install playwright==1.52.0
     python -m playwright install chromium
 """
-import os, sys, tempfile
+import base64, os, sys, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # the parts beside this file
 from e2e_common import *  # noqa: E402,F401,F403
@@ -267,7 +267,7 @@ def test_clearing_alerts_waiting_for_the_nvr(page, dialogs):
         check('a cancelled clear keeps it', status()['delayed_waiting'] == 1, status())
         page.click('#ovInfo button:has-text("Clear")')
         answer(page)
-        check('the page says it cleared it', notice(page, 'Cleared 1 waiting alerts'), page.text_content('#toast'))
+        check('the page says it cleared it', notice(page, 'Cleared 1 waiting alert'), page.text_content('#toast'))
         check('and nothing waits', status()['delayed_waiting'] == 0, status())
         check('the row goes', page_wait(page, lambda: 'Waiting for the NVR' not in page.text_content('#ovInfo')), page.text_content('#ovInfo'))
     finally:
@@ -729,6 +729,76 @@ def test_the_pages_in_portuguese(browser):
         context.close()
 
 
+# A 1x1 GIF: the file a test chooses, whose frames the pretend encoder below makes up.
+TINY_GIF = base64.b64decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
+# The encoder stood in for, as it is a 30 MB download and the tests do not depend on the internet: it notes how many
+# frames it was asked for, and gives three, of three colours; each "encoded" one is a tiny picture of SPS, PPS and IDR.
+PRETEND_ENCODER = """() => {
+  window.asked = [];
+  window.sourceFrames = async (file, most) => {
+    asked.push(most);
+    const c = new OffscreenCanvas(64, 36), g = c.getContext("2d"), out = [];
+    for (const colour of ["#c00", "#0a0", "#c80"].slice(0, most)) {
+      g.fillStyle = colour;
+      g.fillRect(0, 0, 64, 36);
+      out.push(new Uint8Array(await (await c.convertToBlob({ type: "image/png" })).arrayBuffer()));
+    }
+    return out;
+  };
+  window.encodeCanvas = async () => ({ pic: new Uint8Array([0, 0, 0, 1, 0x67, 1, 0, 0, 0, 1, 0x68, 2, 0, 0, 0, 1, 0x65, 0x88]), step: 0 });
+  window.decoded = async () => "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+}"""
+
+
+def moving_image_note(page):
+    """Chooses a GIF for the hub's clear picture, encodes it with the pretend encoder, and gives the dialog's two notes:
+    the one on choosing, and the one after encoding."""
+    page.goto(URL + '#sensors')
+    page.wait_for_function('() => typeof imageDialog == "function"')
+    page.evaluate(PRETEND_ENCODER)
+    page.evaluate("imageDialog('clear.h264')")
+    page.set_input_files('dialog input[type=file]', files=[{'name': 'moving.gif', 'mimeType': 'image/gif', 'buffer': TINY_GIF}])
+    page.wait_for_function("() => /then encode/.test(document.querySelector('dialog').innerText)")
+    chosen = page.locator('dialog').inner_text()
+    page.click('dialog button:has-text("Encode and preview")')
+    page.wait_for_function("() => /full quality/.test(document.querySelector('dialog').innerText)")
+    encoded = page.locator('dialog').inner_text()
+    page.click('dialog button:has-text("Close")')
+    return chosen, encoded
+
+
+def test_a_moving_image_on_each_kind_of_hub(browser, storage):
+    """A hub with PSRAM is asked for its 20 frames and keeps them all; one that holds a single frame says, once the frames
+    are taken out, that it keeps the first, and never offers "up to 1 frames"."""
+    tab = Tab(browser)
+    try:
+        chosen, encoded = moving_image_note(tab.page)
+        check('a hub of moving pictures says how many frames it keeps', 'up to 20 frames' in chosen, chosen)
+        check('and asks the encoder for that many', tab.page.evaluate('asked') == [20], tab.page.evaluate('asked'))
+        check('and keeps every frame', '3 frames, shown 2 a second' in encoded and 'still pictures only' not in encoded, encoded)
+    finally:
+        tab.close()
+    common.HUB.kill()
+    common.HUB.wait()
+    try:
+        start_hub(storage, PASSWORD, env={'S2O_STILL_PICTURES': '1'})
+        common.HUB.stdout.readline()
+        tab = Tab(browser)
+        try:
+            chosen, encoded = moving_image_note(tab.page)
+            check('a hub of still pictures offers no count of frames', 'frames' not in chosen, chosen)
+            check('it asks for two, to tell a moving image from a still one', tab.page.evaluate('asked') == [2], tab.page.evaluate('asked'))
+            check('and says it keeps the first frame', 'This hub holds still pictures only, so it keeps the first frame.' in encoded
+                  and '3 frames' not in encoded, encoded)
+        finally:
+            tab.close()
+    finally:
+        common.HUB.kill()
+        common.HUB.wait()
+        start_hub(storage, PASSWORD)
+        common.HUB.stdout.readline()
+
+
 def own_hub(test):
     """The test, on a hub of its own with fresh storage and no password, as a hub flashed from a release starts; the
     hub the other tests use is started again afterwards, as it was."""
@@ -889,6 +959,7 @@ def page_cases(nvr, storage):
         ('accessibility_dark', lambda browser: test_accessibility(browser, dark=True)),
         ('a_hub_without_a_password_asks_for_one', lambda browser: test_a_hub_without_a_password_asks_for_one(browser, storage)),
         ('a_blank_hub_is_set_up', lambda browser: test_a_blank_hub_is_set_up(browser, storage)),
+        ('a_moving_image_on_each_kind_of_hub', lambda browser: test_a_moving_image_on_each_kind_of_hub(browser, storage)),
     ]
 
 

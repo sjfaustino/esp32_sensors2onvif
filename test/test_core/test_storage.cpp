@@ -85,30 +85,34 @@ static void splits_picture_files() {
 
 static void splits_moving_pictures_into_their_frames() {
   // One PPS for all three frames, with an SEI passed over.
-  const uint8_t three[] = {0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 1, 0x06, 9, 0, 0, 1, 0x65, 4, 0, 0, 1, 0x65, 5, 5, 0, 0, 1, 0x65, 6};
+  const uint8_t three[] = {0, 0, 0, 1,    0x67, 1, 2, 0, 0,    1,    0x68, 3, 0, 0, 1,    0x06, 9,
+                           0, 0, 1, 0x65, 0x84, 0, 0, 1, 0x65, 0x85, 5,    0, 0, 1, 0x65, 0x86};
   CamNal n[1 + 2 * 4];
   TEST_ASSERT_EQUAL(3, camParsePicture(three, sizeof(three), n, camPictureUnits(4)));
   TEST_ASSERT_EQUAL_HEX8(0x67, n[0].data[0]);
   for (int k = 0; k < 3; k++) TEST_ASSERT_EQUAL_HEX8(0x68, n[1 + 2 * k].data[0]);  // each frame has the one PPS
   TEST_ASSERT_EQUAL(2, n[2].len);
   TEST_ASSERT_EQUAL(3, n[4].len);
-  TEST_ASSERT_EQUAL_HEX8(6, n[6].data[1]);
+  TEST_ASSERT_EQUAL_HEX8(0x86, n[6].data[1]);
   TEST_ASSERT_EQUAL(0, camParsePicture(three, sizeof(three), n, camPictureUnits(2)));  // only two frames fit
   // A PPS of its own for each frame, as the page makes them.
-  const uint8_t own[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x68, 7, 0, 0, 1, 0x65, 4};
+  const uint8_t own[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 0x83, 0, 0, 1, 0x68, 7, 0, 0, 1, 0x65, 0x84};
   TEST_ASSERT_EQUAL(2, camParsePicture(own, sizeof(own), n, camPictureUnits(4)));
   TEST_ASSERT_EQUAL_HEX8(2, n[1].data[1]);
   TEST_ASSERT_EQUAL_HEX8(7, n[3].data[1]);
-  const uint8_t one[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3};
+  const uint8_t one[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 0x83};
   TEST_ASSERT_EQUAL(1, camParsePicture(one, sizeof(one), n, camPictureUnits(1)));  // a still picture, as before
-  const uint8_t inter[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x41, 4};
+  const uint8_t inter[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 0x83, 0, 0, 1, 0x41, 4};
   TEST_ASSERT_EQUAL(0, camParsePicture(inter, sizeof(inter), n, camPictureUnits(4)));  // a frame that is not a keyframe
-  const uint8_t twoSps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 3, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 4};
+  const uint8_t twoSps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 0x83, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 0x84};
   TEST_ASSERT_EQUAL(0, camParsePicture(twoSps, sizeof(twoSps), n, camPictureUnits(4)));
-  const uint8_t ppsFirst[] = {0, 0, 1, 0x68, 2, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 3};
+  const uint8_t ppsFirst[] = {0, 0, 1, 0x68, 2, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 0x83};
   TEST_ASSERT_EQUAL(0, camParsePicture(ppsFirst, sizeof(ppsFirst), n, camPictureUnits(4)));
-  const uint8_t noPps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 3};
+  const uint8_t noPps[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x65, 0x83};
   TEST_ASSERT_EQUAL(0, camParsePicture(noPps, sizeof(noPps), n, camPictureUnits(4)));
+  // One picture cut into two slices: the second does not start at the first macroblock, so it is no frame of its own.
+  const uint8_t sliced[] = {0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x65, 0x83, 0, 0, 1, 0x65, 0x40, 9};
+  TEST_ASSERT_EQUAL(0, camParsePicture(sliced, sizeof(sliced), n, camPictureUnits(4)));
   const uint8_t garbage[] = {1, 2, 3, 4, 5, 6, 7, 8};
   TEST_ASSERT_EQUAL(0, camParsePicture(garbage, sizeof(garbage), n, camPictureUnits(4)));
 }

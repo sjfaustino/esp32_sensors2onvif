@@ -572,13 +572,13 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
     feedFirmware(c, first.data(), first.size(), now);
     return true;
   }
-  if (contentLength > (isApi ? cfg_.pictureMax : MAX_REQUEST)) {
+  if (contentLength > (isApi ? video_.room() : MAX_REQUEST)) {
     if (!isApi) {
       closeHttp(c);
       return false;
     }
     // Read to its end, up to twice the most this hub takes, so a browser sees the refusal rather than a broken connection.
-    if (cfg_.pictureMax > CAM_MAX_FRAME) return refuse(413, "the picture is larger than this hub can hold", 2 * cfg_.pictureMax);
+    if (video_.room() > CAM_MAX_FRAME) return refuse(413, "the picture is larger than this hub can hold", 2 * video_.room());
     return refuse(413, "file is larger than 32 KB");
   }
 
@@ -593,7 +593,7 @@ bool CamWeb::handleHttp(HttpConn& c, uint32_t now) {
   size_t most = target == "/api/restore" ? 16384 : batteryLog ? 8192 : 2048;
   if (isApi && !borrowsFrame && contentLength > most) return refuse(413, "request is too large");
   if (borrowsFrame && !c.toFrameBuffer) {
-    if (!authorized(c, headers)) return needLogin(cfg_.pictureMax);  // before taking the picture buffer, which changes what the NVR sees
+    if (!authorized(c, headers)) return needLogin(video_.room());  // before taking the picture buffer, which changes what the NVR sees
     if (uploading_) return refuse(507, "the hub is busy with another upload; try again");
     uploading_ = &c;
     c.toFrameBuffer = true;

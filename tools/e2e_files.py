@@ -478,6 +478,32 @@ def moving_pictures(s):
             api('DELETE', f'/api/file?path={path}')
 
 
+@case(pc=True, last=True)
+def a_hub_that_holds_one_frame(s):
+    """As on a board without PSRAM, or one whose picture buffer could not be had at boot: it says it holds one frame,
+    takes a still picture, and refuses a moving one, or one larger than a frame, without growing its buffer for it."""
+    s.restart(env={'S2O_STILL_PICTURES': '1'})
+    path = f'{name(4)}/active.h264'
+    kept = api('GET', f'/api/file?path={path}')
+    try:
+        check('it says it holds one frame', get_json('/api/info').get('pictureFrames') == 1, get_json('/api/info'))
+        moving = make_frames.moving([(make_frames.RED, ['ONE']), (make_frames.GREEN, ['TWO'])])
+        units = make_frames.nals(moving)
+        code, body = api('PUT', f'/api/file?path={path}', moving)
+        check('a moving picture is refused', code == 422 and b'single' in body, (code, body))
+        still = make_frames.annexb(units[:3])
+        check('a still one is taken', api('PUT', f'/api/file?path={path}', still)[0] == 200)
+        code, body = api('PUT', f'/api/file?path={path}', still + b'\x00' * 40000)
+        check('one larger than a frame is refused, and the hub says so', code == 413 and b'32 KB' in body, (code, body))
+        check('the still picture is kept', api('GET', f'/api/file?path={path}')[1] == still)
+    finally:
+        if kept[0] == 200:
+            api('PUT', f'/api/file?path={path}', kept[1])
+        else:
+            api('DELETE', f'/api/file?path={path}')
+        s.restart()
+
+
 @case()
 def pictures(s):
     """Pictures for sensor 4: checked, stored, streamed, with thumbnails, and refused when they would not play."""

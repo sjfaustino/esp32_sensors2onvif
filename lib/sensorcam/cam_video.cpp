@@ -14,11 +14,13 @@
 bool CamVideo::begin(int listenFd) {
   listen_ = listenFd;
   nextFrameAt_ = millis_();
+  room_ = cfg_.pictureMax > CAM_MAX_FRAME ? cfg_.pictureMax : CAM_MAX_FRAME;
   try {
-    frameData_.reserve(cfg_.pictureMax);
-  } catch (const std::bad_alloc&) {  // never a reason not to start: a picture larger than what was reserved is refused
+    frameData_.reserve(room_);
+  } catch (const std::bad_alloc&) {  // never a reason not to start: still pictures only, and a moving one is refused
     failures_.note();
-    frameData_.reserve(CAM_MAX_FRAME);
+    room_ = CAM_MAX_FRAME;
+    frameData_.reserve(room_);
   }
   return listen_ >= 0;
 }
@@ -108,7 +110,15 @@ void CamVideo::request(RtspConn& c, const std::string& text, uint32_t now) {
   events_.subs().heard(c.peer, now);
 
   if (!onvifPassword_.empty() && method != "OPTIONS" && !c.authed) {
-    if (c.nonce.empty()) c.nonce = camMd5Hex(cfg_.serial + std::to_string(now) + std::to_string(c.fd));
+    if (c.nonce.empty()) {
+      // From the chip's random source, so one cannot be foretold; the serial, time and socket only where there is none.
+      std::string seed = cfg_.serial + std::to_string(now) + std::to_string(c.fd);
+      for (int i = 0; i < 4; i++) {
+        uint32_t r = 0;
+        if (chip_->random32(r)) seed += std::to_string(r) + ".";
+      }
+      c.nonce = camMd5Hex(seed);
+    }
     std::string auth = headerValue(text, "authorization");
     bool allowed = logins_.allowed(c.peer, now);
     bool ok =
@@ -235,7 +245,7 @@ bool CamVideo::loadFrame(const std::string& path) {
   // frameData_ is one fixed buffer reserved at boot. Allocating per picture is what exhausted RAM.
   releasePicture();
   frameCount_ = frameAt_ = 0;
-  if (!storage_.readFile(path, frameData_, frameData_.capacity())) return false;  // what was reserved, so never a new block
+  if (!storage_.readFile(path, frameData_, room_)) return false;  // what was reserved, so never a new block
   int n = camParsePicture((const uint8_t*)frameData_.data(), frameData_.size(), pictureNals_, camPictureUnits(CAM_MAX_FRAMES));
   if (!n || !camSameNal(pictureNals_[0], CAM_FRAMES[0].nals[0])) return false;
   for (int i = 0; i < n; i++) {

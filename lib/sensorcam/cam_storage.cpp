@@ -143,7 +143,10 @@ int camParsePicture(const uint8_t* d, size_t len, CamNal* out, int room) {
         if (!sps) return 0;
         pps = n;
       } else if (type == 5) {
-        if (!pps.len || camPictureUnits(frames + 1) > room) return 0;
+        // A frame is one slice: its header opens with first_mb_in_slice, ue(v), which is 0, the bit 1, only for the
+        // picture's first. A picture cut into slices would otherwise pass for several frames, each a strip of it.
+        bool whole = n.len >= 2 && (n.data[1] & 0x80);
+        if (!pps.len || !whole || camPictureUnits(frames + 1) > room) return 0;
         out[1 + 2 * frames] = pps;
         out[2 + 2 * frames] = n;
         frames++;

@@ -304,20 +304,28 @@
             tr(
               "Clear them only if they were tests: the NVR will not record them. The hub logs that they were cleared.",
             ),
-            { title: tr("Clear the {n} alerts waiting for the NVR?", { n }), ok: tr("Clear") },
+            {
+              title: trCount(n, "Clear the alert waiting for the NVR?", "Clear the {n} alerts waiting for the NVR?"),
+              ok: tr("Clear"),
+            },
           ))
         )
           return;
         try {
           const r = await call("POST", "/api/waiting/clear", "x=1");
-          notice(tr("Cleared {n} waiting alerts", { n: r.cleared }));
+          notice(trCount(r.cleared, "Cleared {n} waiting alert", "Cleared {n} waiting alerts"));
         } catch (e) {
           notice(tr("Not cleared: {why}", { why: e.message }), { err: true });
         }
         loadOverview(true);
       },
     });
-    return el("span", null, tr("{n} alerts, played once it listens", { n }) + " ", clear);
+    return el(
+      "span",
+      null,
+      trCount(n, "{n} alert, played once it listens", "{n} alerts, played once it listens") + " ",
+      clear,
+    );
   }
   $("armAway").onclick = () => setMode("away");
   $("armHome").onclick = () => setMode("home");

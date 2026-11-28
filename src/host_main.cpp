@@ -325,6 +325,8 @@ int main(int argc, char** argv) {
   cfg.serial = "0123456789ab";
   cfg.holdMs = (uint32_t)strtoul(argv[1], nullptr, 10);
   cfg.pictureMax = CAM_MAX_PICTURE;  // as on a board with PSRAM, so the tests cover moving pictures
+  // S2O_STILL_PICTURES: as on a board without PSRAM, or one whose picture buffer could not be had, which holds one frame.
+  if (getenv("S2O_STILL_PICTURES")) cfg.pictureMax = CAM_MAX_FRAME;
   cfg.fsRoot = argv[2];
   if (argc > 3) cfg.webPassword = argv[3];
   if (argc > 4) cfg.silentMs = (uint32_t)strtoul(argv[4], nullptr, 10);

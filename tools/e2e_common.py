@@ -227,9 +227,11 @@ def control(command):
             return line[len(f'done {command}:'):].strip()
 
 
-def start_hub(*args):
+def start_hub(*args, env=None):
+    """env: settings for the PC build beside the PC's own, as S2O_STILL_PICTURES for a hub that holds one frame."""
     global HUB
-    HUB = subprocess.Popen([EXE, str(HOLD_MS), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    HUB = subprocess.Popen([EXE, str(HOLD_MS), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                           env={**os.environ, **env} if env else None)
     return HUB
 
 
@@ -507,11 +509,11 @@ class Session:
         inner = f'<ConsumerReference><Address>http://{LOCAL}:{self.nvr.port}/onvif_notify_server/</Address></ConsumerReference>'
         soap('Subscribe', '/onvif/device_service', inner)
 
-    def restart(self, *args):
+    def restart(self, *args, env=None):
         """Stops the PC build as a power cut would, and starts it again on the same storage."""
         self.proc.kill()
         self.proc.wait()
-        self.proc = start_hub(self.storage, PASSWORD, *args)
+        self.proc = start_hub(self.storage, PASSWORD, *args, env=env)
         HUB.stdout.readline()
         self.puller.stop()  # its subscription was in the hub that stopped
         self.puller = PullingNvr()
