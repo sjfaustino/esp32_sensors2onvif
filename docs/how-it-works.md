@@ -47,12 +47,18 @@ firmware starts a new `events.bin`; the next update adds its events after the lo
 
 ## Checking delivery, and replaying what the NVR missed
 
-`CamDeliveryWatch` (`lib/sensorcam/cam_delivery.h`) checks each alert that starts a new NVR record, a few seconds after it
-starts or when it ends if sooner. The NVR counts as listening when it holds a subscription and either the last event
-pushed to it arrived, or, for an NVR that pulls, it asked for events within the last minute; other requests from it do
-not count. A failed push is tried again every 30 seconds, so one failure cannot leave the NVR counted as gone. An alert
-the NVR missed is logged once, kept, and played as a past event once it listens again; a replay missed too waits again
-without a second entry. Delivered is all the hub can know: whether the NVR records depends on its own settings.
+`CamDeliveryWatch` (`lib/sensorcam/cam_delivery.h`) counts an alert that starts a new NVR record as delivered only once
+the NVR has been shown an alert on since it started. Each subscription keeps when that last happened (`CamSub::told`):
+a push saying an alert is on that got there, timed from when the push began, or a pull answered while one was on. That
+the NVR seemed to be listening proves nothing of this alert, whose own push may still be on its way or about to fail.
+An alert not shown within `CAM_DELIVERY_PROOF_MS`, 12 seconds, as an NVR that pulls may be holding a poll for 10, is
+missed. A push says an alert is on if one began since the subscription's last push, so an alert shorter than the wait
+for the push before it is still pushed as one, and its end follows. The NVR counts as listening, for the page and the
+NVR's own events, when it holds a subscription and either the last event pushed to it arrived, or, for an NVR that pulls,
+it asked for events within the last minute; other requests from it do not count. A failed push is tried again every
+30 seconds, so one failure cannot leave the NVR counted as gone. An alert the NVR missed is logged once, kept, and played
+as a past event once it listens again; a replay missed too waits again without a second entry. Delivered is all the hub
+can know: whether the NVR records depends on its own settings.
 
 ## MQTT
 
@@ -153,7 +159,9 @@ good. A hub from before release numbers writes those 12 bytes after the image wi
 it too.
 
 `tools/sign_firmware.py` signs, with the number from `version.h` unless given. The release workflow uses the `FIRMWARE_SIGNING_KEY` secret and stops if its public half
-is not `FIRMWARE_PUBLIC_KEY` in `include/config.h`. The PC build trusts `test/firmware-test-key.pem` instead, which signs
+is not `FIRMWARE_PUBLIC_KEY` in `include/config.h`. The secret is kept in the `release` environment, which only a `v*`
+tag may use, and the workflow signs only a commit on `main`, waiting for that commit's Checks and going on only if they
+pass, so a tag pushed by mistake on a working branch publishes nothing. The PC build trusts `test/firmware-test-key.pem` instead, which signs
 the end-to-end test's updates and is never used for real firmware. A hub from before signing writes the 72 bytes after
 the image, where the bootloader does not read, so a signed file updates it too.
 

@@ -149,8 +149,9 @@ The hub cannot report its own death: while it has no power or no Wi-Fi, nothing 
 it was off only once it is back. Turn on the NVR's video-loss alarm for the hub's channel so the NVR notices, and power the
 hub from a small UPS.
 
-The hub checks that each alert reached the NVR. If the NVR was not listening, the history gets **Alert not delivered**
-and Notifications sends it; the alert is kept, and once the NVR listens again it plays as a past event, so the NVR
+The hub checks that each alert reached the NVR: an alert counts as delivered only once the NVR has been shown it, by a
+push that got there or, for an NVR that pulls, by asking while it was on. One not shown within 12 seconds gets **Alert
+not delivered** in the history, and Notifications sends it; the alert is kept, and once the NVR listens again it plays as a past event, so the NVR
 still records that something happened. Set the NVR's address on the NVR page, or any device subscribed to the hub's
 events counts as the NVR; the page warns at the top until you do. Past events, and alerts kept for the NVR, play only while the NVR is listening, so after a power cut they wait for it to
 reconnect instead of being logged as missed. Alerts waiting for the NVR that were only tests can be dropped with
@@ -213,6 +214,8 @@ first Tab offers to skip past the menu, and the menu's groups open with Enter.
 The bar across the top of every page shows the hub's name and the alarm's state in the same colours, and links to the
 Overview. A line below it sums the hub up: green when all is well, yellow when something needs attention (disarmed, a
 sensor problem, or setup left to do, such as the NVR's address), red when the NVR is not listening, so alerts are not recorded.
+It is red too once the hub has not answered for 15 seconds, as when it is unplugged, with the time it last did: a page
+left open never goes on saying all is well about a hub that has gone.
 It leads to what it is about: the NVR page when the NVR is not listening, otherwise the Overview, where it shows the setup
 steps left. Until everything is done, the Overview starts with **Getting started**: the next step left,
 what to do and why, and a button that goes there. The steps are a hub password of your own rather than one built into
@@ -269,7 +272,8 @@ automation, and check that a recording appeared. It is logged as a test, so it i
 
 **Sensors > Notifications** sends each alert, and optionally each node problem, to a server on your network. A message
 its server does not take, as while Home Assistant restarts, is sent again 10 seconds later, three tries in all, and the
-ones after it wait their turn; up to eight wait at a time.
+ones after it wait their turn; up to eight wait at a time. When eight wait, as while the server is away for a while,
+the oldest of the least urgent makes room for a more urgent one, so an alert is never lost to a note such as **armed**.
 **Send to** chooses how:
 
 - **ntfy**: a self-hosted [ntfy](https://ntfy.sh) server passes each message to the ntfy app on your phone. The address
@@ -492,7 +496,8 @@ board's USB cable, as a new hub is set up.
 A new firmware is kept only once it has done the hub's work: stayed on the network for a minute, started ESP-NOW, and,
 if the NVR was listening when the update began, got it listening again. If it crashes, stalls or loses the network
 first, the power fails meanwhile, or it has not managed within 10 minutes, the hub goes back to the previous firmware
-and Device Info says so. A reset erases the saved WiFi
+and Device Info says so. While a new firmware is on trial, another update is refused, saying why: it would write over the
+firmware the hub would go back to. A reset erases the saved WiFi
 networks, ports, name, web password, fixed address, time, notification and MQTT settings, arms the hub, and keeps the pictures, the sensor nodes,
 and the ESP-NOW key and token that sensors use.
 
@@ -522,12 +527,15 @@ Up to three NTP servers go comma-separated, tried in turn; a new hub uses `ntp04
 legal time from the Observatório Astronómico de Lisboa, then `pt.pool.ntp.org`. NTP readings are not signed, so anyone on
 the network can fake one, and quiet hours, the scheduled restart and the re-arm timer go by the clock. Once its clock is
 set, the hub therefore refuses a reading that would move it by more than 5 minutes, keeps its own time, and logs **time
-refused**, sent with node problems. If the clock really is wrong, save the Time page: the next reading is then taken,
-whatever it says.
+refused**, sent with node problems. After a start, as after a power cut, it takes any reading no earlier than the last
+time it knew it was running, which it notes every 10 minutes: time does not go back. If the clock really is wrong, save
+the Time page: the next reading is then taken, whatever it says.
 
 **Device info** shows firmware and hardware details, uptime, why the hub last restarted, memory, storage and WiFi status,
 and the least free memory since the last daily check, or since the start on a hub without one: when, and with how many
-connections open, as a fall that recovered leaves nothing else to see.
+connections open, as a fall that recovered leaves nothing else to see. **Least free stack of the main loop** is how
+close the loop that serves every request and takes every alert has come to running out of its stack, which would restart
+the hub; the daily check says so below 1 KB.
 **The last week** draws the hub's health an hour to a bar: the least free memory in each hour, as the memory itself
 keeps it at every allocation, so even a moment's fall shows, the weakest Wi-Fi
 signal, and how much of the hour the NVR was listening for alerts. A memory that keeps falling, a Wi-Fi that fades at
@@ -587,8 +595,9 @@ checks the signature again, and that the update is not an older release than its
 confirmation and fetches it over ESP-NOW (see [Firmware updates](protocol.md#firmware-updates)). A node saving its battery is not offered one,
 and a node whose update was undone is not offered that file again. The node's row shows the update's progress. Each
 file says how many nodes of its chip run it, and can be tried on one node first: the others are offered it only once
-that node has run it for a day, by the hub's clock, and never if that node had it undone, so a bad update cannot take
-every node out at once.
+that node has run it for a day, by the hub's clock, and while that node is well: still on the hub, still running it,
+never having had it undone, and heard, not silent. A pilot the update broke holds it back however long it ran, so a bad
+update cannot take every node out at once; the page says why the others wait.
 
 **Hardware**, under each node on the Sensors page, says what the node's sensor is, and which pins its sensor, a tamper
 switch and its battery are on, with the kind of battery. One firmware then serves every node of a chip, and a node is set
@@ -674,7 +683,8 @@ A GIF, an animated WebP or PNG, or a short video makes a **moving picture**: the
 2 a second, so the first 10 seconds, and makes each as it would a still picture, with the same text. The hub plays
 them in turn, looping, while that picture is shown. Each frame reaches the NVR exactly as a still picture does, at the
 same rate, so nothing about the video the NVR records changes but what it shows. The preview plays the frames as they
-will be sent. A hub without PSRAM holds still pictures only, and keeps the first frame.
+will be sent, and **Show it**, or the picture's thumbnail on the Sensors page, plays a saved one the same way. A hub
+without PSRAM holds still pictures only, and keeps the first frame.
 
 Without internet, list the sensors in `sensors.json` and run `python tools/make_frames.py` (needs ffmpeg). The files
 appear in `data/`, ready to upload one by one, or all together with `pio run -t uploadfs`, which replaces everything
