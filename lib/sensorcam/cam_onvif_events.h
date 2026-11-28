@@ -26,6 +26,8 @@ class CamOnvifEvents {
   // The NVR is listening when it holds a subscription and either the last event pushed to it arrived, or, for one that
   // pulls events, it asked for events within the last minute. With no NVR address set, any subscriber counts.
   bool nvrListening(uint32_t now) const;
+  // Whether the NVR has been shown an alert on since at; see CamSub::told. With no NVR address set, any subscriber counts.
+  bool nvrToldSince(uint32_t at) const;
   const std::string& nvrIp() const { return nvrIp_; }  // empty when not set
   void setNvr(const std::string& ip);                  // its subscriptions are then the last pushed out for room
   SubTable& subs() { return subs_; }
@@ -48,6 +50,8 @@ class CamOnvifEvents {
   // another subscription, and the end of a push to the one before tells nothing of it.
   uint32_t pushFor_[SubTable::SIZE] = {0};
   bool pushFirst_[SubTable::SIZE] = {false};
-  int udp_ = -1;  // discovery
+  bool pushActive_[SubTable::SIZE] = {false};  // the push says an alert is on
+  uint32_t pushAt_[SubTable::SIZE] = {0};      // when it began
+  int udp_ = -1;                               // discovery
   uint32_t messageNo_ = 1;
 };

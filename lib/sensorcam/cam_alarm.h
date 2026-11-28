@@ -22,6 +22,7 @@ class CamAlarmOutside {
  public:
   virtual ~CamAlarmOutside() = default;
   virtual bool nvrListening(uint32_t now) const = 0;                     // whether an alert started now would reach the NVR
+  virtual bool nvrToldSince(uint32_t at) const = 0;                      // whether the NVR has been shown an alert on since at
   virtual bool downloadingHistory() const = 0;                           // the history is being sent, so its files must not be rotated
   virtual void notifyHook(int id, CamEventKind kind, bool delayed) = 0;  // a sensor's event, for the webhook
   virtual void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) = 0;

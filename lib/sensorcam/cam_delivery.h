@@ -1,8 +1,10 @@
 // Whether each alert reached the NVR, and the alerts it missed, kept until it listens again.
 //
-// An alert that starts a new NVR record is checked a few seconds later, when its event push has had time to arrive, or
-// when it ends if that is sooner. If the NVR was not listening then, the alert is kept as missed; once the NVR listens
-// again the hub plays it as a past event. A replay the NVR misses too is kept again, but is not logged a second time.
+// An alert that starts a new NVR record counts as delivered once the NVR has been shown an alert on since it started: a
+// push saying so that got there, or a pull answered while it was on. That the NVR was listening a moment before says
+// nothing of this alert, whose own push may still be under way or about to fail. Not shown within CHECK_MS, the alert
+// is kept as missed, and once the NVR listens again the hub plays it as a past event. A replay the NVR misses too is
+// kept again, but is not logged a second time.
 #pragma once
 #include <stdint.h>
 #include <functional>
@@ -23,7 +25,7 @@ struct CamPendingCheck {
 
 class CamDeliveryWatch {
  public:
-  static const uint32_t CHECK_AFTER_MS = CAM_DELIVERY_CHECK_MS;
+  static const uint32_t CHECK_MS = CAM_DELIVERY_PROOF_MS;
   struct Missed {  // an alert the NVR did not get
     int id;
     bool delayed;
@@ -31,9 +33,9 @@ class CamDeliveryWatch {
   };
 
   void started(int id, const uint8_t mac[6], uint8_t input, bool delayed, bool several, bool replay, uint32_t holdMs, uint32_t now);
-  // Checks every alert that is due: after CHECK_AFTER_MS, or as soon as active(id) is false. Those the NVR missed are
-  // kept and added to missed.
-  void check(uint32_t now, bool listening, const std::function<bool(int)>& active, std::vector<Missed>& missed);
+  // Settles each alert the NVR has been shown since it started, told(at); those still not shown CHECK_MS after they
+  // started are kept as missed and added to missed.
+  void check(uint32_t now, const std::function<bool(uint32_t at)>& told, std::vector<Missed>& missed);
   bool takeMissed(CamDelayed& out) { return missed_.take(out); }  // the oldest, to replay while the NVR listens
   void keepMissed(const uint8_t mac[6], uint8_t input, bool several, uint32_t holdMs, uint32_t now) {
     missed_.add(mac, input, 0, false, now, holdMs, several, true);

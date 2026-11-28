@@ -8,8 +8,10 @@ namespace {
 // The rest of the hub, as the alarm sees it: whether the NVR is listening, and what was sent to the webhook.
 struct Outside : CamAlarmOutside {
   bool listening = true;
+  bool shown = true;  // false: listening, but this alert never got to it, as when its push is lost
   std::vector<CamEventKind> hooks;
   bool nvrListening(uint32_t) const override { return listening; }
+  bool nvrToldSince(uint32_t) const override { return listening && shown; }
   bool downloadingHistory() const override { return false; }
   void notifyHook(int, CamEventKind kind, bool) override { hooks.push_back(kind); }
   void notifyHubHook(CamEventKind, const std::string&, const std::string&) override {}
@@ -189,7 +191,7 @@ static void an_alert_the_nvr_missed_is_logged_and_replayed_once_it_listens() {
   r.start();
   r.outside.listening = false;
   r.report(DOOR, 1, true);
-  r.run(CAM_DELIVERY_CHECK_MS + 1000);
+  r.run(CAM_DELIVERY_PROOF_MS + 1000);
   TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_NOT_DELIVERED));
   TEST_ASSERT_EQUAL(1, r.outside.sent(CAM_EVENT_NOT_DELIVERED));
   r.run(10000);  // the live alert is over
@@ -197,6 +199,22 @@ static void an_alert_the_nvr_missed_is_logged_and_replayed_once_it_listens() {
   r.outside.listening = true;
   r.run(100);
   TEST_ASSERT_TRUE(r.past());  // played again, as a past event
+}
+
+// An NVR that seemed to be listening but was never shown this alert, as when its push failed after the last one got
+// there, did not get it: the alert is kept as missed and plays again, rather than being taken as delivered.
+static void an_alert_never_shown_to_a_listening_nvr_is_missed() {
+  Rig r("cam_alarm_unshown");
+  r.sensor("AA-BB-CC-DD-EE-01/1");
+  r.start();
+  r.outside.shown = false;
+  r.report(DOOR, 1, true);
+  r.run(CAM_DELIVERY_PROOF_MS - 1000);
+  TEST_ASSERT_EQUAL(0, r.logged(CAM_EVENT_NOT_DELIVERED));  // still time for it to get there
+  r.run(2000);
+  TEST_ASSERT_EQUAL(1, r.logged(CAM_EVENT_NOT_DELIVERED));
+  r.run(100);  // the live alert is over, and the NVR is listening, so it plays again
+  TEST_ASSERT_TRUE(r.past());
 }
 
 static void a_late_report_plays_as_a_past_event_of_its_own() {
@@ -662,6 +680,7 @@ void runAlarmTests() {
   RUN_TEST(a_report_of_something_before_the_disarm_still_counts);
   RUN_TEST(a_timed_disarm_arms_away_again_by_itself);
   RUN_TEST(an_alert_the_nvr_missed_is_logged_and_replayed_once_it_listens);
+  RUN_TEST(an_alert_never_shown_to_a_listening_nvr_is_missed);
   RUN_TEST(a_late_report_plays_as_a_past_event_of_its_own);
   RUN_TEST(a_live_alert_pauses_a_past_event_which_plays_in_full_afterwards);
   RUN_TEST(the_alarm_is_busy_while_an_alert_is_on);

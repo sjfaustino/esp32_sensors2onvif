@@ -203,7 +203,11 @@ void CamWeb::reply(HttpConn& c, int status, const char* type, std::string body, 
 
 void CamWeb::undoPull(HttpConn& c) {
   CamSub* sub = c.undoSub ? events_.subs().find(c.undoSub) : nullptr;
-  if (sub) sub->lastPull = c.undoState;
+  if (sub) {
+    sub->lastPull = c.undoState;
+    sub->told = c.undoTold;
+    sub->toldAt = c.undoToldAt;
+  }
   c.undoSub = 0;
 }
 
@@ -330,7 +334,13 @@ std::string CamWeb::handleOnvif(HttpConn& c, const std::string& headers, const s
     if (sub) {
       c.undoSub = sub->id;
       c.undoState = sub->lastPull;
+      c.undoTold = sub->told;
+      c.undoToldAt = sub->toldAt;
       sub->lastPull = state;
+      if (state == 1) {  // answered while an alert is on, which it knows of now if not before
+        sub->told = true;
+        sub->toldAt = now;
+      }
     }
     reply = soapPullMessagesReply(ctx, changed, state == 1, initial);
   } else if (action == "Renew") {
@@ -394,7 +404,13 @@ void CamWeb::servicePolls(uint32_t now) {
       failures_.note();
       continue;
     }
-    if (sub) sub->lastPull = state;
+    if (sub) {
+      sub->lastPull = state;
+      if (state == 1) {
+        sub->told = true;
+        sub->toldAt = now;
+      }
+    }
     c.pollWaiting = false;
     c.answered = true;
     c.openedAt = now;  // the time limit now covers sending this reply, not the wait before it

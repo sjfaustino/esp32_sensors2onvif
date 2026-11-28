@@ -509,7 +509,8 @@ def alerts_the_nvr_missed(s):
     api('POST', '/api/nvr', 'ip=192.0.2.8')
     control('nvr-gone-fast')  # the NVR counts as gone after 3 s here, instead of 3 minutes
     get(f'/sensor?{sid(1)}')
-    missed = poll(event_list, lambda l: l and any(e['kind'] == 5 for e in l[:2]))
+    # Counted as missed once it has not been shown to the NVR for 12 s (CAM_DELIVERY_PROOF_MS).
+    missed = poll(event_list, lambda l: l and any(e['kind'] == 5 for e in l[:2]), timeout=20)
     check('an alert the NVR is not listening for is logged as not delivered', missed and any(e['kind'] == 5 and e['sensor'] == path and e['event'] == 'alert not delivered' for e in missed[:2]), missed[:3])
     gone = poll(event_list, lambda l: any(e['kind'] == 6 for e in l[:3]))
     check('the NVR not listening is logged as a hub event', [e['sensor'] for e in gone[:3] if e['kind'] == 6] == ['hub'], gone[:3])
@@ -520,25 +521,27 @@ def alerts_the_nvr_missed(s):
     check('the NVR listening again is logged', back and any(e['kind'] == 7 and e['sensor'] == 'hub' for e in back[:2]), back[:2])
     check('the alert the NVR missed plays once it listens again, as a past event', wait_until(lambda: name(1) in status()['active'], timeout=15), status())
 
-    # The NVR goes again during the replay: the replay waits again, without a second entry or message.
+    # The NVR goes during the replay, after its push showed the replay to it: the replay got there, so it is neither
+    # logged as missed nor played again. (One missed again waits again without a second entry: see the unit tests.)
     missed_before = sum(e['kind'] == 5 for e in event_list())
+    time.sleep(1)  # the replay's push reaches this PC
     api('POST', '/api/nvr', 'ip=192.0.2.8')
     control('end-alerts')
-    time.sleep(0.5)  # time for the check to run and wrongly log it again
-    check('a replay the NVR misses again is not logged a second time', sum(e['kind'] == 5 for e in event_list()) == missed_before, event_list()[:3])
+    time.sleep(13)  # past its check, which would count it missed had it not been shown
+    check('a replay the NVR was shown is not logged as missed', sum(e['kind'] == 5 for e in event_list()) == missed_before, event_list()[:3])
     api('POST', '/api/nvr', 'ip=127.0.0.1')
-    check('and it plays again when the NVR is back', wait_until(lambda: name(1) in status()['active'], timeout=15), status())
-    control('end-alerts')
+    time.sleep(3)  # time for it to wrongly play again
+    check('nor played again when the NVR is back', name(1) not in status()['active'] and status()['delayed_waiting'] == 0, status())
     flagged = sum(e['kind'] == 5 for e in event_list())
     get(f'/sensor?{sid(1)}')
-    time.sleep(6)  # past the check, which comes 5 s after an alert starts
+    time.sleep(13)  # past the check, which counts an alert not shown to the NVR within 12 s as missed
     check('an alert the NVR is listening for is not flagged', sum(e['kind'] == 5 for e in event_list()) == flagged, event_list()[:3])
     clear(1)
     # A past event waits while the NVR is not listening, rather than playing to nobody and being logged as missed.
     missed = sum(e['kind'] == 5 for e in event_list())
     api('POST', '/api/nvr', 'ip=192.0.2.8')
     get(f'/sensor?{sid(2)}&age=500')
-    time.sleep(7)  # longer than a play and its delivery check would take
+    time.sleep(7)  # longer than a play would take
     check('a past event waits while the NVR is not listening', name(2) not in status()['active'] and status()['delayed_waiting'] >= 1
           and sum(e['kind'] == 5 for e in event_list()) == missed, status())
     api('POST', '/api/nvr', 'ip=127.0.0.1')

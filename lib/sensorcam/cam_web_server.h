@@ -96,6 +96,8 @@ class CamWeb {
     // before the reply is ready: otherwise the NVR would never hear of that change.
     uint32_t undoSub = 0;
     int undoState = 0;
+    bool undoTold = false;  // and whether it had been shown an alert, and when: see CamSub::told
+    uint32_t undoToldAt = 0;
     bool firmwareActive = false;  // the body is going straight to the update, not into memory
     bool nodeImage = false;       // to a node firmware file instead
     size_t firmwareLeft = 0;

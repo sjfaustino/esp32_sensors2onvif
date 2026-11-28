@@ -190,14 +190,16 @@ static void a_replay_stays_one_only_while_nothing_new_joins_it() {
 static void delivery_is_checked_and_missed_alerts_kept_once() {
   CamDeliveryWatch w;
   uint8_t a[6] = {2, 0, 0, 0, 0, 1};
-  bool on = true;
-  auto active = [&](int) { return on; };
+  uint32_t shownAt = 0;
+  bool shown = false;  // whether, and when, the NVR was last shown an alert
+  auto told = [&](uint32_t at) { return shown && (int32_t)(shownAt - at) >= 0; };
   std::vector<CamDeliveryWatch::Missed> missed;
   w.started(3, a, 1, false, true, false, 8000, 1000);
-  w.check(1000 + CamDeliveryWatch::CHECK_AFTER_MS - 1, false, active, missed);
-  TEST_ASSERT_EQUAL(0, (int)missed.size());  // too early, and still on
-  on = false;
-  w.check(1500, false, active, missed);  // it ended: checked at once
+  w.check(1500, told, missed);
+  TEST_ASSERT_EQUAL(0, (int)missed.size());  // its push may still be on its way
+  w.check(1000 + CamDeliveryWatch::CHECK_MS - 1, told, missed);
+  TEST_ASSERT_EQUAL(0, (int)missed.size());
+  w.check(1000 + CamDeliveryWatch::CHECK_MS, told, missed);  // never shown
   TEST_ASSERT_EQUAL(1, (int)missed.size());
   TEST_ASSERT_TRUE(missed[0].log);
   TEST_ASSERT_EQUAL(3, missed[0].id);
@@ -206,14 +208,28 @@ static void delivery_is_checked_and_missed_alerts_kept_once() {
   TEST_ASSERT_TRUE(d.several);  // kept from the start, although the alert had ended
   TEST_ASSERT_TRUE(d.replay);
   missed.clear();
-  w.started(3, a, 1, true, false, true, 8000, 2000);  // its replay, missed too
-  w.check(9000, false, active, missed);
+  w.started(3, a, 1, true, false, true, 8000, 20000);  // its replay, missed too
+  w.check(20000 + CamDeliveryWatch::CHECK_MS, told, missed);
   TEST_ASSERT_EQUAL(1, (int)missed.size());
   TEST_ASSERT_FALSE(missed[0].log);  // not logged a second time
   missed.clear();
-  w.started(4, a, 2, false, false, false, 8000, 3000);
-  w.check(9000, true, active, missed);  // the NVR was listening
+  // Shown before this alert began, as when the last push got there and this one's fails: that is no proof.
+  shown = true;
+  shownAt = 39000;
+  w.started(4, a, 2, false, false, false, 8000, 40000);
+  w.check(40000 + CamDeliveryWatch::CHECK_MS, told, missed);
+  TEST_ASSERT_EQUAL(1, (int)missed.size());
+  TEST_ASSERT_TRUE(w.takeMissed(d) && w.takeMissed(d));  // the replay above, and this one
+  missed.clear();
+  // Shown after it began: delivered, and settled then, without waiting.
+  w.started(4, a, 2, false, false, false, 8000, 60000);
+  shownAt = 61000;
+  w.check(61000, told, missed);
   TEST_ASSERT_EQUAL(0, (int)missed.size());
+  TEST_ASSERT_FALSE(w.pending(4).on);
+  w.check(60000 + CamDeliveryWatch::CHECK_MS, told, missed);
+  TEST_ASSERT_EQUAL(0, (int)missed.size());
+  TEST_ASSERT_FALSE(w.takeMissed(d));
 }
 
 // Batteries fail one node at a time; nodes stopping together are reported once, and only nodes that stopped recently

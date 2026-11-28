@@ -66,6 +66,7 @@ class SensorCamServer : private CamAlarmOutside {
 
   // What the alarm asks of the parts made after it.
   bool nvrListening(uint32_t now) const override;
+  bool nvrToldSince(uint32_t at) const override;
   bool downloadingHistory() const override;
   void notifyHook(int id, CamEventKind kind, bool delayed) override;
   void notifyHubHook(CamEventKind kind, const std::string& detail, const std::string& message) override;

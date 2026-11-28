@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <new>
 #include "cam_soap.h"
 #include "cam_text.h"
 
@@ -263,9 +264,10 @@ bool camEventDecode(const uint8_t in[CAM_EVENT_RECORD], CamEvent& out) {
   return true;
 }
 
-// Quoted when it holds a comma, quote or line break; a leading = + - or @ is kept from being read as a formula.
+// Quoted when it holds a comma, quote or line break; a leading = + - @, tab or carriage return is kept from being read
+// as a formula.
 static std::string csvText(const std::string& s) {
-  std::string out = !s.empty() && strchr("=+-@", s[0]) ? "'" + s : s;
+  std::string out = !s.empty() && s[0] && strchr("=+-@\t\r", s[0]) ? "'" + s : s;
   if (out.find_first_of(",\"\r\n") == std::string::npos) return out;
   std::string quoted = "\"";
   for (char ch : out) {
@@ -275,12 +277,20 @@ static std::string csvText(const std::string& s) {
   return quoted + "\"";
 }
 
+// camDurationText in English: the history's columns stay English whatever language the messages are in.
+static std::string englishDuration(uint32_t seconds) {
+  uint32_t m = (seconds + 59) / 60;
+  if (m < 60) return std::to_string(m) + " min";
+  if (m < 48 * 60) return std::to_string(m / 60) + " h " + std::to_string(m % 60) + " min";
+  return std::to_string(m / 1440) + " days " + std::to_string(m / 60 % 24) + " h";
+}
+
 std::string camEventCsvLine(const CamEvent& e) {
   static const char* const DIRECTIONS[] = {"", "approaching", "moving away", "left to right", "right to left"};
   bool clockOk = e.received >= CAM_CLOCK_VALID_AFTER, ageKnown = e.age != CAM_AGE_UNKNOWN;
   std::string what = camEventName(e.kind, e.active, e.delayed);
   if (e.offS != CAM_AGE_UNKNOWN && (e.kind == CAM_EVENT_HUB_STARTED || e.kind == CAM_EVENT_NETWORK_LOST))
-    what += " for up to " + camDurationText(e.offS);
+    what += " for up to " + englishDuration(e.offS);
   int nearest = -1;
   for (int i = 0; i < e.targetCount; i++)
     if (nearest < 0 || e.targets[i].distanceCm < e.targets[nearest].distanceCm) nearest = i;
@@ -362,11 +372,22 @@ size_t camLogFileMax(size_t total, size_t keep) {
   return room > least ? room : least;
 }
 
+// Never throws: it is part of raising an alert, which must finish even when memory has run out. Past the room kept, the
+// waiting records grow while storage refuses them; when they cannot, the oldest goes, as it does at PENDING_MAX.
 void CamEventLog::add(const CamEvent& e) {
   uint8_t r[CAM_EVENT_RECORD];
   camEventEncode(e, r);
   if (pending_.size() >= PENDING_MAX) pending_.erase(0, CAM_EVENT_RECORD);
-  pending_.append((const char*)r, sizeof(r));  // first, so an event shown is one that will be saved
+  if (pending_.size() + CAM_EVENT_RECORD > pending_.capacity()) {
+    size_t more = pending_.capacity() * 2 < PENDING_MAX ? pending_.capacity() * 2 : PENDING_MAX;
+    try {
+      pending_.reserve(more > pending_.size() + CAM_EVENT_RECORD ? more : pending_.size() + CAM_EVENT_RECORD);
+    } catch (const std::bad_alloc&) {
+      if (!pending_.empty()) pending_.erase(0, CAM_EVENT_RECORD);
+    }
+  }
+  // First, so an event shown is one that will be saved; only without even the room kept at the start is it not.
+  if (pending_.size() + CAM_EVENT_RECORD <= pending_.capacity()) pending_.append((const char*)r, sizeof(r));
   remember(e);
 }
 

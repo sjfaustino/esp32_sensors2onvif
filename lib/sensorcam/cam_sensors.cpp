@@ -223,10 +223,10 @@ int camFirmwarePart(const uint8_t nodeMac[6], uint32_t image, uint32_t size, uin
 
 bool camCheckNodeImage(const std::function<bool(size_t, char*, size_t)>& read, size_t size, CamNodeImage& out) {
   static const size_t BLOCK = 1024;
-  const size_t markLen = strlen(CAM_NODE_IMAGE_MARK), keep = markLen + CAM_NODE_TEXT_MAX;
+  static const size_t markLen = sizeof(S2O_NODE_IMAGE_MARK) - 1, keep = markLen + CAM_NODE_TEXT_MAX;
   if (size < 64 || size > CAM_MAX_NODE_IMAGE) return false;
   // Read in blocks, each with the end of the one before, so a version that spans two is still found.
-  char buf[BLOCK + 64];
+  char buf[BLOCK + keep];  // a block, after the end of the one before
   size_t carried = 0;
   uint32_t hash = 2166136261u;
   std::string version;

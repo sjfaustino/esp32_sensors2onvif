@@ -20,6 +20,10 @@ struct CamSub {
   uint32_t pulledAt = 0;     // pull: when it last asked for events, which is what shows it is listening
   bool pushFailed = false;   // push: the last notification could not be delivered
   uint32_t retryAt = 0;      // push: when a failed one was last tried again
+  // When it was last shown that an alert was on: a push saying so that got there, timed from when it began, or a pull
+  // answered while one was on. An alert counts as delivered only once this is after it started.
+  bool told = false;
+  uint32_t toldAt = 0;
 };
 
 class SubTable {

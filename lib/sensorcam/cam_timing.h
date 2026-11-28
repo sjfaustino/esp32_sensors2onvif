@@ -10,10 +10,12 @@ const uint32_t CAM_NOTIFY_CLOSE_MS = 1000;          // measured: the NVR closes 
 const uint32_t CAM_PUSH_RETRY_MS = 30000;           // chosen: a failed event push is tried again this often
 const uint32_t CAM_PULL_ALIVE_MS = 60000;           // chosen: an NVR that pulls events and has not asked for this long is not listening
 const uint32_t CAM_SUB_IDLE_MS = 10UL * 60 * 1000;  // measured: the NVR never renews, so a subscription lives while its NVR talks
-const uint32_t CAM_DELIVERY_CHECK_MS = 5000;        // chosen: after an alert starts, time for its push to reach the NVR
 const uint32_t CAM_NVR_GONE_MS = 3UL * 60 * 1000;   // chosen: not listening this long is logged once as the NVR having stopped
 const uint32_t CAM_POLL_HOLD_MAX_MS = 10000;        // chosen: the longest a PullMessages is held, so it cannot keep a connection long
-const uint32_t CAM_PAST_GAP_MS = 4000;              // chosen: between past-event records, so the NVR closes one before the next
+// chosen: how long an alert waits to be shown to the NVR before it counts as missed. A push goes through or gives up within
+// CAM_NOTIFY_SEND_MS + CAM_NOTIFY_CLOSE_MS; an NVR that pulls may be holding a poll for CAM_POLL_HOLD_MAX_MS.
+const uint32_t CAM_DELIVERY_PROOF_MS = CAM_POLL_HOLD_MAX_MS + 2000;
+const uint32_t CAM_PAST_GAP_MS = 4000;  // chosen: between past-event records, so the NVR closes one before the next
 
 // ---- sensors ----
 const uint32_t CAM_PAST_AFTER_S = 30;                    // chosen: an older report is a past event, unless its node says otherwise

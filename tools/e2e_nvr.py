@@ -585,7 +585,7 @@ def deleting_folders_and_restarts(s):
     if s.proc:
         # A planned restart writes the waiting alerts as they are, so an alert the NVR already got does not play again.
         get(f'/sensor?{sid(4)}')
-        wait_until(lambda: name(4) not in status()['active'], timeout=20)  # its hold runs out, well after its delivery check at 5 s
+        wait_until(lambda: name(4) not in status()['active'], timeout=20)  # its hold runs out, after its push showed it to the NVR
         control('save-now')
         s.restart('1500')
         time.sleep(3)  # time for a stale entry to wrongly start playing

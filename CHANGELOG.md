@@ -28,6 +28,15 @@ before that, a new minor version may change settings or the messages.
 
 ### Fixes
 
+- An alert counts as delivered only once the NVR has been shown it: a push saying an alert is on that got there after
+  the alert began, or a pull answered while it was on. It used to count whenever the NVR seemed to be listening at
+  the check, which trusted the push before this alert's own, still on its way, for an alert with a short hold, and an
+  NVR that pulls for a whole minute after it last asked. Not shown within 12 seconds, the alert is logged as **alert
+  not delivered** and plays again as a past event once the NVR listens.
+- An alert raised while memory has run out and storage refuses the history is still logged: the oldest event waiting
+  to be saved gives way instead, so the alert's own handling always finishes.
+- The history's CSV says how long the hub was off in English, as its other columns are, in any language.
+- In the history's CSV, a name that starts with a tab or a carriage return is kept from being read as a formula.
 - A hub that could not reserve the room for moving pictures as it started still said it took 20 frames, and let in
   pictures that size, which then had to grow its picture buffer. Every limit now follows the room it got: one frame.
 - A picture cut into several slices is refused, rather than taken as several frames, each a strip of it.

@@ -1,6 +1,7 @@
 // Storage paths, pictures, node firmware files, backups, and the event history kept on storage.
 #include <algorithm>
 #include "tests.h"
+#include "cam_text.h"
 #include "cam_node_files.h"
 #include "cam_health_history.h"
 
@@ -332,6 +333,20 @@ static void an_event_record_reads_back_and_damage_is_found() {
                            camEventCsvLine(e).c_str());
 }
 
+// The history's columns are English whatever language the messages are in, and no name starts a spreadsheet formula.
+static void the_history_stays_english_and_no_name_is_a_formula() {
+  CamEvent e = sampleEvent(1);
+  e.kind = CAM_EVENT_HUB_STARTED;
+  e.active = true;
+  e.offS = 3 * 86400 + 2 * 3600;
+  snprintf(e.text, sizeof(e.text), "\tcmd");
+  camSetTextLanguage("pt");
+  std::string line = camEventCsvLine(e);
+  camSetTextLanguage("en");
+  TEST_ASSERT_TRUE(line.find(",hub started for up to 3 days 2 h,") != std::string::npos);
+  TEST_ASSERT_TRUE(line.find(",'\tcmd,") != std::string::npos);
+}
+
 // Reads the download the way the web server does: in pieces, some sent only in part and asked for again.
 static std::string download(CamEventLog& log, const std::string& sensor = std::string(), time_t since = 0) {
   log.csvBegin(sensor, since);
@@ -593,6 +608,7 @@ static void the_health_history_keeps_a_week_by_the_hour() {
 void runStorageTests() {
   RUN_TEST(the_health_history_keeps_a_week_by_the_hour);
   RUN_TEST(an_event_record_reads_back_and_damage_is_found);
+  RUN_TEST(the_history_stays_english_and_no_name_is_a_formula);
   RUN_TEST(the_event_log_survives_restarts_and_downloads_whole);
   RUN_TEST(the_event_log_starts_a_new_file_but_not_during_a_download);
   RUN_TEST(a_small_storage_keeps_a_smaller_history_that_always_saves);

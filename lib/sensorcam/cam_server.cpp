@@ -139,6 +139,8 @@ void SensorCamServer::espNowPacket(const uint8_t mac[6], const uint8_t* data, in
 
 bool SensorCamServer::nvrListening(uint32_t now) const { return events_.nvrListening(now); }
 
+bool SensorCamServer::nvrToldSince(uint32_t at) const { return events_.nvrToldSince(at); }
+
 bool SensorCamServer::downloadingHistory() const { return web_.downloadingHistory(); }
 
 CamLeds SensorCamServer::leds(bool online, bool setupOpen) {

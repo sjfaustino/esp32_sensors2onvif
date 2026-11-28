@@ -13,12 +13,14 @@ void CamDeliveryWatch::started(int id, const uint8_t mac[6], uint8_t input, bool
   p.holdMs = holdMs;
 }
 
-void CamDeliveryWatch::check(uint32_t now, bool listening, const std::function<bool(int)>& active, std::vector<Missed>& missed) {
+void CamDeliveryWatch::check(uint32_t now, const std::function<bool(uint32_t at)>& told, std::vector<Missed>& missed) {
   for (int id = 1; id <= CAM_MAX_SENSORS; id++) {
     CamPendingCheck& p = pending_[id - 1];
-    if (!p.on || (now - p.at < CHECK_AFTER_MS && active(id))) continue;
+    if (!p.on) continue;
+    bool shown = told(p.at);
+    if (!shown && now - p.at < CHECK_MS) continue;
     p.on = false;
-    if (listening) continue;
+    if (shown) continue;
     missed_.add(p.mac, p.input, 0, false, now, p.holdMs, p.several, true);
     missed.push_back({id, p.delayed, !p.replay});
   }

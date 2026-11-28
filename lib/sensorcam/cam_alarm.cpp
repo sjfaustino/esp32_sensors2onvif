@@ -280,7 +280,7 @@ void CamAlarm::checkNvr(uint32_t now) {
     nvrGone_ = true;  // after, so one that ran out of memory is tried again
   }
   notGot_.clear();
-  delivery_.check(now, listening, [&](int id) { return table_.slotOf(id).used && sensors_.active(id); }, notGot_);
+  delivery_.check(now, [&](uint32_t at) { return outside_.nvrToldSince(at); }, notGot_);
   for (const CamDeliveryWatch::Missed& m : notGot_) {
     waitingDirty_ = true;
     if (!m.log || !table_.slotOf(m.id).used) continue;  // a replay that failed again waits again, without a second entry

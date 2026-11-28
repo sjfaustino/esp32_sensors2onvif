@@ -59,6 +59,10 @@ void CamOnvifEvents::serve(fd_set& rd, fd_set& wr, uint32_t now) {
     if (!s.used || s.id != pushFor_[i]) continue;
     s.pushFailed = !n.delivered();
     if (n.delivered() && pushFirst_[i]) s.initialized = true;
+    if (n.delivered() && pushActive_[i] && (!s.told || (int32_t)(pushAt_[i] - s.toldAt) > 0)) {
+      s.told = true;
+      s.toldAt = pushAt_[i];
+    }
   }
 }
 
@@ -74,6 +78,15 @@ bool CamOnvifEvents::nvrListening(uint32_t now) const {
     const CamSub& s = subs_.at(i);
     if (!s.used || (nvr && s.peer != nvr)) continue;
     if (s.push ? !s.pushFailed : now - s.pulledAt < CAM_PULL_ALIVE_MS) return true;  // other requests from it do not count
+  }
+  return false;
+}
+
+bool CamOnvifEvents::nvrToldSince(uint32_t at) const {
+  uint32_t nvr = nvrIp_.empty() ? 0 : inet_addr(nvrIp_.c_str());
+  for (int i = 0; i < SubTable::SIZE; i++) {
+    const CamSub& s = subs_.at(i);
+    if (s.used && (!nvr || s.peer == nvr) && s.told && (int32_t)(s.toldAt - at) >= 0) return true;
   }
   return false;
 }
@@ -111,7 +124,8 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   }
   // Built before the connection is opened, so running out of memory leaves no connection behind. The push stays pending
   // and is tried again on the next pass.
-  std::string body = soapNotify(alarm_.board().anyActive(), !sub.initialized, chip_->wallTime());
+  bool active = alarm_.board().anyActive();
+  std::string body = soapNotify(active, !sub.initialized, chip_->wallTime());
   std::string out = "POST " + url.path + " HTTP/1.1\r\nHost: " + url.host + ":" + std::to_string(url.port) +
                     "\r\nContent-Type: application/soap+xml; charset=utf-8; "
                     "action=\"http://docs.oasis-open.org/wsn/bw-2/NotificationConsumer/Notify\"\r\nContent-Length: " +
@@ -128,6 +142,8 @@ void CamOnvifEvents::startPush(int i, uint32_t now) {
   }
   pushFor_[i] = sub.id;
   pushFirst_[i] = !sub.initialized;
+  pushActive_[i] = active;
+  pushAt_[i] = now;
 }
 
 // ---- WS-Discovery ----
